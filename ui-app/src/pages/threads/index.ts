@@ -1,0 +1,1 @@
+export { ThreadsPage } from './threads'

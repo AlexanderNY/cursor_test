@@ -1,0 +1,246 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --bg-primary: #0f172a;
+    --bg-secondary: #1e293b;
+    --bg-tertiary: #334155;
+    --text-primary: #f8fafc;
+    --text-secondary: #94a3b8;
+    --text-muted: #64748b;
+    --border-color: #334155;
+    --accent-gradient: linear-gradient(135deg, #0ea5e9, #d946ef);
+  }
+
+  .light {
+    --bg-primary: #ffffff;
+    --bg-secondary: #f1f5f9;
+    --bg-tertiary: #e2e8f0;
+    --text-primary: #0f172a;
+    --text-secondary: #475569;
+    --text-muted: #94a3b8;
+    --border-color: #e2e8f0;
+  }
+
+  * {
+    @apply border-[var(--border-color)];
+  }
+
+  body {
+    @apply bg-[var(--bg-primary)] text-[var(--text-primary)] antialiased;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+}
+
+@layer components {
+  .glass-card {
+    @apply bg-[var(--bg-secondary)]/80 backdrop-blur-xl border border-[var(--border-color)] rounded-2xl;
+  }
+
+  .input-field {
+    @apply w-full px-4 py-3 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-xl
+           text-[var(--text-primary)] placeholder-[var(--text-muted)]
+           focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500
+           transition-all duration-200;
+  }
+
+  .btn-primary {
+    @apply px-6 py-3 bg-gradient-to-r from-primary-500 to-primary-600 
+           text-white font-medium rounded-xl
+           hover:from-primary-600 hover:to-primary-700
+           focus:outline-none focus:ring-2 focus:ring-primary-500/50
+           disabled:opacity-50 disabled:cursor-not-allowed
+           transition-all duration-200 shadow-lg shadow-primary-500/25;
+  }
+
+  .btn-secondary {
+    @apply px-6 py-3 bg-[var(--bg-tertiary)] border border-[var(--border-color)]
+           text-[var(--text-primary)] font-medium rounded-xl
+           hover:bg-[var(--bg-secondary)] hover:border-primary-500/50
+           focus:outline-none focus:ring-2 focus:ring-primary-500/50
+           transition-all duration-200;
+  }
+
+  .btn-danger {
+    @apply px-6 py-3 bg-gradient-to-r from-red-500 to-red-600
+           text-white font-medium rounded-xl
+           hover:from-red-600 hover:to-red-700
+           focus:outline-none focus:ring-2 focus:ring-red-500/50
+           disabled:opacity-50 disabled:cursor-not-allowed
+           transition-all duration-200 shadow-lg shadow-red-500/25;
+  }
+
+  .nav-link {
+    @apply flex items-center gap-3 px-4 py-3 rounded-xl
+           text-[var(--text-secondary)] hover:text-[var(--text-primary)]
+           hover:bg-[var(--bg-tertiary)] hover:bg-opacity-50
+           transition-all duration-200
+           focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-secondary)];
+  }
+
+  .nav-link-active {
+    @apply bg-gradient-to-r from-primary-500/10 to-accent-500/10 
+           text-primary-400 border-l-2 border-primary-500;
+  }
+}
+
+@layer utilities {
+  .text-gradient {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-primary-400 to-accent-400;
+  }
+
+  .animate-stagger-1 { animation-delay: 0.1s; }
+  .animate-stagger-2 { animation-delay: 0.2s; }
+  .animate-stagger-3 { animation-delay: 0.3s; }
+  .animate-stagger-4 { animation-delay: 0.4s; }
+  .animate-stagger-5 { animation-delay: 0.5s; }
+
+  /* TipTap Editor Styles */
+  .tiptap-editor .ProseMirror {
+    outline: none;
+  }
+  
+  .tiptap-editor .ProseMirror p.is-editor-empty:first-child::before {
+    content: attr(data-placeholder);
+    float: left;
+    color: var(--text-muted);
+    pointer-events: none;
+    height: 0;
+  }
+
+  .tiptap-editor .ProseMirror h1 {
+    font-size: 2em;
+    font-weight: bold;
+    margin-top: 0.67em;
+    margin-bottom: 0.67em;
+  }
+
+  .tiptap-editor .ProseMirror h2 {
+    font-size: 1.5em;
+    font-weight: bold;
+    margin-top: 0.83em;
+    margin-bottom: 0.83em;
+  }
+
+  .tiptap-editor .ProseMirror h3 {
+    font-size: 1.17em;
+    font-weight: bold;
+    margin-top: 1em;
+    margin-bottom: 1em;
+  }
+
+  .tiptap-editor .ProseMirror ul,
+  .tiptap-editor .ProseMirror ol {
+    padding-left: 1.5em;
+    margin: 1em 0;
+  }
+
+  .tiptap-editor .ProseMirror ul {
+    list-style-type: disc;
+  }
+
+  .tiptap-editor .ProseMirror ol {
+    list-style-type: decimal;
+  }
+
+  .tiptap-editor .ProseMirror blockquote {
+    border-left: 3px solid var(--border-color);
+    padding-left: 1em;
+    margin: 1em 0;
+    font-style: italic;
+    color: var(--text-secondary);
+  }
+
+  .tiptap-editor .ProseMirror code {
+    background-color: var(--bg-secondary);
+    padding: 0.2em 0.4em;
+    border-radius: 0.25em;
+    font-family: monospace;
+    font-size: 0.9em;
+  }
+
+  .tiptap-editor .ProseMirror pre {
+    background-color: var(--bg-secondary);
+    padding: 1em;
+    border-radius: 0.5em;
+    overflow-x: auto;
+    margin: 1em 0;
+  }
+
+  .tiptap-editor .ProseMirror pre code {
+    background-color: transparent;
+    padding: 0;
+  }
+
+  .tiptap-editor .ProseMirror hr {
+    border: none;
+    border-top: 2px solid var(--border-color);
+    margin: 2em 0;
+  }
+
+  .tiptap-editor .ProseMirror strong {
+    font-weight: bold;
+  }
+
+  .tiptap-editor .ProseMirror em {
+    font-style: italic;
+  }
+
+  .tiptap-editor .ProseMirror u {
+    text-decoration: underline;
+  }
+
+  .tiptap-editor .ProseMirror s {
+    text-decoration: line-through;
+  }
+
+  /* Notification content styles in header */
+  .notification-content p {
+    margin: 0;
+    display: inline;
+  }
+
+  .notification-content ul,
+  .notification-content ol {
+    margin: 0;
+    padding-left: 1.2em;
+    display: inline;
+  }
+
+  .notification-content strong {
+    font-weight: bold;
+  }
+
+  .notification-content em {
+    font-style: italic;
+  }
+
+  .notification-content u {
+    text-decoration: underline;
+  }
+
+  .notification-content s {
+    text-decoration: line-through;
+  }
+
+  /* Respect prefers-reduced-motion: reduce decorative animations only */
+  @media (prefers-reduced-motion: reduce) {
+    .animate-fade-in,
+    .animate-slide-up,
+    .animate-slide-down,
+    .animate-pulse-subtle {
+      animation: none !important;
+    }
+    .animate-stagger-1,
+    .animate-stagger-2,
+    .animate-stagger-3,
+    .animate-stagger-4,
+    .animate-stagger-5 {
+      animation-delay: 0s !important;
+    }
+  }
+}
+
+

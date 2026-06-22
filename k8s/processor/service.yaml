@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: processor
+  namespace: app
+  labels:
+    app: processor
+spec:
+  selector:
+    app: processor
+  ports:
+    - port: 8010
+      targetPort: 8010
+      name: http
+  type: ClusterIP

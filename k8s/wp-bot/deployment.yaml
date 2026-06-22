@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wp-bot
+  namespace: app
+  labels:
+    app: wp-bot
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wp-bot
+  template:
+    metadata:
+      labels:
+        app: wp-bot
+    spec:
+      containers:
+        - name: wp-bot
+          image: wp-bot:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8006
+          env:
+            - name: API_GATEWAY_URL
+              value: "http://gateway:8000"
+            - name: CORE_SERVICE_URL
+              value: "http://core:8002"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8006
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8006
+            initialDelaySeconds: 15
+            periodSeconds: 15

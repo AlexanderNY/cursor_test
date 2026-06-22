@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: core
+  namespace: app
+  labels:
+    app: core
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: core
+  template:
+    metadata:
+      labels:
+        app: core
+    spec:
+      containers:
+        - name: core
+          image: core:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8002
+          env:
+            - name: API_GATEWAY_URL
+              value: "http://gateway:8000"
+            - name: AUTH_SERVICE_URL
+              value: "http://auth:8001"
+            - name: TG_BOT_SERVICE_URL
+              value: "http://tg-bot:8004"
+            - name: VK_BOT_SERVICE_URL
+              value: "http://vk-bot:8005"
+            - name: WP_BOT_SERVICE_URL
+              value: "http://wp-bot:8006"
+            - name: URL_BOT_SERVICE_URL
+              value: "http://url-bot:8007"
+            - name: SCHEDULER_SERVICE_URL
+              value: "http://scheduler:8003"
+            - name: COLLECTOR_SERVICE_URL
+              value: "http://collector:8009"
+            - name: PROCESSOR_SERVICE_URL
+              value: "http://processor:8010"
+          envFrom:
+            - secretRef:
+                name: app-secrets
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8002
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8002
+            initialDelaySeconds: 15
+            periodSeconds: 15

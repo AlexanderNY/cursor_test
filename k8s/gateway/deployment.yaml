@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway
+  namespace: app
+  labels:
+    app: gateway
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gateway
+  template:
+    metadata:
+      labels:
+        app: gateway
+    spec:
+      containers:
+        - name: gateway
+          image: gateway:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8000
+          env:
+            - name: AUTH_SERVICE_URL
+              value: "http://auth:8001"
+            - name: CORE_SERVICE_URL
+              value: "http://core:8002"
+            - name: SCHEDULER_SERVICE_URL
+              value: "http://scheduler:8003"
+            - name: TG_BOT_SERVICE_URL
+              value: "http://tg-bot:8004"
+            - name: WP_BOT_SERVICE_URL
+              value: "http://wp-bot:8006"
+            - name: URL_BOT_SERVICE_URL
+              value: "http://url-bot:8007"
+            - name: THREADS_BOT_SERVICE_URL
+              value: "http://th-bot:8011"
+            - name: COLLECTOR_SERVICE_URL
+              value: "http://collector:8009"
+            - name: PROCESSOR_SERVICE_URL
+              value: "http://processor:8010"
+            - name: VK_BOT_SERVICE_URL
+              value: "http://vk-bot:8005"
+            - name: CORS_ORIGINS
+              value: "http://localhost:5173,http://localhost:8100,http://127.0.0.1:8100"
+            - name: JWT_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: JWT_SECRET_KEY
+                  optional: true
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 15

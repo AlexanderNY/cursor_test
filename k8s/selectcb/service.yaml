@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: selectcb
+  namespace: app
+  labels:
+    app: selectcb
+spec:
+  selector:
+    app: selectcb
+  ports:
+    - port: 8008
+      targetPort: 8008
+      name: http
+  type: ClusterIP

@@ -1,0 +1,61 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tg-bot
+  namespace: app
+  labels:
+    app: tg-bot
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tg-bot
+  template:
+    metadata:
+      labels:
+        app: tg-bot
+    spec:
+      containers:
+        - name: tg-bot
+          image: tg-bot:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8004
+          env:
+            - name: CORE_SERVICE_URL
+              value: "http://core:8002"
+            - name: API_GATEWAY_URL
+              value: "http://gateway:8000"
+            - name: LOG_BOT_ACTIONS
+              value: "false"
+            - name: RELOAD_PROFILES_INTERVAL_SEC
+              value: "300"
+            - name: MAX_CONCURRENT_CLIENTS
+              value: "20"
+          envFrom:
+            - secretRef:
+                name: app-secrets
+          volumeMounts:
+            - name: sessions
+              mountPath: /app/sessions
+            - name: uploads
+              mountPath: /app/uploads
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8004
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8004
+            initialDelaySeconds: 20
+            periodSeconds: 15
+      volumes:
+        - name: sessions
+          persistentVolumeClaim:
+            claimName: tg-bot-sessions
+        - name: uploads
+          persistentVolumeClaim:
+            claimName: tg-bot-uploads

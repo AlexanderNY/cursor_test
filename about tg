@@ -1,0 +1,59 @@
+Сервис tg-bot — описание работы
+Общая схема
+tg-bot — это сервис на FastAPI + Telethon, который:
+Собирает сообщения из Telegram-чатов в БД
+Публикует посты со статусом ready в указанные каналы
+Обрабатывает авторизацию Telegram (код и 2FA)
+База данных
+Подключение: DATABASE_URL из config.py (по умолчанию dbname=db_bot user=postgres password=1qaz!QAZ host=host.docker.internal).
+Используемые таблицы (создаются в core):
+Таблица	Операции	Назначение
+tg_profiles	SELECT, UPDATE	Профили: api_id, api_hash, auth_phone_number, chats_to_read, channel_to_post, auth_state, auth_phone_code_hash и др.
+tg_posts	INSERT, SELECT, UPDATE	Посты: сбор (status=collected), публикация (status=ready → published)
+Пул соединений: aiopg, init_db([]) — только пул, без создания таблиц.
+Endpoints
+Сервис слушает порт 8004 (из config.API_PORT).
+Собственные endpoints tg-bot
+Метод	Путь	Описание
+GET	/health	Health check
+POST	/tg/auth/code	Отправка кода подтверждения Telegram
+POST	/tg/auth/password	Отправка 2FA-пароля
+GET	/tg/auth/status/{user_id}	Статус авторизации пользователя
+Роутер auth подключён с префиксом /tg, поэтому полные пути: /tg/auth/code, /tg/auth/password, /tg/auth/status/{user_id}.
+Через API Gateway
+Метод	Gateway путь	Целевой путь tg-bot
+POST	/tg-bot/schedule	POST /schedule
+Эндпоинт /schedule в tg-bot не реализован, запросы идут в заглушку (501).
+Поток данных
+1. Запуск
+init_db([]) — инициализация пула БД
+TelegramClientManager — загрузка профилей из tg_profiles (где collect_enabled или publish_enabled)
+Для каждого профиля создаётся TelegramClient (api_id, api_hash, сессии в sessions/)
+При необходимости авторизации — запрос кода по auth_phone_number
+Регистрация обработчиков NewMessage для чатов из chats_to_read
+Запуск фоновой задачи публикации (интервал PUBLISH_INTERVAL_SEC, по умолчанию 60 с)
+2. Сбор сообщений
+Событие NewMessage в чатах из chats_to_read
+ImageHandler — скачивание медиа в uploads/tg/{user_id}/{date}/
+PostCollector — запись в tg_posts со статусом collected
+3. Публикация
+Цикл каждые PUBLISH_INTERVAL_SEC секунд
+PostPublisher.get_ready_posts() — выборка из tg_posts со статусом ready с JOIN к tg_profiles для channel_to_post
+Для каждого поста: client.send_message(channel_to_post, text, file=image)
+Обновление статуса поста на published
+4. Авторизация
+POST /tg/auth/code — ввод кода из Telegram
+POST /tg/auth/password — ввод 2FA-пароля
+AuthHandler читает auth_phone_number, auth_phone_code_hash из tg_profiles и обновляет auth_state
+Внешние зависимости
+Core (CORE_SERVICE_URL) — уведомления: POST {core}/notifications (код, 2FA, ошибки)
+PostgreSQL — tg_profiles, tg_posts
+Telegram API — через Telethon (api_id, api_hash с my.telegram.org)
+Конфигурация (config.py)
+Параметр	По умолчанию	Описание
+DATABASE_URL	dbname=db_bot user=postgres...	Подключение к PostgreSQL
+UPLOADS_DIR	uploads/tg	Папка для медиа
+API_PORT	8004	Порт FastAPI
+CORE_SERVICE_URL	http://localhost:8002	URL core для уведомлений
+PUBLISH_INTERVAL_SEC	60	Интервал проверки постов для публикации
+PATH_TO_TG_IMAGE	""	Базовый путь для изображений при публикации

@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: core
+  namespace: app
+  labels:
+    app: core
+spec:
+  selector:
+    app: core
+  ports:
+    - port: 8002
+      targetPort: 8002
+      name: http
+  type: ClusterIP

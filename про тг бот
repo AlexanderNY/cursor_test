@@ -1,0 +1,25 @@
+Кратко, что сделано:
+
+1. База данных
+tg-bot/game_schema.py — DDL: game_players, game_modes, game_questions, game_question_options, game_sessions, game_session_questions, game_answers, индексы, сид режима demo.
+tg-bot/main.py — при старте вызывается await init_db(GAME_TABLE_DDL).
+2. Игровой бот (aiogram 3)
+tg-bot/bots/game_handlers.py — /start (регистрация игрока + выбор режима), callback m|{mode_id}, ответы a|{session_id}|{question_id}|{option_id}, /rating.
+tg-bot/bots/game_bot_runner.py — polling.
+tg-bot/config.py — GAME_BOT_TOKEN, GAME_ADMIN_TELEGRAM_IDS, GAME_ADMIN_API_TOKEN.
+tg-bot/main.py — при непустом GAME_BOT_TOKEN поднимается задача polling; при остановке задача отменяется.
+3. Домен и данные
+tg-bot/services/game_engine.py — выбор случайных вопросов и очки (unit-тесты).
+tg-bot/services/game_repository.py — сессии, ответы с ON CONFLICT (повторный callback), прерывание старой сессии при новой игре, админ-CRUD, лидерборд.
+tg-bot/services/rating_service.py — обёртка над рейтингом.
+4. HTTP API
+tg-bot/routers/game_rating.py — GET /tg/game/rating?limit=20.
+tg-bot/routers/game_admin.py — CRUD под заголовком X-Game-Admin-Token (нужен GAME_ADMIN_API_TOKEN в env).
+tg-bot/deps_game_admin.py — проверка токена.
+tg-bot/schemas_game.py — Pydantic-схемы (ровно 6 вариантов, ровно один верный).
+5. Зависимости и Docker
+tg-bot/requirements.txt — aiogram, pytest, pytest-asyncio.
+docker-compose.yaml — для tg-bot добавлены пустые GAME_BOT_TOKEN, GAME_ADMIN_TELEGRAM_IDS, GAME_ADMIN_API_TOKEN.
+6. Тесты
+tg-bot/tests/test_game_engine.py, tg-bot/tests/test_schemas_game.py, tg-bot/pytest.ini — 8 passed.
+Как пользоваться: задать GAME_BOT_TOKEN (BotFather), при необходимости GAME_ADMIN_TELEGRAM_IDS (через запятую) и GAME_ADMIN_API_TOKEN; через админ-API создать режим и вопросы с 6 вариантами; в режиме demo после добавления вопросов игра заработает из /start. Рейтинг: команда /rating в боте или GET http://<tg-bot>:8004/tg/game/rating.

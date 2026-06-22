@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: url-bot
+  namespace: app
+  labels:
+    app: url-bot
+spec:
+  selector:
+    app: url-bot
+  ports:
+    - port: 8007
+      targetPort: 8007
+      name: http
+  type: ClusterIP

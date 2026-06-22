@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: url-bot
+  namespace: app
+  labels:
+    app: url-bot
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: url-bot
+  template:
+    metadata:
+      labels:
+        app: url-bot
+    spec:
+      containers:
+        - name: url-bot
+          image: url-bot:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8007
+          env:
+            - name: CORE_SERVICE_URL
+              value: "http://core:8002"
+            - name: API_GATEWAY_URL
+              value: "http://gateway:8000"
+            - name: CHROME_BIN
+              value: "/usr/bin/chromium"
+            - name: CHROMEDRIVER_PATH
+              value: "/usr/bin/chromedriver"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8007
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8007
+            initialDelaySeconds: 20
+            periodSeconds: 15

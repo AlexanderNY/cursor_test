@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: collector
+  namespace: app
+  labels:
+    app: collector
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: collector
+  template:
+    metadata:
+      labels:
+        app: collector
+    spec:
+      containers:
+        - name: collector
+          image: collector:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8009
+          env:
+            - name: COLLECT_INTERVAL_SEC
+              value: "60"
+            - name: DISTRIBUTE_INTERVAL_SEC
+              value: "60"
+            - name: COLLECT_BATCH_SIZE
+              value: "100"
+            - name: DISTRIBUTE_BATCH_SIZE
+              value: "100"
+            - name: LOG_LEVEL
+              value: "INFO"
+          envFrom:
+            - secretRef:
+                name: app-secrets
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8009
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8009
+            initialDelaySeconds: 15
+            periodSeconds: 15

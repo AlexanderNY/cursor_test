@@ -1,0 +1,393 @@
+
+
+## Публикация поста в WordPress через REST API
+
+### 1. Аутентификация
+
+WordPress REST API поддерживает два способа:
+- Application Passwords (рекомендуется)
+- Basic Authentication (username:password)
+
+### 2. Базовый пример с httpx
+
+```python
+import httpx
+from typing import Optional, Dict, Any
+
+
+async def create_wp_post(
+    site_url: str,
+    username: str,
+    app_password: str,
+    title: str,
+    content: str,
+    status: str = "publish",  # draft, publish, pending, private
+    categories: Optional[list[int]] = None,
+    tags: Optional[list[int]] = None,
+    excerpt: Optional[str] = None,
+    slug: Optional[str] = None,
+    featured_media: Optional[int] = None,
+    meta: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+    """
+    Создает пост в WordPress через REST API.
+    
+    Args:
+        site_url: URL сайта WordPress (например, https://example.com)
+        username: Имя пользователя WordPress
+        app_password: Application Password (не обычный пароль!)
+        title: Заголовок поста
+        content: Содержимое поста (добавь к полю простой html редактор с возможностью менять форматирование текста)
+        status: Статус поста (select: draft, publish, pending, private)
+        categories: Список ID категорий
+        tags: Список ID тегов
+        excerpt: Краткое описание
+        slug: URL slug поста
+        featured_media: ID медиа-файла для обложки
+        meta: Дополнительные мета-поля
+        
+    Returns:
+        Словарь с данными созданного поста
+        
+    Raises:
+        httpx.HTTPStatusError: При ошибке HTTP запроса
+    """
+    # Формируем URL для REST API
+    api_url = f"{site_url.rstrip('/')}/wp-json/wp/v2/posts"
+    
+    # Подготовка данных поста
+    post_data = {
+        "title": title,
+        "content": content,
+        "status": status,
+    }
+    
+    # Опциональные поля
+    if excerpt:
+        post_data["excerpt"] = excerpt
+    if slug:
+        post_data["slug"] = slug
+    if categories:
+        post_data["categories"] = categories
+    if tags:
+        post_data["tags"] = tags
+    if featured_media:
+        post_data["featured_media"] = featured_media
+    if meta:
+        post_data["meta"] = meta
+    
+    # Basic Authentication: username:app_password в base64
+    auth_string = f"{username}:{app_password}"
+    
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        response = await client.post(
+            api_url,
+            json=post_data,
+            headers={
+                "Content-Type": "application/json",
+            },
+            auth=(username, app_password),  # httpx автоматически создаст Basic Auth заголовок
+        )
+        response.raise_for_status()
+        return response.json()
+```
+
+### 3. Полный пример с обработкой ошибок
+
+```python
+import httpx
+from typing import Optional, Dict, Any
+from fastapi import HTTPException
+
+
+class WordPressClient:
+    """Клиент для работы с WordPress REST API."""
+    
+    def __init__(self, site_url: str, username: str, app_password: str):
+        """
+        Инициализация клиента.
+        
+        Args:
+            site_url: URL сайта WordPress
+            username: Имя пользователя
+            app_password: Application Password
+        """
+        self.site_url = site_url.rstrip('/')
+        self.username = username
+        self.app_password = app_password
+        self.base_url = f"{self.site_url}/wp-json/wp/v2"
+    
+    async def create_post(
+        self,
+        title: str,
+        content: str,
+        status: str = "publish",
+        categories: Optional[list[int]] = None,
+        tags: Optional[list[int]] = None,
+        excerpt: Optional[str] = None,
+        slug: Optional[str] = None,
+        featured_media: Optional[int] = None,
+        meta: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Создает пост в WordPress.
+        
+        Args:
+            title: Заголовок поста (обязательно)
+            content: Содержимое поста (обязательно)
+            status: Статус (draft, publish, pending, private)
+            categories: Список ID категорий
+            tags: Список ID тегов
+            excerpt: Краткое описание
+            slug: URL slug
+            featured_media: ID медиа-файла
+            meta: Дополнительные мета-поля
+            
+        Returns:
+            Данные созданного поста
+            
+        Raises:
+            HTTPException: При ошибке запроса
+        """
+        if not title or not content:
+            raise ValueError("Title and content are required")
+        
+        post_data = {
+            "title": title,
+            "content": content,
+            "status": status,
+        }
+        
+        # Добавляем опциональные поля только если они указаны
+        if excerpt:
+            post_data["excerpt"] = excerpt
+        if slug:
+            post_data["slug"] = slug
+        if categories:
+            post_data["categories"] = categories
+        if tags:
+            post_data["tags"] = tags
+        if featured_media:
+            post_data["featured_media"] = featured_media
+        if meta:
+            post_data["meta"] = meta
+        
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(
+                    f"{self.base_url}/posts",
+                    json=post_data,
+                    headers={"Content-Type": "application/json"},
+                    auth=(self.username, self.app_password),
+                )
+                response.raise_for_status()
+                return response.json()
+                
+        except httpx.HTTPStatusError as e:
+            error_detail = "Unknown error"
+            if e.response.status_code == 401:
+                error_detail = "Authentication failed. Check username and application password."
+            elif e.response.status_code == 403:
+                error_detail = "Permission denied. User may not have permission to create posts."
+            elif e.response.status_code == 400:
+                try:
+                    error_data = e.response.json()
+                    error_detail = error_data.get("message", "Invalid request data")
+                except:
+                    error_detail = "Invalid request data"
+            
+            raise HTTPException(
+                status_code=e.response.status_code,
+                detail=f"WordPress API error: {error_detail}"
+            )
+        except httpx.RequestError as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Request to WordPress failed: {str(e)}"
+            )
+    
+    async def get_categories(self) -> list[Dict[str, Any]]:
+        """Получает список категорий."""
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(
+                f"{self.base_url}/categories",
+                auth=(self.username, self.app_password),
+            )
+            response.raise_for_status()
+            return response.json()
+    
+    async def get_tags(self) -> list[Dict[str, Any]]:
+        """Получает список тегов."""
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(
+                f"{self.base_url}/tags",
+                auth=(self.username, self.app_password),
+            )
+            response.raise_for_status()
+            return response.json()
+    
+    async def upload_media(
+        self,
+        file_path: str,
+        title: Optional[str] = None,
+        alt_text: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Загружает медиа-файл в WordPress.
+        
+        Args:
+            file_path: Путь к файлу
+            title: Заголовок медиа-файла
+            alt_text: Альтернативный текст
+            
+        Returns:
+            Данные загруженного медиа-файла
+        """
+        with open(file_path, "rb") as f:
+            files = {"file": f}
+            data = {}
+            if title:
+                data["title"] = title
+            if alt_text:
+                data["alt_text"] = alt_text
+            
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                response = await client.post(
+                    f"{self.base_url}/media",
+                    files=files,
+                    data=data,
+                    auth=(self.username, self.app_password),
+                )
+                response.raise_for_status()
+                return response.json()
+```
+
+### 4. Использование в FastAPI роутере
+
+```python
+from fastapi import APIRouter, HTTPException, Depends
+from pydantic import BaseModel, Field
+from typing import Optional, List, Dict, Any
+from services.wordpress_client import WordPressClient  # Ваш класс клиента
+
+
+router = APIRouter(prefix="/wp", tags=["WordPress"])
+
+
+class WordPressPostCreate(BaseModel):
+    """Модель для создания поста WordPress."""
+    title: str = Field(..., min_length=1, max_length=200)
+    content: str = Field(..., min_length=1, max_length=150000)
+    status: str = Field(default="publish", pattern="^(draft|publish|pending|private)$")
+    categories: Optional[List[int]] = None
+    tags: Optional[List[int]] = None
+    excerpt: Optional[str] = Field(None, max_length=500)
+    slug: Optional[str] = None
+    featured_media: Optional[int] = None
+    meta: Optional[Dict[str, Any]] = None
+
+
+async def get_wp_client() -> WordPressClient:
+    """Dependency для получения WordPress клиента."""
+    # Здесь можно получить credentials из БД или настроек
+    # Пример:
+    # profile = await get_wp_profile_from_db(user_id)
+    # return WordPressClient(
+    #     site_url=profile.site_url,
+    #     username=profile.username,
+    #     app_password=profile.app_password
+    # )
+    pass
+
+
+@router.post("/post")
+async def create_wp_post(
+    post_data: WordPressPostCreate,
+    wp_client: WordPressClient = Depends(get_wp_client)
+) -> Dict[str, Any]:
+    """
+    Создает пост в WordPress через REST API.
+    
+    Args:
+        post_data: Данные поста
+        wp_client: WordPress клиент
+        
+    Returns:
+        Созданный пост
+    """
+    try:
+        post = await wp_client.create_post(
+            title=post_data.title,
+            content=post_data.content,
+            status=post_data.status,
+            categories=post_data.categories,
+            tags=post_data.tags,
+            excerpt=post_data.excerpt,
+            slug=post_data.slug,
+            featured_media=post_data.featured_media,
+            meta=post_data.meta
+        )
+        return post
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to create WordPress post: {str(e)}"
+        )
+```
+
+### 5. Важные моменты
+
+1. Application Password:
+   - WordPress → Users → Profile → Application Passwords
+   - Создайте новый пароль и сохраните его (показывается один раз)
+
+2. URL endpoint:
+   - `https://yoursite.com/wp-json/wp/v2/posts` — создание поста
+   - `https://yoursite.com/wp-json/wp/v2/posts/{id}` — обновление поста
+
+3. Статусы поста:
+   - `draft` — черновик
+   - `publish` — опубликован
+   - `pending` — на модерации
+   - `private` — приватный
+
+4. Лимиты:
+   - Максимальная длина контента зависит от настроек WordPress (обычно 150,000+ символов)
+
+5. Безопасность:
+   - Используйте Application Passwords, а не основной пароль
+   - Храните credentials в переменных окружения или зашифрованными в БД
+   - Используйте HTTPS для всех запросов
+
+### 6. Пример использования
+
+```python
+import asyncio
+
+
+async def main():
+    client = WordPressClient(
+        site_url="https://example.com",
+        username="admin",
+        app_password="xxxx xxxx xxxx xxxx xxxx xxxx"
+    )
+    
+    post = await client.create_post(
+        title="Мой первый пост",
+        content="<p>Это содержимое поста</p>",
+        status="publish",
+        categories=[1, 2],
+        tags=[5, 6],
+        excerpt="Краткое описание поста"
+    )
+    
+    print(f"Пост создан! ID: {post['id']}, URL: {post['link']}")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+Этот подход соответствует вашим требованиям: асинхронные запросы через `httpx`, обработка ошибок, валидация через Pydantic и интеграция с FastAPI.

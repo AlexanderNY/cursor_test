@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: selectcb
+  namespace: app
+  labels:
+    app: selectcb
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: selectcb
+  template:
+    metadata:
+      labels:
+        app: selectcb
+    spec:
+      containers:
+        - name: selectcb
+          image: selectcb:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8008
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8008
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8008
+            initialDelaySeconds: 15
+            periodSeconds: 15

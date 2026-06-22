@@ -1,0 +1,24 @@
+1. Подготовка API Gateway
+api-gateway/config.py: CORS_ORIGINS переведён на строку (список через запятую), добавлена функция get_cors_origins_list() для разбора.
+api-gateway/main.py: CORS использует get_cors_origins_list(), чтобы в K8s можно было задавать CORS_ORIGINS через env.
+auth/Dockerfile: хост с 172.20.10.1 заменён на 0.0.0.0 для работы в кластере.
+2. Базовые манифесты K8s
+k8s/base/namespace.yaml — namespace app.
+k8s/base/secret.yaml.example — шаблон Secret с DATABASE_URL и JWT_SECRET_KEY (хост БД для Minikube: host.minikube.internal).
+k8s/.gitignore — игнорируется base/secret.yaml, чтобы не коммитить секреты.
+3. Deployments и Services
+Для каждого сервиса добавлены deployment.yaml и service.yaml в каталогах:
+
+gateway — env с URL всех сервисов и JWT из Secret.
+auth, core, scheduler, collector, processor, th-bot, tg-bot, test — при необходимости envFrom для Secret (DATABASE_URL и др.).
+tg-bot — k8s/tg-bot/pvc.yaml: два PVC (tg-bot-sessions, tg-bot-uploads), подключены к поду как /app/sessions и /app/uploads.
+ui, wp-bot, url-bot — только env с URL (без БД).
+Образ test — selectcb:latest.
+У всех подов заданы readinessProbe и livenessProbe по /health (или / для ui).
+4. Ingress
+k8s/ingress.yaml — класс nginx, путь /api/(.*) с rewrite в /$1 на gateway:8000, путь / на ui:8100.
+5. Сборка и деплой
+Makefile (в корне cursor_test): цели minikube-docker, build-images, apply-base, apply-all, deploy.
+k8s/README.md — шаги: создание Secret, сборка образов (bash и Windows), применение манифестов, доступ к приложению и внешний PostgreSQL.
+k8s/build-images.ps1 — PowerShell-скрипт для сборки всех образов (после minikube docker-env).
+Перед первым деплоем нужно один раз создать k8s/base/secret.yaml из secret.yaml.example, подставить реальные DATABASE_URL (с host.minikube.internal) и JWT_SECRET_KEY, затем выполнить сборку образов в окружении Minikube и make apply-all (или эквивалентные команды из README).
