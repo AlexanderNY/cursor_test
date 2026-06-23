@@ -1,11 +1,26 @@
 export type PublishScheduleType = 'on_new_messages' | 'by_intervals'
 
+export type ConditionsMode = 'any_of' | 'all_of' | 'regex'
+
+export type SentimentFilter = 'positive' | 'negative' | 'neutral'
+
 export interface TelegramAlertRule {
+  id?: string
   enabled: boolean
+  priority?: number
   chats_to_read: string[]
   save_conditions: string[]
+  conditions_mode?: ConditionsMode
+  category_filter?: string
   channel_to_post?: string
   alert_text?: string
+  dedup_window_sec?: number
+  rate_limit_per_hour?: number
+  min_text_length?: number
+  include_ai_summary?: boolean
+  sentiment_filter?: SentimentFilter
+  tags?: string[]
+  stop_on_match?: boolean
 }
 
 export interface TelegramConfig {
@@ -31,6 +46,12 @@ export interface TelegramConfig {
   status_review_after_process?: boolean
   add_static_html?: boolean
   static_html_content?: string
+  summarize_enabled?: boolean
+  summarize_min_length?: number
+  digest_interval_min?: number
+  digest_channel?: string
+  classification_enabled?: boolean
+  classification_categories?: string[]
 }
 
 export interface TimeInterval {
@@ -89,4 +110,45 @@ export interface TelegramMessage {
   sender_name: string
 }
 
+export interface TgAnalyticsOverview {
+  messages_collected: number
+  alerts_sent: number
+  alerts_suppressed: number
+  unique_channels: number
+  top_channel?: { chat_id: string; name?: string; count: number } | null
+  period: string
+}
 
+export interface TgAnalyticsChannelItem {
+  chat_id: string
+  name?: string
+  count: number
+}
+
+export interface TgAnalyticsKeywordItem {
+  keyword: string
+  count: number
+}
+
+export interface TgAnalyticsAlertItem {
+  rule_id?: string
+  alert_text?: string
+  chat_id?: string
+  event_type: string
+  created_at: string
+  matched_conditions: string[]
+}
+
+export interface TgAnalyticsTimelinePoint {
+  bucket: string
+  collected: number
+  alerts_sent: number
+  alerts_suppressed: number
+}
+
+export interface TgAnalyticsSentimentBreakdown {
+  positive: number
+  negative: number
+  neutral: number
+  total: number
+}

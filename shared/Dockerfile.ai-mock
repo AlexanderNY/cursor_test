@@ -1,0 +1,6 @@
+FROM python:3.12-slim
+WORKDIR /app
+RUN pip install --no-cache-dir fastapi uvicorn pydantic
+COPY shared/ai_mock_server.py /app/ai_mock_server.py
+EXPOSE 8080
+CMD ["python", "ai_mock_server.py"]

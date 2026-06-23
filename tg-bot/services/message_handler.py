@@ -1,103 +1,155 @@
 """Обработка входящих сообщений Telegram."""
 
+from __future__ import annotations
+
 import logging
-from typing import List, Optional, Dict
+import re
+from datetime import datetime, time as dt_time
+from typing import Any, Dict, List, Optional
+
 from telethon import events
 
-
 logger = logging.getLogger(__name__)
+
+REGEX_TIMEOUT_SEC = 0.1
+MAX_REGEX_PATTERN_LEN = 200
 
 
 class MessageHandler:
     """Обработчик сообщений Telegram."""
-    
+
     @staticmethod
     def should_save_message(event: events.NewMessage.Event, save_conditions: List[str]) -> bool:
-        """Проверяет, нужно ли сохранять сообщение на основе Save Conditions.
-        
-        Args:
-            event: Событие нового сообщения
-            save_conditions: Список условий для сохранения
-            
-        Returns:
-            True если сообщение нужно сохранить, False иначе
-        """
         if not save_conditions:
-            # Если условий нет - сохранять все сообщения
             return True
-        
-        # Получаем текст сообщения
-        raw_text = event.raw_text or ""
-        
-        # Проверяем каждое условие в тексте сообщения
-        for condition in save_conditions:
+        matched, _ = MessageHandler.evaluate_conditions(
+            event,
+            save_conditions,
+            conditions_mode="any_of",
+        )
+        return matched
+
+    @staticmethod
+    def evaluate_conditions(
+        event: events.NewMessage.Event,
+        conditions: List[str],
+        conditions_mode: str = "any_of",
+        category_filter: Optional[str] = None,
+        message_metadata: Optional[Dict[str, Any]] = None,
+    ) -> tuple[bool, List[str]]:
+        if category_filter:
+            meta = message_metadata or {}
+            if str(meta.get("category", "")).lower() != category_filter.lower():
+                return False, []
+
+        if not conditions:
+            return False, []
+
+        raw_text = event.raw_text or event.message.message or ""
+        matched: List[str] = []
+
+        if conditions_mode == "regex":
+            for pattern in conditions:
+                if MessageHandler._safe_regex(raw_text, pattern):
+                    matched.append(pattern)
+            return bool(matched), matched
+
+        if conditions_mode == "all_of":
+            for condition in conditions:
+                if not condition or condition not in raw_text:
+                    return False, []
+                matched.append(condition)
+            return True, matched
+
+        for condition in conditions:
             if condition and condition in raw_text:
-                logger.debug(f"Message matches condition: {condition}")
-                return True
-        
-        logger.debug("Message does not match any save conditions")
+                matched.append(condition)
+        return bool(matched), matched
+
+    @staticmethod
+    def _safe_regex(text: str, pattern: str) -> bool:
+        try:
+            return bool(re.search(pattern, text, re.IGNORECASE))
+        except re.error:
+            logger.warning("Invalid regex pattern: %s", pattern[:50])
+            return False
+
+    @staticmethod
+    def is_within_time_windows(time_windows: List[Dict[str, Any]]) -> bool:
+        if not time_windows:
+            return True
+        now = datetime.now().time()
+        for window in time_windows:
+            start_str = window.get("start")
+            end_str = window.get("end")
+            if not start_str:
+                continue
+            try:
+                start_parts = [int(x) for x in start_str.split(":")]
+                start = dt_time(start_parts[0], start_parts[1])
+                if end_str:
+                    end_parts = [int(x) for x in end_str.split(":")]
+                    end = dt_time(end_parts[0], end_parts[1])
+                    if start <= end:
+                        if start <= now <= end:
+                            return True
+                    else:
+                        if now >= start or now <= end:
+                            return True
+                else:
+                    if now >= start:
+                        return True
+            except (ValueError, IndexError):
+                continue
         return False
-    
+
     @staticmethod
     async def extract_message_data(event: events.NewMessage.Event) -> Dict:
-        """Извлекает данные из сообщения.
-        
-        Args:
-            event: Событие нового сообщения
-            
-        Returns:
-            Словарь с данными сообщения
-        """
         message = event.message
         sender = await event.get_sender()
-        
-        # Извлекаем текст
         text = message.message or ""
-        
-        # Извлекаем метаданные
-        data = {
-            'text': text,
-            'raw_text': event.raw_text or "",
-            'message_id': message.id,
-            'date': message.date,
-            'author_id': sender.id if sender else None,
-            'author_username': getattr(sender, 'username', None) if sender else None,
-            'author_title': getattr(sender, 'title', None) if sender else None,
-            'chat_id': event.chat_id,
-            'has_media': message.media is not None,
-            'media': message.media,
+        return {
+            "text": text,
+            "raw_text": event.raw_text or "",
+            "message_id": message.id,
+            "date": message.date,
+            "author_id": sender.id if sender else None,
+            "author_username": getattr(sender, "username", None) if sender else None,
+            "author_title": getattr(sender, "title", None) if sender else None,
+            "chat_id": event.chat_id,
+            "has_media": message.media is not None,
+            "media": message.media,
         }
-        
-        return data
-    
+
     @staticmethod
     def get_chats_list(chats_to_read: List) -> List:
-        """Преобразует chats_to_read в список для telethon.
-        
-        Args:
-            chats_to_read: Список чатов из БД (может быть строками или числами)
-            
-        Returns:
-            Список чатов для telethon
-        """
         if not chats_to_read:
             return []
-        
         result = []
         for chat in chats_to_read:
-            # Если это строка, пытаемся преобразовать в число (ID канала)
             if isinstance(chat, str):
                 try:
-                    # Убираем @ если есть
-                    if chat.startswith('@'):
+                    if chat.startswith("@"):
                         result.append(chat)
                     else:
-                        # Пытаемся преобразовать в число
                         result.append(int(chat))
                 except ValueError:
-                    # Если не число, используем как есть (username)
                     result.append(chat)
             else:
                 result.append(chat)
-        
         return result
+
+    @staticmethod
+    def chat_id_in_list(chat_id: Optional[int], chats: List) -> bool:
+        if chat_id is None:
+            return False
+        normalized = MessageHandler.get_chats_list(chats)
+        for chat in normalized:
+            try:
+                if int(chat) == int(chat_id):
+                    return True
+            except (TypeError, ValueError):
+                pass
+            if str(chat) == str(chat_id):
+                return True
+        return False

@@ -27,6 +27,7 @@ class ProxyService:
         request: Request,
         override_method: Optional[str] = None,
         timeout: Optional[float] = None,
+        extra_headers: Optional[dict[str, str]] = None,
     ) -> Response:
         """Перенаправляет запрос на целевой сервис.
         
@@ -41,6 +42,8 @@ class ProxyService:
         """
         actual_method = override_method or method
         request_headers = self.prepare_headers(dict(request.headers))
+        if extra_headers:
+            request_headers.update(extra_headers)
 
         # Добавляем X-User-Id и X-User-Role из JWT (если есть валидный токен)
         authorization_header = request_headers.get("authorization") or request_headers.get("Authorization")

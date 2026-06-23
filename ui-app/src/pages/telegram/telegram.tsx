@@ -21,6 +21,14 @@ import type {
   TimeInterval,
   PublishScheduleType,
   TelegramAlertRule,
+  TgAnalyticsOverview,
+  TgAnalyticsChannelItem,
+  TgAnalyticsKeywordItem,
+  TgAnalyticsAlertItem,
+  TgAnalyticsTimelinePoint,
+  TgAnalyticsSentimentBreakdown,
+  ConditionsMode,
+  SentimentFilter,
 } from '@/types/telegram'
 
 const AUTH_STATUS_POLL_INTERVAL_MS = 12_000
@@ -42,28 +50,49 @@ interface DynamicField {
 interface AlertRuleBlock {
   id: string
   enabled: boolean
+  priority: number
+  conditionsMode: ConditionsMode
+  categoryFilter: string
   chatsToRead: DynamicField[]
   saveConditions: DynamicField[]
   channelToPost: string
   alertText: string
+  dedupWindowSec: number
+  rateLimitPerHour: string
+  minTextLength: number
+  includeAiSummary: boolean
+  sentimentFilter: SentimentFilter | ''
+  stopOnMatch: boolean
 }
 
 function createEmptyAlertRuleBlock(): AlertRuleBlock {
   return {
     id: generateId(),
     enabled: true,
+    priority: 0,
+    conditionsMode: 'any_of',
+    categoryFilter: '',
     chatsToRead: [{ id: generateId(), value: '' }],
     saveConditions: [{ id: generateId(), value: '' }],
     channelToPost: '',
     alertText: '',
+    dedupWindowSec: 3600,
+    rateLimitPerHour: '',
+    minTextLength: 0,
+    includeAiSummary: false,
+    sentimentFilter: '',
+    stopOnMatch: false,
   }
 }
 
 function mapAlertRulesFromProfile(rules?: TelegramAlertRule[]): AlertRuleBlock[] {
   if (rules && rules.length > 0) {
     return rules.map((rule) => ({
-      id: generateId(),
+      id: rule.id || generateId(),
       enabled: rule.enabled ?? true,
+      priority: rule.priority ?? 0,
+      conditionsMode: rule.conditions_mode || 'any_of',
+      categoryFilter: rule.category_filter || '',
       chatsToRead: (rule.chats_to_read?.length ? rule.chats_to_read : ['']).map((value) => ({
         id: generateId(),
         value,
@@ -74,6 +103,12 @@ function mapAlertRulesFromProfile(rules?: TelegramAlertRule[]): AlertRuleBlock[]
       })),
       channelToPost: rule.channel_to_post || '',
       alertText: rule.alert_text || '',
+      dedupWindowSec: rule.dedup_window_sec ?? 3600,
+      rateLimitPerHour: rule.rate_limit_per_hour != null ? String(rule.rate_limit_per_hour) : '',
+      minTextLength: rule.min_text_length ?? 0,
+      includeAiSummary: rule.include_ai_summary ?? false,
+      sentimentFilter: rule.sentiment_filter || '',
+      stopOnMatch: rule.stop_on_match ?? false,
     }))
   }
   return [createEmptyAlertRuleBlock()]
@@ -82,11 +117,21 @@ function mapAlertRulesFromProfile(rules?: TelegramAlertRule[]): AlertRuleBlock[]
 function serializeAlertRules(rules: AlertRuleBlock[]): TelegramAlertRule[] {
   return rules
     .map((block) => ({
+      id: block.id,
       enabled: block.enabled,
+      priority: block.priority,
+      conditions_mode: block.conditionsMode,
+      category_filter: block.categoryFilter.trim() || undefined,
       chats_to_read: block.chatsToRead.map((field) => field.value.trim()).filter(Boolean),
       save_conditions: block.saveConditions.map((field) => field.value.trim()).filter(Boolean),
       channel_to_post: block.channelToPost.trim() || undefined,
       alert_text: block.alertText.trim().slice(0, 1000) || undefined,
+      dedup_window_sec: block.dedupWindowSec,
+      rate_limit_per_hour: block.rateLimitPerHour.trim() ? Number(block.rateLimitPerHour) : undefined,
+      min_text_length: block.minTextLength,
+      include_ai_summary: block.includeAiSummary,
+      sentiment_filter: block.sentimentFilter || undefined,
+      stop_on_match: block.stopOnMatch,
     }))
     .filter(
       (rule) =>
@@ -126,7 +171,7 @@ export function TelegramPage() {
   const [searchParams, setSearchParams] = useSearchParams()
 
   // Tab state
-  const [activeTab, setActiveTab] = useState<'create' | 'posts' | 'profile' | 'processing' | 'auth'>(() => {
+  const [activeTab, setActiveTab] = useState<'create' | 'posts' | 'profile' | 'processing' | 'auth' | 'analytics'>(() => {
     // If navigated with ?auth=1, open auth tab immediately
     return searchParams.get('auth') === '1' ? 'auth' : 'create'
   })
@@ -164,6 +209,19 @@ export function TelegramPage() {
   const [statusReviewAfterProcess, setStatusReviewAfterProcess] = useState(false)
   const [addStaticHtml, setAddStaticHtml] = useState(false)
   const [staticHtmlContent, setStaticHtmlContent] = useState('')
+  const [summarizeEnabled, setSummarizeEnabled] = useState(false)
+  const [summarizeMinLength, setSummarizeMinLength] = useState(500)
+  const [digestIntervalMin, setDigestIntervalMin] = useState(30)
+  const [digestChannel, setDigestChannel] = useState('')
+  const [classificationEnabled, setClassificationEnabled] = useState(false)
+  const [classificationCategories, setClassificationCategories] = useState('новости, реклама, технологии, финансы, другое')
+  const [recentAlerts, setRecentAlerts] = useState<TgAnalyticsAlertItem[]>([])
+  const [analyticsOverview, setAnalyticsOverview] = useState<TgAnalyticsOverview | null>(null)
+  const [analyticsChannels, setAnalyticsChannels] = useState<TgAnalyticsChannelItem[]>([])
+  const [analyticsKeywords, setAnalyticsKeywords] = useState<TgAnalyticsKeywordItem[]>([])
+  const [analyticsTimeline, setAnalyticsTimeline] = useState<TgAnalyticsTimelinePoint[]>([])
+  const [analyticsSentiment, setAnalyticsSentiment] = useState<TgAnalyticsSentimentBreakdown | null>(null)
+  const [isLoadingAnalytics, setIsLoadingAnalytics] = useState(false)
 
   // Post state
   const [postText, setPostText] = useState('')
@@ -239,6 +297,36 @@ export function TelegramPage() {
     }
   }, [activeTab, hasLoadedPosts])
 
+  useEffect(() => {
+    if (activeTab === 'analytics') {
+      loadAnalytics()
+    }
+  }, [activeTab])
+
+  async function loadAnalytics() {
+    setIsLoadingAnalytics(true)
+    try {
+      const [overview, channels, keywords, alerts, timeline, sentiment] = await Promise.all([
+        telegramService.getAnalyticsOverview('7d'),
+        telegramService.getAnalyticsChannels('7d', 10),
+        telegramService.getAnalyticsKeywords('7d', 20),
+        telegramService.getAnalyticsAlerts('7d', 10),
+        telegramService.getAnalyticsTimeline('7d', 'hour'),
+        telegramService.getAnalyticsSentiment('7d'),
+      ])
+      setAnalyticsOverview(overview)
+      setAnalyticsChannels(channels)
+      setAnalyticsKeywords(keywords)
+      setRecentAlerts(alerts)
+      setAnalyticsTimeline(timeline)
+      setAnalyticsSentiment(sentiment)
+    } catch (err) {
+      console.warn('Analytics load failed', err)
+    } finally {
+      setIsLoadingAnalytics(false)
+    }
+  }
+
   async function loadProfile() {
     setIsLoadingProfile(true)
     setError('')
@@ -287,6 +375,17 @@ export function TelegramPage() {
         setStatusReviewAfterProcess(profile.status_review_after_process ?? false)
         setAddStaticHtml(profile.add_static_html ?? false)
         setStaticHtmlContent((profile.static_html_content ?? '').slice(0, 1000))
+        setSummarizeEnabled(profile.summarize_enabled ?? false)
+        setSummarizeMinLength(profile.summarize_min_length ?? 500)
+        setDigestIntervalMin(profile.digest_interval_min ?? 30)
+        setDigestChannel(profile.digest_channel || '')
+        setClassificationEnabled(profile.classification_enabled ?? false)
+        if (profile.classification_categories?.length) {
+          setClassificationCategories(profile.classification_categories.join(', '))
+        }
+        if (profile.alert_enabled) {
+          telegramService.getAnalyticsAlerts('7d', 10).then(setRecentAlerts).catch(() => {})
+        }
       }
     } catch (err) {
       console.log('Profile not found, using defaults', err)
@@ -424,6 +523,15 @@ export function TelegramPage() {
         alert_rules: serializeAlertRules(alertRules),
         process_enabled: processEnabled,
         processing_description: processEnabled ? processingDescription || undefined : undefined,
+        summarize_enabled: summarizeEnabled,
+        summarize_min_length: summarizeMinLength,
+        digest_interval_min: digestIntervalMin,
+        digest_channel: digestChannel || undefined,
+        classification_enabled: classificationEnabled,
+        classification_categories: classificationCategories
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean),
       })
       // Триггерим перезагрузку tg-bot для запроса кода авторизации
       await telegramService.reloadBot()
@@ -479,6 +587,15 @@ export function TelegramPage() {
         status_review_after_process: statusReviewAfterProcess,
         add_static_html: addStaticHtml,
         static_html_content: addStaticHtml ? (staticHtmlContent || undefined)?.slice(0, 1000) : undefined,
+        summarize_enabled: summarizeEnabled,
+        summarize_min_length: summarizeMinLength,
+        digest_interval_min: digestIntervalMin,
+        digest_channel: digestChannel || undefined,
+        classification_enabled: classificationEnabled,
+        classification_categories: classificationCategories
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean),
       })
       // Триггерим перезагрузку tg-bot
       await telegramService.reloadBot()
@@ -524,7 +641,7 @@ export function TelegramPage() {
     })
   }
 
-  function updateAlertRule(ruleId: string, patch: Partial<Pick<AlertRuleBlock, 'enabled' | 'channelToPost' | 'alertText'>>) {
+  function updateAlertRule(ruleId: string, patch: Partial<Omit<AlertRuleBlock, 'id' | 'chatsToRead' | 'saveConditions'>>) {
     setAlertRules((prev) =>
       prev.map((rule) => (rule.id === ruleId ? { ...rule, ...patch } : rule))
     )
@@ -697,6 +814,19 @@ export function TelegramPage() {
         >
           Profile Settings
           {activeTab === 'profile' && (
+            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-500" />
+          )}
+        </button>
+        <button
+          className={`px-6 py-3 text-sm font-medium transition-all relative ${
+            activeTab === 'analytics'
+              ? 'text-primary-400'
+              : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+          }`}
+          onClick={() => setActiveTab('analytics')}
+        >
+          Аналитика
+          {activeTab === 'analytics' && (
             <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-500" />
           )}
         </button>
@@ -1409,6 +1539,18 @@ export function TelegramPage() {
                         При совпадении Save Conditions в мониторинговых чатах отправляется оповещение в Channel to Post
                         с ID канала-источника, текстом сообщения и заданным текстом алерта.
                       </p>
+                      {recentAlerts.length > 0 && (
+                        <div className="p-4 bg-[var(--bg-secondary)] rounded-xl border border-[var(--border-color)]">
+                          <h5 className="text-sm font-semibold mb-2">Recent alert events</h5>
+                          <ul className="text-xs space-y-1 text-[var(--text-muted)]">
+                            {recentAlerts.slice(0, 10).map((item, idx) => (
+                              <li key={`${item.created_at}-${idx}`}>
+                                {item.event_type} · rule {item.rule_id || '—'} · {item.created_at}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
                       {alertRules.map((rule, ruleIndex) => (
                         <div
                           key={rule.id}
@@ -1441,6 +1583,162 @@ export function TelegramPage() {
                               )}
                             </div>
                           </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                              <label className="text-xs text-[var(--text-muted)]">Priority</label>
+                              <Input
+                                type="number"
+                                value={rule.priority}
+                                onChange={(e) => updateAlertRule(rule.id, { priority: Number(e.target.value) || 0 })}
+                              />
+                            </div>
+                            <div>
+                              <label className="text-xs text-[var(--text-muted)]">Conditions mode</label>
+                              <select
+                                value={rule.conditionsMode}
+                                onChange={(e) => updateAlertRule(rule.id, { conditionsMode: e.target.value as ConditionsMode })}
+                                className="w-full px-3 py-2 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-lg"
+                              >
+                                <option value="any_of">Any (OR)</option>
+                                <option value="all_of">All (AND)</option>
+                                <option value="regex">Regex</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label className="text-xs text-[var(--text-muted)]">Dedup window (sec)</label>
+                              <Input
+                                type="number"
+                                value={rule.dedupWindowSec}
+                                onChange={(e) => updateAlertRule(rule.id, { dedupWindowSec: Number(e.target.value) || 0 })}
+                              />
+                            </div>
+                            <div>
+                              <label className="text-xs text-[var(--text-muted)]">Rate limit / hour</label>
+                              <Input
+                                placeholder="optional"
+                                value={rule.rateLimitPerHour}
+                                onChange={(e) => updateAlertRule(rule.id, { rateLimitPerHour: e.target.value })}
+                              />
+                            </div>
+                            <div>
+                              <label className="text-xs text-[var(--text-muted)]">Category filter</label>
+                              <Input
+                                placeholder="optional"
+                                value={rule.categoryFilter}
+                                onChange={(e) => updateAlertRule(rule.id, { categoryFilter: e.target.value })}
+                              />
+                            </div>
+                            <div>
+                              <label className="text-xs text-[var(--text-muted)]">Sentiment filter</label>
+                              <select
+                                value={rule.sentimentFilter}
+                                onChange={(e) => updateAlertRule(rule.id, { sentimentFilter: e.target.value as SentimentFilter | '' })}
+                                className="w-full px-3 py-2 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-lg"
+                              >
+                                <option value="">None</option>
+                                <option value="positive">Positive</option>
+                                <option value="negative">Negative</option>
+                                <option value="neutral">Neutral</option>
+                              </select>
+                            </div>
+                          </div>
+
+                          <div className="flex flex-wrap gap-4">
+                            <label className="flex items-center gap-2 text-sm">
+                              <input
+                                type="checkbox"
+                                checked={rule.includeAiSummary}
+                                onChange={(e) => updateAlertRule(rule.id, { includeAiSummary: e.target.checked })}
+                              />
+                              AI summary in alert
+                            </label>
+                            <label className="flex items-center gap-2 text-sm">
+                              <input
+                                type="checkbox"
+                                checked={rule.stopOnMatch}
+                                onChange={(e) => updateAlertRule(rule.id, { stopOnMatch: e.target.checked })}
+                              />
+                              Stop on match
+                            </label>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                              <label className="text-xs text-[var(--text-muted)]">Priority</label>
+                              <Input
+                                type="number"
+                                value={rule.priority}
+                                onChange={(e) => updateAlertRule(rule.id, { priority: Number(e.target.value) || 0 })}
+                              />
+                            </div>
+                            <div>
+                              <label className="text-xs text-[var(--text-muted)]">Conditions mode</label>
+                              <select
+                                value={rule.conditionsMode}
+                                onChange={(e) => updateAlertRule(rule.id, { conditionsMode: e.target.value as ConditionsMode })}
+                                className="w-full px-3 py-2 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-lg"
+                              >
+                                <option value="any_of">Any (OR)</option>
+                                <option value="all_of">All (AND)</option>
+                                <option value="regex">Regex</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label className="text-xs text-[var(--text-muted)]">Dedup window (sec)</label>
+                              <Input
+                                type="number"
+                                value={rule.dedupWindowSec}
+                                onChange={(e) => updateAlertRule(rule.id, { dedupWindowSec: Number(e.target.value) || 0 })}
+                              />
+                            </div>
+                            <div>
+                              <label className="text-xs text-[var(--text-muted)]">Rate limit / hour</label>
+                              <Input
+                                placeholder="optional"
+                                value={rule.rateLimitPerHour}
+                                onChange={(e) => updateAlertRule(rule.id, { rateLimitPerHour: e.target.value })}
+                              />
+                            </div>
+                            <div>
+                              <label className="text-xs text-[var(--text-muted)]">Category filter</label>
+                              <Input
+                                placeholder="optional"
+                                value={rule.categoryFilter}
+                                onChange={(e) => updateAlertRule(rule.id, { categoryFilter: e.target.value })}
+                              />
+                            </div>
+                            <div>
+                              <label className="text-xs text-[var(--text-muted)]">Sentiment filter</label>
+                              <select
+                                value={rule.sentimentFilter}
+                                onChange={(e) => updateAlertRule(rule.id, { sentimentFilter: e.target.value as SentimentFilter | '' })}
+                                className="w-full px-3 py-2 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-lg"
+                              >
+                                <option value="">None</option>
+                                <option value="positive">Positive</option>
+                                <option value="negative">Negative</option>
+                                <option value="neutral">Neutral</option>
+                              </select>
+                            </div>
+                          </div>
+
+                          <label className="flex items-center gap-2 text-sm">
+                            <input
+                              type="checkbox"
+                              checked={rule.includeAiSummary}
+                              onChange={(e) => updateAlertRule(rule.id, { includeAiSummary: e.target.checked })}
+                            />
+                            Include AI summary in alert
+                          </label>
+                          <label className="flex items-center gap-2 text-sm">
+                            <input
+                              type="checkbox"
+                              checked={rule.stopOnMatch}
+                              onChange={(e) => updateAlertRule(rule.id, { stopOnMatch: e.target.checked })}
+                            />
+                            Stop on match (skip lower priority rules)
+                          </label>
 
                           <div className="space-y-3">
                             <h5 className="text-sm font-medium text-[var(--text-secondary)]">Chats to Read</h5>
@@ -1763,6 +2061,57 @@ export function TelegramPage() {
                   </div>
                 )}
 
+                <div className="pt-4 border-t border-[var(--border-color)] space-y-4">
+                  <h3 className="text-sm font-semibold text-[var(--text-primary)]">AI настройки</h3>
+                  <label className="flex items-center gap-3 cursor-pointer group">
+                    <input
+                      type="checkbox"
+                      checked={summarizeEnabled}
+                      onChange={(e) => setSummarizeEnabled(e.target.checked)}
+                      className="w-4 h-4"
+                    />
+                    <span className="text-[var(--text-primary)]">Суммаризация длинных постов</span>
+                  </label>
+                  {summarizeEnabled && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <Input
+                        label="Min length для суммаризации"
+                        type="number"
+                        value={summarizeMinLength}
+                        onChange={(e) => setSummarizeMinLength(Number(e.target.value) || 500)}
+                      />
+                      <Input
+                        label="Digest interval (min)"
+                        type="number"
+                        value={digestIntervalMin}
+                        onChange={(e) => setDigestIntervalMin(Number(e.target.value) || 30)}
+                      />
+                      <Input
+                        label="Digest channel"
+                        value={digestChannel}
+                        onChange={(e) => setDigestChannel(e.target.value)}
+                        placeholder="-100..."
+                      />
+                    </div>
+                  )}
+                  <label className="flex items-center gap-3 cursor-pointer group">
+                    <input
+                      type="checkbox"
+                      checked={classificationEnabled}
+                      onChange={(e) => setClassificationEnabled(e.target.checked)}
+                      className="w-4 h-4"
+                    />
+                    <span className="text-[var(--text-primary)]">AI-классификация сообщений</span>
+                  </label>
+                  {classificationEnabled && (
+                    <Input
+                      label="Categories (comma-separated)"
+                      value={classificationCategories}
+                      onChange={(e) => setClassificationCategories(e.target.value)}
+                    />
+                  )}
+                </div>
+
                 <CardFooter className="px-0">
                   <Button type="submit" isLoading={isSavingProfile} className="w-full sm:w-auto">
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1772,6 +2121,91 @@ export function TelegramPage() {
                   </Button>
                 </CardFooter>
               </form>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {activeTab === 'analytics' && (
+        <Card className="animate-slide-up">
+          <CardHeader>
+            <CardTitle>Telegram Analytics</CardTitle>
+            <CardDescription>Метрики за последние 7 дней</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {isLoadingAnalytics ? (
+              <div className="text-center py-8 text-[var(--text-muted)]">Loading analytics...</div>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="p-4 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-color)]">
+                    <p className="text-xs text-[var(--text-muted)]">Collected</p>
+                    <p className="text-2xl font-semibold">{analyticsOverview?.messages_collected ?? 0}</p>
+                  </div>
+                  <div className="p-4 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-color)]">
+                    <p className="text-xs text-[var(--text-muted)]">Alerts sent</p>
+                    <p className="text-2xl font-semibold">{analyticsOverview?.alerts_sent ?? 0}</p>
+                  </div>
+                  <div className="p-4 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-color)]">
+                    <p className="text-xs text-[var(--text-muted)]">Suppressed</p>
+                    <p className="text-2xl font-semibold">{analyticsOverview?.alerts_suppressed ?? 0}</p>
+                  </div>
+                  <div className="p-4 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-color)]">
+                    <p className="text-xs text-[var(--text-muted)]">Channels</p>
+                    <p className="text-2xl font-semibold">{analyticsOverview?.unique_channels ?? 0}</p>
+                  </div>
+                </div>
+
+                {analyticsSentiment && analyticsSentiment.total > 0 && (
+                  <div className="p-4 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-color)]">
+                    <h4 className="text-sm font-semibold mb-2">Sentiment breakdown</h4>
+                    <p className="text-sm text-[var(--text-muted)]">
+                      Positive: {analyticsSentiment.positive} · Negative: {analyticsSentiment.negative} · Neutral: {analyticsSentiment.neutral}
+                    </p>
+                  </div>
+                )}
+
+                {analyticsChannels.length > 0 && (
+                  <div>
+                    <h4 className="text-sm font-semibold mb-2">Top channels</h4>
+                    <ul className="space-y-1 text-sm">
+                      {analyticsChannels.map((ch) => (
+                        <li key={ch.chat_id} className="flex justify-between">
+                          <span>{ch.chat_id}</span>
+                          <span>{ch.count}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {analyticsKeywords.length > 0 && (
+                  <div>
+                    <h4 className="text-sm font-semibold mb-2">Top keywords</h4>
+                    <ul className="space-y-1 text-sm">
+                      {analyticsKeywords.map((kw) => (
+                        <li key={kw.keyword} className="flex justify-between">
+                          <span>{kw.keyword}</span>
+                          <span>{kw.count}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {analyticsTimeline.length > 0 && (
+                  <div>
+                    <h4 className="text-sm font-semibold mb-2">Timeline (hourly)</h4>
+                    <ul className="space-y-1 text-xs text-[var(--text-muted)] max-h-48 overflow-y-auto">
+                      {analyticsTimeline.slice(-24).map((point) => (
+                        <li key={point.bucket}>
+                          {point.bucket}: collected {point.collected}, alerts {point.alerts_sent}, suppressed {point.alerts_suppressed}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </>
             )}
           </CardContent>
         </Card>

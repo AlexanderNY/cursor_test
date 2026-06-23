@@ -287,3 +287,9 @@ export interface RuntimeLocationResponse {
   geo_lookup_error?: string | null
   cloud_aws_region?: string | null
 }
+
+export interface AiCheckResponse {
+  reply: string
+  model: string
+  latency_ms: number
+}

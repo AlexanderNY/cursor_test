@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-from services.game_engine import PickQuestionsInput, pick_random_questions, score_for_answer
+from services.game_engine import (
+    PickQuestionsInput,
+    pick_random_questions,
+    score_for_answer,
+    shuffle_for_display,
+)
 
 
 def test_pick_random_questions_respects_limit() -> None:
@@ -36,3 +41,11 @@ def test_score_for_answer() -> None:
     assert score_for_answer(was_correct=True) == 1
     assert score_for_answer(was_correct=False) == 0
     assert score_for_answer(was_correct=True, points=5) == 5
+
+
+def test_shuffle_for_display_keeps_all_items() -> None:
+    items = [10, 20, 30, 40, 50, 60]
+    with patch("services.game_engine.random.shuffle", lambda x: x.reverse()):
+        out = shuffle_for_display(items)
+    assert sorted(out) == items
+    assert len(out) == 6

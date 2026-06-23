@@ -57,6 +57,13 @@ class ProfileService:
                 alert_rules = data.get("alert_rules", [])
                 alert_rules_json = json.dumps(alert_rules) if isinstance(alert_rules, list) else "[]"
 
+                classification_categories = data.get("classification_categories", [])
+                classification_categories_json = (
+                    json.dumps(classification_categories)
+                    if isinstance(classification_categories, list)
+                    else '["новости", "реклама", "технологии", "финансы", "другое"]'
+                )
+
                 await cur.execute(
                     """
                     INSERT INTO tg_profiles (
@@ -65,8 +72,10 @@ class ProfileService:
                         chats_to_read, save_conditions, channel_to_post, alert_enabled, alert_rules,
                         process_enabled, processing_description, remove_emojis, remove_images,
                         clean_html, process_services, status_review_after_process,
-                        add_static_html, static_html_content
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        add_static_html, static_html_content,
+                        summarize_enabled, summarize_min_length, digest_interval_min,
+                        digest_channel, classification_enabled, classification_categories
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (user_id) DO UPDATE SET
                         publish_enabled = EXCLUDED.publish_enabled,
                         collect_enabled = EXCLUDED.collect_enabled,
@@ -90,6 +99,12 @@ class ProfileService:
                         status_review_after_process = EXCLUDED.status_review_after_process,
                         add_static_html = EXCLUDED.add_static_html,
                         static_html_content = EXCLUDED.static_html_content,
+                        summarize_enabled = EXCLUDED.summarize_enabled,
+                        summarize_min_length = EXCLUDED.summarize_min_length,
+                        digest_interval_min = EXCLUDED.digest_interval_min,
+                        digest_channel = EXCLUDED.digest_channel,
+                        classification_enabled = EXCLUDED.classification_enabled,
+                        classification_categories = EXCLUDED.classification_categories,
                         auth_state = 'authorized',
                         auth_phone_code_hash = NULL,
                         updated_at = CURRENT_TIMESTAMP
@@ -119,6 +134,12 @@ class ProfileService:
                         data.get("status_review_after_process", False),
                         data.get("add_static_html", False),
                         data.get("static_html_content"),
+                        data.get("summarize_enabled", False),
+                        data.get("summarize_min_length", 500),
+                        data.get("digest_interval_min", 30),
+                        data.get("digest_channel"),
+                        data.get("classification_enabled", False),
+                        classification_categories_json,
                     )
                 )
                 row = await cur.fetchone()
@@ -161,6 +182,19 @@ class ProfileService:
         profile.setdefault("alert_rules", [])
         profile.setdefault("status_review_after_process", False)
         profile.setdefault("add_static_html", False)
+        profile.setdefault("summarize_enabled", False)
+        profile.setdefault("summarize_min_length", 500)
+        profile.setdefault("digest_interval_min", 30)
+        profile.setdefault("digest_channel", None)
+        profile.setdefault("classification_enabled", False)
+        cc = profile.get("classification_categories")
+        if isinstance(cc, str):
+            try:
+                profile["classification_categories"] = json.loads(cc)
+            except (json.JSONDecodeError, TypeError):
+                profile["classification_categories"] = []
+        elif not isinstance(cc, list):
+            profile["classification_categories"] = []
         return profile
     
     # ==================== Threads ====================

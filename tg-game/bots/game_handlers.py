@@ -8,7 +8,7 @@ from aiogram.filters import Command
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 from config import settings
-from services.game_engine import PickQuestionsInput, pick_random_questions
+from services.game_engine import PickQuestionsInput, pick_random_questions, shuffle_for_display
 from services.game_repository import GameOptionRow, game_repository
 from services.rating_service import get_leaderboard
 
@@ -48,11 +48,11 @@ def _mode_keyboard(mode_rows: list) -> InlineKeyboardMarkup:
 
 
 def _answer_keyboard(session_id: int, question_id: int, options: list[GameOptionRow]) -> InlineKeyboardMarkup:
-    sorted_opts = sorted(options, key=lambda o: o.option_index)
+    display_opts = shuffle_for_display(options)
     buttons: list[list[InlineKeyboardButton]] = []
     row: list[InlineKeyboardButton] = []
-    for o in sorted_opts:
-        label = f"{o.option_index}. {o.option_text[:40]}"
+    for display_pos, o in enumerate(display_opts, start=1):
+        label = f"{display_pos}. {o.option_text[:40]}"
         if len(label) > 64:
             label = label[:61] + "..."
         cb = f"a|{session_id}|{question_id}|{o.id}"

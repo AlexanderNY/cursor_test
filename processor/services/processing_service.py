@@ -21,7 +21,7 @@ from config import (
     PROCESSING_SETTINGS_FIELDS,
 )
 from services.text_cleaner import remove_emojis, remove_images, clean_html
-from services.ai_processor import process_with_ai
+from services.ai_processor import process_with_ai, summarize_text
 from services.platform_formatter import prepare_platform_texts
 
 logger = logging.getLogger(__name__)
@@ -148,6 +148,11 @@ class ProcessingService:
         if is_process_enabled:
             text, images = await self._apply_text_processing(text, images, proc_settings)
 
+        if proc_settings.get("summarize_enabled") and len(text) > int(proc_settings.get("summarize_min_length") or 500):
+            text = await summarize_text(text, settings.TELEGRAM_MAX_LENGTH)
+
+        ai_enrichment = await self._maybe_enrich_text(text, proc_settings)
+
         # Подготовить тексты для целевых платформ (всегда)
         post_flags = {
             "to_tg": post.get("to_tg", False),
@@ -164,6 +169,8 @@ class ProcessingService:
             is_add_static_html=proc_settings.get("add_static_html", False),
             static_html_content=proc_settings.get("static_html_content"),
         )
+        if ai_enrichment:
+            platform_texts["_ai_enrichment"] = json.dumps(ai_enrichment, ensure_ascii=False)
 
         # Определить финальный статус
         is_review = proc_settings.get("status_review_after_process", False)
@@ -228,6 +235,13 @@ class ProcessingService:
 
         # Собрать список полей для SELECT
         fields = [process_flag, description_field] + PROCESSING_SETTINGS_FIELDS
+        if source_platform == "tg":
+            fields.extend([
+                "summarize_enabled",
+                "summarize_min_length",
+                "classification_enabled",
+                "classification_categories",
+            ])
         fields_str = ", ".join(fields)
 
         try:
@@ -262,6 +276,11 @@ class ProcessingService:
                                     value = json.loads(value)
                                 except (json.JSONDecodeError, TypeError):
                                     value = None
+                            if field == "classification_categories" and isinstance(value, str):
+                                try:
+                                    value = json.loads(value)
+                                except (json.JSONDecodeError, TypeError):
+                                    value = []
                             result[field] = value
 
                     return result
@@ -317,6 +336,30 @@ class ProcessingService:
             logger.debug("HTML tags cleaned from text")
 
         return text, images
+
+    async def _maybe_enrich_text(
+        self,
+        text: str,
+        proc_settings: Dict[str, Any],
+    ) -> Optional[Dict[str, Any]]:
+        if not proc_settings.get("classification_enabled") or not text:
+            return None
+        try:
+            import sys
+            from pathlib import Path
+
+            root = Path(__file__).resolve().parent.parent.parent
+            if str(root) not in sys.path:
+                sys.path.insert(0, str(root))
+            from shared import ai_client
+
+            categories = proc_settings.get("classification_categories") or []
+            if isinstance(categories, str):
+                categories = json.loads(categories)
+            return await ai_client.enrich(text, categories)
+        except Exception:
+            logger.exception("AI enrichment failed")
+            return None
 
     async def _save_processed_post(
         self,

@@ -12,6 +12,8 @@ import {
   SettingsIcon,
   UserGroupIcon,
   DocumentTextIcon,
+  PollIcon,
+  CheckCircleIcon,
 } from '@/components/icons'
 
 export interface NavItem {
@@ -41,4 +43,6 @@ export const groupNavItem: NavItem = {
 
 export const adminNavItems: NavItem[] = [
   { path: '/administration', label: 'Administration', Icon: SettingsIcon },
+  { path: '/polls', label: 'Polls', Icon: PollIcon },
+  { path: '/checks', label: 'Checks', Icon: CheckCircleIcon },
 ]

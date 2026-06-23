@@ -205,6 +205,18 @@ async def delete_storage_file(
     return await forward_to_core("/admin/storage/files", request)
 
 
+@router.post("/admin/checks/ai")
+async def run_admin_ai_check(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    """Тестовый запрос к AI-сервису. Только admin (проверка на core).
+
+    POST /core/admin/checks/ai -> POST /admin/checks/ai на core сервисе.
+    """
+    return await forward_to_core("/admin/checks/ai", request)
+
+
 @router.get("/schedules")
 async def get_schedules(
     request: Request,

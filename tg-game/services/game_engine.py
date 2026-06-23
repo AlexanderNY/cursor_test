@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import random
 from dataclasses import dataclass
-from typing import Sequence
+from typing import Sequence, TypeVar
+
+T = TypeVar("T")
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,6 +36,13 @@ def pick_random_questions(params: PickQuestionsInput) -> PickQuestionsOutput:
     random.shuffle(pool)
     take = min(len(pool), params.questions_per_game)
     return PickQuestionsOutput(selected_ids=pool[:take])
+
+
+def shuffle_for_display(items: Sequence[T]) -> list[T]:
+    """Случайный порядок элементов при показе (новая копия списка)."""
+    pool = list(items)
+    random.shuffle(pool)
+    return pool
 
 
 def score_for_answer(*, was_correct: bool, points: int = 1) -> int:

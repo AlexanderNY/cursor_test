@@ -4,17 +4,20 @@ import asyncio
 import logging
 import signal
 import sys
+from pathlib import Path
+
+_root = Path(__file__).resolve().parent.parent
+if str(_root) not in sys.path:
+    sys.path.insert(0, str(_root))
 from fastapi import FastAPI
 import uvicorn
 from database import init_db, close_db
-from game_schema import GAME_TABLE_DDL
 from tg_profiles_migration import TG_PROFILES_ALERT_MIGRATION
+from tg_telegram_migration import TG_TELEGRAM_ROADMAP_MIGRATION
 from services.telegram_bot_service import TelegramBotService
 from services.client_manager import TelegramClientManager
 from routers.auth import router as auth_router, set_client_manager
 from routers.channels import router as channels_router, set_client_manager as set_channels_client_manager
-from routers.game_admin import router as game_admin_router
-from routers.game_rating import router as game_rating_router
 from config import settings
 
 
@@ -35,14 +38,11 @@ app = FastAPI(title="Telegram Bot Service", version="1.0.0")
 # Подключение роутеров
 app.include_router(auth_router, prefix="/tg")
 app.include_router(channels_router, prefix="/tg")
-app.include_router(game_rating_router, prefix="/tg/game")
-app.include_router(game_admin_router, prefix="/tg/game")
 
 # Глобальные переменные
 bot_service: TelegramBotService = None
 client_manager: TelegramClientManager = None
 _reload_task = None
-_game_poll_task: asyncio.Task | None = None
 
 
 @app.get("/health")
@@ -99,14 +99,13 @@ async def _reload_loop():
 
 async def main():
     """Основная функция запуска бота."""
-    global bot_service, client_manager, _reload_task, _game_poll_task
+    global bot_service, client_manager, _reload_task
     
     try:
         logger.info("Initializing Telegram Bot...")
         
-        # Инициализация БД: игровые таблицы + миграции tg_profiles (alerting)
         logger.info("Initializing database...")
-        await init_db(TG_PROFILES_ALERT_MIGRATION + GAME_TABLE_DDL)
+        await init_db(TG_PROFILES_ALERT_MIGRATION + TG_TELEGRAM_ROADMAP_MIGRATION)
         logger.info("Database initialized")
         
         # Создание менеджера клиентов
@@ -127,13 +126,6 @@ async def main():
         
         # Запуск бота
         await bot_service.start()
-
-        game_token = (settings.GAME_BOT_TOKEN or "").strip()
-        if game_token:
-            from bots.game_bot_runner import run_game_bot_polling
-
-            _game_poll_task = asyncio.create_task(run_game_bot_polling(game_token))
-            logger.info("Game bot (aiogram) polling task started.")
         
         # Запуск фоновой задачи перезагрузки профилей
         if settings.RELOAD_PROFILES_INTERVAL_SEC > 0:
@@ -152,13 +144,6 @@ async def main():
         raise
     
     finally:
-        if _game_poll_task:
-            _game_poll_task.cancel()
-            try:
-                await _game_poll_task
-            except asyncio.CancelledError:
-                pass
-            _game_poll_task = None
         # Остановка задачи перезагрузки
         if _reload_task:
             _reload_task.cancel()

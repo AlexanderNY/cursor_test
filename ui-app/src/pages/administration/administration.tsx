@@ -1,4 +1,5 @@
-import { useState, FormEvent, Fragment, useEffect, useRef, type ReactNode } from 'react'
+import { useState, FormEvent, Fragment, useEffect, type ReactNode } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
@@ -18,18 +19,29 @@ import type {
   ScheduleSnapshot,
   Notification,
   Feedback,
-  ServicesStatusResponse,
   PostsTablesResponse,
-  PlatformMetric,
   PostRow,
-  PostingDiagnosticsResponse,
   StorageFileItem,
   StorageFilesResponse,
   RuntimeLocationResponse,
 } from '@/types/core'
 import { FEEDBACK_TYPE_LABELS } from '@/types/core'
+import { platformStatusCell, platformTableStatusColumns } from '@/pages/checks/checks-utils'
 
-type AdminTab = 'users' | 'audit' | 'groups' | 'statistics' | 'schedule' | 'notifications' | 'feedback' | 'services-status' | 'processor' | 'collector' | 'scheduler' | 'posts-tables' | 'posting-diagnostics' | 'runtime-location' | 'storage'
+type AdminTab = 'users' | 'audit' | 'groups' | 'statistics' | 'schedule' | 'notifications' | 'feedback' | 'posts-tables' | 'runtime-location' | 'storage'
+
+const ADMIN_TABS: AdminTab[] = [
+  'users',
+  'audit',
+  'groups',
+  'statistics',
+  'schedule',
+  'notifications',
+  'feedback',
+  'posts-tables',
+  'runtime-location',
+  'storage',
+]
 
 /** Платформы для «Принудительный запуск ботов» (совпадает с scheduler BOT_PLATFORMS). */
 const SCHEDULE_BOT_PLATFORMS = [
@@ -43,53 +55,10 @@ const SCHEDULE_BOT_PLATFORMS = [
   'instagram',
 ] as const
 
-/** Типичные статусы строк в таблицах *_posts; редкие из БД добавляются колонками справа. */
-const PLATFORM_TABLE_STATUS_ORDER: readonly string[] = [
-  'collected',
-  'created',
-  'processing',
-  'ready',
-  'review',
-  'published',
-  'failed',
-  'skipped',
-]
-
-function platformTableStatusColumns(platforms: PlatformMetric[]): string[] {
-  const extra = new Set<string>()
-  for (const p of platforms) {
-    const sc = p.status_counts
-    if (!sc) continue
-    for (const k of Object.keys(sc)) {
-      if (!PLATFORM_TABLE_STATUS_ORDER.includes(k)) {
-        extra.add(k)
-      }
-    }
-  }
-  return [...PLATFORM_TABLE_STATUS_ORDER, ...Array.from(extra).sort()]
-}
-
-function platformStatusCell(p: PlatformMetric, col: string): number {
-  const sc = p.status_counts
-  if (sc && Object.prototype.hasOwnProperty.call(sc, col)) {
-    return Number(sc[col] ?? 0)
-  }
-  if (col === 'collected') return p.collected_count ?? 0
-  if (col === 'created') return p.created_count ?? 0
-  if (col === 'ready') return p.ready_count ?? 0
-  if (col === 'processing') return p.processing_count ?? 0
-  return 0
-}
-
-/** Не перезапрашивать те же данные при переключении вкладок чаще этого интервала (мс). */
-const STALE_SERVICES_STATUS_MS = 30_000
-const STALE_POSTS_TABLES_MS = 60_000
-
 export function AdministrationPage() {
   const { user: currentUser } = useAuth()
+  const [searchParams] = useSearchParams()
   const [activeTab, setActiveTab] = useState<AdminTab>('users')
-  const lastServicesStatusLoadedAt = useRef<number | null>(null)
-  const lastPostsTablesLoadedAt = useRef<number | null>(null)
   const [users, setUsers] = useState<User[]>([])
   const [statistics, setStatistics] = useState<UserStatisticsItem[]>([])
   const [schedules, setSchedules] = useState<ScheduleSnapshot[]>([])
@@ -145,32 +114,15 @@ export function AdministrationPage() {
   const [feedbackError, setFeedbackError] = useState('')
   const [isDeletingFeedback, setIsDeletingFeedback] = useState<number | null>(null)
 
-  // Services status & Posts tables (admin)
-  const [servicesStatus, setServicesStatus] = useState<ServicesStatusResponse | null>(null)
+  // Posts tables (admin)
   const [postsTables, setPostsTables] = useState<PostsTablesResponse | null>(null)
-  const [isLoadingServicesStatus, setIsLoadingServicesStatus] = useState(false)
   const [isLoadingPostsTables, setIsLoadingPostsTables] = useState(false)
-  const [servicesStatusError, setServicesStatusError] = useState('')
   const [postsTablesError, setPostsTablesError] = useState('')
-  const [isRunningProcessor, setIsRunningProcessor] = useState(false)
-  const [processorRunMessage, setProcessorRunMessage] = useState('')
-  const [processorRunError, setProcessorRunError] = useState('')
 
   // Full posts table (admin)
   const [postsList, setPostsList] = useState<PostRow[]>([])
   const [isLoadingPostsList, setIsLoadingPostsList] = useState(false)
   const [postsListError, setPostsListError] = useState('')
-
-  // Posting diagnostics (admin)
-  const [postingDiagnostics, setPostingDiagnostics] = useState<PostingDiagnosticsResponse | null>(null)
-  const [isLoadingPostingDiagnostics, setIsLoadingPostingDiagnostics] = useState(false)
-  const [postingDiagnosticsError, setPostingDiagnosticsError] = useState('')
-  const [isRunningCollect, setIsRunningCollect] = useState(false)
-  const [collectMessage, setCollectMessage] = useState('')
-  const [collectError, setCollectError] = useState('')
-  const [isRunningDistribute, setIsRunningDistribute] = useState(false)
-  const [distributeMessage, setDistributeMessage] = useState('')
-  const [distributeError, setDistributeError] = useState('')
 
   // S3 storage files (admin)
   const [storageFiles, setStorageFiles] = useState<StorageFilesResponse | null>(null)
@@ -543,114 +495,17 @@ export function AdministrationPage() {
     }
   }
 
-  async function handleLoadServicesStatus() {
-    setServicesStatusError('')
-    setIsLoadingServicesStatus(true)
-    try {
-      const data = await coreService.getServicesStatus()
-      setServicesStatus(data)
-      lastServicesStatusLoadedAt.current = Date.now()
-    } catch (error) {
-      setServicesStatusError(error instanceof Error ? error.message : 'Failed to fetch services status')
-      setServicesStatus(null)
-    } finally {
-      setIsLoadingServicesStatus(false)
-    }
-  }
-
-  async function handleRunProcessorCycle() {
-    setProcessorRunMessage('')
-    setProcessorRunError('')
-    setIsRunningProcessor(true)
-    try {
-      const data = await coreService.runProcessorCycle()
-      if (data.status === 'success') {
-        setProcessorRunMessage(`Обработано постов: ${data.count}. ${data.message}`)
-        lastPostsTablesLoadedAt.current = null
-        await handleLoadServicesStatus()
-      } else {
-        setProcessorRunError(data.message || 'Processor cycle failed')
-      }
-    } catch (error) {
-      setProcessorRunError(error instanceof Error ? error.message : 'Failed to run processor cycle')
-    } finally {
-      setIsRunningProcessor(false)
-    }
-  }
-
   async function handleLoadPostsTables() {
     setPostsTablesError('')
     setIsLoadingPostsTables(true)
     try {
       const data = await coreService.getPostsTablesOverview()
       setPostsTables(data)
-      lastPostsTablesLoadedAt.current = Date.now()
     } catch (error) {
       setPostsTablesError(error instanceof Error ? error.message : 'Failed to fetch posts tables')
       setPostsTables(null)
     } finally {
       setIsLoadingPostsTables(false)
-    }
-  }
-
-  async function handleRunPostingDiagnostics() {
-    setPostingDiagnosticsError('')
-    setPostingDiagnostics(null)
-    setIsLoadingPostingDiagnostics(true)
-    try {
-      const data = await coreService.getPostingDiagnostics()
-      setPostingDiagnostics(data)
-    } catch (error) {
-      setPostingDiagnosticsError(error instanceof Error ? error.message : 'Failed to run posting diagnostics')
-      setPostingDiagnostics(null)
-    } finally {
-      setIsLoadingPostingDiagnostics(false)
-    }
-  }
-
-  async function handleRunCollectCycle() {
-    setCollectError('')
-    setCollectMessage('')
-    setIsRunningCollect(true)
-    try {
-      const data = await coreService.runCollectCycle()
-      if (data.status === 'success') {
-        setCollectMessage(`Собрано постов: ${data.count}. ${data.message}`)
-        lastPostsTablesLoadedAt.current = null
-        await handleRunPostingDiagnostics()
-      } else if (data.status === 'partial') {
-        setCollectMessage(`Собрано постов: ${data.count}. ${data.message}`)
-        if (data.errors?.length) setCollectError(data.errors.join('; '))
-        lastPostsTablesLoadedAt.current = null
-        await handleRunPostingDiagnostics()
-      } else {
-        setCollectError(data.message || 'Ошибка цикла сбора')
-        if (data.errors?.length) setCollectError((prev) => prev + '\n' + data.errors!.join('\n'))
-      }
-    } catch (error) {
-      setCollectError(error instanceof Error ? error.message : 'Ошибка запуска сбора')
-    } finally {
-      setIsRunningCollect(false)
-    }
-  }
-
-  async function handleRunDistributeCycle() {
-    setDistributeError('')
-    setDistributeMessage('')
-    setIsRunningDistribute(true)
-    try {
-      const data = await coreService.runDistributeCycle()
-      if (data.status === 'success') {
-        setDistributeMessage(`Распределено постов: ${data.count}. ${data.message}`)
-        lastPostsTablesLoadedAt.current = null
-        await handleRunPostingDiagnostics()
-      } else {
-        setDistributeError(data.message || 'Ошибка цикла распределения')
-      }
-    } catch (error) {
-      setDistributeError(error instanceof Error ? error.message : 'Ошибка запуска распределения')
-    } finally {
-      setIsRunningDistribute(false)
     }
   }
 
@@ -736,33 +591,19 @@ export function AdministrationPage() {
     }
   }
 
-  // Подгрузка при открытии вкладок инфраструктуры: без лишних запросов, пока кэш не устарел
-  useEffect(() => {
-    if (activeTab !== 'processor' && activeTab !== 'collector' && activeTab !== 'scheduler') {
-      return
-    }
-    const now = Date.now()
-    const servicesStale =
-      lastServicesStatusLoadedAt.current === null ||
-      now - lastServicesStatusLoadedAt.current > STALE_SERVICES_STATUS_MS
-    if (servicesStale) {
-      void handleLoadServicesStatus()
-    }
-    if (activeTab === 'processor' || activeTab === 'collector') {
-      const postsStale =
-        lastPostsTablesLoadedAt.current === null ||
-        now - lastPostsTablesLoadedAt.current > STALE_POSTS_TABLES_MS
-      if (postsStale) {
-        void handleLoadPostsTables()
-      }
-    }
-  }, [activeTab])
-
+  // Подгрузка обратной связи при открытии вкладки
   useEffect(() => {
     if (activeTab === 'feedback') {
       void loadFeedback()
     }
   }, [activeTab])
+
+  useEffect(() => {
+    const tabParam = searchParams.get('tab')
+    if (tabParam && ADMIN_TABS.includes(tabParam as AdminTab)) {
+      setActiveTab(tabParam as AdminTab)
+    }
+  }, [searchParams])
 
   const POSTS_TABLE_COLUMNS: { key: keyof PostRow; label: string }[] = [
     { key: 'id', label: 'ID' },
@@ -819,7 +660,7 @@ export function AdministrationPage() {
     <PageContainer maxWidth="wide">
       <PageHeader
         title="Administration"
-        description="Пользователи и группы, статистика, уведомления, мониторинг сервисов (core, collector, processor, scheduler), пайплайн постов, диагностика постинга, расписания, S3 и сведения о окружении."
+        description="Пользователи и группы, статистика, уведомления, таблицы постов, расписания, S3 и сведения о окружении. Мониторинг сервисов — в разделе Checks."
       />
 
       {/* Tabs */}
@@ -895,46 +736,6 @@ export function AdministrationPage() {
           Обратная связь
         </button>
         <button
-          onClick={() => setActiveTab('services-status')}
-          className={`px-4 py-2 font-medium text-sm transition-colors ${
-            activeTab === 'services-status'
-              ? 'text-primary-400 border-b-2 border-primary-400'
-              : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-          }`}
-        >
-          Services Status
-        </button>
-        <button
-          onClick={() => setActiveTab('processor')}
-          className={`px-4 py-2 font-medium text-sm transition-colors ${
-            activeTab === 'processor'
-              ? 'text-primary-400 border-b-2 border-primary-400'
-              : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-          }`}
-        >
-          Processor
-        </button>
-        <button
-          onClick={() => setActiveTab('collector')}
-          className={`px-4 py-2 font-medium text-sm transition-colors ${
-            activeTab === 'collector'
-              ? 'text-primary-400 border-b-2 border-primary-400'
-              : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-          }`}
-        >
-          Collector
-        </button>
-        <button
-          onClick={() => setActiveTab('scheduler')}
-          className={`px-4 py-2 font-medium text-sm transition-colors ${
-            activeTab === 'scheduler'
-              ? 'text-primary-400 border-b-2 border-primary-400'
-              : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-          }`}
-        >
-          Scheduler
-        </button>
-        <button
           onClick={() => setActiveTab('posts-tables')}
           className={`px-4 py-2 font-medium text-sm transition-colors ${
             activeTab === 'posts-tables'
@@ -943,16 +744,6 @@ export function AdministrationPage() {
           }`}
         >
           Posts
-        </button>
-        <button
-          onClick={() => setActiveTab('posting-diagnostics')}
-          className={`px-4 py-2 font-medium text-sm transition-colors ${
-            activeTab === 'posting-diagnostics'
-              ? 'text-primary-400 border-b-2 border-primary-400'
-              : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-          }`}
-        >
-          Диагностика постинга
         </button>
         <button
           onClick={() => setActiveTab('runtime-location')}
@@ -1951,454 +1742,6 @@ export function AdministrationPage() {
         </Card>
       )}
 
-      {/* Services Status Tab */}
-      {activeTab === 'services-status' && (
-        <Card className="animate-slide-up">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              Services Status
-            </CardTitle>
-            <CardDescription>CORE, PROCESSOR, SCHEDULER, COLLECTOR health and status</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <Button
-              onClick={handleLoadServicesStatus}
-              isLoading={isLoadingServicesStatus}
-              className="w-full sm:w-auto"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-              Load Services Status
-            </Button>
-
-            {servicesStatusError && (
-              <Alert variant="error" className="animate-slide-down">{servicesStatusError}</Alert>
-            )}
-
-            {servicesStatus && (
-              <div className="space-y-6 animate-slide-down">
-                <div>
-                  <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-2">Healthchecks</h3>
-                  <div className="overflow-x-auto rounded-xl border border-[var(--border-color)]">
-                    <table className="w-full">
-                      <thead className="bg-[var(--bg-tertiary)]">
-                        <tr>
-                          <th className="py-3 px-4 text-left text-sm font-medium text-[var(--text-secondary)]">Service</th>
-                          <th className="py-3 px-4 text-left text-sm font-medium text-[var(--text-secondary)]">Status</th>
-                          <th className="py-3 px-4 text-left text-sm font-medium text-[var(--text-secondary)]">Server time</th>
-                          <th className="py-3 px-4 text-left text-sm font-medium text-[var(--text-secondary)]">Error</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-[var(--border-color)]">
-                        {(servicesStatus.healthchecks || []).map((h) => (
-                          <tr key={h.service_name} className="hover:bg-[var(--bg-tertiary)]">
-                            <td className="py-3 px-4 text-[var(--text-primary)] font-medium">{h.service_name}</td>
-                            <td className="py-3 px-4">
-                              <span className={`inline-flex px-3 py-1 rounded-full text-sm font-medium ${h.status === 'ok' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>
-                                {h.status}
-                              </span>
-                            </td>
-                            <td className="py-3 px-4 text-[var(--text-secondary)] text-sm">{h.server_time ? new Date(h.server_time).toLocaleString() : '—'}</td>
-                            <td className="py-3 px-4 text-[var(--text-secondary)] text-sm">{h.error ?? '—'}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                <div className="grid gap-4 sm:grid-cols-2">
-                  {servicesStatus.collector && (
-                    <div className="p-4 rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)]">
-                      <h4 className="font-semibold text-[var(--text-primary)] mb-2">COLLECTOR</h4>
-                      {servicesStatus.collector.error ? (
-                        <p className="text-red-400 text-sm">{servicesStatus.collector.error}</p>
-                      ) : (
-                        <ul className="text-sm text-[var(--text-secondary)] space-y-1">
-                          <li>Server time: {servicesStatus.collector.current_time ? new Date(servicesStatus.collector.current_time).toLocaleString() : '—'}</li>
-                          <li>Interval: collect {servicesStatus.collector.collect_interval_sec}s / distribute {servicesStatus.collector.distribute_interval_sec}s</li>
-                          {servicesStatus.collector.collector && (
-                            <li>Collector: last run {servicesStatus.collector.collector.last_run_at ? new Date(servicesStatus.collector.collector.last_run_at).toLocaleString() : '—'}, total {servicesStatus.collector.collector.total_processed}</li>
-                          )}
-                          {servicesStatus.collector.distributor && (
-                            <li>Distributor: last run {servicesStatus.collector.distributor.last_run_at ? new Date(servicesStatus.collector.distributor.last_run_at).toLocaleString() : '—'}, total {servicesStatus.collector.distributor.total_processed}</li>
-                          )}
-                        </ul>
-                      )}
-                    </div>
-                  )}
-                  {servicesStatus.processor && (
-                    <div className="p-4 rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)]">
-                      <h4 className="font-semibold text-[var(--text-primary)] mb-2">PROCESSOR</h4>
-                      {servicesStatus.processor.error ? (
-                        <p className="text-red-400 text-sm">{servicesStatus.processor.error}</p>
-                      ) : (
-                        <ul className="text-sm text-[var(--text-secondary)] space-y-1">
-                          <li>Server time: {servicesStatus.processor.current_time ? new Date(servicesStatus.processor.current_time).toLocaleString() : '—'}</li>
-                          <li>Interval: {servicesStatus.processor.process_interval_sec}s</li>
-                          {servicesStatus.processor.processor && (
-                            <li>Last run: {servicesStatus.processor.processor.last_run_at ? new Date(servicesStatus.processor.processor.last_run_at).toLocaleString() : '—'}, total {servicesStatus.processor.processor.total_processed}</li>
-                          )}
-                        </ul>
-                      )}
-                      <div className="mt-3 pt-3 border-t border-[var(--border-color)]">
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          onClick={handleRunProcessorCycle}
-                          isLoading={isRunningProcessor}
-                          className="w-full sm:w-auto"
-                        >
-                          Запустить цикл обработки
-                        </Button>
-                        {processorRunMessage && (
-                          <Alert variant="success" className="mt-2 animate-slide-down">
-                            {processorRunMessage}
-                          </Alert>
-                        )}
-                        {processorRunError && (
-                          <Alert variant="error" className="mt-2 animate-slide-down">
-                            {processorRunError}
-                          </Alert>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                  {servicesStatus.scheduler && (
-                    <div className="p-4 rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)]">
-                      <h4 className="font-semibold text-[var(--text-primary)] mb-2">SCHEDULER</h4>
-                      {servicesStatus.scheduler.error ? (
-                        <p className="text-red-400 text-sm">{servicesStatus.scheduler.error}</p>
-                      ) : (
-                        <ul className="text-sm text-[var(--text-secondary)] space-y-1">
-                          <li>Server time: {servicesStatus.scheduler.current_time ? new Date(servicesStatus.scheduler.current_time).toLocaleString() : '—'}</li>
-                          <li>Poll interval: {servicesStatus.scheduler.poll_interval_sec}s</li>
-                          <li>Last poll: {servicesStatus.scheduler.last_poll_at ? new Date(servicesStatus.scheduler.last_poll_at).toLocaleString() : '—'}</li>
-                        </ul>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {!servicesStatus && !isLoadingServicesStatus && !servicesStatusError && (
-              <p className="text-[var(--text-muted)] text-center py-8">Click &quot;Load Services Status&quot; to fetch</p>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Processor Tab */}
-      {activeTab === 'processor' && (
-        <Card className="animate-slide-up">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7" />
-              </svg>
-              Processor
-            </CardTitle>
-            <CardDescription>Статус processor и сводка по статусам в таблице posts; полные данные — на вкладке Posts.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <Button
-              onClick={handleLoadServicesStatus}
-              isLoading={isLoadingServicesStatus}
-              className="w-full sm:w-auto"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-              Обновить статус сервисов
-            </Button>
-            {servicesStatusError && (
-              <Alert variant="error" className="animate-slide-down">{servicesStatusError}</Alert>
-            )}
-            {servicesStatus?.processor && (
-              <>
-                <div className="p-4 rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)] space-y-2">
-                  <h3 className="text-lg font-semibold text-[var(--text-primary)]">Service status</h3>
-                  {servicesStatus.processor.error ? (
-                    <p className="text-red-400 text-sm">{servicesStatus.processor.error}</p>
-                  ) : (
-                    <ul className="text-sm text-[var(--text-secondary)] space-y-1">
-                      <li>State: <span className={servicesStatus.healthchecks?.find(h => h.service_name === 'processor')?.status === 'ok' ? 'text-emerald-400' : 'text-red-400'}>{servicesStatus.healthchecks?.find(h => h.service_name === 'processor')?.status ?? '—'}</span></li>
-                      <li>Started at: {servicesStatus.processor.started_at ? new Date(servicesStatus.processor.started_at).toLocaleString() : '—'}</li>
-                      <li>Last run: {servicesStatus.processor.processor?.last_run_at ? new Date(String(servicesStatus.processor.processor.last_run_at)).toLocaleString() : '—'}</li>
-                    </ul>
-                  )}
-                  <div className="pt-3 border-t border-[var(--border-color)]">
-                    <Button size="sm" variant="secondary" onClick={handleRunProcessorCycle} isLoading={isRunningProcessor} className="w-full sm:w-auto">
-                      Запустить цикл обработки
-                    </Button>
-                    {processorRunMessage && <Alert variant="success" className="mt-2">{processorRunMessage}</Alert>}
-                    {processorRunError && <Alert variant="error" className="mt-2">{processorRunError}</Alert>}
-                  </div>
-                </div>
-                {!servicesStatus.processor.error && (
-                  <div className="p-4 rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)]">
-                    <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-2">Конфигурация сервиса</h3>
-                    <ul className="text-sm text-[var(--text-secondary)] space-y-1">
-                      <li>Периодичность запуска: <strong className="text-[var(--text-primary)]">{servicesStatus.processor.process_interval_sec ?? '—'} с</strong></li>
-                      <li>Размер батча за цикл: <strong className="text-[var(--text-primary)]">{servicesStatus.processor.process_batch_size ?? '—'}</strong> постов</li>
-                    </ul>
-                  </div>
-                )}
-                {!servicesStatus.processor.error && servicesStatus.processor.processing_options && servicesStatus.processor.processing_options.length > 0 && (
-                  <div className="p-4 rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)]">
-                    <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-2">Функции обработки</h3>
-                    <p className="text-sm text-[var(--text-muted)] mb-3">
-                      Эти опции включаются для каждого пользователя в настройках профиля платформы (Telegram, WordPress, VK, Custom URL). Глобальное изменение по умолчанию здесь не предусмотрено.
-                    </p>
-                    <div className="space-y-3">
-                      {servicesStatus.processor.processing_options.map((opt) => (
-                        <div key={opt.id} className="flex flex-col gap-1 rounded-lg border border-[var(--border-color)] p-3 bg-[var(--bg-tertiary)]">
-                          <span className="font-medium text-[var(--text-primary)]">{opt.name_ru}</span>
-                          <span className="text-sm text-[var(--text-secondary)]">{opt.description}</span>
-                          <span className="text-xs text-[var(--text-muted)] font-mono">{opt.id}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-            <div>
-              <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-2">Таблица posts (сводка processor)</h3>
-              <p className="text-sm text-[var(--text-muted)] mb-3">
-                Счётчики по статусам в центральной таблице posts (метрики processor). Полная таблица строк и платформенные метрики — на вкладке{' '}
-                <strong className="text-[var(--text-secondary)]">Posts</strong>.
-              </p>
-              <Button onClick={handleLoadPostsTables} isLoading={isLoadingPostsTables} size="sm" variant="secondary" className="mb-2">
-                Обновить сводку
-              </Button>
-              {postsTablesError && <Alert variant="error" className="mb-2">{postsTablesError}</Alert>}
-              {postsTables?.posts_table_processor && Object.keys(postsTables.posts_table_processor).length > 0 && (
-                <div className="flex flex-wrap gap-4">
-                  {Object.entries(postsTables.posts_table_processor).map(([status, count]) => (
-                    <span key={status} className="px-3 py-1 rounded-lg bg-[var(--bg-tertiary)] text-[var(--text-secondary)] text-sm">
-                      {status}: <strong className="text-[var(--text-primary)]">{Number(count).toLocaleString()}</strong>
-                    </span>
-                  ))}
-                </div>
-              )}
-              <div className="mt-4">
-                <Button type="button" variant="secondary" onClick={() => setActiveTab('posts-tables')}>
-                  Открыть вкладку Posts — полная таблица и метрики
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Collector Tab */}
-      {activeTab === 'collector' && (
-        <Card className="animate-slide-up">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 14v6a2 2 0 002 2h14a2 2 0 002-2v-6a2 2 0 00-2-2M5 14V9" />
-              </svg>
-              Collector
-            </CardTitle>
-            <CardDescription>Collector service status and platform tables</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <Button onClick={handleLoadServicesStatus} isLoading={isLoadingServicesStatus} className="w-full sm:w-auto">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-              Refresh status
-            </Button>
-            {servicesStatusError && <Alert variant="error">{servicesStatusError}</Alert>}
-            {servicesStatus?.collector && (
-              <>
-                <div className="p-4 rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)]">
-                  <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-2">Service status</h3>
-                  {servicesStatus.collector.error ? (
-                    <p className="text-red-400 text-sm">{servicesStatus.collector.error}</p>
-                  ) : (
-                    <ul className="text-sm text-[var(--text-secondary)] space-y-1">
-                      <li>State: <span className={servicesStatus.healthchecks?.find(h => h.service_name === 'collector')?.status === 'ok' ? 'text-emerald-400' : 'text-red-400'}>{servicesStatus.healthchecks?.find(h => h.service_name === 'collector')?.status ?? '—'}</span></li>
-                      <li>Started at: {servicesStatus.collector.started_at ? new Date(servicesStatus.collector.started_at).toLocaleString() : '—'}</li>
-                      <li>Collector last run: {servicesStatus.collector.collector?.last_run_at ? new Date(String(servicesStatus.collector.collector.last_run_at)).toLocaleString() : '—'}</li>
-                      <li>Distributor last run: {servicesStatus.collector.distributor?.last_run_at ? new Date(String(servicesStatus.collector.distributor.last_run_at)).toLocaleString() : '—'}</li>
-                    </ul>
-                  )}
-                </div>
-                {!servicesStatus.collector.error && (
-                  <div className="p-4 rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)]">
-                    <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-2">Конфигурация сервиса</h3>
-                    <ul className="text-sm text-[var(--text-secondary)] space-y-1">
-                      <li>Периодичность сбора постов: <strong className="text-[var(--text-primary)]">{servicesStatus.collector.collect_interval_sec ?? '—'} с</strong></li>
-                      <li>Периодичность распределения: <strong className="text-[var(--text-primary)]">{servicesStatus.collector.distribute_interval_sec ?? '—'} с</strong></li>
-                      <li>Размер батча сбора: <strong className="text-[var(--text-primary)]">{servicesStatus.collector.collect_batch_size ?? '—'}</strong> постов за цикл</li>
-                      <li>Размер батча распределения: <strong className="text-[var(--text-primary)]">{servicesStatus.collector.distribute_batch_size ?? '—'}</strong> постов за цикл</li>
-                    </ul>
-                  </div>
-                )}
-                {!servicesStatus.collector.error && servicesStatus.collector.collect_functions && servicesStatus.collector.collect_functions.length > 0 && (
-                  <div className="p-4 rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)]">
-                    <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-2">Функции сервиса</h3>
-                    <p className="text-sm text-[var(--text-muted)] mb-3">
-                      Запуск сбора постов для сервисов и распределение готовых постов по платформам.
-                    </p>
-                    <div className="space-y-3">
-                      {servicesStatus.collector.collect_functions.map((fn) => (
-                        <div key={fn.id} className="flex flex-col gap-1 rounded-lg border border-[var(--border-color)] p-3 bg-[var(--bg-tertiary)]">
-                          <span className="font-medium text-[var(--text-primary)]">{fn.name_ru}</span>
-                          <span className="text-sm text-[var(--text-secondary)]">{fn.description}</span>
-                          <span className="text-xs text-[var(--text-muted)] font-mono">{fn.id}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-            <div>
-              <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-2">Platform tables</h3>
-              <p className="text-sm text-[var(--text-muted)] mb-2">
-                Все платформенные таблицы постов из collector (включая threads, cpost и т.д.); по колонкам — статусы строк в каждой *_posts.
-              </p>
-              <Button onClick={handleLoadPostsTables} isLoading={isLoadingPostsTables} size="sm" variant="secondary" className="mb-2">
-                Load posts tables
-              </Button>
-              {postsTablesError && <Alert variant="error" className="mb-2">{postsTablesError}</Alert>}
-              {postsTables?.platforms && postsTables.platforms.length > 0 && (() => {
-                const statusCols = platformTableStatusColumns(postsTables.platforms)
-                return (
-                <div className="overflow-x-auto rounded-xl border border-[var(--border-color)]">
-                  <table className="w-full min-w-max">
-                    <thead className="bg-[var(--bg-tertiary)]">
-                      <tr>
-                        <th className="py-3 px-4 text-left text-sm font-medium text-[var(--text-secondary)] whitespace-nowrap">Platform</th>
-                        <th className="py-3 px-4 text-left text-sm font-medium text-[var(--text-secondary)] whitespace-nowrap">Table</th>
-                        {statusCols.map((col) => (
-                          <th
-                            key={col}
-                            className="py-3 px-2 text-right text-xs font-medium text-[var(--text-secondary)] whitespace-nowrap"
-                          >
-                            {col}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-[var(--border-color)]">
-                      {postsTables.platforms.map((p) => (
-                        <tr key={p.table} className="hover:bg-[var(--bg-tertiary)]">
-                          <td className="py-3 px-4 text-[var(--text-primary)] font-medium whitespace-nowrap">{p.platform}</td>
-                          <td className="py-3 px-4 text-[var(--text-secondary)] font-mono text-sm whitespace-nowrap">{p.table}</td>
-                          {statusCols.map((col) => (
-                            <td key={col} className="py-3 px-2 text-right text-sm text-[var(--text-secondary)] tabular-nums">
-                              {platformStatusCell(p, col).toLocaleString()}
-                            </td>
-                          ))}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                )
-              })()}
-              {postsTables?.posts_table_collector && Object.keys(postsTables.posts_table_collector).length > 0 && (
-                <div className="mt-4">
-                  <h4 className="font-semibold text-[var(--text-primary)] mb-2">Central table posts (collector view)</h4>
-                  <div className="flex flex-wrap gap-4">
-                    {Object.entries(postsTables.posts_table_collector).map(([status, count]) => (
-                      <span key={status} className="px-3 py-1 rounded-lg bg-[var(--bg-tertiary)] text-[var(--text-secondary)] text-sm">
-                        {status}: <strong className="text-[var(--text-primary)]">{Number(count).toLocaleString()}</strong>
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Scheduler Tab */}
-      {activeTab === 'scheduler' && (
-        <Card className="animate-slide-up">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
-              Scheduler
-            </CardTitle>
-            <CardDescription>Статус сервиса scheduler. Просмотр и действия с расписаниями — на вкладке Schedule.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <Button onClick={handleLoadServicesStatus} isLoading={isLoadingServicesStatus} className="w-full sm:w-auto">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-              Refresh status
-            </Button>
-            {servicesStatusError && <Alert variant="error">{servicesStatusError}</Alert>}
-            {servicesStatus?.scheduler && (
-              <>
-                <div className="p-4 rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)]">
-                  <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-2">Service status</h3>
-                  {servicesStatus.scheduler.error ? (
-                    <p className="text-red-400 text-sm">{servicesStatus.scheduler.error}</p>
-                  ) : (
-                    <ul className="text-sm text-[var(--text-secondary)] space-y-1">
-                      <li>State: <span className={servicesStatus.healthchecks?.find(h => h.service_name === 'scheduler')?.status === 'ok' ? 'text-emerald-400' : 'text-red-400'}>{servicesStatus.healthchecks?.find(h => h.service_name === 'scheduler')?.status ?? '—'}</span></li>
-                      <li>Started at: {servicesStatus.scheduler.started_at ? new Date(servicesStatus.scheduler.started_at).toLocaleString() : '—'}</li>
-                      <li>Last poll: {servicesStatus.scheduler.last_poll_at ? new Date(servicesStatus.scheduler.last_poll_at).toLocaleString() : '—'}</li>
-                    </ul>
-                  )}
-                </div>
-                {!servicesStatus.scheduler.error && (
-                  <div className="p-4 rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)]">
-                    <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-2">Конфигурация сервиса</h3>
-                    <ul className="text-sm text-[var(--text-secondary)] space-y-1">
-                      <li>Периодичность опроса (сбор расписаний): <strong className="text-[var(--text-primary)]">{servicesStatus.scheduler.poll_interval_sec ?? '—'} с</strong></li>
-                      <li>Оповещать ботов только при изменении: <strong className="text-[var(--text-primary)]">{servicesStatus.scheduler.notify_on_change_only === true ? 'да' : servicesStatus.scheduler.notify_on_change_only === false ? 'нет' : '—'}</strong></li>
-                    </ul>
-                  </div>
-                )}
-                {!servicesStatus.scheduler.error && servicesStatus.scheduler.schedule_functions && servicesStatus.scheduler.schedule_functions.length > 0 && (
-                  <div className="p-4 rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)]">
-                    <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-2">Функции сервиса</h3>
-                    <p className="text-sm text-[var(--text-muted)] mb-3">
-                      Запуск сбора расписаний для сервисов и связанные операции.
-                    </p>
-                    <div className="space-y-3">
-                      {servicesStatus.scheduler.schedule_functions.map((fn) => (
-                        <div key={fn.id} className="flex flex-col gap-1 rounded-lg border border-[var(--border-color)] p-3 bg-[var(--bg-tertiary)]">
-                          <span className="font-medium text-[var(--text-primary)]">{fn.name_ru}</span>
-                          <span className="text-sm text-[var(--text-secondary)]">{fn.description}</span>
-                          <span className="text-xs text-[var(--text-muted)] font-mono">{fn.id}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-            <div className="p-4 rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)]">
-              <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-2">Расписания и снимки</h3>
-              <p className="text-sm text-[var(--text-secondary)] mb-3">
-                Таблица <code className="text-xs font-mono">schedule_snapshots</code>, запуск сбора расписаний и принудительный запуск ботов находятся на вкладке{' '}
-                <strong className="text-[var(--text-primary)]">Schedule</strong>, чтобы не дублировать интерфейс.
-              </p>
-              <Button type="button" variant="secondary" onClick={() => setActiveTab('schedule')}>
-                Перейти к Schedule Snapshots
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
       {/* Posts Tables Tab */}
       {activeTab === 'posts-tables' && (
@@ -2593,171 +1936,6 @@ export function AdministrationPage() {
                   )}
                 </div>
               </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Posting diagnostics Tab */}
-      {activeTab === 'posting-diagnostics' && (
-        <Card className="animate-slide-up">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-              </svg>
-              Диагностика постинга (Telegram)
-            </CardTitle>
-            <CardDescription>
-              Сводки по tg_posts и posts по статусам и подсказки при застревании постов в collected
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <Button
-              onClick={handleRunPostingDiagnostics}
-              isLoading={isLoadingPostingDiagnostics}
-              className="w-full sm:w-auto"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-              Запустить диагностику
-            </Button>
-
-            <div className="flex flex-wrap gap-3 items-center">
-              <span className="text-sm font-medium text-[var(--text-secondary)]">Быстрые действия:</span>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={handleRunCollectCycle}
-                isLoading={isRunningCollect}
-              >
-                Запустить сбор (collect)
-              </Button>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={handleRunDistributeCycle}
-                isLoading={isRunningDistribute}
-              >
-                Запустить распределение (distribute)
-              </Button>
-              <span className="text-xs text-[var(--text-muted)]">
-                Цикл обработки — на вкладке Processor
-              </span>
-            </div>
-            {(collectMessage || collectError) && (
-              <Alert variant={collectError ? 'error' : 'success'} className="animate-slide-down">
-                {collectError || collectMessage}
-              </Alert>
-            )}
-            {(distributeMessage || distributeError) && (
-              <Alert variant={distributeError ? 'error' : 'success'} className="animate-slide-down">
-                {distributeError || distributeMessage}
-              </Alert>
-            )}
-
-            {postingDiagnosticsError && (
-              <Alert variant="error" className="animate-slide-down">
-                {postingDiagnosticsError}
-              </Alert>
-            )}
-
-            {postingDiagnostics && (
-              <div className="space-y-6 animate-slide-down">
-                {postingDiagnostics.collected_at && (
-                  <p className="text-sm text-[var(--text-muted)]">
-                    Собрано: {new Date(postingDiagnostics.collected_at).toLocaleString()}
-                  </p>
-                )}
-
-                <div>
-                  <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-2">tg_posts по статусам</h3>
-                  <div className="overflow-x-auto rounded-xl border border-[var(--border-color)]">
-                    <table className="w-full">
-                      <thead className="bg-[var(--bg-tertiary)]">
-                        <tr>
-                          <th className="py-3 px-4 text-left text-sm font-medium text-[var(--text-secondary)]">Статус</th>
-                          <th className="py-3 px-4 text-right text-sm font-medium text-[var(--text-secondary)]">Количество</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-[var(--border-color)]">
-                        {postingDiagnostics.tg_posts_by_status.length === 0 ? (
-                          <tr>
-                            <td colSpan={2} className="py-3 px-4 text-[var(--text-muted)] text-sm">Нет данных</td>
-                          </tr>
-                        ) : (
-                          postingDiagnostics.tg_posts_by_status.map((row) => (
-                            <tr key={row.status} className="hover:bg-[var(--bg-tertiary)]">
-                              <td className="py-3 px-4 text-[var(--text-primary)] font-medium">{row.status}</td>
-                              <td className="py-3 px-4 text-right text-[var(--text-secondary)]">{row.count.toLocaleString()}</td>
-                            </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                <div>
-                  <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-2">posts по статусам и платформе</h3>
-                  <div className="overflow-x-auto rounded-xl border border-[var(--border-color)]">
-                    <table className="w-full">
-                      <thead className="bg-[var(--bg-tertiary)]">
-                        <tr>
-                          <th className="py-3 px-4 text-left text-sm font-medium text-[var(--text-secondary)]">Статус</th>
-                          <th className="py-3 px-4 text-left text-sm font-medium text-[var(--text-secondary)]">Платформа</th>
-                          <th className="py-3 px-4 text-right text-sm font-medium text-[var(--text-secondary)]">Количество</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-[var(--border-color)]">
-                        {postingDiagnostics.posts_by_status.length === 0 ? (
-                          <tr>
-                            <td colSpan={3} className="py-3 px-4 text-[var(--text-muted)] text-sm">Нет данных</td>
-                          </tr>
-                        ) : (
-                          postingDiagnostics.posts_by_status.map((row, idx) => (
-                            <tr key={`${row.status}-${row.source_platform ?? ''}-${idx}`} className="hover:bg-[var(--bg-tertiary)]">
-                              <td className="py-3 px-4 text-[var(--text-primary)] font-medium">{row.status}</td>
-                              <td className="py-3 px-4 text-[var(--text-secondary)]">{row.source_platform ?? '—'}</td>
-                              <td className="py-3 px-4 text-right text-[var(--text-secondary)]">{row.count.toLocaleString()}</td>
-                            </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap gap-4">
-                  <span className="px-3 py-1.5 rounded-lg bg-[var(--bg-tertiary)] text-[var(--text-secondary)] text-sm">
-                    Готовы к публикации в TG: <strong className="text-[var(--text-primary)]">{postingDiagnostics.ready_for_telegram.toLocaleString()}</strong>
-                  </span>
-                  <span className="px-3 py-1.5 rounded-lg bg-[var(--bg-tertiary)] text-[var(--text-secondary)] text-sm">
-                    Профилей с каналом: <strong className="text-[var(--text-primary)]">{postingDiagnostics.profiles_with_channel.toLocaleString()}</strong>
-                  </span>
-                </div>
-
-                {postingDiagnostics.hints.length > 0 && (
-                  <div>
-                    <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-2">Рекомендации</h3>
-                    <ul className="space-y-2">
-                      {postingDiagnostics.hints.map((hint, idx) => (
-                        <li key={idx} className="flex gap-2 text-sm text-[var(--text-secondary)]">
-                          <span className="text-amber-400 shrink-0">•</span>
-                          <span>{hint}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {!postingDiagnostics && !isLoadingPostingDiagnostics && !postingDiagnosticsError && (
-              <p className="text-[var(--text-muted)] text-center py-8">
-                Нажмите «Запустить диагностику», чтобы получить сводки и подсказки по пайплайну постинга.
-              </p>
             )}
           </CardContent>
         </Card>

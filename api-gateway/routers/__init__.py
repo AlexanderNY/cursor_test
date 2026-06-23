@@ -11,6 +11,7 @@ from .cpost_routes import router as cpost_router
 from .bot_proxy import router as bot_proxy_router
 from .threads_routes import router as threads_router
 from .stubs import router as stubs_router
+from .game_routes import router as game_router
 
 __all__ = [
     "auth_router",
@@ -26,6 +27,7 @@ __all__ = [
     "bot_proxy_router",
     "threads_router",
     "stubs_router",
+    "game_router",
 ]
 
 

@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field, EmailStr, field_validator
 from typing import Optional, List, Dict, Any, Literal
 from datetime import datetime
 from enum import Enum
+from uuid import uuid4
 
 
 # ==================== Общие типы ====================
@@ -89,15 +90,39 @@ class ScheduleResponse(BaseModel):
 
 # ==================== Telegram ====================
 
+class ConditionsMode(str, Enum):
+    ANY_OF = "any_of"
+    ALL_OF = "all_of"
+    REGEX = "regex"
+
+
+class SentimentFilter(str, Enum):
+    POSITIVE = "positive"
+    NEGATIVE = "negative"
+    NEUTRAL = "neutral"
+
+
 class TelegramAlertRule(BaseModel):
     """Правило алертинга: мониторинг чатов и оповещение в канал."""
+    id: str = Field(default_factory=lambda: str(uuid4()))
     enabled: bool = True
+    priority: int = 0
     chats_to_read: List[str] = Field(default_factory=list, max_length=10)
     save_conditions: List[str] = Field(default_factory=list, max_length=10)
+    conditions_mode: ConditionsMode = ConditionsMode.ANY_OF
+    category_filter: Optional[str] = None
     channel_to_post: Optional[str] = None
     alert_text: Optional[str] = Field(None, max_length=1000)
+    dedup_window_sec: int = Field(default=3600, ge=0, le=86400)
+    rate_limit_per_hour: Optional[int] = Field(default=None, ge=1, le=1000)
+    time_windows: List[TimeInterval] = Field(default_factory=list)
+    min_text_length: int = Field(default=0, ge=0)
+    include_ai_summary: bool = False
+    sentiment_filter: Optional[SentimentFilter] = None
+    tags: List[str] = Field(default_factory=list, max_length=10)
+    stop_on_match: bool = False
 
-    @field_validator("chats_to_read", "save_conditions", mode="before")
+    @field_validator("chats_to_read", "save_conditions", "tags", mode="before")
     @classmethod
     def trim_string_lists(cls, value: Any) -> List[str]:
         if not isinstance(value, list):
@@ -137,6 +162,22 @@ class TelegramProfileBase(BaseModel):
     status_review_after_process: bool = False
     add_static_html: bool = False
     static_html_content: Optional[str] = None  # max 1000
+    summarize_enabled: bool = False
+    summarize_min_length: int = Field(default=500, ge=100, le=10000)
+    digest_interval_min: int = Field(default=30, ge=5, le=1440)
+    digest_channel: Optional[str] = None
+    classification_enabled: bool = False
+    classification_categories: List[str] = Field(
+        default_factory=lambda: ["новости", "реклама", "технологии", "финансы", "другое"]
+    )
+
+    @field_validator("classification_categories", mode="before")
+    @classmethod
+    def normalize_classification_categories(cls, value: Any) -> List[str]:
+        if not isinstance(value, list):
+            return ["новости", "реклама", "технологии", "финансы", "другое"]
+        result = [str(item).strip() for item in value if str(item).strip()]
+        return result or ["новости", "реклама", "технологии", "финансы", "другое"]
 
     @field_validator("alert_rules", mode="before")
     @classmethod
@@ -144,6 +185,50 @@ class TelegramProfileBase(BaseModel):
         if not isinstance(value, list):
             return []
         return value[:10]
+
+
+class TgAnalyticsOverview(BaseModel):
+    """Обзор Telegram-аналитики."""
+    messages_collected: int = 0
+    alerts_sent: int = 0
+    alerts_suppressed: int = 0
+    unique_channels: int = 0
+    top_channel: Optional[Dict[str, Any]] = None
+    period: str = "7d"
+
+
+class TgAnalyticsChannelItem(BaseModel):
+    chat_id: str
+    name: Optional[str] = None
+    count: int = 0
+
+
+class TgAnalyticsKeywordItem(BaseModel):
+    keyword: str
+    count: int = 0
+
+
+class TgAnalyticsAlertItem(BaseModel):
+    rule_id: Optional[str] = None
+    alert_text: Optional[str] = None
+    chat_id: Optional[str] = None
+    event_type: str
+    created_at: datetime
+    matched_conditions: List[str] = Field(default_factory=list)
+
+
+class TgAnalyticsTimelinePoint(BaseModel):
+    bucket: str
+    collected: int = 0
+    alerts_sent: int = 0
+    alerts_suppressed: int = 0
+
+
+class TgAnalyticsSentimentBreakdown(BaseModel):
+    positive: int = 0
+    negative: int = 0
+    neutral: int = 0
+    total: int = 0
 
 
 class TelegramProfileCreate(TelegramProfileBase):
@@ -1089,6 +1174,18 @@ class RuntimeGeoByIp(BaseModel):
     city: Optional[str] = None
     timezone: Optional[str] = None
     isp: Optional[str] = None
+
+
+class AiCheckRequest(BaseModel):
+    """Запрос проверки AI-контейнера (админ)."""
+    text: str = Field(..., min_length=1, max_length=8000)
+
+
+class AiCheckResponse(BaseModel):
+    """Ответ AI на тестовый запрос (админ)."""
+    reply: str
+    model: str
+    latency_ms: float
 
 
 class RuntimeLocationResponse(BaseModel):

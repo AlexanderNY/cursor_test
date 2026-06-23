@@ -1,38 +1,49 @@
 # docker-compose.yml
+
+x-ai-environment: &ai-environment
+  AI_SERVICE_URL: http://ollama:11434
+  AI_MODEL: qwen2.5:3b
+  AI_TIMEOUT_SEC: "60"
+  AI_REALTIME_TIMEOUT_SEC: "15"
+
 services:
   core:
     build:
       context: .
       dockerfile: ./core/Dockerfile
     depends_on:
-      - minio
+      minio:
+        condition: service_started
+      ollama-init:
+        condition: service_completed_successfully
     ports:
       - "8002:8002"
     environment:
-      - DB_HOST=postgres
-      - DB_PORT=5432
-      - DB_NAME=core_db
-      - DB_USER=postgres
-      - DB_PASSWORD=postgres
-      - S3_ENDPOINT_URL=http://minio:9000
-      - S3_BUCKET=uploads
-      - S3_ACCESS_KEY=admin
-      - S3_SECRET_KEY=password123
-      - S3_USE_SSL=false
-      - API_GATEWAY_URL=http://gateway:8000
-      - VK_PUBLIC_GATEWAY_URL=${VK_PUBLIC_GATEWAY_URL:-http://localhost:8000}
-      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:8100}
-      - VK_APP_ID=${VK_APP_ID:-}
-      - VK_APP_SECRET=${VK_APP_SECRET:-}
-      - VK_OAUTH_REDIRECT_URI=${VK_OAUTH_REDIRECT_URI:-}
-      - AUTH_SERVICE_URL=http://auth:8001
-      - TG_BOT_SERVICE_URL=http://tg-bot:8004
-      - VK_BOT_SERVICE_URL=http://vk-bot:8005
-      - WP_BOT_SERVICE_URL=http://wp-bot:8006
-      - URL_BOT_SERVICE_URL=http://url-bot:8007
-      - SCHEDULER_SERVICE_URL=http://scheduler:8003
-      - COLLECTOR_SERVICE_URL=http://collector:8009
-      - PROCESSOR_SERVICE_URL=http://processor:8010
+      <<: *ai-environment
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: core_db
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      S3_ENDPOINT_URL: http://minio:9000
+      S3_BUCKET: uploads
+      S3_ACCESS_KEY: admin
+      S3_SECRET_KEY: password123
+      S3_USE_SSL: "false"
+      API_GATEWAY_URL: http://gateway:8000
+      VK_PUBLIC_GATEWAY_URL: ${VK_PUBLIC_GATEWAY_URL:-http://localhost:8000}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:8100}
+      VK_APP_ID: ${VK_APP_ID:-}
+      VK_APP_SECRET: ${VK_APP_SECRET:-}
+      VK_OAUTH_REDIRECT_URI: ${VK_OAUTH_REDIRECT_URI:-}
+      AUTH_SERVICE_URL: http://auth:8001
+      TG_BOT_SERVICE_URL: http://tg-bot:8004
+      VK_BOT_SERVICE_URL: http://vk-bot:8005
+      WP_BOT_SERVICE_URL: http://wp-bot:8006
+      URL_BOT_SERVICE_URL: http://url-bot:8007
+      SCHEDULER_SERVICE_URL: http://scheduler:8003
+      COLLECTOR_SERVICE_URL: http://collector:8009
+      PROCESSOR_SERVICE_URL: http://processor:8010
     networks:
       monitoring_network:
         ipv4_address: 172.20.10.2
@@ -66,6 +77,8 @@ services:
       - DZEN_BOT_SERVICE_URL=http://dzen-bot:8012
       - TW_BOT_SERVICE_URL=http://tw-bot:8011
       - VK_BOT_SERVICE_URL=http://vk-bot:8005
+      - TG_GAME_SERVICE_URL=http://tg-game:8015
+      - GAME_ADMIN_API_TOKEN=122
     networks:
       monitoring_network:
         ipv4_address: 172.20.10.250
@@ -113,8 +126,9 @@ services:
     ports:
       - "8006:8006"
     environment:
-      - VITE_API_GATEWAY_URL=http://gateway:8000
-      - VITE_CORE_SERVICE_URL=http://core:8002
+      <<: *ai-environment
+      VITE_API_GATEWAY_URL: http://gateway:8000
+      VITE_CORE_SERVICE_URL: http://core:8002
     networks:
       monitoring_network:
         ipv4_address: 172.20.10.6
@@ -126,10 +140,11 @@ services:
     ports:
       - "8007:8007"
     environment:
-      - CORE_SERVICE_URL=http://core:8002
-      - API_GATEWAY_URL=http://gateway:8000
-      - CHROME_BIN=/usr/bin/chromium
-      - CHROMEDRIVER_PATH=/usr/bin/chromedriver
+      <<: *ai-environment
+      CORE_SERVICE_URL: http://core:8002
+      API_GATEWAY_URL: http://gateway:8000
+      CHROME_BIN: /usr/bin/chromium
+      CHROMEDRIVER_PATH: /usr/bin/chromedriver
     networks:
       monitoring_network:
         ipv4_address: 172.20.10.7
@@ -143,12 +158,13 @@ services:
     ports:
       - "8009:8009"
     environment:
-      - DATABASE_URL=dbname=db_bot user=postgres password=1qaz!QAZ host=host.docker.internal
-      - COLLECT_INTERVAL_SEC=60
-      - DISTRIBUTE_INTERVAL_SEC=60
-      - COLLECT_BATCH_SIZE=100
-      - DISTRIBUTE_BATCH_SIZE=100
-      - LOG_LEVEL=INFO
+      <<: *ai-environment
+      DATABASE_URL: dbname=db_bot user=postgres password=1qaz!QAZ host=host.docker.internal
+      COLLECT_INTERVAL_SEC: "60"
+      DISTRIBUTE_INTERVAL_SEC: "60"
+      COLLECT_BATCH_SIZE: "100"
+      DISTRIBUTE_BATCH_SIZE: "100"
+      LOG_LEVEL: INFO
     networks:
       monitoring_network:
         ipv4_address: 172.20.10.9
@@ -157,20 +173,71 @@ services:
     build: 
       context: .
       dockerfile: ./processor/Dockerfile
+    depends_on:
+      ollama-init:
+        condition: service_completed_successfully
     ports:
       - "8010:8010"
     environment:
-      - DATABASE_URL=dbname=db_bot user=postgres password=1qaz!QAZ host=host.docker.internal
-      - PROCESS_INTERVAL_SEC=30
-      - PROCESS_BATCH_SIZE=50
-      - WORDPRESS_MAX_LENGTH=150000
-      - TELEGRAM_MAX_LENGTH=4096
-      - TWITTER_MAX_LENGTH=280
-      - VKONTAKTE_MAX_LENGTH=15985
-      - LOG_LEVEL=INFO
+      <<: *ai-environment
+      DATABASE_URL: dbname=db_bot user=postgres password=1qaz!QAZ host=host.docker.internal
+      PROCESS_INTERVAL_SEC: "30"
+      PROCESS_BATCH_SIZE: "50"
+      WORDPRESS_MAX_LENGTH: "150000"
+      TELEGRAM_MAX_LENGTH: "4096"
+      TWITTER_MAX_LENGTH: "280"
+      VKONTAKTE_MAX_LENGTH: "15985"
+      LOG_LEVEL: INFO
     networks:
       monitoring_network:
         ipv4_address: 172.20.10.10
+
+  ollama:
+    image: ollama/ollama:latest
+    gpus: all
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    networks:
+      monitoring_network:
+        ipv4_address: 172.20.10.20
+
+  ollama-init:
+    image: ollama/ollama:latest
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+      OLLAMA_MODEL: qwen2.5:3b
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        echo "Waiting for Ollama at $$OLLAMA_HOST..."
+        elapsed=0
+        until ollama list >/dev/null 2>&1; do
+          if [ $$elapsed -ge 300 ]; then
+            echo "Ollama timeout"
+            exit 1
+          fi
+          sleep 2
+          elapsed=$$((elapsed + 2))
+        done
+        echo "Pulling $$OLLAMA_MODEL..."
+        ollama pull "$$OLLAMA_MODEL"
+        echo "Model $$OLLAMA_MODEL is ready."
+    restart: "no"
+    networks:
+      monitoring_network:
+        ipv4_address: 172.20.10.21
 
   instagram-bot:
     build:
@@ -181,21 +248,21 @@ services:
     ports:
       - "8011:8011"
     environment:
-      - DATABASE_URL=dbname=db_bot user=postgres password=1qaz!QAZ host=host.docker.internal
-      - API_PORT=8011
-      - LOG_LEVEL=INFO
-      - INSTAGRAM_COLLECT_INTERVAL_SEC=300
-      - PUBLISH_INTERVAL_SEC=60
-      - S3_ENDPOINT_URL=http://minio:9000
-      - S3_BUCKET=uploads
-      - S3_ACCESS_KEY=admin
-      - S3_SECRET_KEY=password123
-      - S3_USE_SSL=false
-      - CHROME_BIN=/usr/bin/chromium
-      - CHROMEDRIVER_PATH=/usr/bin/chromedriver
-      # Fallback вход через браузер при сбое instagrapi (см. INSTAGRAM_SELENIUM_FALLBACK_NETWORK_ERRORS_ONLY)
-      - INSTAGRAM_SELENIUM_FALLBACK_ENABLED=false
-      - INSTAGRAM_SELENIUM_FALLBACK_NETWORK_ERRORS_ONLY=true
+      <<: *ai-environment
+      DATABASE_URL: dbname=db_bot user=postgres password=1qaz!QAZ host=host.docker.internal
+      API_PORT: "8011"
+      LOG_LEVEL: INFO
+      INSTAGRAM_COLLECT_INTERVAL_SEC: "300"
+      PUBLISH_INTERVAL_SEC: "60"
+      S3_ENDPOINT_URL: http://minio:9000
+      S3_BUCKET: uploads
+      S3_ACCESS_KEY: admin
+      S3_SECRET_KEY: password123
+      S3_USE_SSL: "false"
+      CHROME_BIN: /usr/bin/chromium
+      CHROMEDRIVER_PATH: /usr/bin/chromedriver
+      INSTAGRAM_SELENIUM_FALLBACK_ENABLED: "false"
+      INSTAGRAM_SELENIUM_FALLBACK_NETWORK_ERRORS_ONLY: "true"
     networks:
       monitoring_network:
         ipv4_address: 172.20.10.11
@@ -208,18 +275,18 @@ services:
     ports:
       - "8013:8013"
     environment:
-      - DATABASE_URL=dbname=db_bot user=postgres password=1qaz!QAZ host=host.docker.internal
-      - API_PORT=8013
-      - LOG_LEVEL=INFO
-      - CHROME_BIN=/usr/bin/chromium
-      - CHROMEDRIVER_PATH=/usr/bin/chromedriver
-      # Диагностический веб-вход Meta (не заменяет OAuth); по умолчанию выключено
-      - ENABLE_THREADS_SELENIUM_FALLBACK=false
-      - S3_ENDPOINT_URL=http://minio:9000
-      - S3_BUCKET=uploads
-      - S3_ACCESS_KEY=admin
-      - S3_SECRET_KEY=password123
-      - S3_USE_SSL=false
+      <<: *ai-environment
+      DATABASE_URL: dbname=db_bot user=postgres password=1qaz!QAZ host=host.docker.internal
+      API_PORT: "8013"
+      LOG_LEVEL: INFO
+      CHROME_BIN: /usr/bin/chromium
+      CHROMEDRIVER_PATH: /usr/bin/chromedriver
+      ENABLE_THREADS_SELENIUM_FALLBACK: "false"
+      S3_ENDPOINT_URL: http://minio:9000
+      S3_BUCKET: uploads
+      S3_ACCESS_KEY: admin
+      S3_SECRET_KEY: password123
+      S3_USE_SSL: "false"
     networks:
       monitoring_network:
         ipv4_address: 172.20.10.13
@@ -233,16 +300,17 @@ services:
     ports:
       - "8014:8011"
     environment:
-      - DATABASE_URL=dbname=db_bot user=postgres password=1qaz!QAZ host=host.docker.internal
-      - API_PORT=8011
-      - LOG_LEVEL=INFO
-      - CHROME_BIN=/usr/bin/chromium
-      - CHROMEDRIVER_PATH=/usr/bin/chromedriver
-      - S3_ENDPOINT_URL=http://minio:9000
-      - S3_BUCKET=uploads
-      - S3_ACCESS_KEY=admin
-      - S3_SECRET_KEY=password123
-      - S3_USE_SSL=false
+      <<: *ai-environment
+      DATABASE_URL: dbname=db_bot user=postgres password=1qaz!QAZ host=host.docker.internal
+      API_PORT: "8011"
+      LOG_LEVEL: INFO
+      CHROME_BIN: /usr/bin/chromium
+      CHROMEDRIVER_PATH: /usr/bin/chromedriver
+      S3_ENDPOINT_URL: http://minio:9000
+      S3_BUCKET: uploads
+      S3_ACCESS_KEY: admin
+      S3_SECRET_KEY: password123
+      S3_USE_SSL: "false"
     shm_size: "2gb"
     networks:
       monitoring_network:
@@ -253,32 +321,49 @@ services:
       context: .
       dockerfile: ./tg-bot/Dockerfile
     depends_on:
-      - minio
+      minio:
+        condition: service_started
+      ollama-init:
+        condition: service_completed_successfully
     ports:
       - "8004:8004"
     environment:
-      - CORE_SERVICE_URL=http://core:8002
-      - API_GATEWAY_URL=http://gateway:8000
-      - DATABASE_URL=dbname=db_bot user=postgres password=1qaz!QAZ host=host.docker.internal
-      - S3_ENDPOINT_URL=http://minio:9000
-      - S3_BUCKET=uploads
-      - S3_ACCESS_KEY=admin
-      - S3_SECRET_KEY=password123
-      - S3_USE_SSL=false
-      - LOG_BOT_ACTIONS=false
-      - RELOAD_PROFILES_INTERVAL_SEC=300
-      - MAX_CONCURRENT_CLIENTS=20
-      - CHROME_BIN=/usr/bin/chromium
-      - CHROMEDRIVER_PATH=/usr/bin/chromedriver
-      # Игровой бот (BotFather token); пусто — только Telethon + API без aiogram polling.
-      - GAME_BOT_TOKEN=
-      - GAME_ADMIN_TELEGRAM_IDS=
-      - GAME_ADMIN_API_TOKEN=
+      <<: *ai-environment
+      CORE_SERVICE_URL: http://core:8002
+      API_GATEWAY_URL: http://gateway:8000
+      DATABASE_URL: dbname=db_bot user=postgres password=1qaz!QAZ host=host.docker.internal
+      S3_ENDPOINT_URL: http://minio:9000
+      S3_BUCKET: uploads
+      S3_ACCESS_KEY: admin
+      S3_SECRET_KEY: password123
+      S3_USE_SSL: "false"
+      LOG_BOT_ACTIONS: "false"
+      RELOAD_PROFILES_INTERVAL_SEC: "300"
+      MAX_CONCURRENT_CLIENTS: "20"
+      CHROME_BIN: /usr/bin/chromium
+      CHROMEDRIVER_PATH: /usr/bin/chromedriver
     volumes:
       - tg-bot-sessions:/app/sessions
     networks:
       monitoring_network:
         ipv4_address: 172.20.10.4
+
+  tg-game:
+    build:
+      context: .
+      dockerfile: ./tg-game/Dockerfile
+    ports:
+      - "8015:8015"
+    environment:
+      DATABASE_URL: dbname=db_bot user=postgres password=1qaz!QAZ host=host.docker.internal
+      API_PORT: "8015"
+      LOG_LEVEL: INFO
+      GAME_BOT_TOKEN: "6951168264:AAGaXyK4Bi3jiyZHm8yiN4LI6cg2UZ0pPV0"
+      GAME_ADMIN_TELEGRAM_IDS: "426287794"
+      GAME_ADMIN_API_TOKEN: "122"
+    networks:
+      monitoring_network:
+        ipv4_address: 172.20.10.8
 
   vk-bot:
     build: 
@@ -290,21 +375,22 @@ services:
     ports:
       - "8005:8005"
     environment:
-      - CORE_SERVICE_URL=http://core:8002
-      - API_GATEWAY_URL=http://gateway:8000
-      - DATABASE_URL=dbname=db_bot user=postgres password=1qaz!QAZ host=host.docker.internal
-      - S3_ENDPOINT_URL=http://minio:9000
-      - S3_BUCKET=uploads
-      - S3_ACCESS_KEY=admin
-      - S3_SECRET_KEY=password123
-      - S3_USE_SSL=false
-      - LOG_BOT_ACTIONS=false
-      - RELOAD_PROFILES_INTERVAL_SEC=300
-      - MAX_CONCURRENT_CLIENTS=20
-      - CHROME_BIN=/usr/bin/chromium
-      - CHROMEDRIVER_PATH=/usr/bin/chromedriver
-      - SELENIUM_HEADLESS=true
-      - SELENIUM_PAGE_LOAD_TIMEOUT=90
+      <<: *ai-environment
+      CORE_SERVICE_URL: http://core:8002
+      API_GATEWAY_URL: http://gateway:8000
+      DATABASE_URL: dbname=db_bot user=postgres password=1qaz!QAZ host=host.docker.internal
+      S3_ENDPOINT_URL: http://minio:9000
+      S3_BUCKET: uploads
+      S3_ACCESS_KEY: admin
+      S3_SECRET_KEY: password123
+      S3_USE_SSL: "false"
+      LOG_BOT_ACTIONS: "false"
+      RELOAD_PROFILES_INTERVAL_SEC: "300"
+      MAX_CONCURRENT_CLIENTS: "20"
+      CHROME_BIN: /usr/bin/chromium
+      CHROMEDRIVER_PATH: /usr/bin/chromedriver
+      SELENIUM_HEADLESS: "true"
+      SELENIUM_PAGE_LOAD_TIMEOUT: "90"
     volumes:
       - tg-bot-sessions:/app/sessions
     networks:
@@ -318,15 +404,16 @@ services:
     ports:
       - "8012:8012"
     environment:
-      - DATABASE_URL=dbname=db_bot user=postgres password=1qaz!QAZ host=host.docker.internal
-      - API_PORT=8012
-      - LOG_LEVEL=INFO
-      - S3_ENDPOINT_URL=http://minio:9000
-      - S3_BUCKET=uploads
-      - S3_ACCESS_KEY=admin
-      - S3_SECRET_KEY=password123
-      - S3_USE_SSL=false
-      - S3_DIAG_PREFIX=dzen/diag
+      <<: *ai-environment
+      DATABASE_URL: dbname=db_bot user=postgres password=1qaz!QAZ host=host.docker.internal
+      API_PORT: "8012"
+      LOG_LEVEL: INFO
+      S3_ENDPOINT_URL: http://minio:9000
+      S3_BUCKET: uploads
+      S3_ACCESS_KEY: admin
+      S3_SECRET_KEY: password123
+      S3_USE_SSL: "false"
+      S3_DIAG_PREFIX: dzen/diag
     networks:
       monitoring_network:
         ipv4_address: 172.20.10.12
@@ -352,6 +439,7 @@ volumes:
   tg-bot-sessions:
   tg-bot-uploads:
   instagram-bot-uploads:
+  ollama_data:
 
 networks:
   monitoring_network:

@@ -1,5 +1,7 @@
 """Роутер админ-эндпоинтов: статус сервисов и обзор таблиц постов."""
 
+import os
+import time
 from typing import Any, Dict, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
@@ -8,6 +10,8 @@ from services.admin_service import admin_service
 from services.post_service import post_service
 from storage_client import get_storage
 from schemas import (
+    AiCheckRequest,
+    AiCheckResponse,
     ServicesStatusResponse,
     PostsTablesResponse,
     PostsListResponse,
@@ -253,3 +257,26 @@ async def delete_storage_file(
             detail=f"Failed to delete object: {e!s}",
         ) from e
     return StorageDeleteResponse(ok=True, key=storage_key)
+
+
+@router.post("/checks/ai", response_model=AiCheckResponse)
+async def run_ai_check(
+    body: AiCheckRequest,
+    admin_user: Dict[str, Any] = Depends(get_admin_user),
+):
+    """Отправляет текст в AI-сервис и возвращает ответ. Только admin."""
+    del admin_user
+    from shared import ai_client
+
+    started = time.perf_counter()
+    try:
+        reply = await ai_client.complete(body.text.strip())
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"AI request failed: {exc!s}",
+        ) from exc
+
+    latency_ms = (time.perf_counter() - started) * 1000
+    model = os.getenv("AI_MODEL", "qwen2.5:3b")
+    return AiCheckResponse(reply=reply, model=model, latency_ms=round(latency_ms, 1))

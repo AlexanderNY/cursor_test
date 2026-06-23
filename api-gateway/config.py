@@ -9,6 +9,9 @@ class Settings(BaseSettings):
     CORE_SERVICE_URL: str = "http://172.20.10.2:8002" #"http://localhost:8002"
     SCHEDULER_SERVICE_URL: str = "http://172.20.10.3:8003" #"http://localhost:8003"
     TG_BOT_SERVICE_URL: str = "http://172.20.10.4:8004"
+    TG_GAME_SERVICE_URL: str = "http://172.20.10.8:8015"
+    # Токен для проксирования админ-API игры (заголовок X-Game-Admin-Token → tg-game).
+    GAME_ADMIN_API_TOKEN: str = ""
     # th-bot: порт задайте через env (docker-compose часто 8013)
     THREADS_BOT_SERVICE_URL: str = "http://th-bot:8013"
     VK_BOT_SERVICE_URL: str = "http://172.20.10.5:8005"
@@ -23,7 +26,7 @@ class Settings(BaseSettings):
     
     # CORS настройки (в K8s/Minikube задать через env, например через запятую)
     CORS_ORIGINS: str = "http://localhost:5173,http://localhost:8100,http://172.20.10.100:8100"
-    CORS_ALLOWED_METHODS: list[str] = ["GET", "POST", "DELETE"]
+    CORS_ALLOWED_METHODS: list[str] = ["GET", "POST", "PUT", "PATCH", "DELETE"]
     CORS_ALLOW_CREDENTIALS: bool = True
     CORS_ALLOW_HEADERS: list[str] = ["*"]
     
@@ -67,6 +70,7 @@ RATE_LIMITS_CONFIG: dict[str, dict[str, int]] = {
     "/core/admin/services-status": {"requests": 60, "window_seconds": 60},
     "/core/admin/posts-tables": {"requests": 60, "window_seconds": 60},
     "/core/admin/posts": {"requests": 60, "window_seconds": 60},
+    "/core/admin/checks/ai": {"requests": 20, "window_seconds": 60},
     "/auth/users": {"requests": 30, "window_seconds": 60},
     "/auth/users/export": {"requests": 20, "window_seconds": 60},
     "/auth/billing/webhooks/stripe": {"requests": 200, "window_seconds": 60},

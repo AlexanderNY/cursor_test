@@ -13,6 +13,7 @@ import type {
   StorageDeleteResponse,
   StoragePresignedUrlResponse,
   RuntimeLocationResponse,
+  AiCheckResponse,
 } from '@/types/core'
 
 export const coreService = {
@@ -185,6 +186,15 @@ export const coreService = {
   async getRuntimeLocation(): Promise<RuntimeLocationResponse> {
     try {
       const response = await apiClient.get<RuntimeLocationResponse>('/core/admin/runtime-location')
+      return response.data
+    } catch (error) {
+      throw new Error(getErrorMessage(error))
+    }
+  },
+
+  async runAiCheck(text: string): Promise<AiCheckResponse> {
+    try {
+      const response = await apiClient.post<AiCheckResponse>('/core/admin/checks/ai', { text })
       return response.data
     } catch (error) {
       throw new Error(getErrorMessage(error))

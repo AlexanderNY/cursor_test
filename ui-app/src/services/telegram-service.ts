@@ -1,6 +1,6 @@
 import { apiClient, getErrorMessage } from './api-client'
 import axios from 'axios'
-import type { TelegramConfig, TelegramPost, TelegramPostListItem, TelegramPostFull } from '@/types/telegram'
+import type { TelegramConfig, TelegramPost, TelegramPostListItem, TelegramPostFull, TgAnalyticsOverview, TgAnalyticsChannelItem, TgAnalyticsKeywordItem, TgAnalyticsAlertItem, TgAnalyticsTimelinePoint, TgAnalyticsSentimentBreakdown } from '@/types/telegram'
 import type { TargetSocialNetworks } from '@/components/target-social-networks'
 
 export interface TgAuthStatus {
@@ -153,6 +153,36 @@ export const telegramService = {
   /** Список доступных клиенту каналов (id, title). Требует авторизации и запущенного tg-bot. */
   async getAvailableChannels(userId: number): Promise<Array<{ id: number; title: string }>> {
     const response = await apiClient.get<Array<{ id: number; title: string }>>(`/tg-bot/channels/${userId}`)
+    return response.data
+  },
+
+  async getAnalyticsOverview(period = '7d'): Promise<TgAnalyticsOverview> {
+    const response = await apiClient.get<TgAnalyticsOverview>(`/tg/analytics/overview?period=${period}`)
+    return response.data
+  },
+
+  async getAnalyticsChannels(period = '7d', limit = 10): Promise<TgAnalyticsChannelItem[]> {
+    const response = await apiClient.get<TgAnalyticsChannelItem[]>(`/tg/analytics/channels?period=${period}&limit=${limit}`)
+    return response.data
+  },
+
+  async getAnalyticsKeywords(period = '7d', limit = 20): Promise<TgAnalyticsKeywordItem[]> {
+    const response = await apiClient.get<TgAnalyticsKeywordItem[]>(`/tg/analytics/keywords?period=${period}&limit=${limit}`)
+    return response.data
+  },
+
+  async getAnalyticsAlerts(period = '7d', limit = 10): Promise<TgAnalyticsAlertItem[]> {
+    const response = await apiClient.get<TgAnalyticsAlertItem[]>(`/tg/analytics/alerts?period=${period}&limit=${limit}`)
+    return response.data
+  },
+
+  async getAnalyticsTimeline(period = '7d', granularity = 'hour'): Promise<TgAnalyticsTimelinePoint[]> {
+    const response = await apiClient.get<TgAnalyticsTimelinePoint[]>(`/tg/analytics/timeline?period=${period}&granularity=${granularity}`)
+    return response.data
+  },
+
+  async getAnalyticsSentiment(period = '7d'): Promise<TgAnalyticsSentimentBreakdown> {
+    const response = await apiClient.get<TgAnalyticsSentimentBreakdown>(`/tg/analytics/sentiment?period=${period}`)
     return response.data
   },
 }

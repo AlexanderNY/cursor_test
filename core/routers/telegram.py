@@ -9,6 +9,7 @@ from fastapi.responses import FileResponse, RedirectResponse
 
 from services.profile_service import profile_service
 from services.post_service import post_service
+from services.tg_analytics_service import tg_analytics_service
 from schemas import TelegramProfileCreate
 from storage_client import get_storage
 
@@ -73,6 +74,12 @@ async def get_tg_profile(x_user_id: Optional[str] = Header(None)):
         "static_html_content": None,
         "alert_enabled": False,
         "alert_rules": [],
+        "summarize_enabled": False,
+        "summarize_min_length": 500,
+        "digest_interval_min": 30,
+        "digest_channel": None,
+        "classification_enabled": False,
+        "classification_categories": ["новости", "реклама", "технологии", "финансы", "другое"],
     }
 
 
@@ -262,3 +269,61 @@ async def get_tg_upload(filename: str):
     if not file_path.is_file():
         raise HTTPException(status_code=404, detail="File not found")
     return FileResponse(file_path, filename=filename)
+
+
+@router.get("/analytics/overview")
+async def get_tg_analytics_overview(
+    period: str = "7d",
+    x_user_id: Optional[str] = Header(None),
+):
+    user_id = get_user_id_from_header(x_user_id)
+    return await tg_analytics_service.get_overview(user_id, period)
+
+
+@router.get("/analytics/channels")
+async def get_tg_analytics_channels(
+    period: str = "7d",
+    limit: int = 10,
+    x_user_id: Optional[str] = Header(None),
+):
+    user_id = get_user_id_from_header(x_user_id)
+    return await tg_analytics_service.get_channels(user_id, period, limit)
+
+
+@router.get("/analytics/keywords")
+async def get_tg_analytics_keywords(
+    period: str = "7d",
+    limit: int = 20,
+    x_user_id: Optional[str] = Header(None),
+):
+    user_id = get_user_id_from_header(x_user_id)
+    return await tg_analytics_service.get_keywords(user_id, period, limit)
+
+
+@router.get("/analytics/alerts")
+async def get_tg_analytics_alerts(
+    period: str = "7d",
+    limit: int = 50,
+    x_user_id: Optional[str] = Header(None),
+):
+    user_id = get_user_id_from_header(x_user_id)
+    return await tg_analytics_service.get_alerts(user_id, period, limit)
+
+
+@router.get("/analytics/timeline")
+async def get_tg_analytics_timeline(
+    period: str = "7d",
+    granularity: str = "hour",
+    x_user_id: Optional[str] = Header(None),
+):
+    user_id = get_user_id_from_header(x_user_id)
+    return await tg_analytics_service.get_timeline(user_id, period, granularity)
+
+
+@router.get("/analytics/sentiment")
+async def get_tg_analytics_sentiment(
+    period: str = "7d",
+    x_user_id: Optional[str] = Header(None),
+):
+    user_id = get_user_id_from_header(x_user_id)
+    return await tg_analytics_service.get_sentiment_breakdown(user_id, period)

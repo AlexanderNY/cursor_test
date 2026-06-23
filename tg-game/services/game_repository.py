@@ -7,7 +7,12 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from database import get_db_connection, release_db_connection
+from database import (
+    commit_connection,
+    get_db_connection,
+    release_db_connection,
+    rollback_connection,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +69,7 @@ class GameRepository:
                 )
                 r = await cur.fetchone()
                 out = int(r[0]) if r else None
-                await conn.commit()
+                await commit_connection(conn)
                 return out
         finally:
             await release_db_connection(conn)
@@ -93,10 +98,10 @@ class GameRepository:
                     (telegram_user_id, username, first_name, is_admin),
                 )
                 row = await cur.fetchone()
-                await conn.commit()
+                await commit_connection(conn)
                 return int(row[0])
         except Exception:
-            await conn.rollback()
+            await rollback_connection(conn)
             raise
         finally:
             await release_db_connection(conn)
@@ -124,7 +129,7 @@ class GameRepository:
                     )
                     for r in rows
                 ]
-                await conn.commit()
+                await commit_connection(conn)
                 return result
         finally:
             await release_db_connection(conn)
@@ -142,7 +147,7 @@ class GameRepository:
                 )
                 r = await cur.fetchone()
                 if not r:
-                    await conn.commit()
+                    await commit_connection(conn)
                     return None
                 row = GameModeRow(
                     id=int(r[0]),
@@ -151,7 +156,7 @@ class GameRepository:
                     is_active=bool(r[3]),
                     questions_per_game=int(r[4]),
                 )
-                await conn.commit()
+                await commit_connection(conn)
                 return row
         finally:
             await release_db_connection(conn)
@@ -176,7 +181,7 @@ class GameRepository:
                 )
                 rows = await cur.fetchall()
                 out = [int(r[0]) for r in rows]
-                await conn.commit()
+                await commit_connection(conn)
                 return out
         finally:
             await release_db_connection(conn)
@@ -198,7 +203,7 @@ class GameRepository:
                 )
                 r = await cur.fetchone()
                 if not r:
-                    await conn.commit()
+                    await commit_connection(conn)
                     return None
                 row = GameSessionRow(
                     id=int(r[0]),
@@ -210,7 +215,7 @@ class GameRepository:
                     total_questions=int(r[6]),
                     current_step=int(r[7]),
                 )
-                await conn.commit()
+                await commit_connection(conn)
                 return row
         finally:
             await release_db_connection(conn)
@@ -258,10 +263,10 @@ class GameRepository:
                         """,
                         (session_id, step, qid),
                     )
-                await conn.commit()
+                await commit_connection(conn)
                 return session_id
         except Exception:
-            await conn.rollback()
+            await rollback_connection(conn)
             raise
         finally:
             await release_db_connection(conn)
@@ -280,7 +285,7 @@ class GameRepository:
                 )
                 r = await cur.fetchone()
                 if not r:
-                    await conn.commit()
+                    await commit_connection(conn)
                     return None
                 row = GameSessionRow(
                     id=int(r[0]),
@@ -292,7 +297,7 @@ class GameRepository:
                     total_questions=int(r[6]),
                     current_step=int(r[7]),
                 )
-                await conn.commit()
+                await commit_connection(conn)
                 return row
         finally:
             await release_db_connection(conn)
@@ -312,7 +317,7 @@ class GameRepository:
                 )
                 r = await cur.fetchone()
                 qid = int(r[0]) if r else None
-                await conn.commit()
+                await commit_connection(conn)
                 return qid
         finally:
             await release_db_connection(conn)
@@ -332,7 +337,7 @@ class GameRepository:
                 )
                 qr = await cur.fetchone()
                 if not qr:
-                    await conn.commit()
+                    await commit_connection(conn)
                     return None, []
 
                 question = GameQuestionRow(
@@ -363,7 +368,7 @@ class GameRepository:
                     )
                     for o in opts
                 ]
-                await conn.commit()
+                await commit_connection(conn)
                 return question, options
         finally:
             await release_db_connection(conn)
@@ -381,7 +386,7 @@ class GameRepository:
                 )
                 o = await cur.fetchone()
                 if not o:
-                    await conn.commit()
+                    await commit_connection(conn)
                     return None
                 row = GameOptionRow(
                     id=int(o[0]),
@@ -390,7 +395,7 @@ class GameRepository:
                     option_text=str(o[3]),
                     is_correct=bool(o[4]),
                 )
-                await conn.commit()
+                await commit_connection(conn)
                 return row
         finally:
             await release_db_connection(conn)
@@ -417,12 +422,12 @@ class GameRepository:
                 )
                 srow = await cur.fetchone()
                 if not srow:
-                    await conn.rollback()
+                    await rollback_connection(conn)
                     return {"error": "session_not_found"}
 
                 _sid, status, score, correct_count, total_questions, current_step, started_at = srow
                 if status != "in_progress":
-                    await conn.rollback()
+                    await rollback_connection(conn)
                     return {"error": "session_not_active", "status": status}
 
                 await cur.execute(
@@ -434,7 +439,7 @@ class GameRepository:
                 )
                 expected_q = await cur.fetchone()
                 if not expected_q or int(expected_q[0]) != question_id:
-                    await conn.rollback()
+                    await rollback_connection(conn)
                     return {"error": "wrong_question_for_step"}
 
                 await cur.execute(
@@ -460,7 +465,7 @@ class GameRepository:
                     )
                     prev = await cur.fetchone()
                     is_correct = bool(prev[0]) if prev else False
-                    await conn.rollback()
+                    await rollback_connection(conn)
                     return {
                         "inserted": False,
                         "is_correct": is_correct,
@@ -514,7 +519,7 @@ class GameRepository:
                         (new_score, new_correct, new_step, session_id),
                     )
 
-                await conn.commit()
+                await commit_connection(conn)
                 return {
                     "inserted": True,
                     "is_correct": is_correct,
@@ -528,7 +533,7 @@ class GameRepository:
         except Exception as e:
             logger.exception("submit_answer_and_advance failed: %s", e)
             try:
-                await conn.rollback()
+                await rollback_connection(conn)
             except Exception:
                 pass
             raise
@@ -577,7 +582,7 @@ class GameRepository:
                     }
                     for r in rows
                 ]
-                await conn.commit()
+                await commit_connection(conn)
                 return result
         finally:
             await release_db_connection(conn)
@@ -604,10 +609,10 @@ class GameRepository:
                     (code, title, is_active, questions_per_game),
                 )
                 row = await cur.fetchone()
-                await conn.commit()
+                await commit_connection(conn)
                 return int(row[0])
         except Exception:
-            await conn.rollback()
+            await rollback_connection(conn)
             raise
         finally:
             await release_db_connection(conn)
@@ -641,7 +646,7 @@ class GameRepository:
                     )
                     for r in rows
                 ]
-                await conn.commit()
+                await commit_connection(conn)
                 return result
         finally:
             await release_db_connection(conn)
@@ -669,17 +674,17 @@ class GameRepository:
                     fields.append("questions_per_game = %s")
                     vals.append(questions_per_game)
                 if not fields:
-                    await conn.commit()
+                    await commit_connection(conn)
                     return True
                 vals.append(mode_id)
                 await cur.execute(
                     f"UPDATE game_modes SET {', '.join(fields)} WHERE id = %s",
                     vals,
                 )
-                await conn.commit()
+                await commit_connection(conn)
                 return True
         except Exception:
-            await conn.rollback()
+            await rollback_connection(conn)
             raise
         finally:
             await release_db_connection(conn)
@@ -707,7 +712,7 @@ class GameRepository:
                     }
                     for r in rows
                 ]
-                await conn.commit()
+                await commit_connection(conn)
                 return result
         finally:
             await release_db_connection(conn)
@@ -752,10 +757,10 @@ class GameRepository:
                             bool(opt["is_correct"]),
                         ),
                     )
-                await conn.commit()
+                await commit_connection(conn)
                 return qid
         except Exception:
-            await conn.rollback()
+            await rollback_connection(conn)
             raise
         finally:
             await release_db_connection(conn)
@@ -787,17 +792,17 @@ class GameRepository:
                     fields.append("is_active = %s")
                     vals.append(is_active)
                 if not fields:
-                    await conn.commit()
+                    await commit_connection(conn)
                     return True
                 vals.append(question_id)
                 await cur.execute(
                     f"UPDATE game_questions SET {', '.join(fields)} WHERE id = %s",
                     vals,
                 )
-                await conn.commit()
+                await commit_connection(conn)
                 return True
         except Exception:
-            await conn.rollback()
+            await rollback_connection(conn)
             raise
         finally:
             await release_db_connection(conn)
@@ -829,9 +834,9 @@ class GameRepository:
                             bool(opt["is_correct"]),
                         ),
                     )
-                await conn.commit()
+                await commit_connection(conn)
         except Exception:
-            await conn.rollback()
+            await rollback_connection(conn)
             raise
         finally:
             await release_db_connection(conn)

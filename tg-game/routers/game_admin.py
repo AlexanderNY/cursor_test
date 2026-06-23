@@ -13,6 +13,7 @@ from schemas_game import (
     GameModeOut,
     GameModeUpdate,
     GameQuestionCreate,
+    GameQuestionDetailOut,
     GameQuestionOptionsReplace,
     GameQuestionOut,
     GameQuestionUpdate,
@@ -130,6 +131,39 @@ async def create_question(body: GameQuestionCreate) -> GameQuestionOut:
     if not found:
         raise HTTPException(status_code=500, detail="Question not found after create")
     return GameQuestionOut(**found)
+
+
+@router.get(
+    "/questions/{question_id}",
+    response_model=GameQuestionDetailOut,
+    dependencies=[Depends(verify_game_admin_token)],
+)
+async def get_question(question_id: int) -> GameQuestionDetailOut:
+    question, options = await game_repository.get_question_with_options(question_id)
+    if not question:
+        raise HTTPException(status_code=404, detail="Question not found")
+
+    rows = await game_repository.admin_list_questions(question.mode_id)
+    meta = next((r for r in rows if r["id"] == question_id), None)
+    is_active = bool(meta["is_active"]) if meta else True
+
+    return GameQuestionDetailOut(
+        id=question.id,
+        mode_id=question.mode_id,
+        prompt_text=question.prompt_text,
+        image_file_id=question.image_file_id,
+        image_url=question.image_url,
+        is_active=is_active,
+        options=[
+            {
+                "id": o.id,
+                "option_index": o.option_index,
+                "option_text": o.option_text,
+                "is_correct": o.is_correct,
+            }
+            for o in options
+        ],
+    )
 
 
 @router.patch(

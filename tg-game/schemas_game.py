@@ -86,6 +86,17 @@ class GameQuestionOut(BaseModel):
     is_active: bool
 
 
+class GameOptionOut(BaseModel):
+    id: int
+    option_index: int
+    option_text: str
+    is_correct: bool
+
+
+class GameQuestionDetailOut(GameQuestionOut):
+    options: list[GameOptionOut]
+
+
 class LeaderboardEntryOut(BaseModel):
     telegram_user_id: int
     username: Optional[str] = None

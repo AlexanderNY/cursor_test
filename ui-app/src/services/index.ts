@@ -11,5 +11,6 @@ export { customURLService } from './custom-url-service'
 export { createPostService } from './create-post-service'
 export { notificationsService } from './notifications-service'
 export { feedbackService } from './feedback-service'
+export { gameService } from './game-service'
 
 

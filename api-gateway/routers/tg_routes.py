@@ -148,3 +148,51 @@ async def get_tg_upload(
     Требует JWT аутентификации.
     """
     return await forward_to_core(f"/tg/uploads/{filename}", request)
+
+
+@router.get("/analytics/overview")
+async def get_tg_analytics_overview(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    return await forward_to_core("/tg/analytics/overview", request)
+
+
+@router.get("/analytics/channels")
+async def get_tg_analytics_channels(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    return await forward_to_core("/tg/analytics/channels", request)
+
+
+@router.get("/analytics/keywords")
+async def get_tg_analytics_keywords(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    return await forward_to_core("/tg/analytics/keywords", request)
+
+
+@router.get("/analytics/alerts")
+async def get_tg_analytics_alerts(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    return await forward_to_core("/tg/analytics/alerts", request)
+
+
+@router.get("/analytics/timeline")
+async def get_tg_analytics_timeline(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    return await forward_to_core("/tg/analytics/timeline", request)
+
+
+@router.get("/analytics/sentiment")
+async def get_tg_analytics_sentiment(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    return await forward_to_core("/tg/analytics/sentiment", request)
