@@ -41,3 +41,37 @@ export function platformStatusCell(p: PlatformMetric, col: string): number {
 /** Не перезапрашивать те же данные при переключении вкладок чаще этого интервала (мс). */
 export const STALE_SERVICES_STATUS_MS = 30_000
 export const STALE_POSTS_TABLES_MS = 60_000
+
+export const CRITICAL_SERVICES = ['collector', 'processor', 'scheduler'] as const
+
+export function isCriticalService(name: string): boolean {
+  return (CRITICAL_SERVICES as readonly string[]).includes(name)
+}
+
+export function isCycleStale(
+  lastRunAt: string | null | undefined,
+  intervalSec: number | null | undefined,
+  nowMs: number = Date.now(),
+): boolean {
+  if (!lastRunAt || !intervalSec || intervalSec <= 0) {
+    return false
+  }
+  const lastMs = new Date(lastRunAt).getTime()
+  if (Number.isNaN(lastMs)) {
+    return false
+  }
+  return nowMs - lastMs > intervalSec * 2 * 1000
+}
+
+export function formatLoopState(loop?: { loop_active?: boolean; cycle_in_progress?: boolean } | null): string {
+  if (!loop) {
+    return '—'
+  }
+  if (loop.cycle_in_progress) {
+    return 'выполняется'
+  }
+  if (loop.loop_active) {
+    return 'активен'
+  }
+  return 'остановлен'
+}

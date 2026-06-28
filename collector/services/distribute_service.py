@@ -33,6 +33,7 @@ class DistributeService:
         self.last_run_at: datetime | None = None
         self.total_distributed: int = 0
         self.last_cycle_distributed: int = 0
+        self.cycle_in_progress: bool = False
 
     async def run_distribute_cycle(self) -> int:
         """Выполняет один цикл распределения.
@@ -45,6 +46,13 @@ class DistributeService:
         Returns:
             Количество распределённых постов за цикл.
         """
+        self.cycle_in_progress = True
+        try:
+            return await self._run_distribute_cycle_body()
+        finally:
+            self.cycle_in_progress = False
+
+    async def _run_distribute_cycle_body(self) -> int:
         batch_size = settings.DISTRIBUTE_BATCH_SIZE
 
         async with get_db_connection() as conn:

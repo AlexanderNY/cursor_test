@@ -166,6 +166,14 @@ class TelegramProfileBase(BaseModel):
     summarize_min_length: int = Field(default=500, ge=100, le=10000)
     digest_interval_min: int = Field(default=30, ge=5, le=1440)
     digest_channel: Optional[str] = None
+    digest_mode: str = Field(default="per_channel")  # per_channel | combined
+
+    @field_validator("digest_mode", mode="before")
+    @classmethod
+    def normalize_digest_mode(cls, value: Any) -> str:
+        if value in ("per_channel", "combined"):
+            return value
+        return "per_channel"
     classification_enabled: bool = False
     classification_categories: List[str] = Field(
         default_factory=lambda: ["новости", "реклама", "технологии", "финансы", "другое"]
@@ -997,6 +1005,8 @@ class LoopStatus(BaseModel):
     last_run_at: Optional[datetime] = None
     total_processed: int = 0
     last_cycle_count: int = 0
+    loop_active: bool = False
+    cycle_in_progress: bool = False
 
 
 class CollectorStatusDetail(BaseModel):
@@ -1027,6 +1037,8 @@ class SchedulerStatusDetail(BaseModel):
     version: str = "1.0.0"
     poll_interval_sec: Optional[int] = None
     last_poll_at: Optional[datetime] = None
+    poll_loop_active: bool = False
+    poll_in_progress: bool = False
     current_time: Optional[str] = None
     error: Optional[str] = None
 

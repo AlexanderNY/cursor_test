@@ -81,15 +81,17 @@ export function Sidebar() {
       </nav>
 
       <div className="p-4 border-t border-[var(--border-color)] space-y-3">
-        <Link
+        <NavLink
           to="/feedback"
-          className="nav-link w-full justify-center"
+          className={({ isActive }) =>
+            `nav-link-feedback w-full justify-center ${isActive ? 'nav-link-feedback-active' : ''}`
+          }
         >
           <svg xmlns="http://www.w3.org/2000/svg" className={iconClassName} fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
           </svg>
           <span>Обратная связь</span>
-        </Link>
+        </NavLink>
         <p className="text-xs text-[var(--text-muted)] text-center">
           © 2026 Control Panel ·{' '}
           <Link to="/about" className="text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/50 rounded">About</Link>

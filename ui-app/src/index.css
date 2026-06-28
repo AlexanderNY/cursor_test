@@ -84,6 +84,20 @@
     @apply bg-gradient-to-r from-primary-500/10 to-accent-500/10 
            text-primary-400 border-l-2 border-primary-500;
   }
+
+  .nav-link-feedback {
+    @apply flex items-center gap-3 px-4 py-3 rounded-xl font-semibold
+           bg-gradient-to-r from-primary-500 to-accent-500
+           text-white
+           hover:from-primary-600 hover:to-accent-600
+           shadow-lg shadow-primary-500/30 hover:shadow-primary-500/45
+           transition-all duration-200
+           focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-secondary)];
+  }
+
+  .nav-link-feedback-active {
+    @apply ring-2 ring-white/40 shadow-xl shadow-primary-500/40;
+  }
 }
 
 @layer utilities {

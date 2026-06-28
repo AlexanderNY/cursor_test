@@ -106,6 +106,7 @@ RATE_LIMITS_CONFIG: dict[str, dict[str, int]] = {
     "/instagram-bot/login-test": {"requests": 10, "window_seconds": 300},
     "/threads-bot/selenium/attempt": {"requests": 6, "window_seconds": 600},
     "/th-bot/selenium/attempt": {"requests": 6, "window_seconds": 600},
+    "/tg/game/admin": {"requests": 500, "window_seconds": 60},
     "default": {
         "requests": settings.DEFAULT_RATE_LIMIT_REQUESTS,
         "window_seconds": settings.DEFAULT_RATE_LIMIT_WINDOW_SECONDS

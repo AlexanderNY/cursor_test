@@ -100,6 +100,8 @@ export interface LoopStatus {
   last_run_at?: string | null
   total_processed: number
   last_cycle_count: number
+  loop_active?: boolean
+  cycle_in_progress?: boolean
 }
 
 export interface CollectorFunction {
@@ -153,6 +155,8 @@ export interface SchedulerStatusDetail {
   poll_interval_sec?: number | null
   notify_on_change_only?: boolean | null
   last_poll_at?: string | null
+  poll_loop_active?: boolean
+  poll_in_progress?: boolean
   current_time?: string | null
   started_at?: string | null
   schedule_functions?: ScheduleFunction[] | null

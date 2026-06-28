@@ -49,6 +49,9 @@ export function useChecksInfra() {
   const [isRunningDistribute, setIsRunningDistribute] = useState(false)
   const [distributeMessage, setDistributeMessage] = useState('')
   const [distributeError, setDistributeError] = useState('')
+  const [isRunningSchedulerPoll, setIsRunningSchedulerPoll] = useState(false)
+  const [schedulerPollMessage, setSchedulerPollMessage] = useState('')
+  const [schedulerPollError, setSchedulerPollError] = useState('')
 
   async function handleLoadServicesStatus() {
     setServicesStatusError('')
@@ -124,12 +127,18 @@ export function useChecksInfra() {
       if (data.status === 'success') {
         setCollectMessage(`Собрано постов: ${data.count}. ${data.message}`)
         lastPostsTablesLoadedAt.current = null
-        await handleRunPostingDiagnostics()
+        await handleLoadServicesStatus()
+        if (section === 'posting-diagnostics') {
+          await handleRunPostingDiagnostics()
+        }
       } else if (data.status === 'partial') {
         setCollectMessage(`Собрано постов: ${data.count}. ${data.message}`)
         if (data.errors?.length) setCollectError(data.errors.join('; '))
         lastPostsTablesLoadedAt.current = null
-        await handleRunPostingDiagnostics()
+        await handleLoadServicesStatus()
+        if (section === 'posting-diagnostics') {
+          await handleRunPostingDiagnostics()
+        }
       } else {
         setCollectError(data.message || 'Ошибка цикла сбора')
         if (data.errors?.length) setCollectError((prev) => prev + '\n' + data.errors!.join('\n'))
@@ -150,7 +159,10 @@ export function useChecksInfra() {
       if (data.status === 'success') {
         setDistributeMessage(`Распределено постов: ${data.count}. ${data.message}`)
         lastPostsTablesLoadedAt.current = null
-        await handleRunPostingDiagnostics()
+        await handleLoadServicesStatus()
+        if (section === 'posting-diagnostics') {
+          await handleRunPostingDiagnostics()
+        }
       } else {
         setDistributeError(data.message || 'Ошибка цикла распределения')
       }
@@ -158,6 +170,29 @@ export function useChecksInfra() {
       setDistributeError(error instanceof Error ? error.message : 'Ошибка запуска распределения')
     } finally {
       setIsRunningDistribute(false)
+    }
+  }
+
+  async function handleRunSchedulerPoll() {
+    setSchedulerPollError('')
+    setSchedulerPollMessage('')
+    setIsRunningSchedulerPoll(true)
+    try {
+      const data = await coreService.startDiscovery()
+      if (data.status === 'success') {
+        setSchedulerPollMessage(
+          data.changed
+            ? `Опрос расписаний завершён. Обнаружены изменения. ${data.message}`
+            : `Опрос расписаний завершён. Изменений нет. ${data.message}`,
+        )
+        await handleLoadServicesStatus()
+      } else {
+        setSchedulerPollError(data.message || 'Ошибка опроса расписаний')
+      }
+    } catch (error) {
+      setSchedulerPollError(error instanceof Error ? error.message : 'Ошибка запуска опроса расписаний')
+    } finally {
+      setIsRunningSchedulerPoll(false)
     }
   }
 
@@ -201,12 +236,16 @@ export function useChecksInfra() {
     isRunningDistribute,
     distributeMessage,
     distributeError,
+    isRunningSchedulerPoll,
+    schedulerPollMessage,
+    schedulerPollError,
     handleLoadServicesStatus,
     handleRunProcessorCycle,
     handleLoadPostsTables,
     handleRunPostingDiagnostics,
     handleRunCollectCycle,
     handleRunDistributeCycle,
+    handleRunSchedulerPoll,
   }
 }
 

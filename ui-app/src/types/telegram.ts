@@ -23,6 +23,8 @@ export interface TelegramAlertRule {
   stop_on_match?: boolean
 }
 
+export type DigestMode = 'per_channel' | 'combined'
+
 export interface TelegramConfig {
   publish_enabled: boolean
   collect_enabled: boolean
@@ -50,6 +52,7 @@ export interface TelegramConfig {
   summarize_min_length?: number
   digest_interval_min?: number
   digest_channel?: string
+  digest_mode?: DigestMode
   classification_enabled?: boolean
   classification_categories?: string[]
 }

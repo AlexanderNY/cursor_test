@@ -157,6 +157,9 @@ def check_public_endpoint(endpoint_path: str) -> bool:
         if endpoint_path.startswith(prefix):
             return False
 
+    if endpoint_path.startswith("/tg/game/media/"):
+        return True
+
     # Проверка префиксов для заглушек
     stub_prefixes = ["/scheduler", "/tg-bot", "/vk-bot", "/wp-bot", "/url-bot", "/th-bot"]
     for prefix in stub_prefixes:

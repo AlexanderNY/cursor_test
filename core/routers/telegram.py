@@ -78,6 +78,7 @@ async def get_tg_profile(x_user_id: Optional[str] = Header(None)):
         "summarize_min_length": 500,
         "digest_interval_min": 30,
         "digest_channel": None,
+        "digest_mode": "per_channel",
         "classification_enabled": False,
         "classification_categories": ["новости", "реклама", "технологии", "финансы", "другое"],
     }

@@ -14,6 +14,7 @@ import {
   DocumentTextIcon,
   PollIcon,
   CheckCircleIcon,
+  BellIcon,
 } from '@/components/icons'
 
 export interface NavItem {
@@ -24,6 +25,7 @@ export interface NavItem {
 
 export const navItems: NavItem[] = [
   { path: '/profile', label: 'Profile', Icon: UserIcon },
+  { path: '/news', label: 'News', Icon: BellIcon },
   { path: '/posts', label: 'Posts', Icon: PlusIcon },
   { path: '/telegram', label: 'Telegram', Icon: TelegramIcon },
   { path: '/vkontakte', label: 'VKontakte', Icon: VKontakteIcon },
@@ -44,5 +46,5 @@ export const groupNavItem: NavItem = {
 export const adminNavItems: NavItem[] = [
   { path: '/administration', label: 'Administration', Icon: SettingsIcon },
   { path: '/polls', label: 'Polls', Icon: PollIcon },
-  { path: '/checks', label: 'Checks', Icon: CheckCircleIcon },
+  { path: '/checks', label: 'Диагностика', Icon: CheckCircleIcon },
 ]

@@ -3,7 +3,51 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
 import { useChecksInfraContext } from './checks-infra-context'
-import { platformStatusCell, platformTableStatusColumns } from './checks-utils'
+import {
+  platformStatusCell,
+  platformTableStatusColumns,
+  isCriticalService,
+  isCycleStale,
+  formatLoopState,
+} from './checks-utils'
+
+function HealthBadge({ status }: { status: string }) {
+  const isOk = status === 'ok'
+  return (
+    <span
+      className={`inline-flex px-3 py-1 rounded-full text-sm font-medium ${
+        isOk ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'
+      }`}
+    >
+      {status}
+    </span>
+  )
+}
+
+function LoopBadge({ loop }: { loop?: { loop_active?: boolean; cycle_in_progress?: boolean } | null }) {
+  const state = formatLoopState(loop)
+  const className =
+    state === 'выполняется'
+      ? 'bg-blue-500/20 text-blue-400'
+      : state === 'активен'
+        ? 'bg-emerald-500/20 text-emerald-400'
+        : state === 'остановлен'
+          ? 'bg-red-500/20 text-red-400'
+          : 'bg-[var(--bg-tertiary)] text-[var(--text-muted)]'
+  return <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${className}`}>{state}</span>
+}
+
+function StaleBadge() {
+  return (
+    <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-amber-500/20 text-amber-400">
+      давно не запускался
+    </span>
+  )
+}
+
+function formatDateTime(value: string | null | undefined): string {
+  return value ? new Date(value).toLocaleString() : '—'
+}
 
 export function ServicesStatusSection() {
   const {
@@ -13,9 +57,25 @@ export function ServicesStatusSection() {
     isRunningProcessor,
     processorRunMessage,
     processorRunError,
+    isRunningCollect,
+    collectMessage,
+    collectError,
+    isRunningDistribute,
+    distributeMessage,
+    distributeError,
+    isRunningSchedulerPoll,
+    schedulerPollMessage,
+    schedulerPollError,
     handleLoadServicesStatus,
     handleRunProcessorCycle,
+    handleRunCollectCycle,
+    handleRunDistributeCycle,
+    handleRunSchedulerPoll,
   } = useChecksInfraContext()
+
+  const collectorHealth = servicesStatus?.healthchecks?.find((h) => h.service_name === 'collector')
+  const processorHealth = servicesStatus?.healthchecks?.find((h) => h.service_name === 'processor')
+  const schedulerHealth = servicesStatus?.healthchecks?.find((h) => h.service_name === 'scheduler')
 
   return (
     <Card className="animate-slide-up">
@@ -24,44 +84,54 @@ export function ServicesStatusSection() {
           <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
-          Services Status
+          Состояние сервисов
         </CardTitle>
-        <CardDescription>CORE, PROCESSOR, SCHEDULER, COLLECTOR health and status</CardDescription>
+        <CardDescription>Healthcheck всех сервисов и детальный статус критичных процессов</CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
         <Button onClick={handleLoadServicesStatus} isLoading={isLoadingServicesStatus} className="w-full sm:w-auto">
           <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
           </svg>
-          Load Services Status
+          Загрузить состояние сервисов
         </Button>
 
         {servicesStatusError && <Alert variant="error" className="animate-slide-down">{servicesStatusError}</Alert>}
 
         {servicesStatus && (
-          <div className="space-y-6 animate-slide-down">
+          <div className="space-y-8 animate-slide-down">
             <div>
-              <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-2">Healthchecks</h3>
+              <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-2">Все сервисы</h3>
               <div className="overflow-x-auto rounded-xl border border-[var(--border-color)]">
                 <table className="w-full">
                   <thead className="bg-[var(--bg-tertiary)]">
                     <tr>
-                      <th className="py-3 px-4 text-left text-sm font-medium text-[var(--text-secondary)]">Service</th>
-                      <th className="py-3 px-4 text-left text-sm font-medium text-[var(--text-secondary)]">Status</th>
-                      <th className="py-3 px-4 text-left text-sm font-medium text-[var(--text-secondary)]">Server time</th>
-                      <th className="py-3 px-4 text-left text-sm font-medium text-[var(--text-secondary)]">Error</th>
+                      <th className="py-3 px-4 text-left text-sm font-medium text-[var(--text-secondary)]">Сервис</th>
+                      <th className="py-3 px-4 text-left text-sm font-medium text-[var(--text-secondary)]">Статус</th>
+                      <th className="py-3 px-4 text-left text-sm font-medium text-[var(--text-secondary)]">Время сервера</th>
+                      <th className="py-3 px-4 text-left text-sm font-medium text-[var(--text-secondary)]">Ошибка</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[var(--border-color)]">
                     {(servicesStatus.healthchecks || []).map((h) => (
-                      <tr key={h.service_name} className="hover:bg-[var(--bg-tertiary)]">
-                        <td className="py-3 px-4 text-[var(--text-primary)] font-medium">{h.service_name}</td>
-                        <td className="py-3 px-4">
-                          <span className={`inline-flex px-3 py-1 rounded-full text-sm font-medium ${h.status === 'ok' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>
-                            {h.status}
+                      <tr
+                        key={h.service_name}
+                        className={`hover:bg-[var(--bg-tertiary)] ${isCriticalService(h.service_name) ? 'bg-primary-500/5' : ''}`}
+                      >
+                        <td className="py-3 px-4 text-[var(--text-primary)] font-medium">
+                          <span className="flex items-center gap-2 flex-wrap">
+                            {h.service_name}
+                            {isCriticalService(h.service_name) && (
+                              <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-primary-500/20 text-primary-400">
+                                критичный
+                              </span>
+                            )}
                           </span>
                         </td>
-                        <td className="py-3 px-4 text-[var(--text-secondary)] text-sm">{h.server_time ? new Date(h.server_time).toLocaleString() : '—'}</td>
+                        <td className="py-3 px-4">
+                          <HealthBadge status={h.status} />
+                        </td>
+                        <td className="py-3 px-4 text-[var(--text-secondary)] text-sm">{formatDateTime(h.server_time)}</td>
                         <td className="py-3 px-4 text-[var(--text-secondary)] text-sm">{h.error ?? '—'}</td>
                       </tr>
                     ))}
@@ -70,69 +140,152 @@ export function ServicesStatusSection() {
               </div>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              {servicesStatus.collector && (
-                <div className="p-4 rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)]">
-                  <h4 className="font-semibold text-[var(--text-primary)] mb-2">COLLECTOR</h4>
-                  {servicesStatus.collector.error ? (
+            <div>
+              <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-3">Критичные сервисы</h3>
+              <div className="grid gap-4 lg:grid-cols-3">
+                {/* Collector */}
+                <div className="p-4 rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)] space-y-3">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <h4 className="font-semibold text-[var(--text-primary)]">Collector</h4>
+                    {collectorHealth && <HealthBadge status={collectorHealth.status} />}
+                  </div>
+                  {servicesStatus.collector?.error ? (
                     <p className="text-red-400 text-sm">{servicesStatus.collector.error}</p>
-                  ) : (
-                    <ul className="text-sm text-[var(--text-secondary)] space-y-1">
-                      <li>Server time: {servicesStatus.collector.current_time ? new Date(servicesStatus.collector.current_time).toLocaleString() : '—'}</li>
-                      <li>Interval: collect {servicesStatus.collector.collect_interval_sec}s / distribute {servicesStatus.collector.distribute_interval_sec}s</li>
-                      {servicesStatus.collector.collector && (
-                        <li>Collector: last run {servicesStatus.collector.collector.last_run_at ? new Date(servicesStatus.collector.collector.last_run_at).toLocaleString() : '—'}, total {servicesStatus.collector.collector.total_processed}</li>
+                  ) : servicesStatus.collector ? (
+                    <ul className="text-sm text-[var(--text-secondary)] space-y-2">
+                      <li className="flex items-center justify-between gap-2 flex-wrap">
+                        <span>Сбор (collect)</span>
+                        <LoopBadge loop={servicesStatus.collector.collector} />
+                      </li>
+                      <li>Последний запуск: {formatDateTime(servicesStatus.collector.collector?.last_run_at)}</li>
+                      <li>За цикл: {servicesStatus.collector.collector?.last_cycle_count ?? 0}, всего: {servicesStatus.collector.collector?.total_processed ?? 0}</li>
+                      {isCycleStale(
+                        servicesStatus.collector.collector?.last_run_at,
+                        servicesStatus.collector.collect_interval_sec,
+                      ) && (
+                        <li><StaleBadge /></li>
                       )}
-                      {servicesStatus.collector.distributor && (
-                        <li>Distributor: last run {servicesStatus.collector.distributor.last_run_at ? new Date(servicesStatus.collector.distributor.last_run_at).toLocaleString() : '—'}, total {servicesStatus.collector.distributor.total_processed}</li>
+                      <li className="pt-2 border-t border-[var(--border-color)] flex items-center justify-between gap-2 flex-wrap">
+                        <span>Распределение (distribute)</span>
+                        <LoopBadge loop={servicesStatus.collector.distributor} />
+                      </li>
+                      <li>Последний запуск: {formatDateTime(servicesStatus.collector.distributor?.last_run_at)}</li>
+                      <li>За цикл: {servicesStatus.collector.distributor?.last_cycle_count ?? 0}, всего: {servicesStatus.collector.distributor?.total_processed ?? 0}</li>
+                      {isCycleStale(
+                        servicesStatus.collector.distributor?.last_run_at,
+                        servicesStatus.collector.distribute_interval_sec,
+                      ) && (
+                        <li><StaleBadge /></li>
                       )}
+                      <li className="text-xs text-[var(--text-muted)]">
+                        Интервалы: сбор {servicesStatus.collector.collect_interval_sec ?? '—'} с / распределение {servicesStatus.collector.distribute_interval_sec ?? '—'} с
+                      </li>
                     </ul>
+                  ) : (
+                    <p className="text-[var(--text-muted)] text-sm">Нет данных</p>
+                  )}
+                  <div className="flex flex-wrap gap-2 pt-2 border-t border-[var(--border-color)]">
+                    <Button size="sm" variant="secondary" onClick={handleRunCollectCycle} isLoading={isRunningCollect}>
+                      Запустить сбор
+                    </Button>
+                    <Button size="sm" variant="secondary" onClick={handleRunDistributeCycle} isLoading={isRunningDistribute}>
+                      Запустить распределение
+                    </Button>
+                  </div>
+                  {(collectMessage || collectError) && (
+                    <Alert variant={collectError ? 'error' : 'success'} className="text-sm">{collectError || collectMessage}</Alert>
+                  )}
+                  {(distributeMessage || distributeError) && (
+                    <Alert variant={distributeError ? 'error' : 'success'} className="text-sm">{distributeError || distributeMessage}</Alert>
                   )}
                 </div>
-              )}
-              {servicesStatus.processor && (
-                <div className="p-4 rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)]">
-                  <h4 className="font-semibold text-[var(--text-primary)] mb-2">PROCESSOR</h4>
-                  {servicesStatus.processor.error ? (
+
+                {/* Processor */}
+                <div className="p-4 rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)] space-y-3">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <h4 className="font-semibold text-[var(--text-primary)]">Processor</h4>
+                    {processorHealth && <HealthBadge status={processorHealth.status} />}
+                  </div>
+                  {servicesStatus.processor?.error ? (
                     <p className="text-red-400 text-sm">{servicesStatus.processor.error}</p>
-                  ) : (
-                    <ul className="text-sm text-[var(--text-secondary)] space-y-1">
-                      <li>Server time: {servicesStatus.processor.current_time ? new Date(servicesStatus.processor.current_time).toLocaleString() : '—'}</li>
-                      <li>Interval: {servicesStatus.processor.process_interval_sec}s</li>
-                      {servicesStatus.processor.processor && (
-                        <li>Last run: {servicesStatus.processor.processor.last_run_at ? new Date(servicesStatus.processor.processor.last_run_at).toLocaleString() : '—'}, total {servicesStatus.processor.processor.total_processed}</li>
+                  ) : servicesStatus.processor ? (
+                    <ul className="text-sm text-[var(--text-secondary)] space-y-2">
+                      <li className="flex items-center justify-between gap-2 flex-wrap">
+                        <span>Обработка</span>
+                        <LoopBadge loop={servicesStatus.processor.processor} />
+                      </li>
+                      <li>Последний запуск: {formatDateTime(servicesStatus.processor.processor?.last_run_at)}</li>
+                      <li>За цикл: {servicesStatus.processor.processor?.last_cycle_count ?? 0}, всего: {servicesStatus.processor.processor?.total_processed ?? 0}</li>
+                      {isCycleStale(
+                        servicesStatus.processor.processor?.last_run_at,
+                        servicesStatus.processor.process_interval_sec,
+                      ) && (
+                        <li><StaleBadge /></li>
                       )}
+                      <li className="text-xs text-[var(--text-muted)]">
+                        Интервал: {servicesStatus.processor.process_interval_sec ?? '—'} с, батч: {servicesStatus.processor.process_batch_size ?? '—'}
+                      </li>
                     </ul>
+                  ) : (
+                    <p className="text-[var(--text-muted)] text-sm">Нет данных</p>
                   )}
-                  <div className="mt-3 pt-3 border-t border-[var(--border-color)]">
-                    <Button size="sm" variant="secondary" onClick={handleRunProcessorCycle} isLoading={isRunningProcessor} className="w-full sm:w-auto">
-                      Запустить цикл обработки
+                  <div className="pt-2 border-t border-[var(--border-color)]">
+                    <Button size="sm" variant="secondary" onClick={handleRunProcessorCycle} isLoading={isRunningProcessor}>
+                      Запустить обработку
                     </Button>
-                    {processorRunMessage && <Alert variant="success" className="mt-2 animate-slide-down">{processorRunMessage}</Alert>}
-                    {processorRunError && <Alert variant="error" className="mt-2 animate-slide-down">{processorRunError}</Alert>}
+                    {processorRunMessage && <Alert variant="success" className="mt-2 text-sm">{processorRunMessage}</Alert>}
+                    {processorRunError && <Alert variant="error" className="mt-2 text-sm">{processorRunError}</Alert>}
                   </div>
                 </div>
-              )}
-              {servicesStatus.scheduler && (
-                <div className="p-4 rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)]">
-                  <h4 className="font-semibold text-[var(--text-primary)] mb-2">SCHEDULER</h4>
-                  {servicesStatus.scheduler.error ? (
+
+                {/* Scheduler */}
+                <div className="p-4 rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)] space-y-3">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <h4 className="font-semibold text-[var(--text-primary)]">Scheduler</h4>
+                    {schedulerHealth && <HealthBadge status={schedulerHealth.status} />}
+                  </div>
+                  {servicesStatus.scheduler?.error ? (
                     <p className="text-red-400 text-sm">{servicesStatus.scheduler.error}</p>
-                  ) : (
-                    <ul className="text-sm text-[var(--text-secondary)] space-y-1">
-                      <li>Server time: {servicesStatus.scheduler.current_time ? new Date(servicesStatus.scheduler.current_time).toLocaleString() : '—'}</li>
-                      <li>Poll interval: {servicesStatus.scheduler.poll_interval_sec}s</li>
-                      <li>Last poll: {servicesStatus.scheduler.last_poll_at ? new Date(servicesStatus.scheduler.last_poll_at).toLocaleString() : '—'}</li>
+                  ) : servicesStatus.scheduler ? (
+                    <ul className="text-sm text-[var(--text-secondary)] space-y-2">
+                      <li className="flex items-center justify-between gap-2 flex-wrap">
+                        <span>Опрос расписаний</span>
+                        <LoopBadge
+                          loop={{
+                            loop_active: servicesStatus.scheduler.poll_loop_active,
+                            cycle_in_progress: servicesStatus.scheduler.poll_in_progress,
+                          }}
+                        />
+                      </li>
+                      <li>Последний опрос: {formatDateTime(servicesStatus.scheduler.last_poll_at)}</li>
+                      {isCycleStale(
+                        servicesStatus.scheduler.last_poll_at,
+                        servicesStatus.scheduler.poll_interval_sec,
+                      ) && (
+                        <li><StaleBadge /></li>
+                      )}
+                      <li className="text-xs text-[var(--text-muted)]">
+                        Интервал опроса: {servicesStatus.scheduler.poll_interval_sec ?? '—'} с
+                      </li>
                     </ul>
+                  ) : (
+                    <p className="text-[var(--text-muted)] text-sm">Нет данных</p>
                   )}
+                  <div className="pt-2 border-t border-[var(--border-color)]">
+                    <Button size="sm" variant="secondary" onClick={handleRunSchedulerPoll} isLoading={isRunningSchedulerPoll}>
+                      Запустить опрос расписаний
+                    </Button>
+                    {schedulerPollMessage && <Alert variant="success" className="mt-2 text-sm">{schedulerPollMessage}</Alert>}
+                    {schedulerPollError && <Alert variant="error" className="mt-2 text-sm">{schedulerPollError}</Alert>}
+                  </div>
                 </div>
-              )}
+              </div>
             </div>
           </div>
         )}
 
         {!servicesStatus && !isLoadingServicesStatus && !servicesStatusError && (
-          <p className="text-[var(--text-muted)] text-center py-8">Click &quot;Load Services Status&quot; to fetch</p>
+          <p className="text-[var(--text-muted)] text-center py-8">Нажмите «Загрузить состояние сервисов» для получения данных</p>
         )}
       </CardContent>
     </Card>

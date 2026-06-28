@@ -141,11 +141,12 @@ class TelegramBotService:
     async def _digest_loop(self) -> None:
         while self._running:
             try:
-                await asyncio.sleep(1800)
+                sleep_sec = await self.summary_aggregator.get_digest_sleep_interval_sec()
+                await asyncio.sleep(sleep_sec)
                 if not self._running:
                     break
                 sent = await self.summary_aggregator.run_digest_cycle(self.client_manager)
-                _log_action("Digest loop: sent %d digests", sent)
+                _log_action("Digest loop: sent %d digests (next in %ds)", sent, sleep_sec)
             except asyncio.CancelledError:
                 break
             except Exception as e:

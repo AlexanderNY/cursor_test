@@ -1,6 +1,6 @@
 """Роутер для работы с уведомлениями."""
 
-from fastapi import APIRouter, HTTPException, Header
+from fastapi import APIRouter, HTTPException, Header, Query
 from typing import Optional
 from database import get_db_connection, release_db_connection
 from schemas import NotificationCreate, Notification, NotificationResponse
@@ -74,12 +74,15 @@ async def create_notification(
 @router.get("", response_model=NotificationResponse)
 async def get_notifications(
     x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
+    limit: int = Query(5, ge=1, le=500),
+    offset: int = Query(0, ge=0),
 ):
-    """Получает 5 самых свежих уведомлений для текущего пользователя.
+    """Получает уведомления для текущего пользователя.
     
     Возвращает уведомления, адресованные конкретному пользователю,
     а также общие уведомления (user_id IS NULL).
     Если X-User-Id не передан — возвращает только общие.
+    По умолчанию limit=5 (для header-карусели).
     
     Returns:
         NotificationResponse: Список уведомлений
@@ -101,9 +104,9 @@ async def get_notifications(
                     FROM notifications
                     WHERE user_id = %s OR user_id IS NULL
                     ORDER BY created_at DESC
-                    LIMIT 5
+                    LIMIT %s OFFSET %s
                     """,
-                    (caller_id,)
+                    (caller_id, limit, offset)
                 )
             else:
                 await cur.execute(
@@ -112,8 +115,9 @@ async def get_notifications(
                     FROM notifications
                     WHERE user_id IS NULL
                     ORDER BY created_at DESC
-                    LIMIT 5
-                    """
+                    LIMIT %s OFFSET %s
+                    """,
+                    (limit, offset)
                 )
             rows = await cur.fetchall()
             

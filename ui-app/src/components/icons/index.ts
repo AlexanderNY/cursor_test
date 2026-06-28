@@ -27,4 +27,5 @@ export {
   DocumentTextIcon,
   InstagramIcon,
   PollIcon,
+  BellIcon,
 } from './icons'

@@ -20,6 +20,7 @@ from services.schedule_poll_service import (
     _transform_profiles_to_schedules,
     _store_snapshot,
     get_last_poll_at,
+    get_poll_in_progress,
     BOT_PLATFORMS
 )
 from schemas import StartBotRequest
@@ -74,6 +75,8 @@ async def status():
         "poll_interval_sec": settings.POLL_INTERVAL_SECONDS,
         "notify_on_change_only": settings.NOTIFY_ON_CHANGE_ONLY,
         "last_poll_at": last.isoformat() if last and hasattr(last, "isoformat") else last,
+        "poll_loop_active": _task is not None and not _task.done(),
+        "poll_in_progress": get_poll_in_progress(),
         "current_time": datetime.utcnow().isoformat() + "Z",
         "started_at": _started_at.isoformat() + "Z" if _started_at else None,
         "schedule_functions": SCHEDULER_FUNCTIONS_FOR_ADMIN,

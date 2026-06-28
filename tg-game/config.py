@@ -18,6 +18,16 @@ class Settings(BaseSettings):
     # Секрет для HTTP-админки CRUD (заголовок X-Game-Admin-Token).
     GAME_ADMIN_API_TOKEN: str = "122"
 
+    S3_ENDPOINT_URL: str = ""
+    S3_BUCKET: str = "uploads"
+    S3_ACCESS_KEY: str = ""
+    S3_SECRET_KEY: str = ""
+    S3_USE_SSL: bool = False
+
+    GAME_MEDIA_S3_PREFIX: str = "uploads/game"
+    # Публичная база URL для image_url (внешний адрес, доступный Telegram).
+    GAME_MEDIA_PUBLIC_BASE_URL: str = "https://www.copyparse.ru"
+
     class Config:
         env_file = ".env"
         case_sensitive = True

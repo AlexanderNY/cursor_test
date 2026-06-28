@@ -2,9 +2,14 @@ import { apiClient, getErrorMessage } from './api-client'
 import type { Notification, NotificationResponse, NotificationCreate } from '@/types/core'
 
 export const notificationsService = {
-  async getNotifications(): Promise<NotificationResponse> {
+  async getNotifications(params?: { limit?: number; offset?: number }): Promise<NotificationResponse> {
     try {
-      const response = await apiClient.get<NotificationResponse>('/core/notifications')
+      const response = await apiClient.get<NotificationResponse>('/core/notifications', {
+        params: {
+          ...(params?.limit != null ? { limit: params.limit } : {}),
+          ...(params?.offset != null ? { offset: params.offset } : {}),
+        },
+      })
       return response.data
     } catch (error) {
       throw new Error(getErrorMessage(error))

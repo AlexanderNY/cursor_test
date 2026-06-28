@@ -31,6 +31,8 @@ class LoopStatus(BaseModel):
     last_run_at: Optional[datetime] = None
     total_processed: int = 0
     last_cycle_count: int = 0
+    loop_active: bool = False
+    cycle_in_progress: bool = False
 
 
 class ServiceStatus(BaseModel):

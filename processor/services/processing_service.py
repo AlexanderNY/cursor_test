@@ -34,6 +34,7 @@ class ProcessingService:
         self.last_run_at: Optional[datetime] = None
         self.total_processed: int = 0
         self.last_cycle_processed: int = 0
+        self.cycle_in_progress: bool = False
 
     async def run_processing_cycle(self) -> int:
         """Выполняет один цикл обработки.
@@ -45,6 +46,13 @@ class ProcessingService:
         Returns:
             Количество обработанных постов за цикл.
         """
+        self.cycle_in_progress = True
+        try:
+            return await self._run_processing_cycle_body()
+        finally:
+            self.cycle_in_progress = False
+
+    async def _run_processing_cycle_body(self) -> int:
         cycle_count = 0
 
         async with get_db_connection() as conn:

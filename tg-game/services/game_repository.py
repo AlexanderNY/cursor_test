@@ -13,8 +13,18 @@ from database import (
     release_db_connection,
     rollback_connection,
 )
+from services.media_storage import resolve_public_media_url
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(slots=True)
+class GameBotRow:
+    id: int
+    name: str
+    token: str
+    username: Optional[str]
+    is_active: bool
 
 
 @dataclass(slots=True)
@@ -24,6 +34,8 @@ class GameModeRow:
     title: str
     is_active: bool
     questions_per_game: int
+    bot_id: Optional[int] = None
+    mode_type: str = "quiz"
 
 
 @dataclass(slots=True)
@@ -77,6 +89,7 @@ class GameRepository:
     async def upsert_player(
         self,
         *,
+        bot_id: int,
         telegram_user_id: int,
         username: Optional[str],
         first_name: Optional[str],
@@ -87,15 +100,15 @@ class GameRepository:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
-                    INSERT INTO game_players (telegram_user_id, username, first_name, is_admin)
-                    VALUES (%s, %s, %s, %s)
-                    ON CONFLICT (telegram_user_id) DO UPDATE SET
+                    INSERT INTO game_players (bot_id, telegram_user_id, username, first_name, is_admin)
+                    VALUES (%s, %s, %s, %s, %s)
+                    ON CONFLICT (bot_id, telegram_user_id) DO UPDATE SET
                         username = EXCLUDED.username,
                         first_name = EXCLUDED.first_name,
                         is_admin = game_players.is_admin OR EXCLUDED.is_admin
                     RETURNING id
                     """,
-                    (telegram_user_id, username, first_name, is_admin),
+                    (bot_id, telegram_user_id, username, first_name, is_admin),
                 )
                 row = await cur.fetchone()
                 await commit_connection(conn)
@@ -106,17 +119,18 @@ class GameRepository:
         finally:
             await release_db_connection(conn)
 
-    async def list_active_modes(self) -> list[GameModeRow]:
+    async def list_active_modes(self, bot_id: int) -> list[GameModeRow]:
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
-                    SELECT id, code, title, is_active, questions_per_game
+                    SELECT id, code, title, is_active, questions_per_game, bot_id, mode_type
                     FROM game_modes
-                    WHERE is_active = TRUE
+                    WHERE is_active = TRUE AND bot_id = %s
                     ORDER BY id
-                    """
+                    """,
+                    (bot_id,),
                 )
                 rows = await cur.fetchall()
                 result = [
@@ -126,6 +140,8 @@ class GameRepository:
                         title=str(r[2]),
                         is_active=bool(r[3]),
                         questions_per_game=int(r[4]),
+                        bot_id=int(r[5]) if r[5] is not None else None,
+                        mode_type=str(r[6]) if len(r) > 6 else "quiz",
                     )
                     for r in rows
                 ]
@@ -140,7 +156,7 @@ class GameRepository:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
-                    SELECT id, code, title, is_active, questions_per_game
+                    SELECT id, code, title, is_active, questions_per_game, bot_id, mode_type
                     FROM game_modes WHERE id = %s
                     """,
                     (mode_id,),
@@ -155,6 +171,8 @@ class GameRepository:
                     title=str(r[2]),
                     is_active=bool(r[3]),
                     questions_per_game=int(r[4]),
+                    bot_id=int(r[5]) if r[5] is not None else None,
+                    mode_type=str(r[6]) if len(r) > 6 else "quiz",
                 )
                 await commit_connection(conn)
                 return row
@@ -217,6 +235,27 @@ class GameRepository:
                 )
                 await commit_connection(conn)
                 return row
+        finally:
+            await release_db_connection(conn)
+
+    async def abort_session(self, session_id: int, *, player_id: int) -> bool:
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    UPDATE game_sessions
+                    SET status = 'aborted', finished_at = NOW()
+                    WHERE id = %s AND player_id = %s AND status = 'in_progress'
+                    """,
+                    (session_id, player_id),
+                )
+                aborted = cur.rowcount > 0
+                await commit_connection(conn)
+                return aborted
+        except Exception:
+            await rollback_connection(conn)
+            raise
         finally:
             await release_db_connection(conn)
 
@@ -562,7 +601,8 @@ class GameRepository:
                         FROM game_sessions gs
                         WHERE gs.status = 'completed'
                     )
-                    SELECT p.telegram_user_id, p.username, rs.score, rs.duration_sec, rs.finished_at
+                    SELECT p.telegram_user_id, p.username, rs.score, rs.correct_count,
+                           rs.total_questions, rs.duration_sec, rs.finished_at
                     FROM ranked_sessions rs
                     JOIN game_players p ON p.id = rs.player_id
                     WHERE rs.rn = 1
@@ -577,8 +617,10 @@ class GameRepository:
                         "telegram_user_id": int(r[0]),
                         "username": r[1],
                         "score": int(r[2]),
-                        "duration_sec": r[3],
-                        "finished_at": r[4].isoformat() if r[4] else None,
+                        "correct_count": int(r[3]),
+                        "total_questions": int(r[4]),
+                        "duration_sec": r[5],
+                        "finished_at": r[6].isoformat() if r[6] else None,
                     }
                     for r in rows
                 ]
@@ -587,14 +629,147 @@ class GameRepository:
         finally:
             await release_db_connection(conn)
 
-    # --- Admin CRUD ---
-
-    async def admin_create_mode(
+    async def fetch_completed_sessions(
         self,
         *,
-        code: str,
-        title: str,
-        questions_per_game: int,
+        limit: int = 100,
+        mode_id: Optional[int] = None,
+    ) -> list[dict[str, Any]]:
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                if mode_id is not None:
+                    await cur.execute(
+                        """
+                        SELECT gs.id, p.telegram_user_id, p.username, p.first_name,
+                               m.id, m.title, gs.correct_count, gs.total_questions,
+                               gs.score, gs.duration_sec, gs.finished_at
+                        FROM game_sessions gs
+                        JOIN game_players p ON p.id = gs.player_id
+                        JOIN game_modes m ON m.id = gs.mode_id
+                        WHERE gs.status = 'completed' AND gs.mode_id = %s
+                        ORDER BY gs.finished_at DESC NULLS LAST
+                        LIMIT %s
+                        """,
+                        (mode_id, limit),
+                    )
+                else:
+                    await cur.execute(
+                        """
+                        SELECT gs.id, p.telegram_user_id, p.username, p.first_name,
+                               m.id, m.title, gs.correct_count, gs.total_questions,
+                               gs.score, gs.duration_sec, gs.finished_at
+                        FROM game_sessions gs
+                        JOIN game_players p ON p.id = gs.player_id
+                        JOIN game_modes m ON m.id = gs.mode_id
+                        WHERE gs.status = 'completed'
+                        ORDER BY gs.finished_at DESC NULLS LAST
+                        LIMIT %s
+                        """,
+                        (limit,),
+                    )
+                rows = await cur.fetchall()
+                result = [
+                    {
+                        "session_id": int(r[0]),
+                        "telegram_user_id": int(r[1]),
+                        "username": r[2],
+                        "first_name": r[3],
+                        "mode_id": int(r[4]),
+                        "mode_title": str(r[5]),
+                        "correct_count": int(r[6]),
+                        "total_questions": int(r[7]),
+                        "score": int(r[8]),
+                        "duration_sec": r[9],
+                        "finished_at": r[10].isoformat() if r[10] else None,
+                    }
+                    for r in rows
+                ]
+                await commit_connection(conn)
+                return result
+        finally:
+            await release_db_connection(conn)
+
+    # --- Game bots ---
+
+    async def get_bot(self, bot_id: int) -> Optional[GameBotRow]:
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT id, name, token, username, is_active
+                    FROM game_bots WHERE id = %s
+                    """,
+                    (bot_id,),
+                )
+                row = await cur.fetchone()
+                if not row:
+                    await commit_connection(conn)
+                    return None
+                result = GameBotRow(
+                    id=int(row[0]),
+                    name=str(row[1]),
+                    token=str(row[2]),
+                    username=row[3],
+                    is_active=bool(row[4]),
+                )
+                await commit_connection(conn)
+                return result
+        finally:
+            await release_db_connection(conn)
+
+    async def list_active_bots_with_tokens(self) -> list[dict[str, Any]]:
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT id, token FROM game_bots
+                    WHERE is_active = TRUE
+                    ORDER BY id
+                    """
+                )
+                rows = await cur.fetchall()
+                result = [{"id": int(r[0]), "token": str(r[1])} for r in rows]
+                await commit_connection(conn)
+                return result
+        finally:
+            await release_db_connection(conn)
+
+    async def admin_list_bots(self) -> list[dict[str, Any]]:
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT id, name, token, username, is_active, created_at
+                    FROM game_bots ORDER BY id
+                    """
+                )
+                rows = await cur.fetchall()
+                result = [
+                    {
+                        "id": int(r[0]),
+                        "name": str(r[1]),
+                        "token": str(r[2]),
+                        "username": r[3],
+                        "is_active": bool(r[4]),
+                        "created_at": r[5].isoformat() if r[5] else None,
+                    }
+                    for r in rows
+                ]
+                await commit_connection(conn)
+                return result
+        finally:
+            await release_db_connection(conn)
+
+    async def admin_create_bot(
+        self,
+        *,
+        name: str,
+        token: str,
+        username: Optional[str],
         is_active: bool = True,
     ) -> int:
         conn = await get_db_connection()
@@ -602,11 +777,11 @@ class GameRepository:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
-                    INSERT INTO game_modes (code, title, is_active, questions_per_game)
+                    INSERT INTO game_bots (name, token, username, is_active)
                     VALUES (%s, %s, %s, %s)
                     RETURNING id
                     """,
-                    (code, title, is_active, questions_per_game),
+                    (name, token, username, is_active),
                 )
                 row = await cur.fetchone()
                 await commit_connection(conn)
@@ -617,24 +792,153 @@ class GameRepository:
         finally:
             await release_db_connection(conn)
 
-    async def admin_list_modes(self, *, include_inactive: bool = True) -> list[GameModeRow]:
+    async def admin_update_bot(
+        self,
+        bot_id: int,
+        *,
+        name: Optional[str] = None,
+        token: Optional[str] = None,
+        username: Optional[str] = None,
+        is_active: Optional[bool] = None,
+    ) -> bool:
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
-                if include_inactive:
-                    await cur.execute(
-                        """
-                        SELECT id, code, title, is_active, questions_per_game
-                        FROM game_modes ORDER BY id
-                        """
-                    )
-                else:
-                    await cur.execute(
-                        """
-                        SELECT id, code, title, is_active, questions_per_game
-                        FROM game_modes WHERE is_active = TRUE ORDER BY id
-                        """
-                    )
+                fields: list[str] = []
+                vals: list[Any] = []
+                if name is not None:
+                    fields.append("name = %s")
+                    vals.append(name)
+                if token is not None:
+                    fields.append("token = %s")
+                    vals.append(token)
+                if username is not None:
+                    fields.append("username = %s")
+                    vals.append(username)
+                if is_active is not None:
+                    fields.append("is_active = %s")
+                    vals.append(is_active)
+                if not fields:
+                    await commit_connection(conn)
+                    return True
+                vals.append(bot_id)
+                await cur.execute(
+                    f"UPDATE game_bots SET {', '.join(fields)} WHERE id = %s",
+                    vals,
+                )
+                await commit_connection(conn)
+                return True
+        except Exception:
+            await rollback_connection(conn)
+            raise
+        finally:
+            await release_db_connection(conn)
+
+    async def admin_delete_bot(self, bot_id: int) -> bool:
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute("DELETE FROM game_bots WHERE id = %s", (bot_id,))
+                deleted = cur.rowcount > 0
+                await commit_connection(conn)
+                return deleted
+        except Exception:
+            await rollback_connection(conn)
+            raise
+        finally:
+            await release_db_connection(conn)
+
+    async def assign_orphan_records_to_bot(self, bot_id: int) -> None:
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "UPDATE game_modes SET bot_id = %s WHERE bot_id IS NULL",
+                    (bot_id,),
+                )
+                await cur.execute(
+                    "UPDATE game_players SET bot_id = %s WHERE bot_id IS NULL",
+                    (bot_id,),
+                )
+                await commit_connection(conn)
+        except Exception:
+            await rollback_connection(conn)
+            raise
+        finally:
+            await release_db_connection(conn)
+
+    async def find_bot_id_by_token(self, token: str) -> Optional[int]:
+        clean = (token or "").strip()
+        if not clean:
+            return None
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute("SELECT id FROM game_bots WHERE token = %s", (clean,))
+                row = await cur.fetchone()
+                out = int(row[0]) if row else None
+                await commit_connection(conn)
+                return out
+        finally:
+            await release_db_connection(conn)
+
+    # --- Admin CRUD ---
+
+    async def admin_create_mode(
+        self,
+        *,
+        bot_id: int,
+        code: str,
+        title: str,
+        questions_per_game: int,
+        is_active: bool = True,
+        mode_type: str = "quiz",
+    ) -> int:
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    INSERT INTO game_modes (bot_id, code, title, is_active, questions_per_game, mode_type)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    RETURNING id
+                    """,
+                    (bot_id, code, title, is_active, questions_per_game, mode_type),
+                )
+                row = await cur.fetchone()
+                await commit_connection(conn)
+                return int(row[0])
+        except Exception:
+            await rollback_connection(conn)
+            raise
+        finally:
+            await release_db_connection(conn)
+
+    async def admin_list_modes(
+        self,
+        *,
+        include_inactive: bool = True,
+        bot_id: Optional[int] = None,
+    ) -> list[GameModeRow]:
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                conditions: list[str] = []
+                vals: list[Any] = []
+                if not include_inactive:
+                    conditions.append("is_active = TRUE")
+                if bot_id is not None:
+                    conditions.append("bot_id = %s")
+                    vals.append(bot_id)
+                where_sql = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+                await cur.execute(
+                    f"""
+                    SELECT id, code, title, is_active, questions_per_game, bot_id, mode_type
+                    FROM game_modes {where_sql}
+                    ORDER BY id
+                    """,
+                    vals,
+                )
                 rows = await cur.fetchall()
                 result = [
                     GameModeRow(
@@ -643,6 +947,8 @@ class GameRepository:
                         title=str(r[2]),
                         is_active=bool(r[3]),
                         questions_per_game=int(r[4]),
+                        bot_id=int(r[5]) if r[5] is not None else None,
+                        mode_type=str(r[6]) if len(r) > 6 else "quiz",
                     )
                     for r in rows
                 ]
@@ -658,6 +964,7 @@ class GameRepository:
         title: Optional[str] = None,
         is_active: Optional[bool] = None,
         questions_per_game: Optional[int] = None,
+        mode_type: Optional[str] = None,
     ) -> bool:
         conn = await get_db_connection()
         try:
@@ -673,6 +980,9 @@ class GameRepository:
                 if questions_per_game is not None:
                     fields.append("questions_per_game = %s")
                     vals.append(questions_per_game)
+                if mode_type is not None:
+                    fields.append("mode_type = %s")
+                    vals.append(mode_type)
                 if not fields:
                     await commit_connection(conn)
                     return True
@@ -683,6 +993,23 @@ class GameRepository:
                 )
                 await commit_connection(conn)
                 return True
+        except Exception:
+            await rollback_connection(conn)
+            raise
+        finally:
+            await release_db_connection(conn)
+
+    async def admin_delete_mode(self, mode_id: int) -> bool:
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "DELETE FROM game_modes WHERE id = %s",
+                    (mode_id,),
+                )
+                deleted = cur.rowcount > 0
+                await commit_connection(conn)
+                return deleted
         except Exception:
             await rollback_connection(conn)
             raise
@@ -707,7 +1034,7 @@ class GameRepository:
                         "mode_id": int(r[1]),
                         "prompt_text": str(r[2]),
                         "image_file_id": r[3],
-                        "image_url": r[4],
+                        "image_url": resolve_public_media_url(r[4]),
                         "is_active": bool(r[5]),
                     }
                     for r in rows
@@ -807,6 +1134,21 @@ class GameRepository:
         finally:
             await release_db_connection(conn)
 
+    async def set_question_image_file_id(self, question_id: int, image_file_id: str) -> None:
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "UPDATE game_questions SET image_file_id = %s WHERE id = %s",
+                    (image_file_id, question_id),
+                )
+                await commit_connection(conn)
+        except Exception:
+            await rollback_connection(conn)
+            raise
+        finally:
+            await release_db_connection(conn)
+
     async def admin_replace_question_options(
         self, question_id: int, options: list[dict[str, Any]]
     ) -> None:
@@ -835,6 +1177,23 @@ class GameRepository:
                         ),
                     )
                 await commit_connection(conn)
+        except Exception:
+            await rollback_connection(conn)
+            raise
+        finally:
+            await release_db_connection(conn)
+
+    async def admin_delete_question(self, question_id: int) -> bool:
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "DELETE FROM game_questions WHERE id = %s",
+                    (question_id,),
+                )
+                deleted = cur.rowcount > 0
+                await commit_connection(conn)
+                return deleted
         except Exception:
             await rollback_connection(conn)
             raise

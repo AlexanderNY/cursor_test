@@ -102,6 +102,8 @@ async def get_status():
             last_run_at=processing_service.last_run_at,
             total_processed=processing_service.total_processed,
             last_cycle_count=processing_service.last_cycle_processed,
+            loop_active=_process_task is not None and not _process_task.done(),
+            cycle_in_progress=processing_service.cycle_in_progress,
         ),
         current_time=datetime.utcnow().isoformat() + "Z",
         started_at=_started_at.isoformat() + "Z" if _started_at else None,

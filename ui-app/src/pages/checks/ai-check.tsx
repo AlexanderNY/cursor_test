@@ -41,7 +41,7 @@ export function AiCheckSection() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>AI</CardTitle>
+        <CardTitle>проверка AI</CardTitle>
         <CardDescription>
           Отправьте произвольный текст в AI-контейнер и проверьте ответ модели.
         </CardDescription>

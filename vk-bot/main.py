@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 
 from config import settings
 from database import init_db, close_db
+from routers.schedule import router as schedule_router
 from services.vk_bot_service import VkBotService
 from services.vk_selenium_probe import verify_vk_selenium_async
 
@@ -23,6 +24,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="VK Bot Service", version="1.0.0")
+app.include_router(schedule_router)
 
 
 class VkSeleniumVerifyBody(BaseModel):

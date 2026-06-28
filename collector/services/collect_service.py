@@ -27,6 +27,7 @@ class CollectService:
         self.last_run_at: datetime | None = None
         self.total_collected: int = 0
         self.last_cycle_collected: int = 0
+        self.cycle_in_progress: bool = False
 
     async def run_collect_cycle(self) -> tuple[int, list[str]]:
         """Выполняет один цикл сбора.
@@ -39,6 +40,13 @@ class CollectService:
         Returns:
             (Количество собранных постов за цикл, список ошибок по таблицам).
         """
+        self.cycle_in_progress = True
+        try:
+            return await self._run_collect_cycle_body()
+        finally:
+            self.cycle_in_progress = False
+
+    async def _run_collect_cycle_body(self) -> tuple[int, list[str]]:
         cycle_count = 0
         errors: list[str] = []
 

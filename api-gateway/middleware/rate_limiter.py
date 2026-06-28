@@ -44,8 +44,18 @@ class RateLimiter:
         if endpoint_path in RATE_LIMITS_CONFIG:
             return RATE_LIMITS_CONFIG[endpoint_path]
         
-        # Для путей с параметрами ищем по префиксу
-        # Например, /core/schedule/42 -> /core/schedule
+        # Ищем совпадение по префиксу (длиннейший ключ)
+        prefix_match: str | None = None
+        for config_path in RATE_LIMITS_CONFIG:
+            if config_path == "default":
+                continue
+            if endpoint_path == config_path or endpoint_path.startswith(f"{config_path}/"):
+                if prefix_match is None or len(config_path) > len(prefix_match):
+                    prefix_match = config_path
+        if prefix_match:
+            return RATE_LIMITS_CONFIG[prefix_match]
+
+        # Для путей с параметрами ищем по префиксу без последнего сегмента
         path_parts = endpoint_path.rstrip('/').split('/')
         if len(path_parts) > 1:
             # Пробуем найти конфиг по префиксу (без последнего сегмента)

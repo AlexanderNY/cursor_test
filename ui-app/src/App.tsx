@@ -22,6 +22,7 @@ import { FigmaPreviewPage } from '@/pages/figma-preview'
 import { AboutPage } from '@/pages/about/about'
 import { PricingPage } from '@/pages/pricing/pricing'
 import { FeedbackPage } from '@/pages/feedback'
+import { NewsPage } from '@/pages/news'
 import { RouteLoader } from '@/components/route-loader'
 
 interface ProtectedRouteProps {
@@ -86,6 +87,7 @@ function App() {
       <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
         <Route index element={<Navigate to="/profile" replace />} />
         <Route path="profile" element={<ProfilePage />} />
+        <Route path="news" element={<NewsPage />} />
         <Route path="billing" element={<Navigate to="/profile?tab=billing" replace />} />
         <Route path="statistics" element={<Navigate to="/profile?tab=statistics" replace />} />
         <Route path="telegram" element={<TelegramPage />} />

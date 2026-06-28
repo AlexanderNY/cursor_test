@@ -31,3 +31,54 @@
 ## Наблюдаемость
 
 В логах публикации ищите строки вида `wall.post` / `upload` с указанием `owner_id` и типа токена (`community` / `user`), чтобы отлаживать ошибки [27] и права доступа.
+
+## Docker Compose + copyparse.ru (MVP)
+
+### Сервисы
+
+```bash
+docker compose up -d core gateway ui ui-edge vk-bot minio scheduler collector
+```
+
+Цепочка OAuth: браузер → `ui-edge` → `ui:8100` (Vite proxy `/api`) → `gateway:8000` → `core`.
+
+### Переменные Core (`docker-compose.yaml`)
+
+| Переменная | Значение для copyparse.ru |
+|------------|---------------------------|
+| `VK_PUBLIC_GATEWAY_URL` | `https://www.copyparse.ru/api` |
+| `FRONTEND_URL` | `https://www.copyparse.ru` |
+| `VK_APP_ID` | ID приложения из кабинета VK |
+| `VK_APP_SECRET` | Secure key приложения |
+| `VK_OAUTH_REDIRECT_URI` | **Не задавать** — Core вычисляет `{VK_PUBLIC_GATEWAY_URL}/vk/oauth/callback` |
+
+Локальная разработка (без ui-edge):
+
+```env
+VK_PUBLIC_GATEWAY_URL=http://localhost:8100/api
+FRONTEND_URL=http://localhost:8100
+```
+
+### Redirect URI в кабинете VK
+
+Зарегистрируйте **точно**:
+
+- Prod: `https://www.copyparse.ru/api/vk/oauth/callback`
+- Local: `http://localhost:8100/api/vk/oauth/callback`
+
+Неверный URI (страница UI, не callback): `.../stubs/vkontakte` — OAuth не обменяет code на токен.
+
+### Порядок настройки
+
+1. Создать Standalone-приложение на [dev.vk.com](https://dev.vk.com/), указать Redirect URI выше.
+2. Задать `VK_APP_ID` / `VK_APP_SECRET` в env Core или на вкладке **Авторизация** в UI.
+3. Сохранить настройки OAuth в профиле, нажать **Подключить VK** → `user_access_token` сохранится в `vk_profiles`.
+4. Токен сообщества: VK → Сообщество → Работа с API → ключ → поле **Access token** на вкладке Авторизация.
+5. **Profile Settings**: `publish_enabled`, `group_to_post`, при медиа на стене группы нужен и OAuth-токен (шаг 3).
+6. Пост с `to_vk` → collector distribute → `vk_posts.status=ready` → vk-bot публикует (цикл 60 с или scheduler `POST /vk-bot/schedule`).
+
+### Проверка
+
+- `GET /api/vk/oauth/status` (JWT) → `connected: true`
+- Логи vk-bot: `wall.post owner_id=... using community/user access_token`
+- Пост появляется на стене группы или личной стене VK

@@ -39,6 +39,24 @@ function generateId(): string {
   return Math.random().toString(36).substring(2, 9)
 }
 
+/** Публичный URL gateway для VK OAuth redirect (через UI /api proxy или напрямую). */
+function defaultVkPublicGatewayUrl(): string {
+  if (typeof window !== 'undefined') {
+    const { origin, port } = window.location
+    if (origin.includes('copyparse.ru') || port === '8100' || port === '5173') {
+      return `${origin}/api`
+    }
+  }
+  return 'http://localhost:8000'
+}
+
+function defaultVkFrontendUrl(): string {
+  if (typeof window !== 'undefined') {
+    return window.location.origin
+  }
+  return 'http://localhost:8100'
+}
+
 interface DynamicField {
   id: string
   value: string
@@ -80,8 +98,8 @@ export function VKontaktePage() {
   const [accessToken, setAccessToken] = useState('')
   const [vkAppId, setVkAppId] = useState('')
   const [vkAppSecret, setVkAppSecret] = useState('')
-  const [vkFrontendUrl, setVkFrontendUrl] = useState('http://localhost:8100')
-  const [vkPublicGatewayUrl, setVkPublicGatewayUrl] = useState('http://localhost:8000')
+  const [vkFrontendUrl, setVkFrontendUrl] = useState(defaultVkFrontendUrl)
+  const [vkPublicGatewayUrl, setVkPublicGatewayUrl] = useState(defaultVkPublicGatewayUrl)
   const [groupsToRead, setGroupsToRead] = useState<DynamicField[]>([{ id: generateId(), value: '' }])
   const [groupToPost, setGroupToPost] = useState('')
   const [processEnabled, setProcessEnabled] = useState(false)
@@ -147,8 +165,8 @@ export function VKontaktePage() {
         setAccessToken(profile.access_token ?? '')
         setVkAppId(profile.vk_app_id ?? '')
         setVkAppSecret(profile.vk_app_secret ?? '')
-        setVkFrontendUrl(profile.vk_frontend_url?.trim() || 'http://localhost:8100')
-        setVkPublicGatewayUrl(profile.vk_public_gateway_url?.trim() || 'http://localhost:8000')
+        setVkFrontendUrl(profile.vk_frontend_url?.trim() || defaultVkFrontendUrl())
+        setVkPublicGatewayUrl(profile.vk_public_gateway_url?.trim() || defaultVkPublicGatewayUrl())
         const gr = profile.groups_to_read
         if (Array.isArray(gr) && gr.length > 0) {
           setGroupsToRead(gr.map((g) => ({ id: generateId(), value: String(g) })))
@@ -600,12 +618,18 @@ export function VKontaktePage() {
                   label="Публичный URL gateway (VK_PUBLIC_GATEWAY_URL)"
                   value={vkPublicGatewayUrl}
                   onChange={(e) => setVkPublicGatewayUrl(e.target.value)}
-                  placeholder="http://localhost:8000"
+                  placeholder="https://www.copyparse.ru/api"
                 />
               </div>
               <p className="text-xs text-[var(--text-muted)]">
-                Redirect URI для VK:{' '}
-                <code className="text-[var(--text-secondary)] break-all">{vkOAuthRedirectUri}</code>
+                <strong>Redirect URI для кабинета VK</strong> (скопируйте в настройки приложения на{' '}
+                <a href="https://dev.vk.com" target="_blank" rel="noopener noreferrer" className="text-primary-400 hover:underline">
+                  dev.vk.com
+                </a>
+                ):
+              </p>
+              <p className="text-xs p-2 rounded bg-[var(--bg-tertiary)]">
+                <code className="text-[var(--text-secondary)] break-all select-all">{vkOAuthRedirectUri}</code>
               </p>
               <Button
                 type="button"

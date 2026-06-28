@@ -74,8 +74,8 @@ class ProfileService:
                         clean_html, process_services, status_review_after_process,
                         add_static_html, static_html_content,
                         summarize_enabled, summarize_min_length, digest_interval_min,
-                        digest_channel, classification_enabled, classification_categories
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        digest_channel, digest_mode, classification_enabled, classification_categories
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (user_id) DO UPDATE SET
                         publish_enabled = EXCLUDED.publish_enabled,
                         collect_enabled = EXCLUDED.collect_enabled,
@@ -103,6 +103,7 @@ class ProfileService:
                         summarize_min_length = EXCLUDED.summarize_min_length,
                         digest_interval_min = EXCLUDED.digest_interval_min,
                         digest_channel = EXCLUDED.digest_channel,
+                        digest_mode = EXCLUDED.digest_mode,
                         classification_enabled = EXCLUDED.classification_enabled,
                         classification_categories = EXCLUDED.classification_categories,
                         auth_state = 'authorized',
@@ -138,6 +139,7 @@ class ProfileService:
                         data.get("summarize_min_length", 500),
                         data.get("digest_interval_min", 30),
                         data.get("digest_channel"),
+                        data.get("digest_mode", "per_channel"),
                         data.get("classification_enabled", False),
                         classification_categories_json,
                     )
@@ -186,6 +188,7 @@ class ProfileService:
         profile.setdefault("summarize_min_length", 500)
         profile.setdefault("digest_interval_min", 30)
         profile.setdefault("digest_channel", None)
+        profile.setdefault("digest_mode", "per_channel")
         profile.setdefault("classification_enabled", False)
         cc = profile.get("classification_categories")
         if isinstance(cc, str):

@@ -492,6 +492,11 @@ BEGIN
   ALTER TABLE tg_profiles ADD COLUMN classification_categories JSONB DEFAULT '["новости", "реклама", "технологии", "финансы", "другое"]';
 EXCEPTION WHEN duplicate_column THEN NULL;
 END $$;
+DO $$
+BEGIN
+  ALTER TABLE tg_profiles ADD COLUMN digest_mode VARCHAR(20) DEFAULT 'per_channel';
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
 """
 
 # Журнал событий Telegram (сбор, алерты, подавления)

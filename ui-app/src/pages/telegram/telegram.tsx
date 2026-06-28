@@ -213,6 +213,7 @@ export function TelegramPage() {
   const [summarizeMinLength, setSummarizeMinLength] = useState(500)
   const [digestIntervalMin, setDigestIntervalMin] = useState(30)
   const [digestChannel, setDigestChannel] = useState('')
+  const [digestMode, setDigestMode] = useState<'per_channel' | 'combined'>('per_channel')
   const [classificationEnabled, setClassificationEnabled] = useState(false)
   const [classificationCategories, setClassificationCategories] = useState('новости, реклама, технологии, финансы, другое')
   const [recentAlerts, setRecentAlerts] = useState<TgAnalyticsAlertItem[]>([])
@@ -379,6 +380,7 @@ export function TelegramPage() {
         setSummarizeMinLength(profile.summarize_min_length ?? 500)
         setDigestIntervalMin(profile.digest_interval_min ?? 30)
         setDigestChannel(profile.digest_channel || '')
+        setDigestMode(profile.digest_mode === 'combined' ? 'combined' : 'per_channel')
         setClassificationEnabled(profile.classification_enabled ?? false)
         if (profile.classification_categories?.length) {
           setClassificationCategories(profile.classification_categories.join(', '))
@@ -527,6 +529,7 @@ export function TelegramPage() {
         summarize_min_length: summarizeMinLength,
         digest_interval_min: digestIntervalMin,
         digest_channel: digestChannel || undefined,
+        digest_mode: digestMode,
         classification_enabled: classificationEnabled,
         classification_categories: classificationCategories
           .split(',')
@@ -591,6 +594,7 @@ export function TelegramPage() {
         summarize_min_length: summarizeMinLength,
         digest_interval_min: digestIntervalMin,
         digest_channel: digestChannel || undefined,
+        digest_mode: digestMode,
         classification_enabled: classificationEnabled,
         classification_categories: classificationCategories
           .split(',')
@@ -2063,6 +2067,11 @@ export function TelegramPage() {
 
                 <div className="pt-4 border-t border-[var(--border-color)] space-y-4">
                   <h3 className="text-sm font-semibold text-[var(--text-primary)]">AI настройки</h3>
+                  <p className="text-xs text-[var(--text-muted)]">
+                    Для мониторинга каналов с AI-дайджестом: включите сбор на вкладке Profile Settings
+                    (chats_to_read + save_conditions), затем укажите digest channel — канал публикации сводки.
+                    Интервал дайджеста задаёт и окно сбора сообщений, и период отправки.
+                  </p>
                   <label className="flex items-center gap-3 cursor-pointer group">
                     <input
                       type="checkbox"
@@ -2070,28 +2079,43 @@ export function TelegramPage() {
                       onChange={(e) => setSummarizeEnabled(e.target.checked)}
                       className="w-4 h-4"
                     />
-                    <span className="text-[var(--text-primary)]">Суммаризация длинных постов</span>
+                    <span className="text-[var(--text-primary)]">AI-дайджест (суммаризация и публикация)</span>
                   </label>
                   {summarizeEnabled && (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <Input
-                        label="Min length для суммаризации"
+                        label="Min length для суммаризации (Processor)"
                         type="number"
                         value={summarizeMinLength}
                         onChange={(e) => setSummarizeMinLength(Number(e.target.value) || 500)}
                       />
                       <Input
-                        label="Digest interval (min)"
+                        label="Интервал дайджеста (мин)"
                         type="number"
+                        min={5}
+                        max={1440}
                         value={digestIntervalMin}
                         onChange={(e) => setDigestIntervalMin(Number(e.target.value) || 30)}
                       />
                       <Input
-                        label="Digest channel"
+                        label="Канал для дайджеста"
                         value={digestChannel}
                         onChange={(e) => setDigestChannel(e.target.value)}
-                        placeholder="-100..."
+                        placeholder="-100... или @my_channel"
                       />
+                      <div>
+                        <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">
+                          Режим дайджеста
+                        </label>
+                        <select
+                          value={digestMode}
+                          onChange={(e) => setDigestMode(e.target.value as 'per_channel' | 'combined')}
+                          className="w-full px-3 py-2 rounded-lg border border-[var(--border-color)] bg-[var(--bg-secondary)] text-[var(--text-primary)]"
+                        >
+                          <option value="per_channel">Отдельный пост на каждый канал</option>
+                          <option value="combined">Одна сводка по всем каналам</option>
+                        </select>
+                      </div>
                     </div>
                   )}
                   <label className="flex items-center gap-3 cursor-pointer group">

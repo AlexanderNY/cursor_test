@@ -78,6 +78,8 @@ class AdminService:
                         "poll_interval_sec": data.get("poll_interval_sec"),
                         "notify_on_change_only": data.get("notify_on_change_only"),
                         "last_poll_at": data.get("last_poll_at"),
+                        "poll_loop_active": bool(data.get("poll_loop_active", False)),
+                        "poll_in_progress": bool(data.get("poll_in_progress", False)),
                         "current_time": data.get("current_time"),
                         "started_at": data.get("started_at"),
                         "schedule_functions": data.get("schedule_functions") or [],
@@ -459,6 +461,8 @@ def _parse_loop_status(raw: Any) -> Optional[Dict[str, Any]]:
             "last_run_at": last_run,
             "total_processed": int(raw.get("total_processed", 0)),
             "last_cycle_count": int(raw.get("last_cycle_count", 0)),
+            "loop_active": bool(raw.get("loop_active", False)),
+            "cycle_in_progress": bool(raw.get("cycle_in_progress", False)),
         }
     return None
 

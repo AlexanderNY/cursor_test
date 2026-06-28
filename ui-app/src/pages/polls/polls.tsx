@@ -7,7 +7,13 @@ import { Alert } from '@/components/ui/alert'
 import { EmptyState } from '@/components/ui/empty-state'
 import { TableSkeleton } from '@/components/ui/skeleton'
 import { gameService } from '@/services/game-service'
-import type { GameMode, GameOptionInput, GameQuestion } from '@/types/game'
+import type { GameMode, GameModeType, GameOptionInput, GameQuestion } from '@/types/game'
+import { CsvImportSection } from './csv-import-section'
+import { MediaLibrarySection } from './media-library-section'
+import { MenuNodesSection } from './menu-nodes-section'
+import { OrdersSection } from './orders-section'
+import { RatingSection } from './rating-section'
+import { BotsSettingsSection } from './bots-settings-section'
 
 function emptyOptions(correctIndex = 1): GameOptionInput[] {
   return [1, 2, 3, 4, 5, 6].map((index) => ({
@@ -26,6 +32,7 @@ function validateOptions(options: GameOptionInput[]): string | null {
 }
 
 export function PollsPage() {
+  const [selectedBotId, setSelectedBotId] = useState<number | null>(null)
   const [modes, setModes] = useState<GameMode[]>([])
   const [selectedModeId, setSelectedModeId] = useState<number | null>(null)
   const [questions, setQuestions] = useState<GameQuestion[]>([])
@@ -36,9 +43,11 @@ export function PollsPage() {
 
   const [newModeCode, setNewModeCode] = useState('')
   const [newModeTitle, setNewModeTitle] = useState('')
+  const [newModeType, setNewModeType] = useState<GameModeType>('quiz')
   const [newModeQuestionsPerGame, setNewModeQuestionsPerGame] = useState('10')
   const [isCreatingMode, setIsCreatingMode] = useState(false)
   const [savingModeId, setSavingModeId] = useState<number | null>(null)
+  const [deletingModeId, setDeletingModeId] = useState<number | null>(null)
 
   const [showQuestionForm, setShowQuestionForm] = useState(false)
   const [editingQuestionId, setEditingQuestionId] = useState<number | null>(null)
@@ -48,14 +57,17 @@ export function PollsPage() {
   const [isSavingQuestion, setIsSavingQuestion] = useState(false)
   const [loadingQuestionId, setLoadingQuestionId] = useState<number | null>(null)
   const [togglingQuestionId, setTogglingQuestionId] = useState<number | null>(null)
+  const [deletingQuestionId, setDeletingQuestionId] = useState<number | null>(null)
 
   const selectedMode = modes.find((m) => m.id === selectedModeId) ?? null
+  const isMenuMode = selectedMode?.mode_type === 'menu'
+  const hasMenuModes = modes.some((m) => m.mode_type === 'menu')
 
-  const loadModes = useCallback(async () => {
+  const loadModes = useCallback(async (botId?: number | null) => {
     setError('')
     setIsLoadingModes(true)
     try {
-      const data = await gameService.listModes(true)
+      const data = await gameService.listModes(true, botId ?? selectedBotId ?? undefined)
       setModes(data)
       if (data.length > 0) {
         setSelectedModeId((prev) => (prev && data.some((m) => m.id === prev) ? prev : data[0].id))
@@ -68,7 +80,7 @@ export function PollsPage() {
     } finally {
       setIsLoadingModes(false)
     }
-  }, [])
+  }, [selectedBotId])
 
   const loadQuestions = useCallback(async (modeId: number) => {
     setError('')
@@ -85,14 +97,22 @@ export function PollsPage() {
   }, [])
 
   useEffect(() => {
-    loadModes()
-  }, [loadModes])
+    if (selectedBotId) {
+      loadModes(selectedBotId)
+    }
+  }, [selectedBotId, loadModes])
+
+  function handleBotsLoaded(bots: { id: number }[]) {
+    setSelectedBotId((prev) =>
+      prev && bots.some((b) => b.id === prev) ? prev : bots[0]?.id ?? null,
+    )
+  }
 
   useEffect(() => {
-    if (selectedModeId) {
+    if (selectedModeId && !isMenuMode) {
       loadQuestions(selectedModeId)
     }
-  }, [selectedModeId, loadQuestions])
+  }, [selectedModeId, isMenuMode, loadQuestions])
 
   function resetQuestionForm() {
     setEditingQuestionId(null)
@@ -141,20 +161,29 @@ export function PollsPage() {
   async function handleCreateMode(e: FormEvent) {
     e.preventDefault()
     const questionsPerGame = Number.parseInt(newModeQuestionsPerGame, 10)
-    if (!newModeCode.trim() || !newModeTitle.trim() || !Number.isFinite(questionsPerGame)) return
+    if (!newModeCode.trim() || !newModeTitle.trim() || !selectedBotId) return
+    if (
+      newModeType === 'quiz' &&
+      (!Number.isFinite(questionsPerGame) || questionsPerGame < 1)
+    ) {
+      return
+    }
 
     setError('')
     setSuccess('')
     setIsCreatingMode(true)
     try {
       const created = await gameService.createMode({
+        bot_id: selectedBotId,
         code: newModeCode.trim(),
         title: newModeTitle.trim(),
-        questions_per_game: questionsPerGame,
+        questions_per_game: newModeType === 'menu' ? 1 : questionsPerGame,
+        mode_type: newModeType,
         is_active: true,
       })
       setNewModeCode('')
       setNewModeTitle('')
+      setNewModeType('quiz')
       setNewModeQuestionsPerGame('10')
       setSelectedModeId(created.id)
       await loadModes()
@@ -176,6 +205,34 @@ export function PollsPage() {
       setError(e instanceof Error ? e.message : 'Не удалось обновить режим')
     } finally {
       setSavingModeId(null)
+    }
+  }
+
+  async function handleDeleteMode(mode: GameMode) {
+    const actionLabel = mode.is_active ? 'удалить активный режим' : 'удалить режим'
+    if (
+      !window.confirm(
+        `Вы уверены, что хотите ${actionLabel} «${mode.title}»? Все вопросы и история игр в этом режиме будут удалены безвозвратно.`,
+      )
+    ) {
+      return
+    }
+
+    setDeletingModeId(mode.id)
+    setError('')
+    setSuccess('')
+    try {
+      await gameService.deleteMode(mode.id)
+      if (selectedModeId === mode.id) {
+        resetQuestionForm()
+        setQuestions([])
+      }
+      setSuccess('Режим удалён')
+      await loadModes()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Не удалось удалить режим')
+    } finally {
+      setDeletingModeId(null)
     }
   }
 
@@ -236,6 +293,29 @@ export function PollsPage() {
     }
   }
 
+  async function handleDeleteQuestion(question: GameQuestion) {
+    const actionLabel = question.is_active ? 'удалить активный вопрос' : 'удалить вопрос'
+    if (!window.confirm(`Вы уверены, что хотите ${actionLabel} #${question.id}? Это действие необратимо.`)) {
+      return
+    }
+
+    setDeletingQuestionId(question.id)
+    setError('')
+    setSuccess('')
+    try {
+      await gameService.deleteQuestion(question.id)
+      if (editingQuestionId === question.id) {
+        resetQuestionForm()
+      }
+      setSuccess('Вопрос удалён')
+      if (selectedModeId) await loadQuestions(selectedModeId)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Не удалось удалить вопрос')
+    } finally {
+      setDeletingQuestionId(null)
+    }
+  }
+
   function handleOptionTextChange(index: number, text: string) {
     setOptions((prev) =>
       prev.map((o) => (o.option_index === index ? { ...o, option_text: text } : o)),
@@ -252,7 +332,7 @@ export function PollsPage() {
     <PageContainer>
       <PageHeader
         title="Polls"
-        description="Управление контентом Telegram-игры: режимы, вопросы и варианты ответов (6 на вопрос, один верный)."
+        description="Управление контентом Telegram-игры: викторина (вопросы) или иерархическое меню."
       />
 
       {error && (
@@ -266,7 +346,14 @@ export function PollsPage() {
         </Alert>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(280px,360px)_1fr]">
+      <BotsSettingsSection
+        selectedBotId={selectedBotId}
+        onSelectBot={setSelectedBotId}
+        onBotsLoaded={handleBotsLoaded}
+        onBotsChanged={() => loadModes(selectedBotId)}
+      />
+
+      <div className="grid gap-6 lg:grid-cols-[minmax(280px,360px)_1fr] mt-6">
         <Card>
           <CardHeader>
             <CardTitle className="text-lg">Режимы игры</CardTitle>
@@ -285,17 +372,30 @@ export function PollsPage() {
                 value={newModeTitle}
                 onChange={(e) => setNewModeTitle(e.target.value)}
               />
-              <Input
-                type="number"
-                min={1}
-                max={100}
-                placeholder="Вопросов за игру"
-                value={newModeQuestionsPerGame}
-                onChange={(e) => setNewModeQuestionsPerGame(e.target.value)}
-              />
+              <div className="space-y-1">
+                <label className="text-xs text-[var(--text-secondary)]">Тип режима</label>
+                <select
+                  className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-sm text-[var(--text-primary)]"
+                  value={newModeType}
+                  onChange={(e) => setNewModeType(e.target.value as GameModeType)}
+                >
+                  <option value="quiz">Викторина (вопросы)</option>
+                  <option value="menu">Меню (иерархия)</option>
+                </select>
+              </div>
+              {newModeType === 'quiz' && (
+                <Input
+                  type="number"
+                  min={1}
+                  max={300}
+                  placeholder="Вопросов за игру"
+                  value={newModeQuestionsPerGame}
+                  onChange={(e) => setNewModeQuestionsPerGame(e.target.value)}
+                />
+              )}
               <Button
                 type="submit"
-                disabled={!newModeCode.trim() || !newModeTitle.trim() || isCreatingMode}
+                disabled={!selectedBotId || !newModeCode.trim() || !newModeTitle.trim() || isCreatingMode}
                 isLoading={isCreatingMode}
               >
                 Создать режим
@@ -325,7 +425,10 @@ export function PollsPage() {
                           <div>
                             <p className="font-medium text-[var(--text-primary)]">{mode.title}</p>
                             <p className="text-xs text-[var(--text-secondary)]">
-                              {mode.code} · {mode.questions_per_game} вопр./игра
+                              {mode.code} ·{' '}
+                              {mode.mode_type === 'menu'
+                                ? 'меню'
+                                : `${mode.questions_per_game} вопр./игра`}
                             </p>
                           </div>
                           <span
@@ -338,12 +441,12 @@ export function PollsPage() {
                             {mode.is_active ? 'активен' : 'выкл'}
                           </span>
                         </div>
-                        <div className="mt-2">
+                        <div className="mt-2 flex flex-wrap gap-2">
                           <Button
                             type="button"
                             variant="secondary"
                             size="sm"
-                            disabled={savingModeId === mode.id}
+                            disabled={savingModeId === mode.id || deletingModeId === mode.id}
                             isLoading={savingModeId === mode.id}
                             onClick={(e) => {
                               e.stopPropagation()
@@ -351,6 +454,19 @@ export function PollsPage() {
                             }}
                           >
                             {mode.is_active ? 'Выключить' : 'Включить'}
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="danger"
+                            size="sm"
+                            disabled={savingModeId === mode.id || deletingModeId === mode.id}
+                            isLoading={deletingModeId === mode.id}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleDeleteMode(mode)
+                            }}
+                          >
+                            Удалить
                           </Button>
                         </div>
                       </button>
@@ -362,6 +478,9 @@ export function PollsPage() {
           </CardContent>
         </Card>
 
+        {isMenuMode ? (
+          <MenuNodesSection modeId={selectedModeId} modeTitle={selectedMode?.title} />
+        ) : (
         <Card>
           <CardHeader>
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -381,6 +500,28 @@ export function PollsPage() {
             </div>
           </CardHeader>
           <CardContent className="space-y-6">
+            <MediaLibrarySection
+              onSelectUrl={(url) => {
+                if (!showQuestionForm) {
+                  setError('')
+                  setEditingQuestionId(null)
+                  setPromptText('')
+                  setOptions(emptyOptions())
+                  setShowQuestionForm(true)
+                }
+                setImageUrl(url)
+                setSuccess('URL изображения подставлен в форму вопроса')
+              }}
+            />
+
+            <CsvImportSection
+              modeId={selectedModeId}
+              modeTitle={selectedMode?.title}
+              onImported={async () => {
+                if (selectedModeId) await loadQuestions(selectedModeId)
+              }}
+            />
+
             {!selectedModeId ? (
               <EmptyState title="Выберите режим" description="Слева выберите или создайте режим игры." />
             ) : (
@@ -400,10 +541,20 @@ export function PollsPage() {
                       onChange={(e) => setPromptText(e.target.value)}
                     />
                     <Input
-                      placeholder="URL изображения (необязательно)"
+                      placeholder="URL изображения (необязательно, можно из медиатеки)"
                       value={imageUrl}
                       onChange={(e) => setImageUrl(e.target.value)}
                     />
+                    {imageUrl && (
+                      <img
+                        src={imageUrl}
+                        alt="Превью"
+                        className="max-h-32 rounded-lg border border-[var(--border-color)] object-contain"
+                        onError={(e) => {
+                          ;(e.target as HTMLImageElement).style.display = 'none'
+                        }}
+                      />
+                    )}
                     <div className="space-y-2">
                       <p className="text-sm font-medium text-[var(--text-primary)]">Варианты ответа</p>
                       {options
@@ -504,6 +655,15 @@ export function PollsPage() {
                                 >
                                   {q.is_active ? 'Выключить' : 'Включить'}
                                 </Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="danger"
+                                  isLoading={deletingQuestionId === q.id}
+                                  onClick={() => handleDeleteQuestion(q)}
+                                >
+                                  Удалить
+                                </Button>
                               </div>
                             </td>
                           </tr>
@@ -516,7 +676,21 @@ export function PollsPage() {
             )}
           </CardContent>
         </Card>
+        )}
       </div>
+
+      {!isMenuMode && (
+      <RatingSection modeId={selectedModeId} modeTitle={selectedMode?.title} />
+      )}
+
+      {hasMenuModes && selectedBotId && (
+        <OrdersSection
+          modeId={isMenuMode ? selectedModeId : null}
+          modeTitle={isMenuMode ? selectedMode?.title : undefined}
+          botId={selectedBotId}
+          filterByMode={isMenuMode}
+        />
+      )}
     </PageContainer>
   )
 }
