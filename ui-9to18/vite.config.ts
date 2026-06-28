@@ -10,13 +10,11 @@ export default defineConfig({
     },
   },
   server: {
-    port: 8100,
+    port: 8200,
     host: '0.0.0.0',
     allowedHosts: [
       'localhost',
-      '.copyparse.ru',
-      '95.165.87.163',
-      '192.168.1.66',
+      '.9to18.ru',
     ],
     proxy: {
       '/api': {
@@ -27,5 +25,3 @@ export default defineConfig({
     },
   },
 })
-
-

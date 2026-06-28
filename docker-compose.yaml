@@ -1,5 +1,19 @@
 # docker-compose.yml
 
+# Публичный URL для OAuth/redirect (IP роутера). Проброс NAT: 95.165.87.163 → 192.168.1.66
+x-public-url: &public-url "http://95.165.87.163"
+
+# IP привязки портов на хосте (LAN-IP ПК или 0.0.0.0). НЕ ставьте сюда IP роутера.
+x-bind-host: &bind-host "${BIND_HOST:-0.0.0.0}"
+
+x-ui-public-ports: &ui-public-ports
+  - "${BIND_HOST:-0.0.0.0}:8100:8100/tcp"
+  - "${BIND_HOST:-0.0.0.0}:8100:8100/udp"
+
+x-ui-edge-ports: &ui-edge-ports
+  - "${BIND_HOST:-0.0.0.0}:80:80/tcp"
+  - "${BIND_HOST:-0.0.0.0}:443:443/tcp"
+
 x-ai-environment: &ai-environment
   AI_SERVICE_URL: http://ollama:11434
   AI_MODEL: qwen2.5:3b
@@ -31,11 +45,12 @@ services:
       S3_SECRET_KEY: password123
       S3_USE_SSL: "false"
       API_GATEWAY_URL: http://gateway:8000
-      VK_PUBLIC_GATEWAY_URL: ${VK_PUBLIC_GATEWAY_URL:-http://localhost:8000}
-      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:8100}
+      # Публичный URL API для VK OAuth (через ui-edge: /api → gateway). Локально: http://localhost:8100/api
+      VK_PUBLIC_GATEWAY_URL: ${VK_PUBLIC_GATEWAY_URL:-https://www.copyparse.ru/api}
+      FRONTEND_URL: ${FRONTEND_URL:-https://www.copyparse.ru}
       VK_APP_ID: ${VK_APP_ID:-}
       VK_APP_SECRET: ${VK_APP_SECRET:-}
-      VK_OAUTH_REDIRECT_URI: ${VK_OAUTH_REDIRECT_URI:-}
+      # VK_OAUTH_REDIRECT_URI не задавать — Core строит {VK_PUBLIC_GATEWAY_URL}/vk/oauth/callback
       AUTH_SERVICE_URL: http://auth:8001
       TG_BOT_SERVICE_URL: http://tg-bot:8004
       VK_BOT_SERVICE_URL: http://vk-bot:8005
@@ -79,6 +94,7 @@ services:
       - VK_BOT_SERVICE_URL=http://vk-bot:8005
       - TG_GAME_SERVICE_URL=http://tg-game:8015
       - GAME_ADMIN_API_TOKEN=122
+      - CORS_ORIGINS=http://localhost:5173,http://localhost:8100,http://127.0.0.1:8100,http://192.168.1.66,http://192.168.1.66:8100,http://95.165.87.163,https://95.165.87.163,http://copyparse.ru,https://copyparse.ru,http://www.copyparse.ru,https://www.copyparse.ru,http://9to18.ru,https://9to18.ru,http://www.9to18.ru,https://www.9to18.ru
     networks:
       monitoring_network:
         ipv4_address: 172.20.10.250
@@ -104,8 +120,7 @@ services:
     build: 
       context: .
       dockerfile: ./ui-app/Dockerfile    
-    ports:
-      - "8100:8100"
+    ports: *ui-public-ports
     environment:
       - VITE_API_GATEWAY_URL=http://gateway:8000
       - VITE_AUTH_SERVICE_URL=http://auth:8001
@@ -118,6 +133,30 @@ services:
     networks:
       monitoring_network:
         ipv4_address: 172.20.10.100
+
+  ui-edge:
+    image: nginx:1.27-alpine
+    depends_on:
+      - ui
+      - ui-9to18
+    ports: *ui-edge-ports
+    volumes:
+      - ./deploy/ui-edge/conf.d:/etc/nginx/conf.d:ro
+      - ./deploy/ui-edge/includes:/etc/nginx/includes:ro
+      - ${UI_SSL_CERT_DIR:-./deploy/ui-edge/certs}:/etc/nginx/certs:ro
+    networks:
+      monitoring_network:
+        ipv4_address: 172.20.10.101
+
+  ui-9to18:
+    build:
+      context: .
+      dockerfile: ./ui-9to18/Dockerfile
+    environment:
+      - VITE_API_GATEWAY_URL=http://gateway:8000
+    networks:
+      monitoring_network:
+        ipv4_address: 172.20.10.102
 
   wp-bot:
     build: 
