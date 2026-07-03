@@ -2,7 +2,15 @@
 
 Фронтенд для **9to18.ru**. За edge-прокси `ui-edge` на порту **8200** (внутри Docker-сети).
 
-Сейчас — заглушка «Сайт в разработке». Публичный доступ по **HTTP** (без TLS).
+Автономный SPA без связи с `ui-app` и backend API.
+
+## Маршруты
+
+| URL | Страница |
+|-----|----------|
+| `/` | Главная — сетка разделов |
+| `/game/bowl` | Bowl 2D — игра на Pyodide |
+| `/game/:slug` | Страница раздела (заглушка) |
 
 ## Локальная разработка
 
@@ -11,6 +19,8 @@ cd ui-9to18
 npm install
 npm run dev
 ```
+
+Pyodide WASM загружается **локально** из `public/pyodide/` (копируется из `node_modules` при `npm install` / `npm run dev`).
 
 http://localhost:8200
 

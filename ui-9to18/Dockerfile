@@ -10,6 +10,8 @@ RUN --mount=type=cache,target=/root/.npm npm install
 
 COPY ui-9to18/ .
 
+RUN node scripts/copy-pyodide.mjs
+
 EXPOSE 8200
 
 CMD ["npm", "run", "dev"]

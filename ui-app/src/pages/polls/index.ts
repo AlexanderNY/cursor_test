@@ -1,1 +1,5 @@
-export { PollsPage } from './polls'
+export { PollsPage, PollsIndexRedirect } from './polls'
+export { PollsContentSection } from './polls-content-section'
+export { PollsDiagnosticsSection } from './polls-diagnostics-section'
+export { PollsRatingPage } from './polls-rating-page'
+export { PollsOrdersPage } from './polls-orders-page'

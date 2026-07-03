@@ -49,3 +49,19 @@ def test_shuffle_for_display_keeps_all_items() -> None:
         out = shuffle_for_display(items)
     assert sorted(out) == items
     assert len(out) == 6
+
+
+def test_shuffle_for_display_keeps_all_items() -> None:
+    items = [10, 20, 30, 40, 50, 60]
+    with patch("services.game_engine.random.shuffle", lambda x: x.reverse()):
+        out = shuffle_for_display(items)
+    assert sorted(out) == items
+    assert len(out) == 6
+
+
+def test_shuffle_for_display_keeps_all_items() -> None:
+    items = [10, 20, 30, 40, 50, 60]
+    with patch("services.game_engine.random.shuffle", lambda x: x.reverse()):
+        out = shuffle_for_display(items)
+    assert sorted(out) == items
+    assert len(out) == 6

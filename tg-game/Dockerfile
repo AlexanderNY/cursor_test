@@ -5,6 +5,7 @@ WORKDIR /app
 COPY tg-game/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+COPY shared_storage /app/shared_storage
 COPY tg-game/ .
 
 EXPOSE 8015

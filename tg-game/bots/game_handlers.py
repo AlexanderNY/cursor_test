@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import logging
 from aiogram import F, Router
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command
-from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram.types import BufferedInputFile, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 from config import settings
 from services.game_engine import PickQuestionsInput, pick_random_questions, shuffle_for_display
 from services.game_repository import GameOptionRow, game_repository
+from services.media_storage import extract_media_filename, fetch_media_bytes
 from services.rating_service import get_leaderboard
 
 logger = logging.getLogger(__name__)
@@ -64,7 +66,80 @@ def _answer_keyboard(session_id: int, question_id: int, options: list[GameOption
             row = []
     if row:
         buttons.append(row)
+    buttons.append(
+        [
+            InlineKeyboardButton(
+                text="🏠 В главное меню",
+                callback_data=f"menu|{session_id}",
+            )
+        ]
+    )
     return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+async def _reply_main_menu(
+    bot,
+    chat_id: int,
+    *,
+    game_bot_id: int,
+    telegram_user_id: int,
+    username: str | None,
+    first_name: str | None,
+) -> None:
+    is_adm = _is_admin_user(telegram_user_id)
+    await game_repository.upsert_player(
+        bot_id=game_bot_id,
+        telegram_user_id=telegram_user_id,
+        username=username,
+        first_name=first_name,
+        is_admin=is_adm,
+    )
+
+    modes = await game_repository.list_active_modes(game_bot_id)
+    if not modes:
+        await bot.send_message(
+            chat_id,
+            "Режимы игры пока не настроены. Обратитесь к администратору.",
+        )
+        return
+
+    await bot.send_message(
+        chat_id,
+        "Выберите режим игры:",
+        reply_markup=_mode_keyboard(modes),
+    )
+
+
+async def _load_question_photo(question) -> BufferedInputFile | None:
+    filename = extract_media_filename(question.image_url)
+    if not filename:
+        return None
+    result = await fetch_media_bytes(filename)
+    if not result:
+        logger.warning("Game media not found in storage: %s", filename)
+        return None
+    body, _content_type = result
+    return BufferedInputFile(body, filename=filename)
+
+
+async def _build_answer_feedback(
+    question_id: int,
+    selected_option_id: int,
+    is_correct: bool,
+) -> str:
+    _question, options = await game_repository.get_question_with_options(question_id)
+    correct = next((o for o in options if o.is_correct), None)
+    correct_text = correct.option_text if correct else "—"
+    if is_correct:
+        return f"✅ Верно!\nПравильный ответ: {correct_text}"
+
+    selected = next((o for o in options if o.id == selected_option_id), None)
+    selected_text = selected.option_text if selected else "—"
+    return (
+        f"❌ Неверно.\n"
+        f"Ваш ответ: {selected_text}\n"
+        f"Правильный ответ: {correct_text}"
+    )
 
 
 async def _send_question(bot, chat_id: int, session_id: int, step: int) -> None:
@@ -81,49 +156,54 @@ async def _send_question(bot, chat_id: int, session_id: int, step: int) -> None:
     caption = question.prompt_text[:1024]
     kb = _answer_keyboard(session_id, question.id, options)
 
-    if question.image_file_id:
-        await bot.send_photo(
-            chat_id,
-            photo=question.image_file_id,
-            caption=caption,
-            reply_markup=kb,
+    try:
+        if question.image_file_id:
+            sent = await bot.send_photo(
+                chat_id,
+                photo=question.image_file_id,
+                caption=caption,
+                reply_markup=kb,
+            )
+        elif question.image_url:
+            photo_file = await _load_question_photo(question)
+            if not photo_file:
+                await bot.send_message(chat_id, text=caption, reply_markup=kb)
+                return
+            sent = await bot.send_photo(
+                chat_id,
+                photo=photo_file,
+                caption=caption,
+                reply_markup=kb,
+            )
+            if sent.photo:
+                await game_repository.set_question_image_file_id(
+                    question.id,
+                    sent.photo[-1].file_id,
+                )
+        else:
+            await bot.send_message(chat_id, text=caption, reply_markup=kb)
+            return
+    except TelegramBadRequest as exc:
+        logger.warning(
+            "Failed to send question photo (question_id=%s): %s",
+            question.id,
+            exc,
         )
-    elif question.image_url:
-        await bot.send_photo(
-            chat_id,
-            photo=question.image_url,
-            caption=caption,
-            reply_markup=kb,
-        )
-    else:
         await bot.send_message(chat_id, text=caption, reply_markup=kb)
 
 
 @game_router.message(Command("start"))
-async def cmd_start(message: Message) -> None:
+async def cmd_start(message: Message, game_bot_id: int) -> None:
     if not message.from_user:
         return
 
-    uid = message.from_user.id
-    is_adm = _is_admin_user(uid)
-    player_id = await game_repository.upsert_player(
-        telegram_user_id=uid,
+    await _reply_main_menu(
+        message.bot,
+        message.chat.id,
+        game_bot_id=game_bot_id,
+        telegram_user_id=message.from_user.id,
         username=message.from_user.username,
         first_name=message.from_user.first_name,
-        is_admin=is_adm,
-    )
-    logger.debug("Player upsert id=%s tg=%s", player_id, uid)
-
-    modes = await game_repository.list_active_modes()
-    if not modes:
-        await message.answer(
-            "Режимы игры пока не настроены. Обратитесь к администратору.",
-        )
-        return
-
-    await message.answer(
-        "Выберите режим игры:",
-        reply_markup=_mode_keyboard(modes),
     )
 
 
@@ -134,17 +214,19 @@ async def cmd_rating(message: Message) -> None:
         await message.answer("Пока нет завершённых игр в рейтинге.")
         return
 
-    lines = ["Топ игроков (лучший результат):", ""]
+    lines = ["🏆 Топ игроков (лучший результат):", ""]
     for i, r in enumerate(rows, start=1):
         name = r.get("username") or str(r.get("telegram_user_id"))
+        correct = int(r.get("correct_count", r.get("score", 0)))
+        total = int(r.get("total_questions", 0))
         dur = r.get("duration_sec")
         dur_s = f", {dur} с" if dur is not None else ""
-        lines.append(f"{i}. {name} — {r['score']} очков{dur_s}")
+        lines.append(f"{i}. {name} — {correct}/{total} верных{dur_s}")
     await message.answer("\n".join(lines))
 
 
 @game_router.callback_query(F.data.startswith("m|"))
-async def cb_pick_mode(query: CallbackQuery) -> None:
+async def cb_pick_mode(query: CallbackQuery, game_bot_id: int) -> None:
     if not query.from_user or not query.message:
         await query.answer()
         return
@@ -159,6 +241,7 @@ async def cb_pick_mode(query: CallbackQuery) -> None:
     uid = query.from_user.id
     is_adm = _is_admin_user(uid)
     player_id = await game_repository.upsert_player(
+        bot_id=game_bot_id,
         telegram_user_id=uid,
         username=query.from_user.username,
         first_name=query.from_user.first_name,
@@ -166,8 +249,23 @@ async def cb_pick_mode(query: CallbackQuery) -> None:
     )
 
     mode = await game_repository.get_mode(mode_id)
-    if not mode or not mode.is_active:
+    if not mode or not mode.is_active or mode.bot_id != game_bot_id:
         await query.answer("Режим недоступен", show_alert=True)
+        return
+
+    bot = query.bot or query.message.bot
+
+    if mode.mode_type == "menu":
+        await query.answer()
+        from bots.menu_handlers import start_menu_mode
+
+        await start_menu_mode(
+            bot,
+            query.message.chat.id,
+            mode_id,
+            game_bot_id=game_bot_id,
+            telegram_user_id=uid,
+        )
         return
 
     ready_ids = await game_repository.get_question_ids_ready_for_mode(mode_id)
@@ -198,6 +296,49 @@ async def cb_pick_mode(query: CallbackQuery) -> None:
     )
     bot = query.bot or query.message.bot
     await _send_question(bot, query.message.chat.id, session_id, 0)
+
+
+@game_router.callback_query(F.data.startswith("menu|"))
+async def cb_main_menu(query: CallbackQuery, game_bot_id: int) -> None:
+    if not query.from_user or not query.message:
+        await query.answer()
+        return
+
+    try:
+        _, session_s = (query.data or "").split("|", 1)
+        session_id = int(session_s)
+    except (ValueError, AttributeError):
+        await query.answer("Некорректные данные", show_alert=True)
+        return
+
+    uid = query.from_user.id
+    is_adm = _is_admin_user(uid)
+    player_id = await game_repository.upsert_player(
+        bot_id=game_bot_id,
+        telegram_user_id=uid,
+        username=query.from_user.username,
+        first_name=query.from_user.first_name,
+        is_admin=is_adm,
+    )
+
+    sess = await game_repository.get_session(session_id)
+    if sess and sess.status == "in_progress":
+        owner_tg = await game_repository.get_telegram_user_id_for_player(sess.player_id)
+        if owner_tg != uid:
+            await query.answer("Это не ваша игра", show_alert=True)
+            return
+        await game_repository.abort_session(session_id, player_id=player_id)
+
+    await query.answer()
+    bot = query.bot or query.message.bot
+    await _reply_main_menu(
+        bot,
+        query.message.chat.id,
+        game_bot_id=game_bot_id,
+        telegram_user_id=uid,
+        username=query.from_user.username,
+        first_name=query.from_user.first_name,
+    )
 
 
 @game_router.callback_query(F.data.startswith("a|"))
@@ -265,13 +406,19 @@ async def cb_answer(query: CallbackQuery) -> None:
     is_correct = bool(result.get("is_correct"))
     await query.answer("Верно!" if is_correct else "Неверно.", show_alert=False)
 
+    feedback = await _build_answer_feedback(question_id, option_id, is_correct)
+    await query.message.answer(feedback)
+
     if result.get("session_completed"):
         score = int(result.get("score", 0))
         correct = int(result.get("correct_count", 0))
         total = int(result.get("total_questions", 0))
         await query.message.answer(
-            f"Игра окончена!\nОчки: {score}\nВерных ответов: {correct} из {total}.\n"
-            f"Команда /rating — рейтинг.\n/start — новая игра.",
+            f"🎉 Игра окончена!\n"
+            f"Верных ответов: {correct} из {total}\n"
+            f"Очки: {score}\n\n"
+            f"/rating — таблица рейтинга\n"
+            f"/start — новая игра",
         )
         return
 

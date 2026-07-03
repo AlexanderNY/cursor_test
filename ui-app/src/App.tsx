@@ -15,7 +15,7 @@ import { InstagramPage } from '@/pages/stubs/instagram'
 import { CustomURLPage } from '@/pages/stubs/custom-url'
 import { CreatePostPage } from '@/pages/create-post'
 import { AdministrationPage } from '@/pages/administration'
-import { PollsPage } from '@/pages/polls'
+import { PollsPage, PollsIndexRedirect, PollsContentSection, PollsDiagnosticsSection, PollsRatingPage, PollsOrdersPage } from '@/pages/polls'
 import { ChecksPage, ChecksIndexRedirect, AiCheckSection, ServicesStatusSection, ProcessorSection, CollectorSection, SchedulerSection, PostingDiagnosticsSection } from '@/pages/checks'
 import { GroupPage } from '@/pages/group'
 import { FigmaPreviewPage } from '@/pages/figma-preview'
@@ -100,7 +100,13 @@ function App() {
         <Route path="create-post" element={<Navigate to="/posts" replace />} />
         <Route path="group" element={<GroupPage />} />
         <Route path="administration" element={<AdminRoute><AdministrationPage /></AdminRoute>} />
-        <Route path="polls" element={<AdminRoute><PollsPage /></AdminRoute>} />
+        <Route path="polls" element={<AdminRoute><PollsPage /></AdminRoute>}>
+          <Route index element={<PollsIndexRedirect />} />
+          <Route path="content" element={<PollsContentSection />} />
+          <Route path="diagnostics" element={<PollsDiagnosticsSection />} />
+          <Route path="rating" element={<PollsRatingPage />} />
+          <Route path="orders" element={<PollsOrdersPage />} />
+        </Route>
         <Route path="checks" element={<AdminRoute><ChecksPage /></AdminRoute>}>
           <Route index element={<ChecksIndexRedirect />} />
           <Route path="services-status" element={<ServicesStatusSection />} />

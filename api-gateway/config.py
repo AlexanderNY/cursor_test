@@ -94,6 +94,7 @@ RATE_LIMITS_CONFIG: dict[str, dict[str, int]] = {
     "/tw-bot/schedule": {"requests": 60, "window_seconds": 60},
     "/dzen-bot/schedule": {"requests": 60, "window_seconds": 60},
     "/instagram-bot/schedule": {"requests": 60, "window_seconds": 60},
+    "/tg/game/admin": {"requests": 120, "window_seconds": 60},
     "/dzen-bot/publish-once": {"requests": 30, "window_seconds": 60},
     "/dzen-bot/collect-once": {"requests": 30, "window_seconds": 60},
     "/dzen-bot/verify-yandex": {"requests": 8, "window_seconds": 60},

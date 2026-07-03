@@ -1,25 +1,36 @@
+import { lazy, Suspense } from 'react'
+import { Navigate, Route, Routes } from 'react-router-dom'
+import { GameSectionPage } from '@/pages/game-section-page'
+import { HomePage } from '@/pages/home-page'
+
+const BowlGamePage = lazy(() =>
+  import('@/game/bowl/bowl-game-page').then((module) => ({ default: module.BowlGamePage })),
+)
+
+function BowlGameFallback() {
+  return (
+    <div className="bowl-screen bowl-menu">
+      <div className="bowl-menu-card">
+        <p className="bowl-subtitle">Загрузка Bowl…</p>
+      </div>
+    </div>
+  )
+}
+
 export default function App() {
   return (
-    <div className="page">
-      <div className="glow glow-a" aria-hidden />
-      <div className="glow glow-b" aria-hidden />
-
-      <main className="card">
-        <div className="brand">
-          <span className="brand-mark">9–18</span>
-          <span className="brand-domain">9to18.ru</span>
-        </div>
-
-        <h1 className="title">Сайт в разработке</h1>
-        <p className="subtitle">
-          Мы готовим новый проект. Скоро здесь появится полноценный сайт.
-        </p>
-
-        <div className="status" role="status">
-          <span className="status-dot" />
-          <span>Работаем над запуском</span>
-        </div>
-      </main>
-    </div>
+    <Routes>
+      <Route path="/" element={<HomePage />} />
+      <Route
+        path="/game/bowl"
+        element={
+          <Suspense fallback={<BowlGameFallback />}>
+            <BowlGamePage />
+          </Suspense>
+        }
+      />
+      <Route path="/game/:slug" element={<GameSectionPage />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
   )
 }

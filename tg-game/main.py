@@ -15,7 +15,15 @@ from config import settings
 from database import close_db, init_db
 from game_schema import GAME_TABLE_DDL
 from routers.game_admin import router as game_admin_router
+from routers.game_menu_admin import router as game_menu_admin_router
+from routers.game_orders_admin import router as game_orders_admin_router
+from routers.game_bots_admin import router as game_bots_admin_router
+from routers.game_media_admin import router as game_media_admin_router
+from routers.game_media_public import router as game_media_public_router
 from routers.game_rating import router as game_rating_router
+from services.bot_manager import reload_all_bots
+from services.bot_telegram import fetch_bot_info
+from services.game_repository import game_repository
 
 logging.basicConfig(
     level=getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO),
@@ -24,33 +32,48 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-_game_poll_task: asyncio.Task | None = None
+
+async def _bootstrap_bots_from_env() -> None:
+    default_token = (settings.GAME_BOT_TOKEN or "").strip()
+    if not default_token:
+        return
+
+    existing_id = await game_repository.find_bot_id_by_token(default_token)
+    if existing_id is None:
+        try:
+            info = await fetch_bot_info(default_token)
+        except Exception as exc:
+            logger.warning("Could not validate GAME_BOT_TOKEN on bootstrap: %s", exc)
+            return
+        username = info.get("username")
+        display_name = f"@{username}" if username else "Основной бот"
+        bot_id = await game_repository.admin_create_bot(
+            name=display_name,
+            token=default_token,
+            username=username,
+            is_active=True,
+        )
+        logger.info("Created default game bot id=%s from GAME_BOT_TOKEN", bot_id)
+        existing_id = bot_id
+
+    await game_repository.assign_orphan_records_to_bot(existing_id)
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    global _game_poll_task
-
     logger.info("Initializing database...")
     await init_db(GAME_TABLE_DDL)
     logger.info("Database initialized")
 
-    game_token = (settings.GAME_BOT_TOKEN or "").strip()
-    if game_token:
-        from bots.game_bot_runner import run_game_bot_polling
-
-        _game_poll_task = asyncio.create_task(run_game_bot_polling(game_token))
-        logger.info("Game bot (aiogram) polling task started.")
+    await _bootstrap_bots_from_env()
+    await reload_all_bots()
+    logger.info("Game bots polling started.")
 
     yield
 
-    if _game_poll_task:
-        _game_poll_task.cancel()
-        try:
-            await _game_poll_task
-        except asyncio.CancelledError:
-            pass
-        _game_poll_task = None
+    from services.bot_manager import stop_all_bots
+
+    await stop_all_bots()
 
     await close_db()
     logger.info("Game service stopped")
@@ -58,7 +81,12 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(title="Telegram Game Bot Service", version="1.0.0", lifespan=lifespan)
 app.include_router(game_rating_router, prefix="/tg/game")
+app.include_router(game_bots_admin_router, prefix="/tg/game")
 app.include_router(game_admin_router, prefix="/tg/game")
+app.include_router(game_menu_admin_router, prefix="/tg/game")
+app.include_router(game_orders_admin_router, prefix="/tg/game")
+app.include_router(game_media_admin_router, prefix="/tg/game")
+app.include_router(game_media_public_router, prefix="/tg/game")
 
 
 @app.get("/health")
