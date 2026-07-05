@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { DEFAULT_HERO_COLOR, HERO_COLORS } from './hero-colors'
+import { HeroPreview } from './hero-preview'
 
 interface HeroColorScreenProps {
   onContinue: (color: string) => void
@@ -20,13 +21,7 @@ export function HeroColorScreen({ onContinue, onBack }: HeroColorScreenProps) {
         <p className="bowl-subtitle">Выберите цвет вашей точки перед стартом.</p>
 
         <div className="bowl-hero-preview" aria-hidden>
-          <span
-            className="bowl-hero-preview-dot"
-            style={{
-              background: selected,
-              boxShadow: `0 0 24px ${selected}88`,
-            }}
-          />
+          <HeroPreview color={selected} />
         </div>
 
         <div className="bowl-color-grid">

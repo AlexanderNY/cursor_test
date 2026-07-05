@@ -7,6 +7,7 @@ export class InputManager {
   private joystick: InputVector = { x: 0, y: 0 }
   private joystickListener: JoystickListener | null = null
   private actionQueued = false
+  private sprintHeld = false
 
   attach(): () => void {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -22,6 +23,7 @@ export class InputManager {
     }
     const onBlur = () => {
       this.keys.clear()
+      this.sprintHeld = false
     }
 
     window.addEventListener('keydown', onKeyDown)
@@ -35,6 +37,7 @@ export class InputManager {
       this.keys.clear()
       this.joystick = { x: 0, y: 0 }
       this.actionQueued = false
+      this.sprintHeld = false
     }
   }
 
@@ -57,6 +60,10 @@ export class InputManager {
     this.actionQueued = true
   }
 
+  setSprintHeld(held: boolean): void {
+    this.sprintHeld = held
+  }
+
   getVector(): InputVector {
     let x = this.joystick.x
     let y = this.joystick.y
@@ -71,6 +78,10 @@ export class InputManager {
       return { x: x / length, y: y / length }
     }
     return { x, y }
+  }
+
+  isSprinting(): boolean {
+    return this.keys.has('shift') || this.sprintHeld
   }
 }
 

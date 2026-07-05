@@ -63,9 +63,47 @@ def integrate_body(
     x += vx * dt
     y += vy * dt
     if use_ellipse:
-        x, y = clamp_circle_in_ellipse(x, y, radius, bowl_cx, bowl_cy, bowl_rx, bowl_ry)
+        x, y, vx, vy = constrain_circle_in_ellipse(
+            x, y, vx, vy, radius, bowl_cx, bowl_cy, bowl_rx, bowl_ry
+        )
     else:
         x, y = clamp_circle_in_rect(x, y, radius, world_width, world_height)
+    return x, y, vx, vy
+
+
+def get_bowl_outer_radii(bowl_rx: float, bowl_ry: float) -> tuple[float, float]:
+    margin = float(cfg("bowl_rim_margin"))
+    return bowl_rx + margin, bowl_ry + margin
+
+
+def constrain_circle_in_ellipse(
+    x: float,
+    y: float,
+    vx: float,
+    vy: float,
+    radius: float,
+    center_x: float,
+    center_y: float,
+    radius_x: float,
+    radius_y: float,
+) -> tuple[float, float, float, float]:
+    dx = x - center_x
+    dy = y - center_y
+    if radius_x <= radius or radius_y <= radius:
+        return center_x, center_y, 0.0, 0.0
+    eff_rx = radius_x - radius
+    eff_ry = radius_y - radius
+    norm = (dx * dx) / (eff_rx * eff_rx) + (dy * dy) / (eff_ry * eff_ry)
+    if norm <= 1.0:
+        return x, y, vx, vy
+    scale = 1.0 / math.sqrt(norm)
+    x = center_x + dx * scale
+    y = center_y + dy * scale
+    nx, ny = normalize(dx / (radius_x * radius_x), dy / (radius_y * radius_y))
+    outward = vx * nx + vy * ny
+    if outward > 0.0:
+        vx -= outward * nx
+        vy -= outward * ny
     return x, y, vx, vy
 
 

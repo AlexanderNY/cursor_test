@@ -2,7 +2,7 @@ import perksData from '../../../public/bowl/perks.json'
 
 export type PerkId = keyof typeof perksData
 
-export type PerkLevelStats = Record<string, number | string>
+export type PerkLevelStats = Record<string, number | string | boolean>
 
 export interface PerkDefinition {
   id: string
@@ -18,8 +18,22 @@ export const PERK_IDS = Object.keys(PERK_DEFINITIONS) as PerkId[]
 
 export type PerkLevels = Partial<Record<PerkId, number>>
 
+export function defaultPerkLevels(): PerkLevels {
+  return {
+    leg: 0,
+    eye: 0,
+    tentacle: 0,
+    spike: 0,
+  }
+}
+
 export function getPerkLevel(perkLevels: PerkLevels, perkId: PerkId): number {
   return perkLevels[perkId] ?? 0
+}
+
+export function getPerkStats(perkLevels: PerkLevels, perkId: PerkId) {
+  const level = getPerkLevel(perkLevels, perkId)
+  return PERK_DEFINITIONS[perkId].levels[String(level)] ?? PERK_DEFINITIONS[perkId].levels['0']
 }
 
 export function canUpgradePerk(perkLevels: PerkLevels, perkId: PerkId): boolean {
@@ -49,19 +63,59 @@ export function getUpgradeOptions(perkLevels: PerkLevels): Array<{
   })
 }
 
+export function getPerkLimbCount(perkLevels: PerkLevels, perkId: PerkId): number {
+  const stats = getPerkStats(perkLevels, perkId)
+  return Number(stats?.limb_count ?? 0)
+}
+
+export function isPerkStub(perkLevels: PerkLevels, perkId: PerkId): boolean {
+  return Boolean(getPerkStats(perkLevels, perkId)?.stub)
+}
+
+export function isPerkDotsOnly(perkLevels: PerkLevels, perkId: PerkId): boolean {
+  return Boolean(getPerkStats(perkLevels, perkId)?.dots_only)
+}
+
+export function isPerkWaves(perkLevels: PerkLevels, perkId: PerkId): boolean {
+  return Boolean(getPerkStats(perkLevels, perkId)?.waves)
+}
+
+export function getSpikeDrawStats(perkLevels: PerkLevels): {
+  count: number
+  length: number
+  damage: number
+  forehead: boolean
+} {
+  const stats = getPerkStats(perkLevels, 'spike')
+  return {
+    count: Number(stats?.spike_count ?? 0),
+    length: Number(stats?.spike_length ?? 0),
+    damage: Number(stats?.damage ?? 0),
+    forehead: Boolean(stats?.forehead),
+  }
+}
+
 export function formatPerkLevels(perkLevels: PerkLevels): string {
-  const parts = PERK_IDS.filter((id) => getPerkLevel(perkLevels, id) > 0).map(
+  const parts = PERK_IDS.map(
     (id) => `${PERK_DEFINITIONS[id].title} ${getPerkLevel(perkLevels, id)}`,
   )
-  return parts.length > 0 ? parts.join(', ') : '—'
+  return parts.join(', ')
 }
 
 export function perkLevelsFromLegacy(perks: string[]): PerkLevels {
-  const levels: PerkLevels = {}
+  const levels = defaultPerkLevels()
   for (const id of perks) {
     if (id in PERK_DEFINITIONS) {
-      levels[id as PerkId] = 1
+      levels[id as PerkId] = Math.max(levels[id as PerkId] ?? 0, 1)
     }
+  }
+  return levels
+}
+
+export function maxAllPerks(): PerkLevels {
+  const levels: PerkLevels = defaultPerkLevels()
+  for (const id of PERK_IDS) {
+    levels[id] = 3
   }
   return levels
 }

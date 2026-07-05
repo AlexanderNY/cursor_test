@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { gameBridge } from './game-bridge'
 import { DEFAULT_HERO_COLOR } from './hero-colors'
+import { CharacterEditorScreen } from './character-editor-screen'
+import { GuideScreen } from './guide-screen'
 import { HeroColorScreen } from './hero-color-screen'
 import { GameScreen } from './game-screen'
 import { LoadingScreen } from './loading-screen'
@@ -13,6 +15,7 @@ import { applyGameConfig } from './game-bridge'
 import { setAutosaveIntervalMs } from './game-config'
 import { loadPyodideRuntime } from './pyodide-loader'
 import { hasSave, loadSave } from './save-storage'
+import type { PerkLevels } from './perks'
 import type { GameScreen as GameScreenState, PerkKind } from './types'
 import '@/styles/bowl-game.css'
 
@@ -63,6 +66,12 @@ export function BowlGamePage() {
     [heroColor],
   )
 
+  const startTestGame = useCallback(async (color: string, perkLevels: PerkLevels) => {
+    await gameBridge.newGameWithPerks(window.innerWidth, window.innerHeight, color, perkLevels)
+    setHeroColor(color)
+    setScreen('playing')
+  }, [])
+
   const continueGame = useCallback(async () => {
     const saved = loadSave()
     if (!saved) return
@@ -105,6 +114,8 @@ export function BowlGamePage() {
         canContinue={canContinue}
         onNewGame={() => setScreen('colorSelect')}
         onContinue={continueGame}
+        onGuide={() => setScreen('guide')}
+        onCharacterEditor={() => setScreen('characterEditor')}
         onSettings={() => setScreen('settings')}
         onExit={exitToHome}
       />
@@ -113,6 +124,14 @@ export function BowlGamePage() {
 
   if (screen === 'settings') {
     return <SettingsScreen onBack={backToMenu} />
+  }
+
+  if (screen === 'guide') {
+    return <GuideScreen onBack={backToMenu} />
+  }
+
+  if (screen === 'characterEditor') {
+    return <CharacterEditorScreen onStart={startTestGame} onBack={backToMenu} />
   }
 
   if (screen === 'colorSelect') {

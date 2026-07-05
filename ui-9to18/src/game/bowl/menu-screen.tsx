@@ -2,11 +2,21 @@ interface MenuScreenProps {
   canContinue: boolean
   onNewGame: () => void
   onContinue: () => void
+  onGuide: () => void
+  onCharacterEditor: () => void
   onSettings: () => void
   onExit: () => void
 }
 
-export function MenuScreen({ canContinue, onNewGame, onContinue, onSettings, onExit }: MenuScreenProps) {
+export function MenuScreen({
+  canContinue,
+  onNewGame,
+  onContinue,
+  onGuide,
+  onCharacterEditor,
+  onSettings,
+  onExit,
+}: MenuScreenProps) {
   return (
     <div className="bowl-screen bowl-menu">
       <div className="bowl-menu-card">
@@ -28,6 +38,12 @@ export function MenuScreen({ canContinue, onNewGame, onContinue, onSettings, onE
             disabled={!canContinue}
           >
             Продолжить
+          </button>
+          <button type="button" className="bowl-btn" onClick={onGuide}>
+            Справочник
+          </button>
+          <button type="button" className="bowl-btn" onClick={onCharacterEditor}>
+            Редактор (тест)
           </button>
           <button type="button" className="bowl-btn" onClick={onSettings}>
             Настройки

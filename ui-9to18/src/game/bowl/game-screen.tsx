@@ -103,7 +103,8 @@ export function GameScreen({ onBackToMenu }: GameScreenProps) {
           if (!frameState.pending_perk_select) {
             const input = inputManager.getVector()
             const action = inputManager.consumeAction()
-            await gameBridge.update(dt, input, action)
+            const sprint = inputManager.isSprinting()
+            await gameBridge.update(dt, input, action, sprint)
             frameState = await gameBridge.getRenderState(canvas.width, canvas.height)
           }
 
@@ -167,9 +168,25 @@ export function GameScreen({ onBackToMenu }: GameScreenProps) {
       </button>
 
       {showJoystick && (
-        <VirtualJoystick
-          onChange={(vector) => inputManager.setJoystick(vector)}
-        />
+        <>
+          <VirtualJoystick
+            onChange={(vector) => inputManager.setJoystick(vector)}
+          />
+          <button
+            type="button"
+            className="bowl-sprint-btn"
+            aria-label="Рывок"
+            onPointerDown={(event) => {
+              event.preventDefault()
+              inputManager.setSprintHeld(true)
+            }}
+            onPointerUp={() => inputManager.setSprintHeld(false)}
+            onPointerLeave={() => inputManager.setSprintHeld(false)}
+            onPointerCancel={() => inputManager.setSprintHeld(false)}
+          >
+            »»
+          </button>
+        </>
       )}
 
       {renderState?.pending_perk_select && (

@@ -59,6 +59,34 @@ export class GameBridge {
     )
   }
 
+  async newGameWithPerks(
+    viewportWidth: number,
+    viewportHeight: number,
+    color: string,
+    perkLevels: Record<string, number>,
+  ): Promise<void> {
+    await ensureConfigLoaded()
+    const safeColor = isAllowedHeroColor(color) ? color : DEFAULT_HERO_COLOR
+    const cleaned: Record<string, number> = {}
+    for (const [key, value] of Object.entries(perkLevels)) {
+      if (value > 0) {
+        cleaned[key] = value
+      }
+    }
+    const pyodide = getPyodide()
+    pyodide.globals.set('_bowl_perk_levels_json', JSON.stringify(cleaned))
+    await runPython(`
+import json
+engine.new_game(
+    ${viewportWidth},
+    ${viewportHeight},
+    "none",
+    "${safeColor}",
+    json.loads(_bowl_perk_levels_json),
+)
+`)
+  }
+
   async addPerk(perk: PerkKind): Promise<void> {
     await runPython(`engine.add_perk("${perk}")`)
   }
@@ -79,8 +107,10 @@ export class GameBridge {
     return String(result)
   }
 
-  async update(dt: number, input: InputVector, action: boolean): Promise<void> {
-    await runPython(`engine.update(${dt}, ${input.x}, ${input.y}, ${action ? 'True' : 'False'})`)
+  async update(dt: number, input: InputVector, action: boolean, sprint: boolean): Promise<void> {
+    await runPython(
+      `engine.update(${dt}, ${input.x}, ${input.y}, ${action ? 'True' : 'False'}, ${sprint ? 'True' : 'False'})`,
+    )
   }
 
   async getRenderState(viewportWidth: number, viewportHeight: number): Promise<RenderState> {

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from entities import Enemy, Pickup, Player, WorldObject
+from perks import sanitize_perk_levels
 
 
 def export_state(
@@ -37,6 +38,12 @@ def export_state(
             "eat_count": player.eat_count,
             "enemies_eaten": player.enemies_eaten,
             "color": player.color,
+            "stamina": player.stamina,
+            "ram_cooldown": player.ram_cooldown,
+            "grab_kind": player.grab_kind,
+            "grab_pickup_index": player.grab_pickup_index,
+            "grab_obstacle_id": player.grab_obstacle_id,
+            "grab_time_left": player.grab_time_left,
         },
         "pickups": [
             {
@@ -65,6 +72,13 @@ def export_state(
                 "waypoint_index": enemy.waypoint_index,
                 "waypoints": [[wx, wy] for wx, wy in enemy.waypoints],
                 "is_boss": enemy.is_boss,
+                "kind": enemy.kind,
+                "boss_kind": enemy.boss_kind,
+                "max_health": enemy.max_health,
+                "burst_left": enemy.burst_left,
+                "boss_timer": enemy.boss_timer,
+                "boss_spawn_count": enemy.boss_spawn_count,
+                "boss_spawn_cooldown": enemy.boss_spawn_cooldown,
             }
             for enemy in enemies
         ],
@@ -99,11 +113,14 @@ def export_state(
 def _migrate_perk_levels(player_data: dict) -> dict[str, int]:
     if "perk_levels" in player_data:
         raw = player_data["perk_levels"]
-        return {str(k): int(v) for k, v in raw.items()}
+        return sanitize_perk_levels({str(k): int(v) for k, v in raw.items()})
     perks = player_data.get("perks", [])
     if not perks and player_data.get("perk", "none") not in ("none", None):
         perks = [player_data["perk"]]
-    return {str(p): 1 for p in perks}
+    merged = sanitize_perk_levels({})
+    for perk_id in perks:
+        merged[str(perk_id)] = max(int(merged.get(str(perk_id), 0)), 1)
+    return merged
 
 
 def import_state(data: dict) -> tuple[
@@ -136,6 +153,12 @@ def import_state(data: dict) -> tuple[
         eat_count=int(player_data.get("eat_count", 0)),
         enemies_eaten=int(player_data.get("enemies_eaten", 0)),
         color=str(player_data.get("color", "#60a5fa")),
+        stamina=float(player_data.get("stamina", 100.0)),
+        ram_cooldown=float(player_data.get("ram_cooldown", 0.0)),
+        grab_kind=str(player_data.get("grab_kind", "none")),
+        grab_pickup_index=int(player_data.get("grab_pickup_index", -1)),
+        grab_obstacle_id=int(player_data.get("grab_obstacle_id", -1)),
+        grab_time_left=float(player_data.get("grab_time_left", 0.0)),
     )
 
     pickups = [
@@ -157,6 +180,9 @@ def import_state(data: dict) -> tuple[
     for item in data.get("enemies", []):
         waypoints = [(float(wx), float(wy)) for wx, wy in item.get("waypoints", [])]
         radius = float(item.get("radius", 16.0))
+        boss_kind = str(item.get("boss_kind", "titan"))
+        if boss_kind not in ("titan", "stalker", "swarm", "leech", "vortex"):
+            boss_kind = "titan"
         enemies.append(
             Enemy(
                 x=float(item["x"]),
@@ -170,6 +196,13 @@ def import_state(data: dict) -> tuple[
                 waypoint_index=int(item.get("waypoint_index", 0)),
                 waypoints=waypoints,
                 is_boss=bool(item.get("is_boss", False)),
+                kind=item.get("kind", "grazer"),
+                boss_kind=boss_kind,
+                max_health=float(item.get("max_health", 0.0)),
+                burst_left=float(item.get("burst_left", 0.0)),
+                boss_timer=float(item.get("boss_timer", 0.0)),
+                boss_spawn_count=int(item.get("boss_spawn_count", 0)),
+                boss_spawn_cooldown=float(item.get("boss_spawn_cooldown", 0.0)),
             )
         )
 
