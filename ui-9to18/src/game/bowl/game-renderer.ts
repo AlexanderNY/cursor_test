@@ -54,7 +54,11 @@ export function drawGameFrame(
     drawWhirlpool(ctx, state)
   }
 
-  drawPlayer(ctx, state.player)
+  if (state.exit_open && state.exit) {
+    drawExitPortal(ctx, state.exit)
+  }
+
+  drawPlayer(ctx, state.player, state.pickups)
   ctx.restore()
 
   drawFogOfWar(ctx, state, viewportWidth, viewportHeight)
@@ -478,6 +482,49 @@ function drawWhirlpool(
   ctx.restore()
 }
 
+function drawExitPortal(
+  ctx: CanvasRenderingContext2D,
+  exit: { x: number; y: number; radius: number },
+): void {
+  const { x, y, radius } = exit
+  ctx.save()
+
+  ctx.beginPath()
+  ctx.arc(x, y, radius * 1.35, 0, Math.PI * 2)
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.22)'
+  ctx.fill()
+
+  const ring = ctx.createRadialGradient(x, y, radius * 0.2, x, y, radius)
+  ring.addColorStop(0, '#000000')
+  ring.addColorStop(0.55, '#0a0a0a')
+  ring.addColorStop(0.85, '#1a1a1a')
+  ring.addColorStop(1, 'rgba(30, 30, 30, 0.15)')
+  ctx.beginPath()
+  ctx.arc(x, y, radius, 0, Math.PI * 2)
+  ctx.fillStyle = ring
+  ctx.fill()
+
+  ctx.strokeStyle = 'rgba(248, 250, 252, 0.55)'
+  ctx.lineWidth = 3
+  ctx.beginPath()
+  ctx.arc(x, y, radius, 0, Math.PI * 2)
+  ctx.stroke()
+
+  ctx.strokeStyle = 'rgba(148, 163, 184, 0.35)'
+  ctx.lineWidth = 1.5
+  ctx.beginPath()
+  ctx.arc(x, y, radius * 0.72, 0, Math.PI * 2)
+  ctx.stroke()
+
+  ctx.fillStyle = 'rgba(248, 250, 252, 0.85)'
+  ctx.font = '700 13px Segoe UI, system-ui, sans-serif'
+  ctx.textAlign = 'center'
+  ctx.fillText('ВЫХОД', x, y + 4)
+  ctx.textAlign = 'start'
+
+  ctx.restore()
+}
+
 function drawBoss(
   ctx: CanvasRenderingContext2D,
   enemy: RenderState['enemies'][number],
@@ -704,6 +751,7 @@ function drawEnemyKindMark(
 function drawPlayer(
   ctx: CanvasRenderingContext2D,
   player: RenderState['player'],
+  pickups: RenderState['pickups'],
 ): void {
   const {
     x,
@@ -746,14 +794,81 @@ function drawPlayer(
   drawHeroFigureEight(ctx, x, y, radius, facing, fill, stroke)
 
   const lobes = getHeroLobeLayout(radius, facing)
+  const eyeCenterX = x + lobes.frontOffsetX
+  const eyeCenterY = y + lobes.frontOffsetY
+  const lookTarget = nearestLookTarget(eyeCenterX, eyeCenterY, pickups)
   if (isPerkDotsOnly(perkLevels, 'eye')) {
-    drawSimpleDots(ctx, x + lobes.frontOffsetX, y + lobes.frontOffsetY, radius * 0.55, 2, '#ffffff', '#0f172a')
+    drawLookingDots(ctx, eyeCenterX, eyeCenterY, radius * 0.55, 2, lookTarget, '#ffffff', '#0f172a')
   } else if (eyeLevel > 0) {
-    drawEyes(ctx, x + lobes.frontOffsetX, y + lobes.frontOffsetY, facing, getPerkLimbCount(perkLevels, 'eye'))
+    drawEyes(
+      ctx,
+      eyeCenterX,
+      eyeCenterY,
+      facing,
+      getPerkLimbCount(perkLevels, 'eye'),
+      lookTarget,
+    )
   }
 
   if (grabKind !== 'none' && grabTimeLeft > 0) {
     drawGrabLink(ctx, x, y, radius, facing)
+  }
+}
+
+function nearestLookTarget(
+  fromX: number,
+  fromY: number,
+  pickups: RenderState['pickups'],
+): { x: number; y: number } | null {
+  let best: { x: number; y: number } | null = null
+  let bestDist = Number.POSITIVE_INFINITY
+  for (const pickup of pickups) {
+    const dx = pickup.x - fromX
+    const dy = pickup.y - fromY
+    const dist = Math.hypot(dx, dy)
+    if (dist < bestDist) {
+      bestDist = dist
+      best = { x: pickup.x, y: pickup.y }
+    }
+  }
+  return best
+}
+
+function drawLookingDots(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  radius: number,
+  count: number,
+  lookTarget: { x: number; y: number } | null,
+  fill: string,
+  stroke: string,
+): void {
+  const spacing = Math.min(radius * 0.55, 7)
+  const startX = x - ((count - 1) * spacing) / 2
+  const lookAngle = lookTarget ? Math.atan2(lookTarget.y - y, lookTarget.x - x) : -Math.PI / 2
+  for (let i = 0; i < count; i += 1) {
+    const dotX = startX + i * spacing
+    const dotY = y - radius * 0.08
+    const eyeR = Math.max(2.4, radius * 0.22)
+    ctx.beginPath()
+    ctx.arc(dotX, dotY, eyeR, 0, Math.PI * 2)
+    ctx.fillStyle = fill
+    ctx.fill()
+    ctx.strokeStyle = stroke
+    ctx.lineWidth = 1
+    ctx.stroke()
+    const pupilOffset = eyeR * 0.4
+    ctx.beginPath()
+    ctx.arc(
+      dotX + Math.cos(lookAngle) * pupilOffset,
+      dotY + Math.sin(lookAngle) * pupilOffset,
+      eyeR * 0.42,
+      0,
+      Math.PI * 2,
+    )
+    ctx.fillStyle = stroke
+    ctx.fill()
   }
 }
 
@@ -891,25 +1006,40 @@ function drawEyes(
   y: number,
   facing: number,
   count: number,
+  lookTarget: { x: number; y: number } | null,
 ): void {
   ctx.save()
   ctx.translate(x, y)
   ctx.rotate(facing)
+  const lookWorldAngle = lookTarget ? Math.atan2(lookTarget.y - y, lookTarget.x - x) : facing
+  const lookLocal = lookWorldAngle - facing
   const cols = Math.min(count, 3)
   const rows = Math.ceil(count / cols)
+  const eyeRadius = 5.2
+  const pupilRadius = 2.2
+  const pupilTravel = eyeRadius * 0.42
   let drawn = 0
   for (let row = 0; row < rows; row += 1) {
     for (let col = 0; col < cols; col += 1) {
       if (drawn >= count) break
-      const offsetX = (col - (cols - 1) / 2) * 6.5
-      const offsetY = (row - (rows - 1) / 2) * 6.5 - 1
+      const offsetX = (col - (cols - 1) / 2) * 11
+      const offsetY = (row - (rows - 1) / 2) * 10 - 1
       ctx.fillStyle = '#ffffff'
       ctx.beginPath()
-      ctx.arc(offsetX, offsetY, 2.8, 0, Math.PI * 2)
+      ctx.arc(offsetX, offsetY, eyeRadius, 0, Math.PI * 2)
       ctx.fill()
+      ctx.strokeStyle = 'rgba(15, 23, 42, 0.35)'
+      ctx.lineWidth = 1.1
+      ctx.stroke()
       ctx.fillStyle = '#0f172a'
       ctx.beginPath()
-      ctx.arc(offsetX + 0.8, offsetY, 1.2, 0, Math.PI * 2)
+      ctx.arc(
+        offsetX + Math.cos(lookLocal) * pupilTravel,
+        offsetY + Math.sin(lookLocal) * pupilTravel,
+        pupilRadius,
+        0,
+        Math.PI * 2,
+      )
       ctx.fill()
       drawn += 1
     }
@@ -1106,7 +1236,7 @@ export function drawHudBars(
 
   drawMatchTimer(ctx, state, viewportWidth, x, top + (height + gap) * 3 + 88)
 
-  ctx.fillText('Shift — рывок / таран врага', x, top + (height + gap) * 3 + 112)
+  ctx.fillText('Space — щупальце / шип · Shift — рывок', x, top + (height + gap) * 3 + 112)
 }
 
 function formatTimer(seconds: number): string {
@@ -1129,12 +1259,20 @@ function drawMatchTimer(
   const whirlpoolLeft = state.whirlpool_time_left ?? 0
   const remaining = Math.max(0, matchTotal - matchElapsed)
   const activeBoss = state.active_boss
-  const label =
-    phase === 'whirlpool'
-      ? `Водоворот: ${formatTimer(whirlpoolLeft)}`
-      : phase === 'boss'
-        ? activeBoss?.title?.toUpperCase() ?? 'БОСС!'
-        : `До водоворота: ${formatTimer(remaining)}`
+  const escapeSec = state.boss_escape_sec ?? 60
+  const fightTimer = state.boss_fight_timer ?? 0
+  const escapeLeft = Math.max(0, escapeSec - fightTimer)
+  const exitOpen = Boolean(state.exit_open)
+
+  let label = `До водоворота: ${formatTimer(remaining)}`
+  if (phase === 'whirlpool') {
+    label = `Водоворот: ${formatTimer(whirlpoolLeft)}`
+  } else if (exitOpen) {
+    label = 'ВЫХОД ОТКРЫТ'
+  } else if (phase === 'boss') {
+    const title = activeBoss?.title?.toUpperCase() ?? 'БОСС'
+    label = `${title} · ${formatTimer(escapeLeft)}`
+  }
 
   ctx.font = '700 16px Segoe UI, system-ui, sans-serif'
   const textWidth = ctx.measureText(label).width + 24
@@ -1144,9 +1282,11 @@ function drawMatchTimer(
   ctx.fillStyle =
     phase === 'whirlpool'
       ? 'rgba(37, 99, 235, 0.92)'
-      : phase === 'boss'
-        ? 'rgba(220, 38, 38, 0.92)'
-        : 'rgba(15, 23, 42, 0.92)'
+      : exitOpen
+        ? 'rgba(15, 23, 42, 0.95)'
+        : phase === 'boss'
+          ? 'rgba(220, 38, 38, 0.92)'
+          : 'rgba(15, 23, 42, 0.92)'
   ctx.fillRect(boxX, boxY, textWidth, 34)
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.45)'
   ctx.strokeRect(boxX, boxY, textWidth, 34)
@@ -1164,12 +1304,16 @@ function drawMatchTimer(
     ctx.fillStyle = '#93c5fd'
     ctx.font = '12px Segoe UI, system-ui, sans-serif'
     ctx.fillText('Всё стягивается в центр водоворота', statusX, statusY)
+  } else if (exitOpen) {
+    ctx.fillStyle = '#e2e8f0'
+    ctx.font = '12px Segoe UI, system-ui, sans-serif'
+    ctx.fillText('Чёрный круг в центре — войдите, чтобы перейти на следующий уровень', statusX, statusY)
   } else {
     ctx.fillStyle = '#fca5a5'
     ctx.font = '12px Segoe UI, system-ui, sans-serif'
     const bossHint = activeBoss
-      ? `${activeBoss.title}: HP ${Math.ceil(activeBoss.health)}/${Math.ceil(activeBoss.max_health)}`
-      : 'Босс со всеми перками преследует героя'
+      ? `${activeBoss.title}: HP ${Math.ceil(activeBoss.health)}/${Math.ceil(activeBoss.max_health)} · убегите ${formatTimer(escapeLeft)} или убейте`
+      : `Убейте босса или проживите ${formatTimer(escapeLeft)} — откроется выход`
     ctx.fillText(bossHint, statusX, statusY)
   }
 }

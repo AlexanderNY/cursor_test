@@ -127,10 +127,9 @@ def find_grab_target_in_front(
     facing: float,
     grab_range: float,
     pickups: list[Pickup],
-    obstacles: list[WorldObject],
+    obstacles: list[WorldObject] | None = None,
 ) -> tuple[str, int] | None:
     half_arc = math.pi / 3.0
-    best_kind: str | None = None
     best_key = -1
     best_dist = grab_range + 999.0
 
@@ -144,23 +143,11 @@ def find_grab_target_in_front(
             continue
         if dist < best_dist:
             best_dist = dist
-            best_kind = "pickup"
             best_key = index
 
-    for obstacle in obstacles:
-        dist = distance(player_x, player_y, obstacle.x, obstacle.y)
-        if dist > grab_range + obstacle.radius:
-            continue
-        if not _is_in_front(player_x, player_y, obstacle.x, obstacle.y, facing, half_arc):
-            continue
-        if dist < best_dist:
-            best_dist = dist
-            best_kind = "obstacle"
-            best_key = obstacle.id
-
-    if best_kind is None:
+    if best_key < 0:
         return None
-    return best_kind, best_key
+    return "pickup", best_key
 
 
 def spike_spread_angles(base_angle: float, spike_count: int) -> list[float]:

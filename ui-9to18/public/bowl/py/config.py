@@ -75,6 +75,8 @@ _DEFAULT_CONFIG: dict = {
     "boss_speed": 200.0,
     "boss_hit_damage": 25.0,
     "boss_spawn_distance": 280.0,
+    "boss_escape_sec": 60.0,
+    "exit_portal_radius": 52.0,
     "bowl_rim_margin": 48.0,
     "edge_spawn_rim_inset": 24.0,
     "boss_kinds": ("titan", "stalker", "swarm", "leech", "vortex"),

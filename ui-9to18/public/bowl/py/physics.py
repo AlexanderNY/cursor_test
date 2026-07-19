@@ -160,6 +160,10 @@ def resolve_mover_obstacle(
     entity_x += nx * overlap
     entity_y += ny * overlap
     push_obstacle(entity_mass, entity_vx, entity_vy, entity_x, entity_y, entity_r, obj, float(cfg("push_strength")))
+    inward = entity_vx * (-nx) + entity_vy * (-ny)
+    if inward > 0.0:
+        entity_vx += nx * inward
+        entity_vy += ny * inward
     if obj.pushable:
         reaction = overlap * entity_mass / (entity_mass + max(obj.mass, 1.0))
         entity_vx -= nx * reaction * 0.15

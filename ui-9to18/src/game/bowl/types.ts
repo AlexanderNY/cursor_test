@@ -20,7 +20,7 @@ export const PY_VFS_PATH = '/bowl/py'
 export const GAME_CONFIG_PATH = '/bowl/game-config.json'
 export const PERKS_CONFIG_PATH = '/bowl/perks.json'
 
-export type GamePhase = 'normal' | 'whirlpool' | 'boss'
+export type GamePhase = 'normal' | 'whirlpool' | 'boss' | 'exit'
 
 export type GameScreen = 'loading' | 'menu' | 'settings' | 'guide' | 'characterEditor' | 'colorSelect' | 'perkSelect' | 'playing' | 'gameOver'
 
@@ -112,6 +112,10 @@ export interface RenderState {
     health: number
     max_health: number
   } | null
+  exit_open?: boolean
+  exit?: { x: number; y: number; radius: number } | null
+  boss_fight_timer?: number
+  boss_escape_sec?: number
 }
 
 export interface InputVector {

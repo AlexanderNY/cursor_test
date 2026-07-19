@@ -62,7 +62,14 @@ def perk_speed_mult(perk_levels: dict[str, int]) -> float:
 
 
 def perk_visibility(perk_levels: dict[str, int], base: float) -> tuple[float, float]:
-    return base, 1.0
+    level = get_player_level(perk_levels, "eye")
+    stats = get_level_stats("eye", level)
+    if not stats:
+        return base, 1.0
+    return (
+        base * float(stats.get("visibility_mult", 1.0)),
+        float(stats.get("lightness_mult", 1.0)),
+    )
 
 
 def perk_limb_count(perk_levels: dict[str, int], perk_id: str) -> int:
@@ -85,15 +92,16 @@ def perk_tentacle_stats(perk_levels: dict[str, int]) -> tuple[float, float, int]
     )
 
 
-def perk_spike_contact_stats(perk_levels: dict[str, int]) -> tuple[float, float, int]:
+def perk_spike_contact_stats(perk_levels: dict[str, int]) -> tuple[float, float, int, float]:
     level = get_player_level(perk_levels, "spike")
     stats = get_level_stats("spike", level)
     if not stats:
-        return 0.0, 0.0, 0
+        return 0.0, 0.0, 0, 999.0
     return (
         float(stats.get("damage", 0)),
         float(stats.get("spike_length", 0)),
         int(stats.get("spike_count", 0)),
+        float(stats.get("cooldown", 0.75)),
     )
 
 

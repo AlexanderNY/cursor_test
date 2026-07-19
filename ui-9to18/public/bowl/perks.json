@@ -37,23 +37,31 @@
       "0": {
         "speed_mult": 1.0,
         "limb_count": 2,
+        "visibility_mult": 1.0,
+        "lightness_mult": 1.0,
         "dots_only": true,
         "description": "Две точки по центру."
       },
       "1": {
         "speed_mult": 1.5,
         "limb_count": 2,
-        "description": "Два глаза по центру. Скорость +50% к базовой."
+        "visibility_mult": 1.4,
+        "lightness_mult": 1.35,
+        "description": "Два глаза. Скорость +50%, обзор +40%."
       },
       "2": {
         "speed_mult": 2.0,
         "limb_count": 4,
-        "description": "Четыре глаза по центру. Скорость +100% к базовой."
+        "visibility_mult": 1.85,
+        "lightness_mult": 1.7,
+        "description": "Четыре глаза. Скорость +100%, обзор +85%."
       },
       "3": {
         "speed_mult": 2.5,
         "limb_count": 6,
-        "description": "Шесть глаз по центру. Скорость +150% к базовой."
+        "visibility_mult": 2.4,
+        "lightness_mult": 2.1,
+        "description": "Шесть глаз. Скорость +150%, обзор +140%."
       }
     }
   },
@@ -74,19 +82,19 @@
         "grab_range": 200,
         "grab_duration": 5.0,
         "limb_count": 2,
-        "description": "Два щупальца. Захват предмета впереди на 200 px на 5 с."
+        "description": "Space — захват точки впереди на 200 px, удержание 5 с."
       },
       "2": {
         "grab_range": 400,
         "grab_duration": 7.0,
         "limb_count": 4,
-        "description": "Четыре щупальца. Захват на 400 px на 7 с."
+        "description": "Space — захват на 400 px, удержание 7 с."
       },
       "3": {
         "grab_range": 600,
         "grab_duration": 10.0,
         "limb_count": 6,
-        "description": "Шесть щупалец. Захват на 600 px на 10 с."
+        "description": "Space — захват на 600 px, удержание 10 с."
       }
     }
   },
@@ -101,25 +109,29 @@
         "spike_length": 5,
         "spike_count": 0,
         "forehead": true,
+        "cooldown": 999.0,
         "description": "Небольшой шип на лбу."
       },
       "1": {
         "damage": 8,
         "spike_length": 8,
         "spike_count": 1,
-        "description": "Один шип длиной 8. Урон 8 при касании врага."
+        "cooldown": 0.85,
+        "description": "Space — укол шипом. Урон 8."
       },
       "2": {
         "damage": 16,
         "spike_length": 12,
         "spike_count": 2,
-        "description": "Два шипа длиной 12. Урон 16 при касании."
+        "cooldown": 0.7,
+        "description": "Space — два шипа. Урон 16."
       },
       "3": {
         "damage": 50,
         "spike_length": 20,
         "spike_count": 4,
-        "description": "Четыре шипа длиной 20. Урон 50 при касании."
+        "cooldown": 0.55,
+        "description": "Space — четыре шипа. Урон 50."
       }
     }
   }

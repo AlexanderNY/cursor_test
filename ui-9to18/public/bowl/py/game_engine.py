@@ -82,6 +82,9 @@ class GameEngine:
         self.match_timer = 0.0
         self.whirlpool_time_left = 0.0
         self.whirlpool_angle = 0.0
+        self.boss_fight_timer = 0.0
+        self.exit_open = False
+        self._had_boss = False
         self._last_perk_milestone = 0
         self._green_spawn_timer = 0.0
         self._red_spawn_timer = 0.0
@@ -116,6 +119,9 @@ class GameEngine:
         self.match_timer = 0.0
         self.whirlpool_time_left = 0.0
         self.whirlpool_angle = 0.0
+        self.boss_fight_timer = 0.0
+        self.exit_open = False
+        self._had_boss = False
         self._last_perk_milestone = 0
         self._green_spawn_timer = 0.0
         self._red_spawn_timer = 0.0
@@ -183,6 +189,9 @@ class GameEngine:
         self.match_timer = float(data.get("match_timer", 0.0))
         self.whirlpool_time_left = float(data.get("whirlpool_time_left", 0.0))
         self.whirlpool_angle = float(data.get("whirlpool_angle", 0.0))
+        self.boss_fight_timer = float(data.get("boss_fight_timer", 0.0))
+        self.exit_open = bool(data.get("exit_open", False))
+        self._had_boss = bool(data.get("had_boss", self.phase in ("boss", "exit")))
         self._last_perk_milestone = int(data.get("last_perk_milestone", 0))
         self._green_spawn_timer = float(data.get("green_spawn_timer", 0.0))
         self._red_spawn_timer = float(data.get("red_spawn_timer", 0.0))
@@ -226,6 +235,9 @@ class GameEngine:
         state["match_timer"] = self.match_timer
         state["whirlpool_time_left"] = self.whirlpool_time_left
         state["whirlpool_angle"] = self.whirlpool_angle
+        state["boss_fight_timer"] = self.boss_fight_timer
+        state["exit_open"] = self.exit_open
+        state["had_boss"] = self._had_boss
         state["last_perk_milestone"] = self._last_perk_milestone
         state["green_spawn_timer"] = self._green_spawn_timer
         state["red_spawn_timer"] = self._red_spawn_timer
@@ -351,6 +363,18 @@ class GameEngine:
             "whirlpool_radius": float(cfg("whirlpool_radius")),
             "boss_active": any(e.is_boss for e in self.enemies),
             "active_boss": self._active_boss_state(),
+            "exit_open": self.exit_open,
+            "exit": (
+                {
+                    "x": self.bowl_center_x,
+                    "y": self.bowl_center_y,
+                    "radius": float(cfg("exit_portal_radius")),
+                }
+                if self.exit_open
+                else None
+            ),
+            "boss_fight_timer": self.boss_fight_timer,
+            "boss_escape_sec": float(cfg("boss_escape_sec")),
         }
 
     def _active_boss_state(self) -> dict | None:
@@ -382,8 +406,14 @@ class GameEngine:
         if self.phase == "whirlpool":
             self._update_whirlpool(dt)
 
+        if self.phase in ("boss", "exit"):
+            self._update_boss_phase(dt)
+
         self._update_edge_spawns(dt)
         self._apply_player_input(dt, move_x, move_y, sprint)
+
+        if action:
+            self._try_player_action()
 
         self._update_pickups(dt)
         self._update_boss_abilities(dt)
@@ -394,9 +424,10 @@ class GameEngine:
         self._enforce_bowl_bounds()
         self._update_tentacle_grab(dt)
         self._check_ram_collisions()
-        self._check_spike_contact()
         self._process_eating()
+        self._check_boss_cleared()
         self._check_enemy_hits()
+        self._check_exit_entry()
         self._check_perk_milestone()
         self._check_game_over()
 
@@ -847,8 +878,73 @@ class GameEngine:
     def _end_whirlpool(self) -> None:
         self.phase = "boss"
         self.whirlpool_time_left = 0.0
+        self.boss_fight_timer = 0.0
+        self.exit_open = False
+        self._had_boss = True
         self.enemies = [e for e in self.enemies if not e.is_boss]
         self._spawn_boss()
+
+    def _update_boss_phase(self, dt: float) -> None:
+        if self.exit_open:
+            return
+        self.boss_fight_timer += dt
+        if self.boss_fight_timer >= float(cfg("boss_escape_sec")):
+            self._open_exit(reason="escape")
+
+    def _check_boss_cleared(self) -> None:
+        if self.exit_open:
+            return
+        if self.phase not in ("boss", "exit"):
+            return
+        if not self._had_boss:
+            return
+        if any(enemy.is_boss for enemy in self.enemies):
+            return
+        self._open_exit(reason="kill")
+
+    def _open_exit(self, reason: str = "escape") -> None:
+        if self.exit_open:
+            return
+        self.exit_open = True
+        self.phase = "exit"
+        if reason == "kill":
+            self.enemies = [e for e in self.enemies if not e.is_boss]
+
+    def _check_exit_entry(self) -> None:
+        if not self.exit_open:
+            return
+        exit_r = float(cfg("exit_portal_radius"))
+        if distance(self.player.x, self.player.y, self.bowl_center_x, self.bowl_center_y) > exit_r + self.player.radius * 0.35:
+            return
+        self._advance_to_next_level()
+
+    def _advance_to_next_level(self) -> None:
+        self.level += 1
+        self.phase = "normal"
+        self.match_timer = 0.0
+        self.whirlpool_time_left = 0.0
+        self.whirlpool_angle = 0.0
+        self.boss_fight_timer = 0.0
+        self.exit_open = False
+        self._had_boss = False
+        self._green_spawn_timer = 0.0
+        self._red_spawn_timer = 0.0
+        self._enemy_spawn_timer = 0.0
+        self.player.x = self.bowl_center_x
+        self.player.y = self.bowl_center_y
+        self.player.vx = 0.0
+        self.player.vy = 0.0
+        self._release_grab()
+        self.pickups = []
+        self.nutrients = []
+        self.enemies = []
+        self.obstacles = []
+        self._obstacle_id = 1
+        self._spawn_obstacles()
+        self._spawn_nutrients()
+        self._spawn_pickups("green", int(cfg("green_pickup_count")))
+        self._spawn_pickups("red", int(cfg("red_pickup_count")))
+        self._spawn_enemies(int(cfg("enemy_count")))
 
     def _spawn_boss(self) -> None:
         angle = self._rng.uniform(0.0, math.tau)
@@ -1217,10 +1313,12 @@ class GameEngine:
         return self.player.radius + held_radius + 14.0
 
     def _update_tentacle_grab(self, dt: float) -> None:
+        if self.player.grab_kind == "none":
+            return
+
         grab_range, grab_duration, _ = perk_tentacle_stats(self.player.perk_levels)
         if grab_range <= 0.0 or grab_duration <= 0.0:
-            if self.player.grab_kind != "none":
-                self._release_grab()
+            self._release_grab()
             return
 
         facing = self.player.facing_angle
@@ -1228,60 +1326,54 @@ class GameEngine:
         hold_x = self.player.x + math.cos(facing) * hold_dist
         hold_y = self.player.y + math.sin(facing) * hold_dist
 
-        if self.player.grab_kind != "none":
-            self.player.grab_time_left -= dt
-            if self.player.grab_kind == "pickup":
-                index = self.player.grab_pickup_index
-                if 0 <= index < len(self.pickups):
-                    pickup = self.pickups[index]
-                    pickup.x = hold_x
-                    pickup.y = hold_y
-                    pickup.vx = self.player.vx
-                    pickup.vy = self.player.vy
-                else:
-                    self._release_grab()
-                    return
-            elif self.player.grab_kind == "obstacle":
-                target = next(
-                    (obj for obj in self.obstacles if obj.id == self.player.grab_obstacle_id),
-                    None,
-                )
-                if target is None:
-                    self._release_grab()
-                    return
-                target.x = hold_x
-                target.y = hold_y
-                target.vx = self.player.vx
-                target.vy = self.player.vy
-
-            if self.player.grab_time_left <= 0.0:
+        self.player.grab_time_left -= dt
+        if self.player.grab_kind == "pickup":
+            index = self.player.grab_pickup_index
+            if 0 <= index < len(self.pickups):
+                pickup = self.pickups[index]
+                pickup.x = hold_x
+                pickup.y = hold_y
+                pickup.vx = self.player.vx
+                pickup.vy = self.player.vy
+            else:
                 self._release_grab()
+                return
+        elif self.player.grab_kind == "obstacle":
+            self._release_grab()
             return
 
+        if self.player.grab_time_left <= 0.0:
+            self._release_grab()
+
+    def _try_start_grab(self) -> bool:
+        grab_range, grab_duration, _ = perk_tentacle_stats(self.player.perk_levels)
+        if grab_range <= 0.0 or grab_duration <= 0.0:
+            return False
+        if self.player.grab_kind != "none":
+            return False
         target = find_grab_target_in_front(
             self.player.x,
             self.player.y,
-            facing,
+            self.player.facing_angle,
             grab_range,
             self.pickups,
-            self.obstacles,
         )
         if target is None:
-            return
+            return False
         kind, key = target
-        self.player.grab_kind = kind
+        if kind != "pickup":
+            return False
+        self.player.grab_kind = "pickup"
+        self.player.grab_pickup_index = key
+        self.player.grab_obstacle_id = -1
         self.player.grab_time_left = grab_duration
-        if kind == "pickup":
-            self.player.grab_pickup_index = key
-            self.player.grab_obstacle_id = -1
-        else:
-            self.player.grab_obstacle_id = key
-            self.player.grab_pickup_index = -1
+        self.player.action_cooldown = 0.35
+        return True
 
-    def _check_spike_contact(self) -> None:
-        damage, spike_length, spike_count = perk_spike_contact_stats(self.player.perk_levels)
+    def _try_spike_attack(self) -> bool:
+        damage, spike_length, spike_count, cooldown = perk_spike_contact_stats(self.player.perk_levels)
         if damage <= 0.0 or spike_length <= 0.0 or spike_count <= 0:
-            return
+            return False
 
         direction = self._player_move_angle()
         segments = spike_segments(
@@ -1292,12 +1384,14 @@ class GameEngine:
             spike_length,
             spike_count,
         )
+        hit_any = False
         spike_removed: list[int] = []
         for index, enemy in enumerate(self.enemies):
             if enemy.cooldown_left > 0:
                 continue
             if not enemy_hits_spike_segments(enemy, segments):
                 continue
+            hit_any = True
             dead = apply_spike_damage(enemy, damage)
             if dead:
                 self.pickups.extend(split_enemy_to_greens(enemy, self._rng))
@@ -1305,6 +1399,15 @@ class GameEngine:
                 self.player.enemies_eaten += 1
         if spike_removed:
             self.enemies = [e for i, e in enumerate(self.enemies) if i not in spike_removed]
+        self.player.action_cooldown = cooldown
+        return hit_any or True
+
+    def _try_player_action(self) -> None:
+        if self.player.action_cooldown > 0:
+            return
+        if self._try_start_grab():
+            return
+        self._try_spike_attack()
 
     def _check_game_over(self) -> None:
         if self.player.weight <= 0:
