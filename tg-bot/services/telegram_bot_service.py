@@ -12,6 +12,7 @@ from .client_manager import TelegramClientManager
 from .message_handler import MessageHandler
 from .post_collector import PostCollector
 from .post_publisher import PostPublisher
+from .engagement_service import EngagementService
 from .image_handler import ImageHandler
 from .alert_service import AlertService
 from .routing_engine import RoutingEngine, ensure_rule_ids
@@ -38,6 +39,7 @@ class TelegramBotService:
         self.message_handler = MessageHandler()
         self.post_collector = PostCollector()
         self.post_publisher: PostPublisher = None
+        self.engagement_service: EngagementService = None
         self.image_handler = ImageHandler()
         self.alert_service = AlertService(self.message_handler)
         self.event_logger = EventLogger()
@@ -52,6 +54,7 @@ class TelegramBotService:
         self._publisher_task = None
         self._maintenance_task = None
         self._digest_task = None
+        self._engagement_task = None
 
     async def start(self) -> None:
         if self._running:
@@ -82,11 +85,13 @@ class TelegramBotService:
                 )
 
         self.post_publisher = PostPublisher(self.client_manager)
+        self.engagement_service = EngagementService(self.client_manager)
+        self._running = True
         self._publisher_task = asyncio.create_task(self._publisher_loop())
         self._maintenance_task = asyncio.create_task(self._maintenance_loop())
         self._digest_task = asyncio.create_task(self._digest_loop())
+        self._engagement_task = asyncio.create_task(self._engagement_loop())
 
-        self._running = True
         logger.info("Telegram Bot Service started successfully")
 
     def _collect_monitored_chats(self, profile: Dict) -> list:
@@ -150,6 +155,20 @@ class TelegramBotService:
                 break
             except Exception as e:
                 logger.error("Error in digest loop: %s", e, exc_info=True)
+
+    async def _engagement_loop(self) -> None:
+        while self._running:
+            try:
+                await asyncio.sleep(900)
+                if not self._running:
+                    break
+                if self.engagement_service:
+                    updated = await self.engagement_service.refresh_engagement(limit=50)
+                    _log_action("Engagement loop: updated %d posts", updated)
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error("Error in engagement loop: %s", e, exc_info=True)
 
     def _register_unified_handler(
         self,
@@ -215,7 +234,12 @@ class TelegramBotService:
         logger.info("Stopping Telegram Bot Service...")
         self._running = False
 
-        for task in (self._publisher_task, self._maintenance_task, self._digest_task):
+        for task in (
+            self._publisher_task,
+            self._maintenance_task,
+            self._digest_task,
+            self._engagement_task,
+        ):
             if task:
                 task.cancel()
                 try:
@@ -226,6 +250,7 @@ class TelegramBotService:
         self._publisher_task = None
         self._maintenance_task = None
         self._digest_task = None
+        self._engagement_task = None
 
         if self.client_manager:
             await self.client_manager.stop_all_clients()

@@ -117,4 +117,60 @@ TG_TELEGRAM_ROADMAP_MIGRATION: list[str] = [
     EXCEPTION WHEN duplicate_column THEN NULL;
     END $$;
     """,
+    # SMM: scheduled publishing + multi-channel + telegram message ids
+    """
+    DO $$
+    BEGIN
+      ALTER TABLE tg_posts ADD COLUMN publish_at TIMESTAMPTZ;
+    EXCEPTION WHEN duplicate_column THEN NULL;
+    END $$;
+    """,
+    """
+    DO $$
+    BEGIN
+      ALTER TABLE tg_posts ADD COLUMN telegram_message_id BIGINT;
+    EXCEPTION WHEN duplicate_column THEN NULL;
+    END $$;
+    """,
+    """
+    DO $$
+    BEGIN
+      ALTER TABLE tg_posts ADD COLUMN telegram_chat_id VARCHAR(64);
+    EXCEPTION WHEN duplicate_column THEN NULL;
+    END $$;
+    """,
+    """
+    DO $$
+    BEGIN
+      ALTER TABLE tg_posts ADD COLUMN target_channels JSONB DEFAULT '[]';
+    EXCEPTION WHEN duplicate_column THEN NULL;
+    END $$;
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_tg_posts_publish_at ON tg_posts(publish_at);
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_tg_posts_status_publish_at ON tg_posts(status, publish_at);
+    """,
+    """
+    DO $$
+    BEGIN
+      ALTER TABLE tg_profiles ADD COLUMN channels_to_post JSONB DEFAULT '[]';
+    EXCEPTION WHEN duplicate_column THEN NULL;
+    END $$;
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS tg_post_templates (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        name VARCHAR(200) NOT NULL,
+        text TEXT NOT NULL DEFAULT '',
+        hashtags TEXT DEFAULT '',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_tg_post_templates_user ON tg_post_templates(user_id);
+    """,
 ]

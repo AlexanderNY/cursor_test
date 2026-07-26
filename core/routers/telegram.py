@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse, RedirectResponse
 from services.profile_service import profile_service
 from services.post_service import post_service
 from services.tg_analytics_service import tg_analytics_service
-from schemas import TelegramProfileCreate
+from schemas import TelegramProfileCreate, TgPostTemplateCreate
 from storage_client import get_storage
 
 
@@ -63,6 +63,7 @@ async def get_tg_profile(x_user_id: Optional[str] = Header(None)):
         "chats_to_read": [],
         "save_conditions": [],
         "channel_to_post": None,
+        "channels_to_post": [],
         "process_enabled": False,
         "processing_description": None,
         "remove_emojis": False,
@@ -123,6 +124,8 @@ async def create_tg_post(
     to_threads: bool = Form(False),
     to_dzen: bool = Form(False),
     to_instagram: bool = Form(False),
+    publish_at: Optional[str] = Form(None),
+    target_channels: Optional[str] = Form(None),
     x_user_id: Optional[str] = Header(None)
 ):
     """Создает пост для Telegram (max 4096 символов) с поддержкой изображений.
@@ -130,6 +133,8 @@ async def create_tg_post(
     Args:
         text: Текст поста
         image: Опциональное изображение
+        publish_at: ISO datetime для отложенной публикации
+        target_channels: JSON-массив каналов
         
     Returns:
         Созданный пост
@@ -150,6 +155,16 @@ async def create_tg_post(
                 (UPLOADS_TG_DIR / file_name).write_bytes(content)
             image_url = f"/uploads/tg/{file_name}"
             images.append(image_url)
+
+        channels = None
+        if target_channels:
+            import json as _json
+            try:
+                parsed = _json.loads(target_channels)
+                if isinstance(parsed, list):
+                    channels = [str(c).strip() for c in parsed if str(c).strip()]
+            except (_json.JSONDecodeError, TypeError):
+                channels = [c.strip() for c in target_channels.split(",") if c.strip()]
         
         post = await post_service.create_tg_post_record(
             user_id=user_id,
@@ -162,6 +177,8 @@ async def create_tg_post(
             to_threads=to_threads,
             to_dzen=to_dzen,
             to_instagram=to_instagram,
+            publish_at=publish_at or None,
+            target_channels=channels,
         )
         return post
     except ValueError as e:
@@ -173,19 +190,20 @@ async def get_tg_posts(
     x_user_id: Optional[str] = Header(None),
     limit: int = 50,
     offset: int = 0,
+    status: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
 ):
-    """Возвращает список постов Telegram пользователя из таблицы tg_posts.
-    
-    Args:
-        x_user_id: ID пользователя из заголовка
-        limit: Максимальное количество записей
-        offset: Смещение для постраничной загрузки
-    
-    Returns:
-        Список постов Telegram
-    """
+    """Возвращает список постов Telegram пользователя из таблицы tg_posts."""
     user_id = get_user_id_from_header(x_user_id)
-    posts = await post_service.get_tg_posts(user_id=user_id, limit=limit, offset=offset)
+    posts = await post_service.get_tg_posts(
+        user_id=user_id,
+        limit=limit,
+        offset=offset,
+        status=status,
+        date_from=date_from,
+        date_to=date_to,
+    )
     return posts
 
 
@@ -207,6 +225,10 @@ async def update_tg_post(
     post_id: int,
     text: Optional[str] = Form(None),
     image: Optional[UploadFile] = File(None),
+    publish_at: Optional[str] = Form(None),
+    clear_publish_at: bool = Form(False),
+    target_channels: Optional[str] = Form(None),
+    status: Optional[str] = Form(None),
     x_user_id: Optional[str] = Header(None),
 ):
     """Обновляет пост Telegram."""
@@ -226,18 +248,48 @@ async def update_tg_post(
                 (UPLOADS_TG_DIR / file_name).write_bytes(content)
             image_url = f"/uploads/tg/{file_name}"
             images = [image_url]
+
+        channels = None
+        if target_channels is not None:
+            import json as _json
+            try:
+                parsed = _json.loads(target_channels)
+                if isinstance(parsed, list):
+                    channels = [str(c).strip() for c in parsed if str(c).strip()]
+                else:
+                    channels = []
+            except (_json.JSONDecodeError, TypeError):
+                channels = [c.strip() for c in target_channels.split(",") if c.strip()]
         
         post = await post_service.update_tg_post(
             user_id=user_id,
             post_id=post_id,
             text=text,
-            images=images
+            images=images,
+            status=status,
+            publish_at=None if clear_publish_at else (publish_at or None),
+            clear_publish_at=clear_publish_at,
+            target_channels=channels,
         )
         if not post:
             raise HTTPException(status_code=404, detail="Post not found")
         return post
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/post/{post_id}/approve")
+async def approve_tg_post(
+    post_id: int,
+    publish_at: Optional[str] = Form(None),
+    x_user_id: Optional[str] = Header(None),
+):
+    """Approve review post → ready (+ optional publish_at)."""
+    user_id = get_user_id_from_header(x_user_id)
+    post = await post_service.approve_tg_post(user_id, post_id, publish_at=publish_at or None)
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    return post
 
 
 @router.delete("/post/{post_id}")
@@ -251,6 +303,35 @@ async def delete_tg_post(
     if not post:
         raise HTTPException(status_code=404, detail="Post not found")
     return post
+
+
+@router.get("/templates")
+async def list_tg_templates(x_user_id: Optional[str] = Header(None)):
+    user_id = get_user_id_from_header(x_user_id)
+    return await post_service.list_tg_templates(user_id)
+
+
+@router.post("/templates")
+async def create_tg_template(
+    data: TgPostTemplateCreate,
+    x_user_id: Optional[str] = Header(None),
+):
+    user_id = get_user_id_from_header(x_user_id)
+    return await post_service.create_tg_template(
+        user_id, data.name, data.text, data.hashtags
+    )
+
+
+@router.delete("/templates/{template_id}")
+async def delete_tg_template(
+    template_id: int,
+    x_user_id: Optional[str] = Header(None),
+):
+    user_id = get_user_id_from_header(x_user_id)
+    ok = await post_service.delete_tg_template(user_id, template_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Template not found")
+    return {"success": True}
 
 
 @router.get("/uploads/{filename}")
@@ -327,3 +408,13 @@ async def get_tg_analytics_sentiment(
 ):
     user_id = get_user_id_from_header(x_user_id)
     return await tg_analytics_service.get_sentiment_breakdown(user_id, period)
+
+
+@router.get("/analytics/engagement")
+async def get_tg_analytics_engagement(
+    period: str = "7d",
+    limit: int = 10,
+    x_user_id: Optional[str] = Header(None),
+):
+    user_id = get_user_id_from_header(x_user_id)
+    return await tg_analytics_service.get_engagement(user_id, period, limit)

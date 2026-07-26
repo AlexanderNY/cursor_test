@@ -2,7 +2,7 @@
 
 import json
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 from database import get_db_connection, release_db_connection
 from services.quota_service import ensure_monthly_post_quota
 
@@ -195,6 +195,8 @@ class PostService:
         to_threads: bool = False,
         to_dzen: bool = False,
         to_instagram: bool = False,
+        publish_at: Optional[Any] = None,
+        target_channels: Optional[List[str]] = None,
     ) -> Dict:
         """Создает пост Telegram в таблице tg_posts.
         
@@ -203,6 +205,8 @@ class PostService:
             text: Текст поста (до 4096 символов)
             images: Список URL изображений
             to_*: цели дублирования в другие сети
+            publish_at: отложенная публикация (UTC)
+            target_channels: каналы назначения (override профиля)
         
         Returns:
             Созданный пост из таблицы tg_posts
@@ -223,12 +227,14 @@ class PostService:
                         user_id, post_text, title, domain, url, author, avatar,
                         post_date, screenshot, images, image_over_text,
                         comments, reposts, likes, views, is_ad, status,
-                        post_type, to_tg, to_tw, to_wp, to_vk, to_threads, to_dzen, to_instagram
+                        post_type, to_tg, to_tw, to_wp, to_vk, to_threads, to_dzen, to_instagram,
+                        publish_at, target_channels
                     ) VALUES (
                         %s, %s, NULL, NULL, NULL, NULL, NULL,
                         NULL, NULL, %s, NULL,
                         0, 0, 0, 0, FALSE, 'collected',
-                        'tg', %s, %s, %s, %s, %s, %s, %s
+                        'tg', %s, %s, %s, %s, %s, %s, %s,
+                        %s, %s
                     )
                     RETURNING *
                     """,
@@ -243,6 +249,8 @@ class PostService:
                         to_threads,
                         to_dzen,
                         to_instagram,
+                        publish_at,
+                        json.dumps(target_channels or []),
                     )
                 )
                 row = await cur.fetchone()
@@ -1030,7 +1038,10 @@ class PostService:
         self,
         user_id: int,
         limit: int = 50,
-        offset: int = 0
+        offset: int = 0,
+        status: Optional[str] = None,
+        date_from: Optional[str] = None,
+        date_to: Optional[str] = None,
     ) -> List[Dict]:
         """Получает посты Telegram пользователя из таблицы tg_posts.
         
@@ -1038,6 +1049,8 @@ class PostService:
             user_id: ID пользователя
             limit: Лимит записей
             offset: Смещение
+            status: фильтр по статусу
+            date_from / date_to: фильтр по publish_at (или created_at если publish_at NULL)
         
         Returns:
             Список постов Telegram
@@ -1045,15 +1058,27 @@ class PostService:
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
+                conditions = ["user_id = %s", "(status IS NULL OR status != 'deleted')"]
+                params: List[Any] = [user_id]
+                if status:
+                    conditions.append("status = %s")
+                    params.append(status)
+                if date_from:
+                    conditions.append("COALESCE(publish_at, created_at) >= %s::timestamptz")
+                    params.append(date_from)
+                if date_to:
+                    conditions.append("COALESCE(publish_at, created_at) <= %s::timestamptz")
+                    params.append(date_to)
+                params.extend([limit, offset])
                 await cur.execute(
-                    """
+                    f"""
                     SELECT *
                     FROM tg_posts
-                    WHERE user_id = %s AND (status IS NULL OR status != 'deleted')
-                    ORDER BY created_at DESC
+                    WHERE {" AND ".join(conditions)}
+                    ORDER BY COALESCE(publish_at, created_at) DESC
                     LIMIT %s OFFSET %s
                     """,
-                    (user_id, limit, offset)
+                    params,
                 )
                 rows = await cur.fetchall()
                 return [self._row_to_post(row, cur.description) for row in rows]
@@ -1094,6 +1119,9 @@ class PostService:
         text: Optional[str] = None,
         images: Optional[List[str]] = None,
         status: Optional[str] = None,
+        publish_at: Optional[Any] = None,
+        clear_publish_at: bool = False,
+        target_channels: Optional[List[str]] = None,
     ) -> Optional[Dict]:
         """Обновляет пост Telegram.
 
@@ -1103,6 +1131,9 @@ class PostService:
             text: Текст поста
             images: Список URL изображений
             status: Статус (collected, processed, published, deleted, etc.)
+            publish_at: время публикации
+            clear_publish_at: сбросить publish_at в NULL
+            target_channels: каналы назначения
 
         Returns:
             Обновленный пост или None
@@ -1125,6 +1156,14 @@ class PostService:
                 if status is not None:
                     updates.append("status = %s")
                     params.append(status)
+                if clear_publish_at:
+                    updates.append("publish_at = NULL")
+                elif publish_at is not None:
+                    updates.append("publish_at = %s")
+                    params.append(publish_at)
+                if target_channels is not None:
+                    updates.append("target_channels = %s")
+                    params.append(json.dumps(target_channels))
                 if not updates:
                     return await self.get_tg_post(user_id, post_id)
                 params.extend([user_id, post_id])
@@ -1154,6 +1193,78 @@ class PostService:
             Обновленный пост или None
         """
         return await self.update_tg_post(user_id, post_id, status="deleted")
+
+    async def approve_tg_post(
+        self,
+        user_id: int,
+        post_id: int,
+        publish_at: Optional[Any] = None,
+    ) -> Optional[Dict]:
+        """Approve review → ready (+ optional schedule)."""
+        return await self.update_tg_post(
+            user_id,
+            post_id,
+            status="ready",
+            publish_at=publish_at,
+        )
+
+    # ==================== TG templates ====================
+
+    async def list_tg_templates(self, user_id: int) -> List[Dict]:
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT id, user_id, name, text, hashtags, created_at, updated_at
+                    FROM tg_post_templates
+                    WHERE user_id = %s
+                    ORDER BY updated_at DESC
+                    """,
+                    (user_id,),
+                )
+                rows = await cur.fetchall()
+                return [self._row_to_post(row, cur.description) for row in rows]
+        finally:
+            await release_db_connection(conn)
+
+    async def create_tg_template(
+        self,
+        user_id: int,
+        name: str,
+        text: str,
+        hashtags: str = "",
+    ) -> Dict:
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    INSERT INTO tg_post_templates (user_id, name, text, hashtags)
+                    VALUES (%s, %s, %s, %s)
+                    RETURNING id, user_id, name, text, hashtags, created_at, updated_at
+                    """,
+                    (user_id, name[:200], text, hashtags or ""),
+                )
+                row = await cur.fetchone()
+                return self._row_to_post(row, cur.description)
+        finally:
+            await release_db_connection(conn)
+
+    async def delete_tg_template(self, user_id: int, template_id: int) -> bool:
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    DELETE FROM tg_post_templates
+                    WHERE user_id = %s AND id = %s
+                    """,
+                    (user_id, template_id),
+                )
+                return cur.rowcount > 0
+        finally:
+            await release_db_connection(conn)
 
     # ==================== Threads ====================
 
@@ -1532,6 +1643,17 @@ class PostService:
                 post["attachments"] = json.loads(post["attachments"])
             except (json.JSONDecodeError, TypeError):
                 post["attachments"] = []
+        if isinstance(post.get("target_channels"), str):
+            try:
+                post["target_channels"] = json.loads(post["target_channels"])
+            except (json.JSONDecodeError, TypeError):
+                post["target_channels"] = []
+        elif post.get("target_channels") is None:
+            post["target_channels"] = []
+        for dt_key in ("publish_at", "created_at", "updated_at", "post_date"):
+            val = post.get(dt_key)
+            if hasattr(val, "isoformat"):
+                post[dt_key] = val.isoformat()
         return post
 
     # ==================== Dzen ====================

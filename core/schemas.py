@@ -151,6 +151,7 @@ class TelegramProfileBase(BaseModel):
     chats_to_read: List[str] = []
     save_conditions: List[str] = []
     channel_to_post: Optional[str] = None
+    channels_to_post: List[str] = Field(default_factory=list)
     alert_enabled: bool = False
     alert_rules: List[TelegramAlertRule] = Field(default_factory=list, max_length=10)
     process_enabled: bool = False
@@ -265,6 +266,13 @@ class TelegramPostListItem(BaseModel):
     status: str
     created_at: datetime
     updated_at: datetime
+    publish_at: Optional[datetime] = None
+    target_channels: Optional[List[str]] = []
+    telegram_message_id: Optional[int] = None
+    views: int = 0
+    likes: int = 0
+    comments: int = 0
+    reposts: int = 0
 
 
 class TelegramPostFull(BaseModel):
@@ -294,6 +302,37 @@ class TelegramPostFull(BaseModel):
     to_vk: bool = False
     created_at: datetime
     updated_at: datetime
+    publish_at: Optional[datetime] = None
+    target_channels: Optional[List[str]] = []
+    telegram_message_id: Optional[int] = None
+    telegram_chat_id: Optional[str] = None
+
+
+class TgPostTemplate(BaseModel):
+    id: int
+    user_id: int
+    name: str
+    text: str
+    hashtags: str = ""
+    created_at: datetime
+    updated_at: datetime
+
+
+class TgPostTemplateCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=200)
+    text: str = ""
+    hashtags: str = ""
+
+
+class TgAnalyticsEngagement(BaseModel):
+    total_views: int = 0
+    total_likes: int = 0
+    total_comments: int = 0
+    total_reposts: int = 0
+    published_count: int = 0
+    avg_er: float = 0.0
+    top_posts: List[Dict[str, Any]] = Field(default_factory=list)
+    period: str = "7d"
 
 
 # ==================== Threads ====================

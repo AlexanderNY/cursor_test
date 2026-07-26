@@ -83,6 +83,37 @@ async def tg_bot_schedule(
     return await _forward_to_bot(settings.TG_BOT_SERVICE_URL, "/schedule", request)
 
 
+@router.get("/tg-bot/schedule/upcoming")
+async def tg_bot_schedule_upcoming(
+    request: Request,
+    current_user: Optional[dict] = Depends(get_current_user),
+) -> Response:
+    """GET /tg-bot/schedule/upcoming -> tg-bot /schedule/upcoming."""
+    return await _forward_to_bot(settings.TG_BOT_SERVICE_URL, "/schedule/upcoming", request)
+
+
+@router.post("/tg-bot/published/{post_id}/edit")
+async def tg_bot_edit_published(
+    post_id: int,
+    request: Request,
+    current_user: Optional[dict] = Depends(get_current_user),
+) -> Response:
+    return await _forward_to_bot(
+        settings.TG_BOT_SERVICE_URL, f"/tg/published/{post_id}/edit", request
+    )
+
+
+@router.post("/tg-bot/published/{post_id}/delete")
+async def tg_bot_delete_published(
+    post_id: int,
+    request: Request,
+    current_user: Optional[dict] = Depends(get_current_user),
+) -> Response:
+    return await _forward_to_bot(
+        settings.TG_BOT_SERVICE_URL, f"/tg/published/{post_id}/delete", request
+    )
+
+
 @router.post("/wp-bot/schedule")
 async def wp_bot_schedule(
     request: Request,

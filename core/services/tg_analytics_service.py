@@ -271,5 +271,84 @@ class TgAnalyticsService:
             breakdown["total"] += 1
         return breakdown
 
+    async def get_engagement(
+        self,
+        user_id: int,
+        period: str = "7d",
+        limit: int = 10,
+    ) -> Dict[str, Any]:
+        since = datetime.utcnow() - _parse_period(period)
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT
+                        COALESCE(SUM(views), 0),
+                        COALESCE(SUM(likes), 0),
+                        COALESCE(SUM(comments), 0),
+                        COALESCE(SUM(reposts), 0),
+                        COUNT(*)
+                    FROM tg_posts
+                    WHERE user_id = %s
+                      AND status = 'published'
+                      AND updated_at >= %s
+                    """,
+                    (user_id, since),
+                )
+                row = await cur.fetchone()
+                total_views, total_likes, total_comments, total_reposts, published_count = row
+
+                await cur.execute(
+                    """
+                    SELECT id, post_text, views, likes, comments, reposts, publish_at, created_at
+                    FROM tg_posts
+                    WHERE user_id = %s
+                      AND status = 'published'
+                      AND updated_at >= %s
+                    ORDER BY views DESC NULLS LAST, likes DESC
+                    LIMIT %s
+                    """,
+                    (user_id, since, limit),
+                )
+                top_rows = await cur.fetchall()
+        finally:
+            await release_db_connection(conn)
+
+        published_count = int(published_count or 0)
+        total_views = int(total_views or 0)
+        total_likes = int(total_likes or 0)
+        total_comments = int(total_comments or 0)
+        total_reposts = int(total_reposts or 0)
+        engagement = total_likes + total_comments + total_reposts
+        avg_er = round((engagement / total_views) * 100, 2) if total_views > 0 else 0.0
+
+        top_posts = []
+        for r in top_rows:
+            pid, text, views, likes, comments, reposts, publish_at, created_at = r
+            top_posts.append(
+                {
+                    "id": pid,
+                    "post_text": (text or "")[:200],
+                    "views": int(views or 0),
+                    "likes": int(likes or 0),
+                    "comments": int(comments or 0),
+                    "reposts": int(reposts or 0),
+                    "publish_at": publish_at.isoformat() if hasattr(publish_at, "isoformat") else publish_at,
+                    "created_at": created_at.isoformat() if hasattr(created_at, "isoformat") else str(created_at),
+                }
+            )
+
+        return {
+            "total_views": total_views,
+            "total_likes": total_likes,
+            "total_comments": total_comments,
+            "total_reposts": total_reposts,
+            "published_count": published_count,
+            "avg_er": avg_er,
+            "top_posts": top_posts,
+            "period": period,
+        }
+
 
 tg_analytics_service = TgAnalyticsService()

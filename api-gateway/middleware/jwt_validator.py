@@ -131,6 +131,13 @@ BOT_SCHEDULE_PROTECTED = [
     "/vk-bot/verify-selenium",
 ]
 
+# Префиксы tg-bot, требующие JWT (помимо точных путей выше)
+BOT_TG_PROTECTED_PREFIXES = [
+    "/tg-bot/schedule/",
+    "/tg-bot/published/",
+    "/tg-bot/channels/",
+]
+
 # Пути авторизации ботов — требуют JWT
 BOT_AUTH_PROTECTED_PREFIXES = ["/tg-bot/auth/", "/th-bot/auth/"]
 
@@ -154,6 +161,10 @@ def check_public_endpoint(endpoint_path: str) -> bool:
 
     # tg-bot auth endpoints требуют JWT
     for prefix in BOT_AUTH_PROTECTED_PREFIXES:
+        if endpoint_path.startswith(prefix):
+            return False
+
+    for prefix in BOT_TG_PROTECTED_PREFIXES:
         if endpoint_path.startswith(prefix):
             return False
 

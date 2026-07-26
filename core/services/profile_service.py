@@ -69,13 +69,14 @@ class ProfileService:
                     INSERT INTO tg_profiles (
                         user_id, publish_enabled, collect_enabled, schedule_type,
                         time_intervals, api_id, api_hash, telegram_username, auth_phone_number,
-                        chats_to_read, save_conditions, channel_to_post, alert_enabled, alert_rules,
+                        chats_to_read, save_conditions, channel_to_post, channels_to_post,
+                        alert_enabled, alert_rules,
                         process_enabled, processing_description, remove_emojis, remove_images,
                         clean_html, process_services, status_review_after_process,
                         add_static_html, static_html_content,
                         summarize_enabled, summarize_min_length, digest_interval_min,
                         digest_channel, classification_enabled, classification_categories
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (user_id) DO UPDATE SET
                         publish_enabled = EXCLUDED.publish_enabled,
                         collect_enabled = EXCLUDED.collect_enabled,
@@ -88,6 +89,7 @@ class ProfileService:
                         chats_to_read = EXCLUDED.chats_to_read,
                         save_conditions = EXCLUDED.save_conditions,
                         channel_to_post = EXCLUDED.channel_to_post,
+                        channels_to_post = EXCLUDED.channels_to_post,
                         alert_enabled = EXCLUDED.alert_enabled,
                         alert_rules = EXCLUDED.alert_rules,
                         process_enabled = EXCLUDED.process_enabled,
@@ -123,6 +125,9 @@ class ProfileService:
                         json.dumps(data.get("chats_to_read", [])),
                         json.dumps(data.get("save_conditions", [])),
                         data.get("channel_to_post"),
+                        json.dumps(data.get("channels_to_post") or (
+                            [data["channel_to_post"]] if data.get("channel_to_post") else []
+                        )),
                         data.get("alert_enabled", False),
                         alert_rules_json,
                         data.get("process_enabled", False),
@@ -158,6 +163,15 @@ class ProfileService:
             profile["chats_to_read"] = json.loads(profile["chats_to_read"])
         if isinstance(profile.get("save_conditions"), str):
             profile["save_conditions"] = json.loads(profile["save_conditions"])
+        if isinstance(profile.get("channels_to_post"), str):
+            try:
+                profile["channels_to_post"] = json.loads(profile["channels_to_post"])
+            except (json.JSONDecodeError, TypeError):
+                profile["channels_to_post"] = []
+        elif not isinstance(profile.get("channels_to_post"), list):
+            profile["channels_to_post"] = (
+                [profile["channel_to_post"]] if profile.get("channel_to_post") else []
+            )
         if isinstance(profile.get("alert_rules"), str):
             try:
                 profile["alert_rules"] = json.loads(profile["alert_rules"])

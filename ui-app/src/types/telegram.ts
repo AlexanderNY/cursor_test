@@ -35,6 +35,7 @@ export interface TelegramConfig {
   chats_to_read: string[]
   save_conditions: string[]
   channel_to_post?: string
+  channels_to_post?: string[]
   alert_enabled?: boolean
   alert_rules?: TelegramAlertRule[]
   process_enabled: boolean
@@ -71,6 +72,13 @@ export interface TelegramPostListItem {
   status: string
   created_at: string
   updated_at: string
+  publish_at?: string | null
+  target_channels?: string[]
+  telegram_message_id?: number | null
+  views?: number
+  likes?: number
+  comments?: number
+  reposts?: number
 }
 
 export interface TelegramPostFull {
@@ -97,6 +105,20 @@ export interface TelegramPostFull {
   to_tw: boolean
   to_wp: boolean
   to_vk: boolean
+  created_at: string
+  updated_at: string
+  publish_at?: string | null
+  target_channels?: string[]
+  telegram_message_id?: number | null
+  telegram_chat_id?: string | null
+}
+
+export interface TgPostTemplate {
+  id: number
+  user_id: number
+  name: string
+  text: string
+  hashtags: string
   created_at: string
   updated_at: string
 }
@@ -152,3 +174,32 @@ export interface TgAnalyticsSentimentBreakdown {
   neutral: number
   total: number
 }
+
+export interface TgAnalyticsEngagement {
+  total_views: number
+  total_likes: number
+  total_comments: number
+  total_reposts: number
+  published_count: number
+  avg_er: number
+  top_posts: Array<{
+    id: number
+    post_text: string
+    views: number
+    likes: number
+    comments: number
+    reposts: number
+    publish_at?: string | null
+    created_at: string
+  }>
+  period: string
+}
+
+export type TelegramTab =
+  | 'create'
+  | 'posts'
+  | 'calendar'
+  | 'profile'
+  | 'processing'
+  | 'auth'
+  | 'analytics'

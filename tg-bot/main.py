@@ -18,6 +18,7 @@ from services.telegram_bot_service import TelegramBotService
 from services.client_manager import TelegramClientManager
 from routers.auth import router as auth_router, set_client_manager
 from routers.channels import router as channels_router, set_client_manager as set_channels_client_manager
+from routers.schedule import router as schedule_router, set_bot_service as set_schedule_bot_service
 from config import settings
 
 
@@ -38,6 +39,8 @@ app = FastAPI(title="Telegram Bot Service", version="1.0.0")
 # Подключение роутеров
 app.include_router(auth_router, prefix="/tg")
 app.include_router(channels_router, prefix="/tg")
+app.include_router(schedule_router)
+app.include_router(schedule_router, prefix="/tg")
 
 # Глобальные переменные
 bot_service: TelegramBotService = None
@@ -116,6 +119,7 @@ async def main():
         # Создание и запуск бота
         bot_service = TelegramBotService()
         bot_service.client_manager = client_manager
+        set_schedule_bot_service(bot_service)
         
         # Запуск API сервера в фоне
         logger.info(f"Starting API server on port {settings.API_PORT}...")
