@@ -293,3 +293,9 @@ export interface AiCheckResponse {
   model: string
   latency_ms: number
 }
+
+export interface AiSettingsResponse {
+  enabled: boolean
+  model: string
+  service_url: string
+}

@@ -14,7 +14,9 @@ import type {
   StoragePresignedUrlResponse,
   RuntimeLocationResponse,
   AiCheckResponse,
+  AiSettingsResponse,
 } from '@/types/core'
+
 
 export const coreService = {
   async getHealthcheck(): Promise<HealthcheckResponse> {
@@ -195,6 +197,24 @@ export const coreService = {
   async runAiCheck(text: string): Promise<AiCheckResponse> {
     try {
       const response = await apiClient.post<AiCheckResponse>('/core/admin/checks/ai', { text })
+      return response.data
+    } catch (error) {
+      throw new Error(getErrorMessage(error))
+    }
+  },
+
+  async getAiSettings(): Promise<AiSettingsResponse> {
+    try {
+      const response = await apiClient.get<AiSettingsResponse>('/core/admin/ai-settings')
+      return response.data
+    } catch (error) {
+      throw new Error(getErrorMessage(error))
+    }
+  },
+
+  async setAiEnabled(enabled: boolean): Promise<AiSettingsResponse> {
+    try {
+      const response = await apiClient.put<AiSettingsResponse>('/core/admin/ai-settings', { enabled })
       return response.data
     } catch (error) {
       throw new Error(getErrorMessage(error))

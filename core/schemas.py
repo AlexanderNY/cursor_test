@@ -1227,6 +1227,23 @@ class AiCheckResponse(BaseModel):
     latency_ms: float
 
 
+class AiSettingsResponse(BaseModel):
+    """Глобальный флаг нейросети (Ollama) для отладки без AI."""
+    enabled: bool
+    model: str
+    service_url: str
+
+
+class AiSettingsUpdateRequest(BaseModel):
+    """Включение/отключение вызовов AI."""
+    enabled: bool
+
+
+class AiEnabledResponse(BaseModel):
+    """Лёгкий ответ для внутренних сервисов."""
+    enabled: bool
+
+
 class RuntimeLocationResponse(BaseModel):
     """Среда выполнения core: hostname, локальный TZ, публичный IP и гео по IP."""
     hostname: str

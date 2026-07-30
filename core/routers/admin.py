@@ -12,6 +12,9 @@ from storage_client import get_storage
 from schemas import (
     AiCheckRequest,
     AiCheckResponse,
+    AiEnabledResponse,
+    AiSettingsResponse,
+    AiSettingsUpdateRequest,
     ServicesStatusResponse,
     PostsTablesResponse,
     PostsListResponse,
@@ -24,6 +27,7 @@ from schemas import (
     StorageDeleteResponse,
     RuntimeLocationResponse,
 )
+from services.system_settings_service import system_settings_service
 
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
@@ -266,6 +270,12 @@ async def run_ai_check(
 ):
     """Отправляет текст в AI-сервис и возвращает ответ. Только admin."""
     del admin_user
+    if not await system_settings_service.is_ai_enabled():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="AI is disabled. Enable it on Checks → AI.",
+        )
+
     from shared import ai_client
 
     started = time.perf_counter()
@@ -280,3 +290,23 @@ async def run_ai_check(
     latency_ms = (time.perf_counter() - started) * 1000
     model = os.getenv("AI_MODEL", "qwen2.5:3b")
     return AiCheckResponse(reply=reply, model=model, latency_ms=round(latency_ms, 1))
+
+
+@router.get("/ai-settings", response_model=AiSettingsResponse)
+async def get_ai_settings(admin_user: Dict[str, Any] = Depends(get_admin_user)):
+    """Текущие настройки AI (вкл/выкл Ollama). Только admin."""
+    del admin_user
+    data = await system_settings_service.get_ai_settings()
+    return AiSettingsResponse(**data)
+
+
+@router.put("/ai-settings", response_model=AiSettingsResponse)
+async def update_ai_settings(
+    body: AiSettingsUpdateRequest,
+    admin_user: Dict[str, Any] = Depends(get_admin_user),
+):
+    """Включает или отключает вызовы нейросети без рестарта. Только admin."""
+    del admin_user
+    await system_settings_service.set_ai_enabled(body.enabled)
+    data = await system_settings_service.get_ai_settings()
+    return AiSettingsResponse(**data)

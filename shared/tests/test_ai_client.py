@@ -2,7 +2,11 @@
 
 import pytest
 
-from shared.ai_client import CircuitBreaker, reset_circuit_breaker_for_tests
+from shared.ai_client import (
+    CircuitBreaker,
+    invalidate_enabled_cache,
+    reset_circuit_breaker_for_tests,
+)
 
 
 def test_circuit_breaker_opens_after_failures():
@@ -23,3 +27,12 @@ def test_circuit_breaker_resets_on_success():
 
 def test_reset_circuit_breaker_for_tests():
     reset_circuit_breaker_for_tests()
+
+
+@pytest.mark.asyncio
+async def test_is_enabled_respects_env_disable(monkeypatch):
+    monkeypatch.setenv("AI_ENABLED", "false")
+    invalidate_enabled_cache()
+    from shared import ai_client
+
+    assert await ai_client.is_enabled() is False

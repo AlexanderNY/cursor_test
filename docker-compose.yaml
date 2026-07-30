@@ -19,6 +19,9 @@ x-ai-environment: &ai-environment
   AI_MODEL: qwen2.5:3b
   AI_TIMEOUT_SEC: "60"
   AI_REALTIME_TIMEOUT_SEC: "15"
+  AI_ENABLED: "false"
+  CORE_SERVICE_URL: http://core:8002
+  AI_SETTINGS_URL: http://core:8002/internal/ai-enabled
 
 services:
   core:
@@ -28,8 +31,6 @@ services:
     depends_on:
       minio:
         condition: service_started
-      ollama-init:
-        condition: service_completed_successfully
     ports:
       - "8002:8002"
     environment:
@@ -214,9 +215,6 @@ services:
     build: 
       context: .
       dockerfile: ./processor/Dockerfile
-    depends_on:
-      ollama-init:
-        condition: service_completed_successfully
     ports:
       - "8010:8010"
     environment:
@@ -364,8 +362,6 @@ services:
     depends_on:
       minio:
         condition: service_started
-      ollama-init:
-        condition: service_completed_successfully
     ports:
       - "8004:8004"
     environment:

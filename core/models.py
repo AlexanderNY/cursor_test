@@ -1458,6 +1458,21 @@ FEEDBACK_INDEXES = """
 CREATE INDEX IF NOT EXISTS idx_feedback_created_at ON feedback(created_at DESC);
 """
 
+# Глобальные runtime-настройки (ключ → JSON value)
+SYSTEM_SETTINGS_TABLE = """
+CREATE TABLE IF NOT EXISTS system_settings (
+    key VARCHAR(100) PRIMARY KEY,
+    value JSONB NOT NULL,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
+SYSTEM_SETTINGS_SEED = """
+INSERT INTO system_settings (key, value)
+VALUES ('ai_enabled', 'true'::jsonb)
+ON CONFLICT (key) DO NOTHING;
+"""
+
 # Список всех таблиц для инициализации
 ALL_TABLES = [
     POSTS_TABLE,
@@ -1534,4 +1549,6 @@ ALL_TABLES = [
     NOTIFICATIONS_INDEXES,
     FEEDBACK_TABLE,
     FEEDBACK_INDEXES,
+    SYSTEM_SETTINGS_TABLE,
+    SYSTEM_SETTINGS_SEED,
 ]

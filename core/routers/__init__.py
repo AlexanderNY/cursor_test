@@ -13,6 +13,7 @@ from . import notifications
 from . import feedback
 from . import admin
 from . import threads
+from . import internal
 
 __all__ = [
     "healthcheck",
@@ -30,4 +31,5 @@ __all__ = [
     "feedback",
     "admin",
     "threads",
+    "internal",
 ]

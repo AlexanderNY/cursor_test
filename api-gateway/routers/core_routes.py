@@ -217,6 +217,24 @@ async def run_admin_ai_check(
     return await forward_to_core("/admin/checks/ai", request)
 
 
+@router.get("/admin/ai-settings")
+async def get_admin_ai_settings(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    """Глобальный флаг AI (Ollama). Только admin (проверка на core)."""
+    return await forward_to_core("/admin/ai-settings", request)
+
+
+@router.put("/admin/ai-settings")
+async def put_admin_ai_settings(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    """Включение/отключение AI. Только admin (проверка на core)."""
+    return await forward_to_core("/admin/ai-settings", request)
+
+
 @router.get("/schedules")
 async def get_schedules(
     request: Request,

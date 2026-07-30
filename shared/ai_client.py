@@ -1,4 +1,4 @@
-"""Единый AI-клиент (OpenAI-compatible API) с circuit breaker."""
+"""Единый AI-клиент (OpenAI-compatible API) с circuit breaker и runtime-флагом."""
 
 from __future__ import annotations
 
@@ -63,10 +63,61 @@ class AIClientConfig:
     timeout_sec: float = field(default_factory=lambda: float(os.getenv("AI_TIMEOUT_SEC", "60")))
     realtime_timeout_sec: float = field(default_factory=lambda: float(os.getenv("AI_REALTIME_TIMEOUT_SEC", "15")))
     max_retries: int = 2
+    settings_url: str = field(
+        default_factory=lambda: os.getenv(
+            "AI_SETTINGS_URL",
+            f"{os.getenv('CORE_SERVICE_URL', 'http://core:8002').rstrip('/')}/internal/ai-enabled",
+        )
+    )
+    settings_cache_ttl_sec: float = field(
+        default_factory=lambda: float(os.getenv("AI_SETTINGS_CACHE_TTL_SEC", "5"))
+    )
 
 
 _circuit = CircuitBreaker()
 _config = AIClientConfig()
+_cached_enabled: Optional[bool] = None
+_cached_enabled_at: float = 0.0
+
+
+def _env_ai_enabled() -> bool:
+    return os.getenv("AI_ENABLED", "true").strip().lower() in ("1", "true", "yes", "on")
+
+
+async def is_enabled() -> bool:
+    """True, если вызовы к Ollama разрешены (env + runtime-флаг из core)."""
+    global _cached_enabled, _cached_enabled_at
+
+    if not _env_ai_enabled():
+        return False
+
+    now = time.monotonic()
+    if (
+        _cached_enabled is not None
+        and (now - _cached_enabled_at) < _config.settings_cache_ttl_sec
+    ):
+        return _cached_enabled
+
+    enabled = True
+    try:
+        async with httpx.AsyncClient(timeout=2.0) as client:
+            response = await client.get(_config.settings_url)
+            if response.status_code == 200:
+                data = response.json()
+                enabled = bool(data.get("enabled", True))
+    except Exception as exc:
+        logger.debug("AI settings poll failed, assuming enabled: %s", exc)
+        enabled = True
+
+    _cached_enabled = enabled
+    _cached_enabled_at = now
+    return enabled
+
+
+def invalidate_enabled_cache() -> None:
+    global _cached_enabled, _cached_enabled_at
+    _cached_enabled = None
+    _cached_enabled_at = 0.0
 
 
 def _extract_json(text: str) -> dict[str, Any]:
@@ -86,6 +137,9 @@ async def _chat_completion(
     max_tokens: int,
     timeout_sec: Optional[float] = None,
 ) -> str:
+    if not await is_enabled():
+        raise RuntimeError("AI is disabled")
+
     if _circuit.is_open():
         raise RuntimeError("AI circuit breaker is open")
 
@@ -231,3 +285,4 @@ async def enrich(text: str, categories: list[str]) -> dict[str, Any]:
 def reset_circuit_breaker_for_tests() -> None:
     _circuit.failure_count = 0
     _circuit.opened_at = None
+    invalidate_enabled_cache()
