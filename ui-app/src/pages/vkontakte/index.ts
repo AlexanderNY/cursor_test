@@ -1,0 +1,1 @@
+export { VKontaktePage } from './vkontakte'

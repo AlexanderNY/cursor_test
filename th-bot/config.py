@@ -11,7 +11,7 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     """Конфигурация из переменных окружения."""
 
-    DATABASE_URL: str = "dbname=db_bot user=postgres password=1qaz!QAZ host=host.docker.internal"
+    DATABASE_URL: str = ""
 
     LOG_LEVEL: str = "INFO"
 

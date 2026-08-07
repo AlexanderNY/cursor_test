@@ -196,3 +196,45 @@ async def get_tg_analytics_sentiment(
     current_user: dict = Depends(get_current_user),
 ) -> Response:
     return await forward_to_core("/tg/analytics/sentiment", request)
+
+
+@router.get("/analytics/engagement")
+async def get_tg_analytics_engagement(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    return await forward_to_core("/tg/analytics/engagement", request)
+
+
+@router.post("/post/{post_id}/approve")
+async def approve_tg_post(
+    post_id: int,
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    return await forward_to_core(f"/tg/post/{post_id}/approve", request)
+
+
+@router.get("/templates")
+async def list_tg_templates(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    return await forward_to_core("/tg/templates", request)
+
+
+@router.post("/templates")
+async def create_tg_template(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    return await forward_to_core("/tg/templates", request)
+
+
+@router.delete("/templates/{template_id}")
+async def delete_tg_template(
+    template_id: int,
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    return await forward_to_core(f"/tg/templates/{template_id}", request)

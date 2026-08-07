@@ -10,8 +10,9 @@
 
 ```bash
 cp base/secret.yaml.example base/secret.yaml
-# Edit base/secret.yaml: set DATABASE_URL (use host.minikube.internal as DB host), JWT_SECRET_KEY
+# Edit base/secret.yaml: set DATABASE_URL, JWT_SECRET_KEY, SECRET_KEY (same as JWT), S3_*
 # Do not commit base/secret.yaml
+# Rotate secrets if they were previously committed to git.
 ```
 
 ## 2. Build images inside Minikube

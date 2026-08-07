@@ -1,17 +1,32 @@
 """Сервис для проверки здоровья всех сервисов."""
 
+from __future__ import annotations
+
+import asyncio
+import time
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from typing import Dict, List, Optional
+
 import httpx
-from typing import List, Dict
+
 from config import settings
+from shared.circuit_breaker import CircuitBreaker
+
+
+@dataclass
+class _CacheEntry:
+    results: List[Dict]
+    expires_at: float
 
 
 class HealthcheckService:
-    """Сервис для опроса healthcheck всех микросервисов."""
-    
-    def __init__(self):
+    """Опрос /health микросервисов: parallel + cache + circuit breaker."""
+
+    def __init__(self) -> None:
         self.services = {
             "auth": settings.AUTH_SERVICE_URL,
-            "core": "http://localhost:8002",  # self
+            "core": None,  # self — без HTTP
             "api-gateway": settings.API_GATEWAY_URL,
             "tg-bot": settings.TG_BOT_SERVICE_URL,
             "vk-bot": settings.VK_BOT_SERVICE_URL,
@@ -22,65 +37,122 @@ class HealthcheckService:
             "collector": settings.COLLECTOR_SERVICE_URL,
             "processor": settings.PROCESSOR_SERVICE_URL,
         }
-    
-    async def check_service(self, name: str, url: str) -> Dict:
-        """Проверяет здоровье одного сервиса.
-        
-        Args:
-            name: Имя сервиса
-            url: URL сервиса
-            
-        Returns:
-            Словарь с результатом проверки
-        """
-        try:
-            async with httpx.AsyncClient(timeout=5.0) as client:
-                response = await client.get(f"{url}/health")
-                if response.status_code == 200:
-                    data = response.json() if response.content else {}
-                    server_time = data.get("server_time") if isinstance(data, dict) else None
-                    return {
-                        "service_name": name,
-                        "status": "ok",
-                        "error": None,
-                        "server_time": server_time,
-                    }
-                else:
-                    return {
-                        "service_name": name,
-                        "status": "error",
-                        "error": f"HTTP {response.status_code}"
-                    }
-        except httpx.ConnectError:
+        self._circuits: Dict[str, CircuitBreaker] = {
+            name: CircuitBreaker(
+                name=f"health:{name}",
+                failure_threshold=settings.HEALTHCHECK_CIRCUIT_FAILURE_THRESHOLD,
+                recovery_timeout_sec=settings.HEALTHCHECK_CIRCUIT_RECOVERY_SECONDS,
+            )
+            for name in self.services
+            if name != "core"
+        }
+        self._cache: Optional[_CacheEntry] = None
+        self._cache_lock = asyncio.Lock()
+        self._http_client: Optional[httpx.AsyncClient] = None
+
+    def _get_client(self) -> httpx.AsyncClient:
+        if self._http_client is None or self._http_client.is_closed:
+            self._http_client = httpx.AsyncClient(
+                timeout=settings.HEALTHCHECK_REQUEST_TIMEOUT_SECONDS
+            )
+        return self._http_client
+
+    def _core_local_result(self) -> Dict:
+        return {
+            "service_name": "core",
+            "status": "ok",
+            "error": None,
+            "server_time": datetime.now(timezone.utc)
+            .isoformat()
+            .replace("+00:00", "Z"),
+        }
+
+    async def check_service(self, name: str, url: Optional[str]) -> Dict:
+        """Проверяет здоровье одного сервиса."""
+        if name == "core" or not url:
+            return self._core_local_result()
+
+        circuit = self._circuits[name]
+        if not circuit.allow_request():
             return {
                 "service_name": name,
                 "status": "error",
-                "error": "Connection refused"
+                "error": "Circuit open",
+                "server_time": None,
+            }
+
+        try:
+            client = self._get_client()
+            response = await client.get(f"{url.rstrip('/')}/health")
+            if response.status_code == 200:
+                data = response.json() if response.content else {}
+                server_time = data.get("server_time") if isinstance(data, dict) else None
+                circuit.record_success()
+                return {
+                    "service_name": name,
+                    "status": "ok",
+                    "error": None,
+                    "server_time": server_time,
+                }
+
+            circuit.record_failure()
+            return {
+                "service_name": name,
+                "status": "error",
+                "error": f"HTTP {response.status_code}",
+                "server_time": None,
+            }
+        except httpx.ConnectError:
+            circuit.record_failure()
+            return {
+                "service_name": name,
+                "status": "error",
+                "error": "Connection refused",
+                "server_time": None,
             }
         except httpx.TimeoutException:
+            circuit.record_failure()
             return {
                 "service_name": name,
                 "status": "error",
-                "error": "Timeout"
+                "error": "Timeout",
+                "server_time": None,
             }
         except Exception as e:
+            circuit.record_failure()
             return {
                 "service_name": name,
                 "status": "error",
-                "error": str(e)
+                "error": str(e),
+                "server_time": None,
             }
-    
+
+    async def _fetch_all_services(self) -> List[Dict]:
+        """Параллельный опрос всех сервисов."""
+        tasks = [
+            self.check_service(name, url) for name, url in self.services.items()
+        ]
+        return list(await asyncio.gather(*tasks))
+
     async def check_all_services(self) -> List[Dict]:
-        """Проверяет здоровье всех сервисов.
-        
-        Returns:
-            Список результатов проверки всех сервисов
-        """
-        results = []
-        for name, url in self.services.items():
-            result = await self.check_service(name, url)
-            results.append(result)
-        return results
+        """Проверяет здоровье всех сервисов (с кэшем TTL)."""
+        now = time.monotonic()
+        cached = self._cache
+        if cached is not None and now < cached.expires_at:
+            return cached.results
+
+        async with self._cache_lock:
+            cached = self._cache
+            now = time.monotonic()
+            if cached is not None and now < cached.expires_at:
+                return cached.results
+
+            results = await self._fetch_all_services()
+            self._cache = _CacheEntry(
+                results=results,
+                expires_at=time.monotonic() + settings.HEALTHCHECK_CACHE_TTL_SECONDS,
+            )
+            return results
 
 
 healthcheck_service = HealthcheckService()

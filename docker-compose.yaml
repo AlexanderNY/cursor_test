@@ -35,15 +35,12 @@ services:
       - "8002:8002"
     environment:
       <<: *ai-environment
-      DB_HOST: postgres
-      DB_PORT: "5432"
-      DB_NAME: core_db
-      DB_USER: postgres
-      DB_PASSWORD: postgres
+      DATABASE_URL: ${DATABASE_URL}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
       S3_ENDPOINT_URL: http://minio:9000
       S3_BUCKET: uploads
-      S3_ACCESS_KEY: admin
-      S3_SECRET_KEY: password123
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-admin}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
       S3_USE_SSL: "false"
       API_GATEWAY_URL: http://gateway:8000
       # Публичный URL API для VK OAuth (через ui-edge: /api → gateway). Локально: http://localhost:8100/api
@@ -72,7 +69,8 @@ services:
       - "8001:8001"
     environment:
       - API_GATEWAY_URL=http://api_gateway:8000
-      - DATABASE_URL=dbname=db_bot user=postgres password=1qaz!QAZ host=host.docker.internal
+      - DATABASE_URL=${DATABASE_URL}
+      - SECRET_KEY=${SECRET_KEY}
       - LOG_SETTINGS_JOURNALD_LEVEL=DEBUG  # Для приложений, которые поддерживают эту переменную
       # Или, например, для Java-приложений
       - LOG_LEVEL=DEBUG
@@ -95,6 +93,7 @@ services:
       - VK_BOT_SERVICE_URL=http://vk-bot:8005
       - TG_GAME_SERVICE_URL=http://tg-game:8015
       - GAME_ADMIN_API_TOKEN=122
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
       - CORS_ORIGINS=http://localhost:5173,http://localhost:8100,http://127.0.0.1:8100,http://192.168.1.66,http://192.168.1.66:8100,http://95.165.87.163,https://95.165.87.163,http://copyparse.ru,https://copyparse.ru,http://www.copyparse.ru,https://www.copyparse.ru,http://9to18.ru,https://9to18.ru,http://www.9to18.ru,https://www.9to18.ru
     networks:
       monitoring_network:
@@ -108,7 +107,7 @@ services:
       - "8003:8003"
     environment:
       - API_GATEWAY_URL=http://gateway:8000
-      - DATABASE_URL=dbname=db_bot user=postgres password=1qaz!QAZ host=host.docker.internal
+      - DATABASE_URL=${DATABASE_URL}
       - POLL_INTERVAL_SECONDS=60
       - NOTIFY_ON_CHANGE_ONLY=true
       - SCHEDULER_LOGIN=
@@ -169,6 +168,7 @@ services:
       - "8006:8006"
     environment:
       <<: *ai-environment
+      DATABASE_URL: ${DATABASE_URL}
       VITE_API_GATEWAY_URL: http://gateway:8000
       VITE_CORE_SERVICE_URL: http://core:8002
     networks:
@@ -201,7 +201,7 @@ services:
       - "8009:8009"
     environment:
       <<: *ai-environment
-      DATABASE_URL: dbname=db_bot user=postgres password=1qaz!QAZ host=host.docker.internal
+      DATABASE_URL: ${DATABASE_URL}
       COLLECT_INTERVAL_SEC: "60"
       DISTRIBUTE_INTERVAL_SEC: "60"
       COLLECT_BATCH_SIZE: "100"
@@ -219,7 +219,7 @@ services:
       - "8010:8010"
     environment:
       <<: *ai-environment
-      DATABASE_URL: dbname=db_bot user=postgres password=1qaz!QAZ host=host.docker.internal
+      DATABASE_URL: ${DATABASE_URL}
       PROCESS_INTERVAL_SEC: "30"
       PROCESS_BATCH_SIZE: "50"
       WORDPRESS_MAX_LENGTH: "150000"
@@ -288,15 +288,15 @@ services:
       - "8011:8011"
     environment:
       <<: *ai-environment
-      DATABASE_URL: dbname=db_bot user=postgres password=1qaz!QAZ host=host.docker.internal
+      DATABASE_URL: ${DATABASE_URL}
       API_PORT: "8011"
       LOG_LEVEL: INFO
       INSTAGRAM_COLLECT_INTERVAL_SEC: "300"
       PUBLISH_INTERVAL_SEC: "60"
       S3_ENDPOINT_URL: http://minio:9000
       S3_BUCKET: uploads
-      S3_ACCESS_KEY: admin
-      S3_SECRET_KEY: password123
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-admin}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
       S3_USE_SSL: "false"
       CHROME_BIN: /usr/bin/chromium
       CHROMEDRIVER_PATH: /usr/bin/chromedriver
@@ -315,7 +315,7 @@ services:
       - "8013:8013"
     environment:
       <<: *ai-environment
-      DATABASE_URL: dbname=db_bot user=postgres password=1qaz!QAZ host=host.docker.internal
+      DATABASE_URL: ${DATABASE_URL}
       API_PORT: "8013"
       LOG_LEVEL: INFO
       CHROME_BIN: /usr/bin/chromium
@@ -323,8 +323,8 @@ services:
       ENABLE_THREADS_SELENIUM_FALLBACK: "false"
       S3_ENDPOINT_URL: http://minio:9000
       S3_BUCKET: uploads
-      S3_ACCESS_KEY: admin
-      S3_SECRET_KEY: password123
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-admin}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
       S3_USE_SSL: "false"
     networks:
       monitoring_network:
@@ -340,15 +340,15 @@ services:
       - "8014:8011"
     environment:
       <<: *ai-environment
-      DATABASE_URL: dbname=db_bot user=postgres password=1qaz!QAZ host=host.docker.internal
+      DATABASE_URL: ${DATABASE_URL}
       API_PORT: "8011"
       LOG_LEVEL: INFO
       CHROME_BIN: /usr/bin/chromium
       CHROMEDRIVER_PATH: /usr/bin/chromedriver
       S3_ENDPOINT_URL: http://minio:9000
       S3_BUCKET: uploads
-      S3_ACCESS_KEY: admin
-      S3_SECRET_KEY: password123
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-admin}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
       S3_USE_SSL: "false"
     shm_size: "2gb"
     networks:
@@ -368,11 +368,11 @@ services:
       <<: *ai-environment
       CORE_SERVICE_URL: http://core:8002
       API_GATEWAY_URL: http://gateway:8000
-      DATABASE_URL: dbname=db_bot user=postgres password=1qaz!QAZ host=host.docker.internal
+      DATABASE_URL: ${DATABASE_URL}
       S3_ENDPOINT_URL: http://minio:9000
       S3_BUCKET: uploads
-      S3_ACCESS_KEY: admin
-      S3_SECRET_KEY: password123
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-admin}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
       S3_USE_SSL: "false"
       LOG_BOT_ACTIONS: "false"
       RELOAD_PROFILES_INTERVAL_SEC: "300"
@@ -394,7 +394,7 @@ services:
     ports:
       - "8015:8015"
     environment:
-      DATABASE_URL: dbname=db_bot user=postgres password=1qaz!QAZ host=host.docker.internal
+      DATABASE_URL: ${DATABASE_URL}
       API_PORT: "8015"
       LOG_LEVEL: INFO
       GAME_BOT_TOKEN: "6951168264:AAGaXyK4Bi3jiyZHm8yiN4LI6cg2UZ0pPV0"
@@ -402,8 +402,8 @@ services:
       GAME_ADMIN_API_TOKEN: "122"
       S3_ENDPOINT_URL: http://minio:9000
       S3_BUCKET: uploads
-      S3_ACCESS_KEY: admin
-      S3_SECRET_KEY: password123
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-admin}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
       S3_USE_SSL: "false"
       GAME_MEDIA_PUBLIC_BASE_URL: https://www.copyparse.ru
     networks:
@@ -423,11 +423,11 @@ services:
       <<: *ai-environment
       CORE_SERVICE_URL: http://core:8002
       API_GATEWAY_URL: http://gateway:8000
-      DATABASE_URL: dbname=db_bot user=postgres password=1qaz!QAZ host=host.docker.internal
+      DATABASE_URL: ${DATABASE_URL}
       S3_ENDPOINT_URL: http://minio:9000
       S3_BUCKET: uploads
-      S3_ACCESS_KEY: admin
-      S3_SECRET_KEY: password123
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-admin}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
       S3_USE_SSL: "false"
       LOG_BOT_ACTIONS: "false"
       RELOAD_PROFILES_INTERVAL_SEC: "300"
@@ -450,13 +450,13 @@ services:
       - "8012:8012"
     environment:
       <<: *ai-environment
-      DATABASE_URL: dbname=db_bot user=postgres password=1qaz!QAZ host=host.docker.internal
+      DATABASE_URL: ${DATABASE_URL}
       API_PORT: "8012"
       LOG_LEVEL: INFO
       S3_ENDPOINT_URL: http://minio:9000
       S3_BUCKET: uploads
-      S3_ACCESS_KEY: admin
-      S3_SECRET_KEY: password123
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-admin}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
       S3_USE_SSL: "false"
       S3_DIAG_PREFIX: dzen/diag
     networks:
@@ -469,8 +469,8 @@ services:
       - "9000:9000"  # api
       - "9001:9001"  # web UI
     environment:
-      MINIO_ROOT_USER: admin
-      MINIO_ROOT_PASSWORD: password123
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
     volumes:
       - ./minio_data:/data  # папка на вашем диске для хранения файлов
     command: server /data --console-address ":9001"

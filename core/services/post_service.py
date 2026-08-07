@@ -61,10 +61,9 @@ class PostService:
         if len(text) > limit:
             raise ValueError(f"Text exceeds {platform} limit of {limit} characters")
 
-        await ensure_monthly_post_quota(user_id)
-
         conn = await get_db_connection()
         try:
+            await ensure_monthly_post_quota(user_id, conn=conn)
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
@@ -144,10 +143,9 @@ class PostService:
         if len(text) > limit:
             raise ValueError(f"Text exceeds wp limit of {limit} characters")
 
-        await ensure_monthly_post_quota(user_id)
-
         conn = await get_db_connection()
         try:
+            await ensure_monthly_post_quota(user_id, conn=conn)
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
@@ -216,10 +214,9 @@ class PostService:
         if len(text) > limit:
             raise ValueError(f"Text exceeds tg limit of {limit} characters")
 
-        await ensure_monthly_post_quota(user_id)
-
         conn = await get_db_connection()
         try:
+            await ensure_monthly_post_quota(user_id, conn=conn)
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
@@ -278,10 +275,9 @@ class PostService:
         if len(text) > limit:
             raise ValueError(f"Text exceeds cpost limit of {limit} characters")
 
-        await ensure_monthly_post_quota(user_id)
-
         conn = await get_db_connection()
         try:
+            await ensure_monthly_post_quota(user_id, conn=conn)
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
@@ -348,10 +344,9 @@ class PostService:
         if len(text) > limit:
             raise ValueError(f"Text exceeds tw limit of {limit} characters")
 
-        await ensure_monthly_post_quota(user_id)
-
         conn = await get_db_connection()
         try:
+            await ensure_monthly_post_quota(user_id, conn=conn)
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
@@ -1285,10 +1280,9 @@ class PostService:
         if len(text) > limit:
             raise ValueError(f"Text exceeds threads limit of {limit} characters")
 
-        await ensure_monthly_post_quota(user_id)
-
         conn = await get_db_connection()
         try:
+            await ensure_monthly_post_quota(user_id, conn=conn)
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
@@ -1422,30 +1416,34 @@ class PostService:
         to_threads: bool = False,
         to_dzen: bool = False,
         to_instagram: bool = False,
+        publish_at: Optional[Any] = None,
+        target_groups: Optional[List[str]] = None,
     ) -> Dict:
         """Создаёт пост VKontakte в таблице vk_posts (status=created; collector переносит в posts, затем pipeline до ready для публикации)."""
         limit = self.PLATFORM_LIMITS.get("vk", 15985)
         if len(text) > limit:
             raise ValueError(f"Text exceeds vk limit of {limit} characters")
 
-        await ensure_monthly_post_quota(user_id)
-
         images = images or []
         # Для постов с картинками vk-bot использует upload.photo_wall; явно задаём attachments с type=photo
         attachments = [{"type": "photo", "path": p} for p in images] if images else []
         images_json = json.dumps(images)
         attachments_json = json.dumps(attachments)
+        targets_json = json.dumps(target_groups or [])
         conn = await get_db_connection()
         try:
+            await ensure_monthly_post_quota(user_id, conn=conn)
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
                     INSERT INTO vk_posts (
                         user_id, post_text, images, attachments,
-                        status, post_type, to_tg, to_tw, to_wp, to_vk, to_threads, to_dzen, to_instagram
+                        status, post_type, to_tg, to_tw, to_wp, to_vk, to_threads, to_dzen, to_instagram,
+                        publish_at, target_groups
                     ) VALUES (
                         %s, %s, %s, %s,
-                        'created', 'vk', %s, %s, %s, %s, %s, %s, %s
+                        'created', 'vk', %s, %s, %s, %s, %s, %s, %s,
+                        %s, %s::jsonb
                     )
                     RETURNING *
                     """,
@@ -1461,6 +1459,8 @@ class PostService:
                         to_threads,
                         to_dzen,
                         to_instagram,
+                        publish_at,
+                        targets_json,
                     ),
                 )
                 row = await cur.fetchone()
@@ -1678,10 +1678,9 @@ class PostService:
         if len(text) > limit:
             raise ValueError(f"Text exceeds dzen limit of {limit} characters")
 
-        await ensure_monthly_post_quota(user_id)
-
         conn = await get_db_connection()
         try:
+            await ensure_monthly_post_quota(user_id, conn=conn)
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
@@ -1836,10 +1835,9 @@ class PostService:
         if len(caption) > limit:
             raise ValueError(f"Caption exceeds instagram limit of {limit} characters")
 
-        await ensure_monthly_post_quota(user_id)
-
         conn = await get_db_connection()
         try:
+            await ensure_monthly_post_quota(user_id, conn=conn)
             async with conn.cursor() as cur:
                 await cur.execute(
                     """

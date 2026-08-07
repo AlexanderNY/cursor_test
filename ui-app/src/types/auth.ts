@@ -14,9 +14,9 @@ export interface User {
   refresh_token?: string
   group_id?: number | null
   group_name?: string | null
-  role_in_group?: 'manager' | 'author' | null
+  role_in_group?: 'admin' | 'editor' | 'analyst' | 'manager' | 'author' | null
   /** Все группы пользователя (если API отдал список). */
-  groups?: Array<{ group_id: number; group_name: string; role_in_group: 'manager' | 'author' }> | null
+  groups?: Array<{ group_id: number; group_name: string; role_in_group: 'admin' | 'editor' | 'analyst' | 'manager' | 'author' }> | null
   billing_provider?: string | null
   billing_customer_id?: string | null
   billing_subscription_id?: string | null
@@ -68,7 +68,7 @@ export interface GroupMemberResponse {
   username: string
   email: string
   tariff: string
-  role_in_group: 'manager' | 'author'
+  role_in_group: 'admin' | 'editor' | 'analyst' | 'manager' | 'author'
   joined_at: string
 }
 
@@ -78,7 +78,7 @@ export interface GroupResponse {
   description?: string | null
   created_at: string
   created_by_user_id?: number | null
-  role_in_group?: 'manager' | 'author' | null
+  role_in_group?: 'admin' | 'editor' | 'analyst' | 'manager' | 'author' | null
   members?: GroupMemberResponse[] | null
 }
 

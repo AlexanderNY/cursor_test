@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional
 
 import httpx
 from database import get_db_connection, release_db_connection
+from shared import async_fs
 from config import settings
 from storage_helper import get_storage
 from .vk_client import VkClient
@@ -112,10 +113,7 @@ async def _download_to_temp(url: str, suffix: str = "") -> Optional[str]:
             resp = await client.get(url)
             resp.raise_for_status()
             ext = suffix or ".bin"
-            f = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
-            f.write(resp.content)
-            f.close()
-            return f.name
+            return await async_fs.write_temp_bytes(resp.content, suffix=ext)
     except Exception as e:
         logger.warning("Download failed %s: %s", url[:80], e)
         return None
@@ -270,10 +268,7 @@ class PostPublisher:
                     body = None
                 if body:
                     logger.info("Post %s: resolved '%s' from S3 (%d bytes)", post_id, key, len(body))
-                    f = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
-                    f.write(body)
-                    f.close()
-                    return f.name
+                    return await async_fs.write_temp_bytes(body, suffix=suffix)
                 logger.info("Post %s: S3 key '%s' not found, trying HTTP fallback", post_id, key)
         else:
             logger.info("Post %s: S3 storage not configured, trying HTTP fallback", post_id)
@@ -348,10 +343,7 @@ class PostPublisher:
                 logger.warning("Post %s: VK upload failed for attachment #%d (path=%s, type=%s, owner_id=%s)",
                                post_id, idx, local_path, atype, owner_id)
         for p in temp_paths:
-            try:
-                os.unlink(p)
-            except OSError:
-                pass
+            await async_fs.unlink_quiet(p)
         result = ",".join(parts) if parts else None
         logger.info("Post %s: final attachments string: %s", post_id, result)
         return result

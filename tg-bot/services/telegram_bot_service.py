@@ -8,6 +8,7 @@ from telethon import events
 from telethon.client import TelegramClient
 
 from config import settings
+from shared.circuit_breaker import get_breaker
 from .client_manager import TelegramClientManager
 from .message_handler import MessageHandler
 from .post_collector import PostCollector
@@ -118,6 +119,9 @@ class TelegramBotService:
                 await asyncio.sleep(interval)
                 if not self._running:
                     break
+                if not get_breaker("telegram").allow_request():
+                    logger.warning("Publisher loop skipped: Telegram circuit open")
+                    continue
                 published = await self.post_publisher.publish_ready_posts()
                 _log_action("Publisher loop: published %d posts", published)
             except asyncio.CancelledError:

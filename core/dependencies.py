@@ -1,6 +1,7 @@
 """Зависимости для проверки авторизации и ролей."""
 
 import jwt
+import httpx
 from fastapi import HTTPException, status, Request, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import Dict, Optional
@@ -10,7 +11,29 @@ from config import settings
 security = HTTPBearer()
 
 
-def get_current_user(
+async def is_token_blacklisted(token: str) -> bool:
+    """Проверяет blacklist через auth-сервис (fail closed при ошибке связи)."""
+    url = f"{settings.AUTH_SERVICE_URL.rstrip('/')}/token/blacklist-check"
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.post(url, json={"token": token})
+        if response.status_code != 200:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Unable to verify token revocation status",
+            )
+        data = response.json()
+        return bool(data.get("blacklisted"))
+    except HTTPException:
+        raise
+    except Exception as error:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Unable to verify token revocation status",
+        ) from error
+
+
+async def get_current_user(
     request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = None
 ) -> Dict:
@@ -24,7 +47,7 @@ def get_current_user(
         Dict с данными пользователя из токена
         
     Raises:
-        HTTPException: Если токен невалидный или отсутствует
+        HTTPException: Если токен невалидный, отозван или отсутствует
     """
     # Пытаемся получить токен из credentials или из заголовков
     token = None
@@ -63,10 +86,18 @@ def get_current_user(
                 detail="Account has been blocked"
             )
 
+        if await is_token_blacklisted(token):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token has been revoked"
+            )
+
         return {
             "user_id": payload.get("user_id"),
             "role": payload.get("role", "guest")
         }
+    except HTTPException:
+        raise
     except jwt.ExpiredSignatureError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -95,7 +126,7 @@ async def get_admin_user(
     Raises:
         HTTPException: Если пользователь не авторизован или не является admin
     """
-    current_user = get_current_user(request, credentials)
+    current_user = await get_current_user(request, credentials)
     
     if current_user.get("role") != "admin":
         raise HTTPException(

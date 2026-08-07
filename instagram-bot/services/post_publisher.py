@@ -12,6 +12,7 @@ import httpx
 from database import get_db_connection, release_db_connection
 from config import settings
 from storage_helper import get_storage
+from shared import async_fs
 from .instagram_client import InstagramClient
 
 
@@ -89,10 +90,7 @@ async def _download_to_temp(url: str, suffix: str = ".jpg") -> Optional[str]:
         async with httpx.AsyncClient(timeout=60.0) as client:
             resp = await client.get(url)
             resp.raise_for_status()
-            f = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
-            f.write(resp.content)
-            f.close()
-            return f.name
+            return await async_fs.write_temp_bytes(resp.content, suffix=suffix)
     except Exception as e:
         logger.warning("Download failed %s: %s", url[:80], e)
         return None
@@ -146,10 +144,7 @@ class PostPublisher:
             if key:
                 body = await storage.get_bytes(key)
                 if body:
-                    f = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
-                    f.write(body)
-                    f.close()
-                    return f.name
+                    return await async_fs.write_temp_bytes(body, suffix=".jpg")
         base = (settings.UPLOADS_DIR or os.getcwd()).rstrip("/")
         return _resolve_path(path_or_url, base)
 
@@ -201,10 +196,7 @@ class PostPublisher:
                 return True
         finally:
             for p in temp_paths:
-                try:
-                    os.unlink(p)
-                except OSError:
-                    pass
+                await async_fs.unlink_quiet(p)
         return False
 
     async def _update_post_status(self, post_id: int, status: str) -> None:

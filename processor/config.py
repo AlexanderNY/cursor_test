@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     """Настройки Processor."""
 
     # База данных
-    DATABASE_URL: str = "dbname=db_bot user=postgres password=1qaz!QAZ host=host.docker.internal"
+    DATABASE_URL: str = ""
 
     # Интервал опроса (секунды)
     PROCESS_INTERVAL_SEC: int = 30

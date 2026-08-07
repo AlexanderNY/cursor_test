@@ -1,4 +1,5 @@
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
+import { Link } from 'react-router-dom'
 import type {
   TgAnalyticsOverview,
   TgAnalyticsChannelItem,
@@ -31,7 +32,12 @@ export function AnalyticsTab({
     <Card className="animate-slide-up">
       <CardHeader>
         <CardTitle>Telegram Analytics</CardTitle>
-        <CardDescription>Метрики за последние 7 дней</CardDescription>
+        <CardDescription>
+          Метрики за последние 7 дней ·{' '}
+          <Link to="/analytics" className="text-primary-400 hover:underline">
+            Cross-network Analytics →
+          </Link>
+        </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
         {isLoadingAnalytics ? (

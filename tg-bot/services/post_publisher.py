@@ -11,7 +11,11 @@ import httpx
 from database import get_db_connection, release_db_connection
 from config import settings
 from storage_helper import get_storage
+from shared.circuit_breaker import get_breaker
+from shared.retry import retry_async
+from shared import async_fs
 from .client_manager import TelegramClientManager
+from telethon.errors import FloodWaitError, RPCError
 
 
 logger = logging.getLogger(__name__)
@@ -76,6 +80,33 @@ def _now_in_time_windows(time_intervals: List[Dict], now: Optional[datetime] = N
             if abs(current_minutes - start_m) <= 15 or abs(current_minutes - start_m) >= (24 * 60 - 15):
                 return True
     return False
+
+
+def _is_retryable_telegram_error(exc: BaseException) -> bool:
+    """Transient TG errors — retry; FloodWait / auth — нет."""
+    if isinstance(exc, FloodWaitError):
+        return False
+    if isinstance(exc, (ConnectionError, TimeoutError, OSError)):
+        return True
+    if isinstance(exc, RPCError):
+        msg = str(exc).lower()
+        if any(
+            x in msg
+            for x in (
+                "timeout",
+                "timed out",
+                "connection",
+                "network",
+                "unavailable",
+                "datacenter",
+                "server error",
+                "internal",
+            )
+        ):
+            return True
+        return False
+    msg = str(exc).lower()
+    return any(x in msg for x in ("connection", "timeout", "timed out", "network", "503", "502"))
 
 
 class PostPublisher:
@@ -225,10 +256,8 @@ class PostPublisher:
                         suffix = ".gif"
                     elif "webp" in ct:
                         suffix = ".webp"
-                f = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
-                f.write(resp.content)
-                f.close()
-                return f.name
+                path = await async_fs.write_temp_bytes(resp.content, suffix=suffix)
+                return path
         except Exception as e:
             logger.warning("Failed to download image from URL %s: %s", url[:80], e)
         return None
@@ -261,10 +290,7 @@ class PostPublisher:
                         body = await storage.get_bytes(key)
                         if body:
                             suffix = ".jpg"
-                            f = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
-                            f.write(body)
-                            f.close()
-                            local_path = f.name
+                            local_path = await async_fs.write_temp_bytes(body, suffix=suffix)
                 if not local_path:
                     local_path = self._resolve_image_path(ref)
             if local_path:
@@ -289,14 +315,11 @@ class PostPublisher:
         except ValueError:
             return channel
 
-    def _cleanup_temp(self, paths: List[str]) -> None:
+    async def _cleanup_temp(self, paths: List[str]) -> None:
         tmp = tempfile.gettempdir()
         for path in paths:
             if path and path.startswith(tmp):
-                try:
-                    os.unlink(path)
-                except OSError:
-                    pass
+                await async_fs.unlink_quiet(path)
 
     async def publish_post(self, post: Dict) -> bool:
         """Публикует один пост во все целевые каналы."""
@@ -307,6 +330,11 @@ class PostPublisher:
 
         if not channels:
             logger.warning(f"Post {post_id}: no target channels for user {user_id}")
+            return False
+
+        breaker = get_breaker("telegram")
+        if not breaker.allow_request():
+            logger.warning("Post %s skipped: Telegram circuit open", post_id)
             return False
 
         client = self.client_manager.get_client(user_id)
@@ -321,34 +349,55 @@ class PostPublisher:
                 text = text[: TG_MESSAGE_LIMIT - 3] + "..."
                 image_paths = []
 
-            last_message = None
-            last_channel_str = None
-            for channel_raw in channels:
-                channel = self._parse_channel_to_post(channel_raw)
-                if not channel:
-                    continue
-                if len(image_paths) > 1:
-                    last_message = await client.send_file(
-                        channel,
-                        image_paths,
-                        caption=text or None,
+            async def _send_all() -> tuple[Any, Optional[str]]:
+                last_message = None
+                last_channel_str = None
+                for channel_raw in channels:
+                    channel = self._parse_channel_to_post(channel_raw)
+                    if not channel:
+                        continue
+                    if len(image_paths) > 1:
+                        last_message = await client.send_file(
+                            channel,
+                            image_paths,
+                            caption=text or None,
+                        )
+                    elif len(image_paths) == 1:
+                        last_message = await client.send_message(
+                            channel, text, file=image_paths[0]
+                        )
+                    else:
+                        last_message = await client.send_message(channel, text)
+                    last_channel_str = str(channel_raw)
+                    _log_action(
+                        "Published post %s to %s for user %s", post_id, channel, user_id
                     )
-                elif len(image_paths) == 1:
-                    last_message = await client.send_message(channel, text, file=image_paths[0])
-                else:
-                    last_message = await client.send_message(channel, text)
-                last_channel_str = str(channel_raw)
-                _log_action("Published post %s to %s for user %s", post_id, channel, user_id)
+                return last_message, last_channel_str
+
+            last_message, last_channel_str = await retry_async(
+                _send_all,
+                retry_on=_is_retryable_telegram_error,
+                operation_name=f"publish_post id={post_id}",
+            )
 
             message_id = getattr(last_message, "id", None) if last_message else None
             await self._update_post_published(post_id, message_id, last_channel_str)
+            breaker.record_success()
             return True
 
+        except FloodWaitError as e:
+            logger.warning(
+                "FloodWait publishing post %s: wait %ss (circuit not opened)",
+                post_id,
+                getattr(e, "seconds", "?"),
+            )
+            return False
         except Exception as e:
             logger.error(f"Error publishing post {post_id}: {e}", exc_info=True)
+            breaker.record_failure()
             return False
         finally:
-            self._cleanup_temp(image_paths)
+            await self._cleanup_temp(image_paths)
 
     async def _update_post_status(self, post_id: int, status: str) -> None:
         """Обновляет статус поста в tg_posts."""

@@ -12,6 +12,7 @@ from services.post_service import post_service
 from services.tg_analytics_service import tg_analytics_service
 from schemas import TelegramProfileCreate, TgPostTemplateCreate
 from storage_client import get_storage
+from shared import async_fs
 
 
 router = APIRouter(prefix="/tg", tags=["Telegram"])
@@ -151,8 +152,8 @@ async def create_tg_post(
             if storage:
                 await storage.put(f"{S3_KEY_PREFIX}/{file_name}", content)
             else:
-                UPLOADS_TG_DIR.mkdir(parents=True, exist_ok=True)
-                (UPLOADS_TG_DIR / file_name).write_bytes(content)
+                await async_fs.makedirs(UPLOADS_TG_DIR)
+                await async_fs.write_bytes(UPLOADS_TG_DIR / file_name, content)
             image_url = f"/uploads/tg/{file_name}"
             images.append(image_url)
 
@@ -244,8 +245,8 @@ async def update_tg_post(
             if storage:
                 await storage.put(f"{S3_KEY_PREFIX}/{file_name}", content)
             else:
-                UPLOADS_TG_DIR.mkdir(parents=True, exist_ok=True)
-                (UPLOADS_TG_DIR / file_name).write_bytes(content)
+                await async_fs.makedirs(UPLOADS_TG_DIR)
+                await async_fs.write_bytes(UPLOADS_TG_DIR / file_name, content)
             image_url = f"/uploads/tg/{file_name}"
             images = [image_url]
 

@@ -95,6 +95,8 @@ export interface VKontaktePost {
   to_instagram?: boolean
   /** URLs or paths of images to attach */
   images?: string[]
+  publish_at?: string | null
+  target_groups?: string[]
 }
 
 export interface VKontaktePostListItem {

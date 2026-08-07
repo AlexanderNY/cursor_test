@@ -4,6 +4,7 @@ import asyncio
 import logging
 
 from config import settings
+from shared.circuit_breaker import get_breaker
 from .post_collector import PostCollector
 from .post_publisher import PostPublisher
 
@@ -42,6 +43,10 @@ class VkBotService:
         interval = max(60, settings.VK_COLLECT_INTERVAL_SEC)
         while self._running:
             try:
+                if not get_breaker("vk_api").allow_request():
+                    logger.warning("Collect loop skipped: VK circuit open")
+                    await asyncio.sleep(interval)
+                    continue
                 saved = await self._post_collector.run_collect()
                 _log_action("Collect loop: saved %d new vk posts", saved)
                 await asyncio.sleep(interval)
@@ -60,6 +65,9 @@ class VkBotService:
                 await asyncio.sleep(interval)
                 if not self._running:
                     break
+                if not get_breaker("vk_api").allow_request():
+                    logger.warning("Publisher loop skipped: VK circuit open")
+                    continue
                 published = await self._post_publisher.publish_ready_posts()
                 _log_action("Publisher loop: published %d vk posts", published)
             except asyncio.CancelledError:

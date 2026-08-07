@@ -25,6 +25,7 @@ COPY dzen-bot/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY shared_storage /app/shared_storage
+COPY shared /app/shared
 COPY dzen-bot/ .
 
 EXPOSE 8012

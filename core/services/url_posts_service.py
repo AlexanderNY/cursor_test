@@ -11,6 +11,8 @@ from typing import Any
 
 from database import get_db_connection, release_db_connection
 from services.quota_service import ensure_monthly_post_quota
+from exceptions import QuotaExceededError
+from shared import async_fs
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +20,7 @@ logger = logging.getLogger(__name__)
 UPLOADS_URL_DIR = "uploads/url"
 
 
-def _save_screenshot_from_base64(screenshot_base64: str, user_id: int) -> str | None:
+async def _save_screenshot_from_base64(screenshot_base64: str, user_id: int) -> str | None:
     """Декодирует base64, сохраняет в uploads/url/{user_id}/{date}/{uuid}.jpg. Возвращает относительный путь."""
     if not screenshot_base64:
         return None
@@ -32,10 +34,10 @@ def _save_screenshot_from_base64(screenshot_base64: str, user_id: int) -> str | 
     try:
         date_part = datetime.utcnow().strftime("%Y-%m-%d")
         dir_path = Path(UPLOADS_URL_DIR) / str(user_id) / date_part
-        dir_path.mkdir(parents=True, exist_ok=True)
+        await async_fs.makedirs(dir_path)
         name = f"{uuid.uuid4().hex}.jpg"
         file_path = dir_path / name
-        file_path.write_bytes(data)
+        await async_fs.write_bytes(file_path, data)
         return f"/uploads/url/{user_id}/{date_part}/{name}"
     except Exception as e:
         logger.warning("Screenshot save failed: %s", e)
@@ -53,12 +55,6 @@ async def save_url_post(item: dict[str, Any]) -> int | None:
         id вставленной записи или None при ошибке.
     """
     user_id = item.get("user_id")
-    if user_id is not None:
-        try:
-            uid = int(user_id)
-            await ensure_monthly_post_quota(uid)
-        except (TypeError, ValueError):
-            pass
     url = item.get("url") or ""
     raw_post_text = item.get("post_text") or ""
     to_tg = item.get("to_tg", False)
@@ -70,12 +66,17 @@ async def save_url_post(item: dict[str, Any]) -> int | None:
     if item.get("screenshot_path"):
         images.append(item["screenshot_path"])
     elif item.get("screenshot_base64"):
-        path = _save_screenshot_from_base64(item["screenshot_base64"], user_id)
+        path = await _save_screenshot_from_base64(item["screenshot_base64"], user_id)
         if path:
             images.append(path)
 
     conn = await get_db_connection()
     try:
+        if user_id is not None:
+            try:
+                await ensure_monthly_post_quota(int(user_id), conn=conn)
+            except (TypeError, ValueError):
+                pass
         async with conn.cursor() as cur:
             # Проверяем настройку screenshot_only для пользователя:
             # если включена, текст поста в url_posts не сохраняем.
@@ -120,6 +121,8 @@ async def save_url_post(item: dict[str, Any]) -> int | None:
             row = await cur.fetchone()
             url_post_id = row[0] if row else None
             return url_post_id
+    except QuotaExceededError:
+        raise
     except Exception as e:
         logger.exception("Save url post failed: %s", e)
         return None

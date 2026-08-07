@@ -104,10 +104,19 @@ CREATE TABLE IF NOT EXISTS group_members (
     id SERIAL PRIMARY KEY,
     group_id INTEGER NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    role_in_group VARCHAR(20) NOT NULL CHECK (role_in_group IN ('manager', 'author')),
+    role_in_group VARCHAR(20) NOT NULL CHECK (role_in_group IN ('manager', 'author', 'admin', 'editor', 'analyst')),
     joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(user_id)
 );
+"""
+
+# Migrate SMM RBAC: manager→admin, author→editor; allow analyst
+GROUP_MEMBERS_RBAC_MIGRATION = """
+ALTER TABLE group_members DROP CONSTRAINT IF EXISTS group_members_role_in_group_check;
+UPDATE group_members SET role_in_group = 'admin' WHERE role_in_group = 'manager';
+UPDATE group_members SET role_in_group = 'editor' WHERE role_in_group = 'author';
+ALTER TABLE group_members ADD CONSTRAINT group_members_role_in_group_check
+  CHECK (role_in_group IN ('admin', 'editor', 'analyst', 'manager', 'author'));
 """
 
 CREATE_GROUP_INDEXES = """
@@ -215,6 +224,7 @@ ALL_TABLES = [
     ADD_GROUPS_DESCRIPTION,
     GROUP_MEMBERS_DROP_USER_UNIQUE,
     GROUP_MEMBERS_ADD_GROUP_USER_UNIQUE,
+    GROUP_MEMBERS_RBAC_MIGRATION,
     BILLING_USERS_COLUMNS,
     CREATE_PLAN_DEFINITIONS_TABLE,
     CREATE_BILLING_EVENTS_TABLE,

@@ -1474,6 +1474,122 @@ ON CONFLICT (key) DO NOTHING;
 """
 
 # Список всех таблиц для инициализации
+# SMM: brands, channels, inbox, publish jobs, automations, competitor snapshots
+SMM_BRANDS_TABLE = """
+CREATE TABLE IF NOT EXISTS smm_brands (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    group_id INTEGER,
+    name VARCHAR(255) NOT NULL,
+    color VARCHAR(7) NOT NULL DEFAULT '#3B82F6',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
+SMM_BRAND_CHANNELS_TABLE = """
+CREATE TABLE IF NOT EXISTS smm_brand_channels (
+    id SERIAL PRIMARY KEY,
+    brand_id INTEGER NOT NULL REFERENCES smm_brands(id) ON DELETE CASCADE,
+    network VARCHAR(10) NOT NULL CHECK (network IN ('tg', 'vk')),
+    external_id VARCHAR(128) NOT NULL,
+    title VARCHAR(255),
+    kind VARCHAR(20) NOT NULL DEFAULT 'channel'
+        CHECK (kind IN ('channel', 'group', 'public')),
+    role VARCHAR(20) NOT NULL DEFAULT 'own'
+        CHECK (role IN ('own', 'competitor', 'source')),
+    color_override VARCHAR(7),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (brand_id, network, external_id)
+);
+"""
+
+SMM_INBOX_TABLE = """
+CREATE TABLE IF NOT EXISTS smm_inbox_items (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    brand_id INTEGER REFERENCES smm_brands(id) ON DELETE SET NULL,
+    network VARCHAR(10) NOT NULL CHECK (network IN ('tg', 'vk')),
+    channel_id INTEGER REFERENCES smm_brand_channels(id) ON DELETE SET NULL,
+    thread_id VARCHAR(128),
+    type VARCHAR(20) NOT NULL CHECK (type IN ('dm', 'comment', 'reaction')),
+    author VARCHAR(255),
+    text TEXT,
+    status VARCHAR(20) NOT NULL DEFAULT 'new'
+        CHECK (status IN ('new', 'read', 'replied', 'archived')),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
+SMM_JOBS_TABLE = """
+CREATE TABLE IF NOT EXISTS smm_publish_jobs (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    brand_id INTEGER REFERENCES smm_brands(id) ON DELETE SET NULL,
+    source_text TEXT NOT NULL,
+    media JSONB DEFAULT '[]',
+    targets JSONB DEFAULT '[]',
+    adapters_result JSONB DEFAULT '{}',
+    publish_at TIMESTAMPTZ,
+    status VARCHAR(30) NOT NULL DEFAULT 'draft',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
+SMM_AUTOMATIONS_TABLE = """
+CREATE TABLE IF NOT EXISTS smm_automations (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    brand_id INTEGER REFERENCES smm_brands(id) ON DELETE CASCADE,
+    type VARCHAR(20) NOT NULL CHECK (type IN ('rss', 'tg_repost', 'mention')),
+    config JSONB NOT NULL DEFAULT '{}',
+    enabled BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
+SMM_COMPETITOR_SNAPSHOTS_TABLE = """
+CREATE TABLE IF NOT EXISTS smm_competitor_snapshots (
+    id SERIAL PRIMARY KEY,
+    channel_id INTEGER NOT NULL REFERENCES smm_brand_channels(id) ON DELETE CASCADE,
+    external_post_id VARCHAR(128),
+    post_text TEXT,
+    views INTEGER DEFAULT 0,
+    likes INTEGER DEFAULT 0,
+    comments INTEGER DEFAULT 0,
+    reposts INTEGER DEFAULT 0,
+    posted_at TIMESTAMPTZ,
+    collected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
+SMM_INDEXES = """
+CREATE INDEX IF NOT EXISTS idx_smm_brands_user_id ON smm_brands(user_id);
+CREATE INDEX IF NOT EXISTS idx_smm_brand_channels_brand_id ON smm_brand_channels(brand_id);
+CREATE INDEX IF NOT EXISTS idx_smm_inbox_user_id ON smm_inbox_items(user_id);
+CREATE INDEX IF NOT EXISTS idx_smm_inbox_brand_status ON smm_inbox_items(brand_id, status);
+CREATE INDEX IF NOT EXISTS idx_smm_jobs_user_brand ON smm_publish_jobs(user_id, brand_id);
+CREATE INDEX IF NOT EXISTS idx_smm_jobs_publish_at ON smm_publish_jobs(publish_at);
+CREATE INDEX IF NOT EXISTS idx_smm_automations_user ON smm_automations(user_id);
+CREATE INDEX IF NOT EXISTS idx_smm_competitor_channel ON smm_competitor_snapshots(channel_id);
+"""
+
+VK_POSTS_PUBLISH_AT_MIGRATION = """
+DO $$
+BEGIN
+  ALTER TABLE vk_posts ADD COLUMN publish_at TIMESTAMPTZ;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE vk_posts ADD COLUMN target_groups JSONB DEFAULT '[]';
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+CREATE INDEX IF NOT EXISTS idx_vk_posts_publish_at ON vk_posts(publish_at);
+"""
+
 ALL_TABLES = [
     POSTS_TABLE,
     POSTS_MIGRATION,
@@ -1551,4 +1667,12 @@ ALL_TABLES = [
     FEEDBACK_INDEXES,
     SYSTEM_SETTINGS_TABLE,
     SYSTEM_SETTINGS_SEED,
+    SMM_BRANDS_TABLE,
+    SMM_BRAND_CHANNELS_TABLE,
+    SMM_INBOX_TABLE,
+    SMM_JOBS_TABLE,
+    SMM_AUTOMATIONS_TABLE,
+    SMM_COMPETITOR_SNAPSHOTS_TABLE,
+    SMM_INDEXES,
+    VK_POSTS_PUBLISH_AT_MIGRATION,
 ]

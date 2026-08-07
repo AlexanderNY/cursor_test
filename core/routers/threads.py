@@ -12,6 +12,7 @@ from services.post_service import post_service
 from schemas import ThreadsProfileCreate
 from storage_client import get_storage
 from config import settings
+from shared import async_fs
 
 
 router = APIRouter(prefix="/threads", tags=["Threads"])
@@ -100,8 +101,8 @@ async def create_threads_post(
                 await storage.put(key, content)
                 image_url = f"/uploads/threads/{file_name}"
             else:
-                UPLOADS_THREADS_DIR.mkdir(parents=True, exist_ok=True)
-                (UPLOADS_THREADS_DIR / file_name).write_bytes(content)
+                await async_fs.makedirs(UPLOADS_THREADS_DIR)
+                await async_fs.write_bytes(UPLOADS_THREADS_DIR / file_name, content)
                 image_url = f"/uploads/threads/{file_name}"
             images.append(image_url)
         post = await post_service.create_threads_post_record(
@@ -164,8 +165,8 @@ async def update_threads_post(
                 key = f"{S3_KEY_PREFIX}/{file_name}"
                 await storage.put(key, content)
             else:
-                UPLOADS_THREADS_DIR.mkdir(parents=True, exist_ok=True)
-                (UPLOADS_THREADS_DIR / file_name).write_bytes(content)
+                await async_fs.makedirs(UPLOADS_THREADS_DIR)
+                await async_fs.write_bytes(UPLOADS_THREADS_DIR / file_name, content)
             images = [f"/uploads/threads/{file_name}"]
         post = await post_service.update_threads_post(
             user_id=user_id,

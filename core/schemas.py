@@ -638,6 +638,8 @@ class VKontaktePost(BaseModel):
     to_dzen: bool = False
     to_instagram: bool = False
     images: Optional[List[str]] = None
+    publish_at: Optional[datetime] = None
+    target_groups: Optional[List[str]] = None
 
 
 # ==================== Dzen ====================

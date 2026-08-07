@@ -1,7 +1,6 @@
 from datetime import datetime
 
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from database import init_db, close_db
 from routers import profile, auth, security, groups, billing
@@ -22,15 +21,6 @@ app = FastAPI(
     description="Микросервис авторизации и аутентификации",
     version="1.0.0",
     lifespan=lifespan
-)
-
-# Настройка CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # В production указать конкретные домены
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
 )
 
 # Подключение роутеров

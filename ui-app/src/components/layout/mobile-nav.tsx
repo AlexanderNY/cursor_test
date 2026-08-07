@@ -87,7 +87,7 @@ export function MobileNav() {
               <span>{item.label}</span>
             </NavLink>
           ))}
-          {(user?.role === 'manager' || user?.role === 'author') && (
+          {(user?.role === 'manager' || user?.role === 'author' || user?.role === 'admin' || user?.role_in_group || user?.group_id) && (
             <>
               <div className="my-4 border-t border-[var(--border-color)]" />
               <NavLink

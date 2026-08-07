@@ -7,6 +7,8 @@ import { PageHeader, PageContainer } from '@/components/ui'
 import { TipTapEditor } from '@/components/ui/tiptap-editor'
 import { createPostService } from '@/services/create-post-service'
 import { coreService } from '@/services/core-service'
+import { smmService } from '@/services/smm-service'
+import { useBrand } from '@/contexts/brand-context'
 import {
   TargetSocialNetworksWidget,
   EMPTY_TARGET_SOCIAL_NETWORKS,
@@ -76,6 +78,7 @@ function fromDatetimeLocal(value: string): string {
 type TabId = 'create' | 'posts' | 'posts-review' | 'profile'
 
 export function CreatePostPage() {
+  const { selectedBrandId, selectedBrand, ownChannels } = useBrand()
   const [activeTab, setActiveTab] = useState<TabId>('create')
 
   const [socialNetworks, setSocialNetworks] = useState<TargetSocialNetworks>({
@@ -97,6 +100,11 @@ export function CreatePostPage() {
   const [views, setViews] = useState<number | ''>('')
   const [isAd, setIsAd] = useState(false)
   const [status, setStatus] = useState('collected')
+  const [selectedChannelIds, setSelectedChannelIds] = useState<number[]>([])
+  const [smmPublishAt, setSmmPublishAt] = useState('')
+  const [aiBusy, setAiBusy] = useState(false)
+  const [csvResult, setCsvResult] = useState('')
+  const [adaptPreview, setAdaptPreview] = useState<Record<string, string> | null>(null)
 
   const [editingPostId, setEditingPostId] = useState<number | null>(null)
   const [posts, setPosts] = useState<CpostPostListItem[]>([])
@@ -660,6 +668,191 @@ export function CreatePostPage() {
                 <p className="text-xs text-[var(--text-muted)] mt-2">
                   Plain text length: {htmlToPlainText(postContent).length} / {TEXT_MAX_LENGTH} characters
                 </p>
+              </div>
+
+              <div className="rounded-xl border border-[var(--border-color)] p-4 space-y-3 bg-[var(--bg-tertiary)]/40">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h4 className="font-medium text-[var(--text-primary)]">
+                    SMM multi-channel
+                    {selectedBrand && (
+                      <span className="ml-2 text-sm text-[var(--text-muted)]">
+                        · {selectedBrand.name}
+                      </span>
+                    )}
+                  </h4>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      disabled={aiBusy || !htmlToPlainText(postContent)}
+                      onClick={async () => {
+                        setAiBusy(true)
+                        try {
+                          const res = await smmService.aiSummarize(htmlToPlainText(postContent))
+                          setPostContent(res.summary)
+                          setSuccess('Summarized with LLM')
+                        } catch (err) {
+                          setError(err instanceof Error ? err.message : 'Summarize failed')
+                        } finally {
+                          setAiBusy(false)
+                        }
+                      }}
+                    >
+                      Summarize
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      disabled={aiBusy || !htmlToPlainText(postContent)}
+                      onClick={async () => {
+                        setAiBusy(true)
+                        try {
+                          const res = await smmService.aiRewrite(htmlToPlainText(postContent))
+                          setPostContent(res.text)
+                          setSuccess('Rewritten with LLM')
+                        } catch (err) {
+                          setError(err instanceof Error ? err.message : 'Rewrite failed')
+                        } finally {
+                          setAiBusy(false)
+                        }
+                      }}
+                    >
+                      Rewrite
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      disabled={aiBusy || !htmlToPlainText(postContent)}
+                      onClick={async () => {
+                        setAiBusy(true)
+                        try {
+                          const res = await smmService.aiAdapt(htmlToPlainText(postContent), ['tg', 'vk'])
+                          setAdaptPreview(res.variants)
+                          setSuccess('Network adapt preview ready')
+                        } catch (err) {
+                          setError(err instanceof Error ? err.message : 'Adapt failed')
+                        } finally {
+                          setAiBusy(false)
+                        }
+                      }}
+                    >
+                      Adapt TG/VK
+                    </Button>
+                  </div>
+                </div>
+
+                {adaptPreview && (
+                  <div className="grid gap-2 sm:grid-cols-2 text-xs">
+                    {Object.entries(adaptPreview).map(([net, text]) => (
+                      <div key={net} className="rounded border border-[var(--border-color)] p-2">
+                        <p className="uppercase text-[var(--text-muted)] mb-1">{net}</p>
+                        <p className="whitespace-pre-wrap">{text}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div>
+                  <p className="text-sm text-[var(--text-secondary)] mb-2">Brand channels</p>
+                  <div className="space-y-1 max-h-36 overflow-y-auto">
+                    {ownChannels.map((c) => (
+                      <label key={c.id} className="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={selectedChannelIds.includes(c.id)}
+                          onChange={() =>
+                            setSelectedChannelIds((prev) =>
+                              prev.includes(c.id) ? prev.filter((x) => x !== c.id) : [...prev, c.id],
+                            )
+                          }
+                        />
+                        <span
+                          className="h-2 w-2 rounded-full"
+                          style={{ backgroundColor: selectedBrand?.color ?? '#3B82F6' }}
+                        />
+                        <span className="uppercase text-[var(--text-muted)]">{c.network}</span>
+                        {c.title || c.external_id}
+                      </label>
+                    ))}
+                    {ownChannels.length === 0 && (
+                      <p className="text-xs text-[var(--text-muted)]">
+                        Нет own-каналов — добавьте в Brands
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-end gap-3">
+                  <div>
+                    <label className="text-sm text-[var(--text-secondary)]">Schedule (SMM)</label>
+                    <input
+                      type="datetime-local"
+                      value={smmPublishAt}
+                      onChange={(e) => setSmmPublishAt(e.target.value)}
+                      className="block mt-1 px-3 py-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)]"
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    onClick={async () => {
+                      const text = htmlToPlainText(postContent)
+                      if (!text) {
+                        setError('Content required for SMM job')
+                        return
+                      }
+                      const targets = ownChannels
+                        .filter((c) => selectedChannelIds.includes(c.id))
+                        .map((c) => ({ network: c.network, external_id: c.external_id }))
+                      try {
+                        await smmService.createJob({
+                          brand_id: selectedBrandId,
+                          text: postContent,
+                          media_urls: imagesText
+                            .split('\n')
+                            .map((s) => s.trim())
+                            .filter(Boolean),
+                          targets,
+                          publish_at: smmPublishAt ? fromDatetimeLocal(smmPublishAt) : null,
+                          adapt: true,
+                          status: smmPublishAt ? 'scheduled' : 'ready',
+                        })
+                        setSuccess(
+                          smmPublishAt
+                            ? 'SMM job scheduled — see Calendar'
+                            : 'SMM job created for selected channels',
+                        )
+                      } catch (err) {
+                        setError(err instanceof Error ? err.message : 'SMM job failed')
+                      }
+                    }}
+                  >
+                    {smmPublishAt ? 'Schedule to calendar' : 'Send to brand channels'}
+                  </Button>
+                  <label className="text-sm cursor-pointer underline text-primary-400">
+                    Import CSV
+                    <input
+                      type="file"
+                      accept=".csv,text/csv"
+                      className="hidden"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0]
+                        if (!file) return
+                        try {
+                          const res = await smmService.importCsv(file, selectedBrandId)
+                          setCsvResult(`Created ${res.created} drafts` + (res.errors.length ? `, errors: ${res.errors.length}` : ''))
+                          setSuccess('CSV imported (no media)')
+                        } catch (err) {
+                          setError(err instanceof Error ? err.message : 'CSV import failed')
+                        }
+                        e.target.value = ''
+                      }}
+                    />
+                  </label>
+                  {csvResult && <span className="text-xs text-[var(--text-muted)]">{csvResult}</span>}
+                </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

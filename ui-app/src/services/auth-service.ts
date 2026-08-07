@@ -219,7 +219,7 @@ export const authService = {
   async addGroupMember(
     groupId: number,
     email: string,
-    role_in_group: 'manager' | 'author' = 'author'
+    role_in_group: 'admin' | 'editor' | 'analyst' | 'manager' | 'author' = 'editor'
   ): Promise<void> {
     await apiClient.post(`/auth/groups/${groupId}/members`, { email, role_in_group })
   },

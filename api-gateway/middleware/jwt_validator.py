@@ -1,4 +1,5 @@
 import jwt
+import httpx
 from typing import Optional
 from fastapi import Request, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -177,6 +178,27 @@ def check_public_endpoint(endpoint_path: str) -> bool:
     return False
 
 
+async def is_token_blacklisted(token: str, http_client: Optional[httpx.AsyncClient] = None) -> bool:
+    """Проверяет blacklist через auth-сервис (fail closed при ошибке связи)."""
+    url = f"{settings.AUTH_SERVICE_URL.rstrip('/')}/token/blacklist-check"
+    try:
+        if http_client is not None:
+            response = await http_client.post(url, json={"token": token}, timeout=5.0)
+        else:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                response = await client.post(url, json={"token": token})
+        if response.status_code != 200:
+            raise TokenValidationException("Unable to verify token revocation status.")
+        data = response.json()
+        return bool(data.get("blacklisted"))
+    except TokenValidationException:
+        raise
+    except Exception as error:
+        raise TokenValidationException(
+            "Unable to verify token revocation status."
+        ) from error
+
+
 async def get_current_user(
     request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security_scheme)
@@ -184,7 +206,7 @@ async def get_current_user(
     """Dependency для получения текущего пользователя из JWT.
     
     Для публичных endpoints возвращает None без ошибки.
-    Для защищенных endpoints требует валидный JWT.
+    Для защищенных endpoints требует валидный JWT и отсутствие в blacklist.
     
     Args:
         request: FastAPI Request объект
@@ -194,7 +216,7 @@ async def get_current_user(
         Данные пользователя или None для публичных endpoints
     
     Raises:
-        TokenValidationException: Если JWT отсутствует или невалидный
+        TokenValidationException: Если JWT отсутствует, невалидный или отозван
     """
     endpoint_path = request.url.path
     
@@ -206,7 +228,14 @@ async def get_current_user(
     if not credentials:
         raise TokenValidationException("Authorization header is required.")
     
-    return jwt_validator.get_user_from_token(credentials.credentials)
+    token = credentials.credentials
+    user = jwt_validator.get_user_from_token(token)
+
+    http_client = getattr(request.app.state, "http_client", None)
+    if await is_token_blacklisted(token, http_client):
+        raise TokenValidationException("Token has been revoked")
+
+    return user
 
 
 async def validate_jwt_middleware(request: Request) -> Optional[dict]:
@@ -219,7 +248,7 @@ async def validate_jwt_middleware(request: Request) -> Optional[dict]:
         Данные пользователя или None для публичных endpoints
     
     Raises:
-        TokenValidationException: Если JWT невалидный
+        TokenValidationException: Если JWT невалидный или отозван
     """
     endpoint_path = request.url.path
     
@@ -233,6 +262,10 @@ async def validate_jwt_middleware(request: Request) -> Optional[dict]:
         raise TokenValidationException("Authorization header is required.")
     
     token = jwt_validator.extract_token_from_header(authorization_header)
-    return jwt_validator.get_user_from_token(token)
+    user = jwt_validator.get_user_from_token(token)
 
+    http_client = getattr(request.app.state, "http_client", None)
+    if await is_token_blacklisted(token, http_client):
+        raise TokenValidationException("Token has been revoked")
 
+    return user

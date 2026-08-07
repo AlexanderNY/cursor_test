@@ -14,6 +14,8 @@ import {
   DocumentTextIcon,
   PollIcon,
   CheckCircleIcon,
+  ChartBarIcon,
+  UsersIcon,
 } from '@/components/icons'
 
 export interface NavItem {
@@ -24,7 +26,12 @@ export interface NavItem {
 
 export const navItems: NavItem[] = [
   { path: '/profile', label: 'Profile', Icon: UserIcon },
+  { path: '/brands', label: 'Brands', Icon: UsersIcon },
+  { path: '/inbox', label: 'Inbox', Icon: DocumentTextIcon },
   { path: '/posts', label: 'Posts', Icon: PlusIcon },
+  { path: '/calendar', label: 'Calendar', Icon: CheckCircleIcon },
+  { path: '/analytics', label: 'Analytics', Icon: ChartBarIcon },
+  { path: '/automations', label: 'Automations', Icon: SettingsIcon },
   { path: '/telegram', label: 'Telegram', Icon: TelegramIcon },
   { path: '/vkontakte', label: 'VKontakte', Icon: VKontakteIcon },
   { path: '/instagram', label: 'Instagram', Icon: InstagramIcon },
@@ -36,8 +43,8 @@ export const navItems: NavItem[] = [
 ]
 
 export const groupNavItem: NavItem = {
-  path: '/group',
-  label: 'My group',
+  path: '/team',
+  label: 'Team',
   Icon: UserGroupIcon,
 }
 

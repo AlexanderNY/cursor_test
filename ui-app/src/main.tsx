@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AuthProvider } from '@/contexts/auth-context'
 import { ThemeProvider } from '@/contexts/theme-context'
 import { ToastProvider } from '@/contexts/toast-context'
+import { BrandProvider } from '@/contexts/brand-context'
 import { ErrorBoundary } from '@/components/error-boundary'
 import { ToastContainer } from '@/components/ui/toast-container'
 import App from './App'
@@ -27,8 +28,10 @@ createRoot(document.getElementById('root')!).render(
           <ThemeProvider>
             <ToastProvider>
               <AuthProvider>
-                <App />
-                <ToastContainer />
+                <BrandProvider>
+                  <App />
+                  <ToastContainer />
+                </BrandProvider>
               </AuthProvider>
             </ToastProvider>
           </ThemeProvider>

@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     """Конфигурация из переменных окружения."""
     
     # База данных
-    DATABASE_URL: str = "dbname=db_bot user=postgres password=1qaz!QAZ host=host.docker.internal"
+    DATABASE_URL: str = ""
     
     # Путь для сохранения изображений
     UPLOADS_DIR: str = "uploads/tg"

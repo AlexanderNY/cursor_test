@@ -1,7 +1,12 @@
 """Клиент для работы с WordPress REST API."""
 
-import httpx
+from io import BytesIO
+from pathlib import Path
 from typing import Optional, Dict, Any
+
+import httpx
+
+from shared import async_fs
 
 
 class WordPressClient:
@@ -208,23 +213,24 @@ class WordPressClient:
             Данные загруженного медиа-файла
         """
         try:
-            with open(file_path, "rb") as f:
-                files = {"file": f}
-                data = {}
-                if title:
-                    data["title"] = title
-                if alt_text:
-                    data["alt_text"] = alt_text
-                
-                async with httpx.AsyncClient(timeout=60.0) as client:
-                    response = await client.post(
-                        f"{self.base_url}/media",
-                        files=files,
-                        data=data,
-                        auth=(self.username, self.app_password),
-                    )
-                    response.raise_for_status()
-                    return response.json()
+            content = await async_fs.read_bytes(file_path)
+            filename = Path(file_path).name
+            files = {"file": (filename, BytesIO(content))}
+            data = {}
+            if title:
+                data["title"] = title
+            if alt_text:
+                data["alt_text"] = alt_text
+
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                response = await client.post(
+                    f"{self.base_url}/media",
+                    files=files,
+                    data=data,
+                    auth=(self.username, self.app_password),
+                )
+                response.raise_for_status()
+                return response.json()
         except httpx.HTTPStatusError as e:
             raise Exception(f"WordPress API error ({e.response.status_code}): Failed to upload media")
         except httpx.RequestError as e:

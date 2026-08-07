@@ -1,16 +1,18 @@
-from fastapi import APIRouter, HTTPException, status, Depends
+from fastapi import APIRouter, HTTPException, status, Depends, Request
 from schemas import (
     PasswordResetRequest,
     PasswordResetConfirm,
     TokenVerifyRequest,
-    TokenVerifyResponse
+    TokenVerifyResponse,
+    TokenBlacklistCheckRequest,
+    TokenBlacklistCheckResponse,
 )
 from services.auth_service import (
     verify_email_token,
     reset_password,
     initiate_password_reset
 )
-from services.token_service import is_token_blacklisted
+from services.token_service import is_token_blacklisted, blacklist_token
 from utils.jwt_utils import decode_token
 from utils.exceptions import (
     TokenNotFoundError,
@@ -69,6 +71,15 @@ async def verify_token(request: TokenVerifyRequest) -> TokenVerifyResponse:
         return TokenVerifyResponse(valid=False, user_id=None)
 
 
+@router.post("/token/blacklist-check", response_model=TokenBlacklistCheckResponse)
+async def token_blacklist_check(
+    request: TokenBlacklistCheckRequest,
+) -> TokenBlacklistCheckResponse:
+    """Проверка, отозван ли access-токен (для gateway/core)."""
+    is_blacklisted = await is_token_blacklisted(request.token)
+    return TokenBlacklistCheckResponse(blacklisted=is_blacklisted)
+
+
 @router.post("/reset-password", status_code=status.HTTP_200_OK)
 async def reset_password_endpoint(request: PasswordResetRequest) -> Dict:
     """Запрос на сброс пароля (инициация)."""
@@ -94,10 +105,17 @@ async def confirm_password_reset(request: PasswordResetConfirm) -> Dict:
 
 
 @router.post("/all_logout", status_code=status.HTTP_200_OK)
-async def logout_all(current_user: Dict = Depends(get_current_user)) -> Dict:
-    """Выход со всех устройств (отзыв всех refresh токенов)."""
+async def logout_all(
+    http_request: Request,
+    current_user: Dict = Depends(get_current_user),
+) -> Dict:
+    """Выход со всех устройств (отзыв всех refresh + blacklist текущего access)."""
     user_id = current_user["id"]
     await revoke_all_refresh_tokens(user_id)
-    
-    return {"message": "Successfully logged out from all devices"}
 
+    authorization = http_request.headers.get("Authorization")
+    if authorization and authorization.startswith("Bearer "):
+        access_token = authorization.split(" ", 1)[1]
+        await blacklist_token(access_token)
+
+    return {"message": "Successfully logged out from all devices"}

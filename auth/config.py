@@ -5,12 +5,13 @@ from typing import Optional
 class Settings(BaseSettings):
     """Конфигурация приложения из переменных окружения."""
     
-    # Database
-    DATABASE_URL: str = 'dbname=db_bot user=postgres password=1qaz!QAZ host=host.docker.internal' #127.0.0.1 - для локального запуска, host.docker.internal для локального запуска из докера #postgresql://localhost:5432/postgres'
+    # Database (обязательно через env / .env)
+    DATABASE_URL: str = ""
+    DB_POOL_MINSIZE: int = 2
+    DB_POOL_MAXSIZE: int = 20
 
-
-    # JWT Settings
-    SECRET_KEY: str = "$2b$12$xyiAcpacCfrFN3wl3ayJT."
+    # JWT Settings (обязательно через env / .env; должен совпадать с JWT_SECRET_KEY gateway/core)
+    SECRET_KEY: str = ""
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
@@ -34,4 +35,21 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+
+def validate_required_secrets() -> None:
+    """Fail-fast, если критичные секреты не заданы через окружение."""
+    missing: list[str] = []
+    if not (settings.DATABASE_URL or "").strip():
+        missing.append("DATABASE_URL")
+    if not (settings.SECRET_KEY or "").strip():
+        missing.append("SECRET_KEY")
+    if missing:
+        raise RuntimeError(
+            "Missing required secrets (set via .env or environment): "
+            + ", ".join(missing)
+        )
+
+
+validate_required_secrets()
 

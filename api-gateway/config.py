@@ -28,10 +28,16 @@ class Settings(BaseSettings):
     CORS_ORIGINS: str = "http://localhost:5173,http://localhost:8100,http://172.20.10.100:8100"
     CORS_ALLOWED_METHODS: list[str] = ["GET", "POST", "PUT", "PATCH", "DELETE"]
     CORS_ALLOW_CREDENTIALS: bool = True
-    CORS_ALLOW_HEADERS: list[str] = ["*"]
+    CORS_ALLOW_HEADERS: list[str] = [
+        "Authorization",
+        "Content-Type",
+        "Accept",
+        "X-Requested-With",
+        "X-Game-Admin-Token",
+    ]
     
     # JWT настройки
-    JWT_SECRET_KEY: str = "$2b$12$xyiAcpacCfrFN3wl3ayJT."
+    JWT_SECRET_KEY: str = ""
     JWT_ALGORITHM: str = "HS256"
     
     # Rate Limiting по умолчанию
@@ -45,6 +51,17 @@ class Settings(BaseSettings):
 
 # Singleton экземпляр настроек
 settings = Settings()
+
+
+def validate_required_secrets() -> None:
+    """Fail-fast, если JWT-секрет не задан через окружение."""
+    if not (settings.JWT_SECRET_KEY or "").strip():
+        raise RuntimeError(
+            "Missing required secret JWT_SECRET_KEY (set via .env or environment)"
+        )
+
+
+validate_required_secrets()
 
 
 def get_cors_origins_list() -> list[str]:

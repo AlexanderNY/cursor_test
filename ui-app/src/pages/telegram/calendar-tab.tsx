@@ -91,7 +91,12 @@ export function CalendarTab({
             </svg>
             Calendar
           </CardTitle>
-          <CardDescription>Week view — click a post to reschedule</CardDescription>
+          <CardDescription>
+            Week view — click a post to reschedule.{' '}
+            <a href="/calendar?network=tg" className="text-primary-400 hover:underline">
+              Open shared calendar →
+            </a>
+          </CardDescription>
         </div>
         <div className="flex items-center gap-2">
           <Button type="button" variant="ghost" size="sm" onClick={goPrevWeek}>← Prev</Button>

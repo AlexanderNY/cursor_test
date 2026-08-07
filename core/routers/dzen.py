@@ -15,6 +15,7 @@ from schemas import DzenProfileCreate, DzenPost, DzenPostUpdate
 from database import get_db_connection, release_db_connection
 from config import settings
 from storage_client import get_storage
+from shared import async_fs
 
 
 router = APIRouter(prefix="/dzen", tags=["Dzen"])
@@ -43,9 +44,9 @@ async def _save_upload(upload_dir: Path, file: UploadFile, subdir: str) -> str:
         await storage.put(key, content)
         return f"/uploads/dzen/{subdir}/{name}"
     target = upload_dir / subdir
-    target.mkdir(parents=True, exist_ok=True)
+    await async_fs.makedirs(target)
     path = target / name
-    path.write_bytes(content)
+    await async_fs.write_bytes(path, content)
     return f"/uploads/dzen/{subdir}/{name}"
 
 

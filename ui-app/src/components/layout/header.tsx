@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/contexts/auth-context'
 import { useTheme } from '@/contexts/theme-context'
+import { useBrand } from '@/contexts/brand-context'
 import { Button } from '@/components/ui'
 import { notificationsService } from '@/services/notifications-service'
 import type { Notification } from '@/types/core'
@@ -11,6 +12,7 @@ const NOTIFICATIONS_POLL_INTERVAL_MS = 12_000
 export function Header() {
   const { user, logout } = useAuth()
   const { isDarkMode, toggleTheme } = useTheme()
+  const { brands, selectedBrandId, setSelectedBrandId, selectedBrand } = useBrand()
   const navigate = useNavigate()
   const notificationRef = useRef<HTMLDivElement>(null)
   const [notifications, setNotifications] = useState<Notification[]>([])
@@ -54,8 +56,6 @@ export function Header() {
   const currentNotification = notifications[currentNotificationIndex]
   const isAuthNotification = currentNotification?.type?.startsWith('tg_auth')
 
-  // Intercept clicks on internal <a> links inside notification HTML
-  // so they use React Router (SPA navigation) instead of full page reload
   const handleNotificationClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
       const target = e.target as HTMLElement
@@ -73,7 +73,30 @@ export function Header() {
   return (
     <header className="h-[115px] bg-[var(--bg-secondary)] border-b border-[var(--border-color)] flex items-center justify-between px-6">
       <div className="flex items-center gap-4 flex-1">
-        {/* Notifications Block */}
+        {brands.length > 0 && (
+          <div className="flex items-center gap-2 shrink-0">
+            <span
+              className="h-3 w-3 rounded-full"
+              style={{ backgroundColor: selectedBrand?.color ?? '#64748b' }}
+            />
+            <select
+              aria-label="Brand switcher"
+              className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-tertiary)] px-3 py-1.5 text-sm text-[var(--text-primary)] max-w-[180px]"
+              value={selectedBrandId ?? ''}
+              onChange={(e) =>
+                setSelectedBrandId(e.target.value ? Number(e.target.value) : null)
+              }
+            >
+              <option value="">All brands</option>
+              {brands.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
         {notifications.length > 0 && (
           <div
             role="region"
@@ -96,14 +119,14 @@ export function Header() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
             </button>
-            
+
             <div
               ref={notificationRef}
               onClick={handleNotificationClick}
               className="flex-1 text-sm text-[var(--text-primary)] text-center px-2 notification-content"
               dangerouslySetInnerHTML={{ __html: currentNotification?.message || '' }}
             />
-            
+
             <button
               type="button"
               onClick={handleNextNotification}
@@ -118,7 +141,7 @@ export function Header() {
           </div>
         )}
       </div>
-      
+
       <div className="flex items-center gap-3">
         <button
           type="button"
@@ -136,7 +159,7 @@ export function Header() {
             </svg>
           )}
         </button>
-        
+
         <Button variant="ghost" size="sm" onClick={logout}>
           <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
@@ -147,5 +170,3 @@ export function Header() {
     </header>
   )
 }
-
-

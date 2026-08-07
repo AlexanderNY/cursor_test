@@ -24,6 +24,7 @@ from routers import (
     threads_router,
     stubs_router,
     game_router,
+    smm_router,
 )
 from utils.exceptions import (
     GatewayException,
@@ -96,6 +97,7 @@ def register_routers(application: FastAPI) -> None:
     application.include_router(threads_router)
     application.include_router(stubs_router)
     application.include_router(game_router)
+    application.include_router(smm_router)
 
 
 def register_exception_handlers(application: FastAPI) -> None:

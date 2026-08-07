@@ -25,6 +25,7 @@ COPY vk-bot/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY shared_storage /app/shared_storage
+COPY shared /app/shared
 COPY vk-bot/ .
 
 EXPOSE 8005

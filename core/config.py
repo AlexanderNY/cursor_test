@@ -5,14 +5,16 @@ from typing import List, Optional
 class Settings(BaseSettings):
     """Конфигурация Core сервиса из переменных окружения."""
     
-      # База данных (тот же формат что и auth)
-    DATABASE_URL: str = "dbname=db_bot user=postgres password=1qaz!QAZ host=host.docker.internal"
+    # База данных (обязательно через env / .env)
+    DATABASE_URL: str = ""
+    DB_POOL_MINSIZE: int = 2
+    DB_POOL_MAXSIZE: int = 20
     
     # API Gateway URL для healthcheck запросов
     API_GATEWAY_URL: str = "http://localhost:8000"
     
-    # JWT настройки (должны совпадать с auth сервисом)
-    JWT_SECRET_KEY: str = "$2b$12$xyiAcpacCfrFN3wl3ayJT."
+    # JWT настройки (должны совпадать с auth SECRET_KEY)
+    JWT_SECRET_KEY: str = ""
     JWT_ALGORITHM: str = "HS256"
     
     # Список сервисов для healthcheck
@@ -38,6 +40,12 @@ class Settings(BaseSettings):
     SCHEDULER_SERVICE_URL: str = "http://localhost:8003"
     COLLECTOR_SERVICE_URL: str = "http://localhost:8009"
     PROCESSOR_SERVICE_URL: str = "http://localhost:8010"
+
+    # Healthcheck: кэш агрегата и circuit breaker для внешних /health
+    HEALTHCHECK_CACHE_TTL_SECONDS: int = 45
+    HEALTHCHECK_REQUEST_TIMEOUT_SECONDS: float = 5.0
+    HEALTHCHECK_CIRCUIT_FAILURE_THRESHOLD: int = 3
+    HEALTHCHECK_CIRCUIT_RECOVERY_SECONDS: float = 60.0
     
     # Threads (Meta) OAuth
     META_APP_ID: str = ""
@@ -74,6 +82,23 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+
+def validate_required_secrets() -> None:
+    """Fail-fast, если критичные секреты не заданы через окружение."""
+    missing: list[str] = []
+    if not (settings.DATABASE_URL or "").strip():
+        missing.append("DATABASE_URL")
+    if not (settings.JWT_SECRET_KEY or "").strip():
+        missing.append("JWT_SECRET_KEY")
+    if missing:
+        raise RuntimeError(
+            "Missing required secrets (set via .env or environment): "
+            + ", ".join(missing)
+        )
+
+
+validate_required_secrets()
 
 
 def get_vk_oauth_redirect_uri(public_gateway_url: Optional[str] = None) -> str:

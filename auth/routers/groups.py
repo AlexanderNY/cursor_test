@@ -94,7 +94,7 @@ async def create_group(
         full = await group_service.get_group_by_id(group["id"], include_members=True)
         if not full:
             raise HTTPException(status_code=500, detail="Failed to load group")
-        full["role_in_group"] = "manager"
+        full["role_in_group"] = "admin"
         return _group_to_response(full, with_members=True)
     except PermissionError as e:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
@@ -193,10 +193,10 @@ async def get_my_group_member_ids(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="You are not a member of this group",
         )
-    if m["role_in_group"] != "manager" and current_user.get("role") != "admin":
+    if m["role_in_group"] not in ("manager", "admin") and current_user.get("role") != "admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only group manager can get member ids",
+            detail="Only group admin can get member ids",
         )
     return await group_service.get_group_member_user_ids(target_gid)
 
@@ -209,10 +209,10 @@ async def get_group_member_user_ids_for_statistics(
     """Список user_id участников группы (manager этой группы или admin)."""
     membership = await group_service.get_membership_in_group(current_user["id"], group_id)
     if current_user.get("role") != "admin":
-        if not membership or membership["role_in_group"] != "manager":
+        if not membership or membership["role_in_group"] not in ("manager", "admin"):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Only group manager or admin can get member ids",
+                detail="Only group admin or platform admin can get member ids",
             )
     ids = await group_service.get_group_member_user_ids(group_id)
     return ids

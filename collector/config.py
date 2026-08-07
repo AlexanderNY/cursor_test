@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     """Настройки Collector."""
 
     # База данных
-    DATABASE_URL: str = "dbname=db_bot user=postgres password=1qaz!QAZ host=host.docker.internal"
+    DATABASE_URL: str = ""
 
     # Интервалы выполнения (секунды)
     COLLECT_INTERVAL_SEC: int = 60

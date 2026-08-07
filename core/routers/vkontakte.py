@@ -16,6 +16,7 @@ from schemas import VKontakteProfileCreate, VKontaktePost
 from storage_client import get_storage
 from pydantic import BaseModel
 from config import settings, get_vk_oauth_redirect_uri
+from shared import async_fs
 
 
 router = APIRouter(prefix="/vk", tags=["VKontakte"])
@@ -421,9 +422,9 @@ async def upload_vk_image(
         key = f"{S3_KEY_PREFIX}/{name}"
         await storage.put(key, content)
         return {"url": f"/vk/uploads/{name}"}
-    UPLOADS_VK_DIR.mkdir(parents=True, exist_ok=True)
+    await async_fs.makedirs(UPLOADS_VK_DIR)
     path = UPLOADS_VK_DIR / name
-    path.write_bytes(content)
+    await async_fs.write_bytes(path, content)
     return {"url": f"/vk/uploads/{name}"}
 
 
@@ -500,6 +501,8 @@ async def create_vk_post(
             to_threads=data.to_threads,
             to_dzen=data.to_dzen,
             to_instagram=data.to_instagram,
+            publish_at=data.publish_at,
+            target_groups=data.target_groups,
         )
         return post
     except ValueError as e:

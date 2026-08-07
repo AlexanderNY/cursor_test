@@ -18,6 +18,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from config import settings
 from database import get_db_connection, release_db_connection
 from storage_helper import get_storage
+from shared import async_fs
 
 from .selenium_diag import capture_selenium_error_to_s3
 from .selenium_driver import create_chrome_driver
@@ -90,10 +91,7 @@ async def _download_to_temp(url: str, suffix: str = ".jpg") -> Optional[str]:
         async with httpx.AsyncClient(timeout=60.0) as client:
             resp = await client.get(url)
             resp.raise_for_status()
-            f = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
-            f.write(resp.content)
-            f.close()
-            return f.name
+            return await async_fs.write_temp_bytes(resp.content, suffix=suffix)
     except Exception as e:
         logger.warning("Download failed %s: %s", url[:80], e)
         return None
@@ -114,10 +112,7 @@ async def _resolve_image_file(path_or_url: str, post_id: int) -> Optional[str]:
                 body = await storage.get_bytes(key)
                 if body:
                     ext = os.path.splitext(key)[1] or ".jpg"
-                    f = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
-                    f.write(body)
-                    f.close()
-                    return f.name
+                    return await async_fs.write_temp_bytes(body, suffix=ext)
             except Exception as exc:
                 logger.warning("Post %s: S3 get_bytes error: %s", post_id, exc)
 
@@ -344,10 +339,7 @@ class DzenPostPublisher:
 
             ok, pub_url, err = await asyncio.to_thread(_publish_sync, post)
             for tmp in local_paths:
-                try:
-                    os.unlink(tmp)
-                except OSError:
-                    pass
+                await async_fs.unlink_quiet(tmp)
             post.pop("_local_image_paths", None)
 
             if ok:

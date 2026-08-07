@@ -3,7 +3,6 @@
 import logging
 
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 
 from routers.run import router as run_router
 from routers.schedule import router as schedule_router
@@ -18,14 +17,6 @@ app = FastAPI(
     title="URL Bot Service",
     description="Сервис скрапинга по URL и XPath, скриншот элемента",
     version="1.0.0",
-)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
 )
 
 app.include_router(run_router)

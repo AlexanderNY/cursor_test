@@ -22,12 +22,30 @@ async def _count_managers_in_group(group_id: int) -> int:
             await cur.execute(
                 """
                 SELECT COUNT(*) FROM group_members
-                WHERE group_id = %s AND role_in_group = 'manager'
+                WHERE group_id = %s AND role_in_group IN ('manager', 'admin')
                 """,
                 (group_id,),
             )
             row = await cur.fetchone()
     return int(row[0]) if row else 0
+
+
+def _is_group_admin(role_in_group: Optional[str]) -> bool:
+    return role_in_group in ("admin", "manager")
+
+
+def _normalize_role_in_group(role: str) -> str:
+    """Map legacy roles to SMM RBAC; accept new roles as-is."""
+    mapping = {
+        "manager": "admin",
+        "author": "editor",
+        "admin": "admin",
+        "editor": "editor",
+        "analyst": "analyst",
+    }
+    if role not in mapping:
+        raise ValueError("role_in_group must be admin, editor, or analyst")
+    return mapping[role]
 
 
 async def get_membership_in_group(user_id: int, group_id: int) -> Optional[Dict]:
@@ -183,7 +201,7 @@ async def get_my_group(user_id: int, current_user_role: str) -> Optional[Dict]:
         return None
     group_id = memberships[0]["group_id"]
     membership_role = memberships[0]["role_in_group"]
-    include_members = membership_role == "manager" or current_user_role == "admin"
+    include_members = _is_group_admin(membership_role) or current_user_role == "admin"
     group = await get_group_by_id(group_id, include_members=include_members)
     if not group:
         return None
@@ -214,8 +232,8 @@ async def create_group_by_admin(
 
 async def create_group(user_id: int, name: str, current_user_role: str, description: Optional[str] = None) -> Dict:
     """
-    Создаёт группу и добавляет создателя как manager.
-    Роль manager или admin; пользователь может состоять и в других группах.
+    Создаёт группу и добавляет создателя как admin (SMM RBAC).
+    Роль manager или admin (глобальная); пользователь может состоять и в других группах.
     """
     if current_user_role not in ("manager", "admin"):
         raise PermissionError("Only manager or admin can create a group")
@@ -237,7 +255,7 @@ async def create_group(user_id: int, name: str, current_user_role: str, descript
             await cur.execute(
                 """
                 INSERT INTO group_members (group_id, user_id, role_in_group)
-                VALUES (%s, %s, 'manager')
+                VALUES (%s, %s, 'admin')
                 """,
                 (group_id, user_id),
             )
@@ -247,7 +265,7 @@ async def create_group(user_id: int, name: str, current_user_role: str, descript
         "description": row[2],
         "created_at": row[3],
         "created_by_user_id": row[4],
-        "role_in_group": "manager",
+        "role_in_group": "admin",
         "members": [],
     }
 
@@ -268,8 +286,8 @@ async def update_group(
 
     membership = await get_membership_in_group(requested_by_user_id, group_id)
     if requested_by_role != "admin":
-        if not membership or membership["role_in_group"] != "manager":
-            raise PermissionError("Only group manager or admin can update the group")
+        if not membership or not _is_group_admin(membership.get("role_in_group")):
+            raise PermissionError("Only group admin or platform admin can update the group")
 
     updates = []
     params: List = []
@@ -302,29 +320,28 @@ async def add_member_by_email(
     email: str,
     requested_by_user_id: int,
     requested_by_role: str,
-    role_in_group: str = "author",
+    role_in_group: str = "editor",
 ) -> Dict:
     """
     Добавляет участника по email.
-    Менеджер группы или admin. Первый участник группы — только manager.
-    В одной группе не может быть двух менеджеров.
+    Admin группы или platform admin. Первый участник — только admin.
+    В одной группе не может быть двух admin.
     """
-    if role_in_group not in ("manager", "author"):
-        raise ValueError("role_in_group must be manager or author")
+    role_in_group = _normalize_role_in_group(role_in_group)
 
     membership = None
     if requested_by_role != "admin":
         membership = await get_membership_in_group(requested_by_user_id, group_id)
-        if not membership or membership["role_in_group"] != "manager":
-            raise PermissionError("Only group manager or admin can add members")
+        if not membership or not _is_group_admin(membership.get("role_in_group")):
+            raise PermissionError("Only group admin or platform admin can add members")
 
     n_members = await _count_group_members(group_id)
     if n_members == 0:
-        if role_in_group != "manager":
-            raise ValueError("The first member of an empty group must be a manager")
+        if role_in_group != "admin":
+            raise ValueError("The first member of an empty group must be an admin")
     else:
-        if role_in_group == "manager" and await _count_managers_in_group(group_id) >= 1:
-            raise ValueError("This group already has a manager")
+        if role_in_group == "admin" and await _count_managers_in_group(group_id) >= 1:
+            raise ValueError("This group already has an admin")
 
     async with get_db_connection() as conn:
         async with conn.cursor() as cur:
@@ -367,8 +384,8 @@ async def remove_member(
     """Удаляет участника. Менеджер группы или admin. Нельзя удалить единственного менеджера."""
     if requested_by_role != "admin":
         membership = await get_membership_in_group(requested_by_user_id, group_id)
-        if not membership or membership["role_in_group"] != "manager":
-            raise PermissionError("Only group manager or admin can remove members")
+        if not membership or not _is_group_admin(membership.get("role_in_group")):
+            raise PermissionError("Only group admin or platform admin can remove members")
 
     async with get_db_connection() as conn:
         async with conn.cursor() as cur:
@@ -379,9 +396,9 @@ async def remove_member(
             row = await cur.fetchone()
             if not row:
                 raise ValueError("User is not a member of this group")
-            if row[0] == "manager":
+            if _is_group_admin(row[0]):
                 if await _count_managers_in_group(group_id) <= 1:
-                    raise ValueError("Cannot remove the only manager of the group")
+                    raise ValueError("Cannot remove the only admin of the group")
             await cur.execute(
                 "DELETE FROM group_members WHERE group_id = %s AND user_id = %s",
                 (group_id, member_user_id),

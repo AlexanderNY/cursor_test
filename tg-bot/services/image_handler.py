@@ -1,6 +1,5 @@
 """Обработка изображений из Telegram сообщений."""
 
-import os
 import logging
 from datetime import datetime
 from pathlib import Path
@@ -8,6 +7,7 @@ from typing import List, Optional
 from telethon import events
 from telethon.tl.types import MessageMediaPhoto, MessageMediaDocument
 from config import settings
+from shared import async_fs
 
 
 logger = logging.getLogger(__name__)
@@ -19,6 +19,7 @@ class ImageHandler:
     def __init__(self):
         """Инициализация обработчика изображений."""
         self.uploads_dir = Path(settings.UPLOADS_DIR)
+        # sync mkdir in __init__ is fine (once at startup)
         self.uploads_dir.mkdir(parents=True, exist_ok=True)
     
     async def download_images(
@@ -60,7 +61,7 @@ class ImageHandler:
         # Создаем структуру папок: uploads/tg/{user_id}/{date}/
         date_str = datetime.now().strftime("%Y-%m-%d")
         user_dir = self.uploads_dir / str(user_id) / date_str
-        user_dir.mkdir(parents=True, exist_ok=True)
+        await async_fs.makedirs(user_dir)
         
         image_paths = []
         
@@ -89,7 +90,7 @@ class ImageHandler:
                 # Переименовываем файл с правильным расширением
                 final_path = Path(downloaded_path).with_suffix(ext)
                 if downloaded_path != str(final_path):
-                    os.rename(downloaded_path, final_path)
+                    await async_fs.rename(downloaded_path, final_path)
                 
                 # Сохраняем относительный путь
                 relative_path = f"/{settings.UPLOADS_DIR}/{user_id}/{date_str}/{final_path.name}"

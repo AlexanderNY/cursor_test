@@ -9,7 +9,7 @@ import { TelegramPage } from '@/pages/telegram/telegram'
 import { ThreadsPage } from '@/pages/threads/threads'
 import { WordPressPage } from '@/pages/stubs/wordpress'
 import { TwitterPage } from '@/pages/twitter'
-import { VKontaktePage } from '@/pages/stubs/vkontakte'
+import { VKontaktePage } from '@/pages/vkontakte'
 import { DzenPage } from '@/pages/stubs/dzen'
 import { InstagramPage } from '@/pages/stubs/instagram'
 import { CustomURLPage } from '@/pages/stubs/custom-url'
@@ -17,7 +17,12 @@ import { CreatePostPage } from '@/pages/create-post'
 import { AdministrationPage } from '@/pages/administration'
 import { PollsPage, PollsIndexRedirect, PollsContentSection, PollsDiagnosticsSection, PollsRatingPage, PollsOrdersPage } from '@/pages/polls'
 import { ChecksPage, ChecksIndexRedirect, AiCheckSection, ServicesStatusSection, ProcessorSection, CollectorSection, SchedulerSection, PostingDiagnosticsSection } from '@/pages/checks'
-import { GroupPage } from '@/pages/group'
+import { TeamPage } from '@/pages/team/team'
+import { BrandsPage } from '@/pages/brands/brands'
+import { InboxPage } from '@/pages/inbox/inbox'
+import { CalendarPage } from '@/pages/calendar/calendar'
+import { SmmAnalyticsPage } from '@/pages/smm-analytics/analytics'
+import { AutomationsPage } from '@/pages/automations/automations'
 import { FigmaPreviewPage } from '@/pages/figma-preview'
 import { AboutPage } from '@/pages/about/about'
 import { PricingPage } from '@/pages/pricing/pricing'
@@ -88,6 +93,11 @@ function App() {
         <Route path="profile" element={<ProfilePage />} />
         <Route path="billing" element={<Navigate to="/profile?tab=billing" replace />} />
         <Route path="statistics" element={<Navigate to="/profile?tab=statistics" replace />} />
+        <Route path="brands" element={<BrandsPage />} />
+        <Route path="inbox" element={<InboxPage />} />
+        <Route path="calendar" element={<CalendarPage />} />
+        <Route path="analytics" element={<SmmAnalyticsPage />} />
+        <Route path="automations" element={<AutomationsPage />} />
         <Route path="telegram" element={<TelegramPage />} />
         <Route path="threads" element={<ThreadsPage />} />
         <Route path="wordpress" element={<WordPressPage />} />
@@ -98,7 +108,8 @@ function App() {
         <Route path="custom-url" element={<CustomURLPage />} />
         <Route path="posts" element={<CreatePostPage />} />
         <Route path="create-post" element={<Navigate to="/posts" replace />} />
-        <Route path="group" element={<GroupPage />} />
+        <Route path="team" element={<TeamPage />} />
+        <Route path="group" element={<Navigate to="/team" replace />} />
         <Route path="administration" element={<AdminRoute><AdministrationPage /></AdminRoute>} />
         <Route path="polls" element={<AdminRoute><PollsPage /></AdminRoute>}>
           <Route index element={<PollsIndexRedirect />} />

@@ -9,6 +9,7 @@ from services.profile_service import profile_service
 from services.post_service import post_service
 from schemas import InstagramProfileCreate, InstagramPost, InstagramPostUpdate
 from storage_client import get_storage
+from shared import async_fs
 
 
 router = APIRouter(prefix="/instagram", tags=["Instagram"])
@@ -37,9 +38,9 @@ async def _save_upload(upload_dir: Path, file: UploadFile, subdir: str) -> str:
         await storage.put(key, content)
         return f"/uploads/instagram/{subdir}/{name}"
     target = upload_dir / subdir
-    target.mkdir(parents=True, exist_ok=True)
+    await async_fs.makedirs(target)
     path = target / name
-    path.write_bytes(content)
+    await async_fs.write_bytes(path, content)
     return f"/uploads/instagram/{subdir}/{name}"
 
 

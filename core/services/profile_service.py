@@ -838,47 +838,81 @@ class ProfileService:
             await release_db_connection(conn)
 
     async def get_wp_collect_profile(self, user_id: int) -> Optional[Dict]:
-        """Получает профиль сбора WordPress: collect_enabled из wp_collect_profile, сайты из wp_collect_sites."""
+        """Получает профиль сбора WordPress одним запросом (профиль + json_agg сайтов)."""
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
                 await cur.execute(
-                    "SELECT * FROM wp_collect_profile WHERE user_id = %s",
-                    (user_id,)
+                    """
+                    SELECT
+                        p.*,
+                        COALESCE(
+                            (
+                                SELECT json_agg(
+                                    json_build_object(
+                                        'site_url', s.site_url,
+                                        'schedule_type', COALESCE(s.schedule_type, 'on_new_messages'),
+                                        'time_intervals', COALESCE(s.time_intervals, '')
+                                    )
+                                    ORDER BY s.id
+                                )
+                                FROM wp_collect_sites s
+                                WHERE s.user_id = p.user_id
+                            ),
+                            '[]'::json
+                        ) AS collect_sites
+                    FROM wp_collect_profile p
+                    WHERE p.user_id = %s
+                    """,
+                    (user_id,),
                 )
                 row = await cur.fetchone()
                 if row is None:
                     return None
                 columns = [c.name for c in cur.description]
                 profile = dict(zip(columns, row))
-                profile["collect_sites"] = []
-                profile.setdefault("collect_all_available", True)
-                profile.setdefault("collect_limit", 1)
-                await cur.execute(
-                    "SELECT site_url, schedule_type, time_intervals FROM wp_collect_sites WHERE user_id = %s ORDER BY id",
-                    (user_id,)
-                )
-                sites_rows = await cur.fetchall()
-                sites_desc = cur.description
-                for srow in sites_rows:
-                    site = dict(zip([c.name for c in sites_desc], srow))
-                    profile["collect_sites"].append({
+                sites = profile.get("collect_sites") or []
+                if isinstance(sites, str):
+                    sites = json.loads(sites) if sites else []
+                profile["collect_sites"] = [
+                    {
                         "site_url": site.get("site_url"),
                         "schedule_type": site.get("schedule_type") or "on_new_messages",
                         "time_intervals": site.get("time_intervals") or "",
-                    })
+                    }
+                    for site in sites
+                    if isinstance(site, dict)
+                ]
+                profile.setdefault("collect_all_available", True)
+                profile.setdefault("collect_limit", 1)
                 return profile
         finally:
             await release_db_connection(conn)
 
     async def save_wp_collect_profile(self, user_id: int, data: Dict) -> Dict:
-        """Сохраняет профиль сбора: collect_enabled в wp_collect_profile, сайты в wp_collect_sites (столбцы site_url, schedule_type, time_intervals)."""
+        """Сохраняет профиль сбора: batch insert сайтов, ответ из in-memory (без nested acquire)."""
+        collect_enabled = data.get("collect_enabled", False)
+        collect_all_available = data.get("collect_all_available", True)
+        collect_limit_val = data.get("collect_limit")
+        if collect_limit_val is not None:
+            collect_limit_val = max(1, min(25, int(collect_limit_val)))
+        else:
+            collect_limit_val = 1
+
+        collect_sites: List[Dict[str, Any]] = []
+        for site in data.get("collect_sites", []) or []:
+            site_url = site.get("site_url") or ""
+            schedule_type = site.get("schedule_type") or "on_new_messages"
+            time_intervals = site.get("time_intervals") if isinstance(site.get("time_intervals"), str) else ""
+            collect_sites.append({
+                "site_url": site_url,
+                "schedule_type": schedule_type,
+                "time_intervals": time_intervals or "",
+            })
+
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
-                collect_limit_val = data.get("collect_limit")
-                if collect_limit_val is not None:
-                    collect_limit_val = max(1, min(25, int(collect_limit_val)))
                 await cur.execute(
                     """
                     INSERT INTO wp_collect_profile (user_id, collect_enabled, collect_all_available, collect_limit)
@@ -888,22 +922,42 @@ class ProfileService:
                         collect_all_available = EXCLUDED.collect_all_available,
                         collect_limit = EXCLUDED.collect_limit,
                         updated_at = CURRENT_TIMESTAMP
+                    RETURNING *
                     """,
-                    (user_id, data.get("collect_enabled", False), data.get("collect_all_available", True), collect_limit_val or 1)
+                    (user_id, collect_enabled, collect_all_available, collect_limit_val),
                 )
+                row = await cur.fetchone()
+                columns = [c.name for c in cur.description]
+                profile = dict(zip(columns, row)) if row else {
+                    "user_id": user_id,
+                    "collect_enabled": collect_enabled,
+                    "collect_all_available": collect_all_available,
+                    "collect_limit": collect_limit_val,
+                }
+
                 await cur.execute("DELETE FROM wp_collect_sites WHERE user_id = %s", (user_id,))
-                for site in data.get("collect_sites", []):
-                    site_url = site.get("site_url") or ""
-                    schedule_type = site.get("schedule_type") or "on_new_messages"
-                    time_intervals = site.get("time_intervals") if isinstance(site.get("time_intervals"), str) else ""
+                if collect_sites:
+                    values_sql = ", ".join(["(%s, %s, %s, %s)"] * len(collect_sites))
+                    params: List[Any] = []
+                    for site in collect_sites:
+                        params.extend([
+                            user_id,
+                            site["site_url"],
+                            site["schedule_type"],
+                            site["time_intervals"] or None,
+                        ])
                     await cur.execute(
-                        """
+                        f"""
                         INSERT INTO wp_collect_sites (user_id, site_url, schedule_type, time_intervals)
-                        VALUES (%s, %s, %s, %s)
+                        VALUES {values_sql}
                         """,
-                        (user_id, site_url, schedule_type, time_intervals or None)
+                        params,
                     )
-                return await self.get_wp_collect_profile(user_id) or {}
+
+                profile["collect_sites"] = collect_sites
+                profile.setdefault("collect_all_available", True)
+                profile.setdefault("collect_limit", 1)
+                return profile
         finally:
             await release_db_connection(conn)
 
@@ -1261,26 +1315,34 @@ class ProfileService:
         return settings
 
     async def record_curl_one_time_done_batch(self, items: List[Dict[str, Any]]) -> None:
-        """Записывает выполненные одноразовые URL в curl_one_time_done (ON CONFLICT DO NOTHING)."""
+        """Записывает выполненные одноразовые URL в curl_one_time_done (batch INSERT)."""
         if not items:
             return
+        rows: List[tuple] = []
+        for it in items:
+            user_id = it.get("user_id")
+            if user_id is None:
+                continue
+            url = (it.get("url") or "").strip()
+            xpath = (it.get("xpath") or "").strip()
+            rows.append((user_id, url, xpath))
+        if not rows:
+            return
+        values_sql = ", ".join(["(%s, %s, %s)"] * len(rows))
+        params: List[Any] = []
+        for row in rows:
+            params.extend(row)
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
-                for it in items:
-                    user_id = it.get("user_id")
-                    url = (it.get("url") or "").strip()
-                    xpath = (it.get("xpath") or "").strip()
-                    if user_id is None:
-                        continue
-                    await cur.execute(
-                        """
-                        INSERT INTO curl_one_time_done (user_id, url, xpath)
-                        VALUES (%s, %s, %s)
-                        ON CONFLICT (user_id, url, xpath) DO NOTHING
-                        """,
-                        (user_id, url, xpath),
-                    )
+                await cur.execute(
+                    f"""
+                    INSERT INTO curl_one_time_done (user_id, url, xpath)
+                    VALUES {values_sql}
+                    ON CONFLICT (user_id, url, xpath) DO NOTHING
+                    """,
+                    params,
+                )
         finally:
             await release_db_connection(conn)
     

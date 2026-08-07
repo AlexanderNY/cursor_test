@@ -32,7 +32,7 @@ class UserGroupSummary(BaseModel):
     """Кратко: одна группа пользователя (может быть несколько)."""
     group_id: int
     group_name: str
-    role_in_group: Literal["manager", "author"]
+    role_in_group: Literal["admin", "editor", "analyst", "manager", "author"]
 
 
 class UserProfile(BaseModel):
@@ -47,7 +47,7 @@ class UserProfile(BaseModel):
     created_at: datetime
     group_id: Optional[int] = None
     group_name: Optional[str] = None
-    role_in_group: Optional[Literal["manager", "author"]] = None
+    role_in_group: Optional[Literal["admin", "editor", "analyst", "manager", "author"]] = None
     groups: Optional[List[UserGroupSummary]] = None
     billing_provider: Optional[str] = None
     billing_customer_id: Optional[str] = None
@@ -108,6 +108,16 @@ class TokenVerifyResponse(BaseModel):
     user_id: Optional[int] = None
 
 
+class TokenBlacklistCheckRequest(BaseModel):
+    """Схема запроса проверки токена в blacklist."""
+    token: str
+
+
+class TokenBlacklistCheckResponse(BaseModel):
+    """Схема ответа проверки blacklist."""
+    blacklisted: bool
+
+
 class GroupCreate(BaseModel):
     """Схема создания группы (менеджер или admin)."""
     name: str = Field(..., min_length=1, max_length=255)
@@ -138,7 +148,7 @@ class GroupMemberResponse(BaseModel):
     username: str
     email: str
     tariff: str
-    role_in_group: Literal["manager", "author"]
+    role_in_group: Literal["admin", "editor", "analyst", "manager", "author"]
     joined_at: datetime
 
     class Config:
@@ -152,7 +162,7 @@ class GroupResponse(BaseModel):
     description: Optional[str] = None
     created_at: datetime
     created_by_user_id: Optional[int] = None
-    role_in_group: Optional[Literal["manager", "author"]] = None
+    role_in_group: Optional[Literal["admin", "editor", "analyst", "manager", "author"]] = None
     members: Optional[List["GroupMemberResponse"]] = None
 
     class Config:
@@ -162,7 +172,7 @@ class GroupResponse(BaseModel):
 class AddMemberRequest(BaseModel):
     """Добавление участника по email."""
     email: str = Field(..., min_length=1)
-    role_in_group: Literal["manager", "author"] = "author"
+    role_in_group: Literal["admin", "editor", "analyst", "manager", "author"] = "editor"
 
 
 def user_profile_from_user_dict(

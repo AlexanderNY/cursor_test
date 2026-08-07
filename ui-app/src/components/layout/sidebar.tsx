@@ -26,8 +26,8 @@ export function Sidebar() {
               </Link>
             </p>
             {user.group_name && (
-              <p className="text-xs text-[var(--text-muted)] mt-0.5 truncate" title={`Группа: ${user.group_name} · ${user.role_in_group === 'manager' ? 'менеджер' : 'автор'}`}>
-                Группа: {user.group_name} · {user.role_in_group === 'manager' ? 'менеджер' : 'автор'}
+              <p className="text-xs text-[var(--text-muted)] mt-0.5 truncate" title={`Группа: ${user.group_name} · ${user.role_in_group ?? ''}`}>
+                Team: {user.group_name} · {user.role_in_group === 'admin' || user.role_in_group === 'manager' ? 'Admin' : user.role_in_group === 'analyst' ? 'Analyst' : 'Editor'}
               </p>
             )}
           </>
@@ -47,7 +47,7 @@ export function Sidebar() {
             <span>{item.label}</span>
           </NavLink>
         ))}
-        {(user?.role === 'manager' || user?.role === 'author') && (
+        {(user?.role === 'manager' || user?.role === 'author' || user?.role === 'admin' || user?.role_in_group || user?.group_id) && (
           <>
             <div className="my-4 border-t border-[var(--border-color)]"></div>
             <NavLink

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import os
@@ -13,11 +12,18 @@ from typing import Any, Literal, Optional
 
 import httpx
 
+from shared.circuit_breaker import CircuitBreaker, get_breaker
+from shared.retry import retry_async
+
 logger = logging.getLogger(__name__)
 
 SUMMARIZE_SYSTEM = (
     "Ты помощник для сокращения текстов. Сохраняй ключевые факты, имена и цифры. "
     "Отвечай только сокращённым текстом без пояснений."
+)
+REWRITE_SYSTEM = (
+    "Ты редактор SMM-текстов. Перепиши текст, сохранив смысл и факты. "
+    "Отвечай только готовым текстом без пояснений."
 )
 CLASSIFY_SYSTEM = "Ты классификатор сообщений. Отвечай только валидным JSON."
 ENRICH_SYSTEM = "Ты аналитик сообщений. Отвечай только валидным JSON."
@@ -27,33 +33,6 @@ ENRICH_SYSTEM = "Ты аналитик сообщений. Отвечай тол
 class SentimentResult:
     sentiment: Literal["positive", "negative", "neutral"]
     score: float = 0.0
-
-
-@dataclass
-class CircuitBreaker:
-    failure_threshold: int = 5
-    recovery_timeout_sec: float = 60.0
-    failure_count: int = 0
-    opened_at: Optional[float] = None
-
-    def is_open(self) -> bool:
-        if self.opened_at is None:
-            return False
-        if time.monotonic() - self.opened_at >= self.recovery_timeout_sec:
-            self.opened_at = None
-            self.failure_count = 0
-            return False
-        return True
-
-    def record_success(self) -> None:
-        self.failure_count = 0
-        self.opened_at = None
-
-    def record_failure(self) -> None:
-        self.failure_count += 1
-        if self.failure_count >= self.failure_threshold:
-            self.opened_at = time.monotonic()
-            logger.warning("AI circuit breaker opened after %d failures", self.failure_count)
 
 
 @dataclass
@@ -74,7 +53,7 @@ class AIClientConfig:
     )
 
 
-_circuit = CircuitBreaker()
+_circuit = get_breaker("ai")
 _config = AIClientConfig()
 _cached_enabled: Optional[bool] = None
 _cached_enabled_at: float = 0.0
@@ -155,24 +134,28 @@ async def _chat_completion(
         "temperature": 0.2,
     }
 
-    last_error: Optional[Exception] = None
-    for attempt in range(_config.max_retries + 1):
-        try:
-            async with httpx.AsyncClient(timeout=timeout) as client:
-                response = await client.post(url, json=payload)
-                response.raise_for_status()
-                data = response.json()
-                content = data["choices"][0]["message"]["content"]
-                _circuit.record_success()
-                return str(content).strip()
-        except Exception as exc:
-            last_error = exc
-            logger.warning("AI request failed (attempt %d): %s", attempt + 1, exc)
-            if attempt < _config.max_retries:
-                await asyncio.sleep(0.5 * (attempt + 1))
+    async def _once() -> str:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.post(url, json=payload)
+            response.raise_for_status()
+            data = response.json()
+            content = data["choices"][0]["message"]["content"]
+            return str(content).strip()
 
-    _circuit.record_failure()
-    raise RuntimeError(f"AI request failed: {last_error}")
+    try:
+        result = await retry_async(
+            _once,
+            attempts=_config.max_retries + 1,
+            min_wait_sec=0.5,
+            max_wait_sec=2.0,
+            retry_on=lambda _exc: True,
+            operation_name="ai.chat_completion",
+        )
+        _circuit.record_success()
+        return result
+    except Exception as last_error:
+        _circuit.record_failure()
+        raise RuntimeError(f"AI request failed: {last_error}") from last_error
 
 
 async def complete(prompt: str, system: str = "", max_tokens: int = 512) -> str:
@@ -189,6 +172,28 @@ async def summarize(text: str, max_length: int) -> str:
     except Exception as exc:
         logger.warning("Summarize fallback: %s", exc)
         return text[:max_length] + ("..." if len(text) > max_length else "")
+
+
+async def rewrite(
+    text: str,
+    tone: Optional[str] = None,
+    network: Optional[str] = None,
+) -> str:
+    if not text:
+        return text
+    parts = ["Перепиши следующий текст"]
+    if tone:
+        parts.append(f"в тоне «{tone}»")
+    if network == "tg":
+        parts.append("для Telegram (можно HTML, spoiler)")
+    elif network == "vk":
+        parts.append("для ВКонтакте (plain text без HTML)")
+    prompt = f"{' '.join(parts)}:\n\n{text}"
+    try:
+        return await _chat_completion(prompt, REWRITE_SYSTEM, max_tokens=1024)
+    except Exception as exc:
+        logger.warning("Rewrite fallback: %s", exc)
+        return text
 
 
 async def classify(text: str, categories: list[str]) -> dict[str, Any]:
@@ -283,6 +288,5 @@ async def enrich(text: str, categories: list[str]) -> dict[str, Any]:
 
 
 def reset_circuit_breaker_for_tests() -> None:
-    _circuit.failure_count = 0
-    _circuit.opened_at = None
+    get_breaker("ai").reset()
     invalidate_enabled_cache()
