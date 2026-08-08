@@ -1,0 +1,40 @@
+# Изоляция Core/Auth: внешний трафик (Ingress и другие namespaces) не достигает
+# сервисов напрямую. Identity (X-User-Id / X-User-Role) выставляет только Gateway.
+# Внутри namespace `app` bots/scheduler/core↔auth по-прежнему могут ходить друг к другу.
+#
+# Применить: kubectl apply -f k8s/base/network-policies.yaml
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: core-deny-external-ingress
+  namespace: app
+  labels:
+    app: core
+spec:
+  podSelector:
+    matchLabels:
+      app: core
+  policyTypes:
+    - Ingress
+  ingress:
+    # Только поды того же namespace (gateway, bots, scheduler, auth, …)
+    - from:
+        - podSelector: {}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: auth-deny-external-ingress
+  namespace: app
+  labels:
+    app: auth
+spec:
+  podSelector:
+    matchLabels:
+      app: auth
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector: {}

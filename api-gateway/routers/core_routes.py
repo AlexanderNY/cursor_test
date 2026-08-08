@@ -411,3 +411,58 @@ async def delete_feedback(
     Требует JWT и роли admin (проверка на core).
     """
     return await forward_to_core(f"/feedback/{feedback_id}", request)
+
+
+@router.get("/guide/blocks")
+async def get_guide_blocks(
+    request: Request,
+    current_user: dict | None = Depends(get_current_user),
+) -> Response:
+    """Публичный список блоков справки.
+
+    GET /core/guide/blocks -> GET /guide/blocks на core (без JWT).
+    """
+    return await forward_to_core("/guide/blocks", request)
+
+
+@router.get("/guide/blocks/admin")
+async def get_guide_blocks_admin(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    """Все блоки справки для Administration."""
+    return await forward_to_core("/guide/blocks/admin", request)
+
+
+@router.post("/guide/blocks")
+async def create_guide_block(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    return await forward_to_core("/guide/blocks", request)
+
+
+@router.patch("/guide/blocks/{block_id}")
+async def update_guide_block(
+    block_id: int,
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    return await forward_to_core(f"/guide/blocks/{block_id}", request)
+
+
+@router.delete("/guide/blocks/{block_id}")
+async def delete_guide_block(
+    block_id: int,
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    return await forward_to_core(f"/guide/blocks/{block_id}", request)
+
+
+@router.post("/guide/blocks/seed")
+async def seed_guide_blocks(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    return await forward_to_core("/guide/blocks/seed", request)

@@ -31,6 +31,10 @@ export interface BillingPlanDefinition {
   monthly_posts_limit: number
   storage_gb_limit: number
   max_connected_platforms: number
+  max_own_channels?: number
+  max_brands?: number
+  max_targets_per_job?: number
+  max_automations?: number
   features: Record<string, boolean>
   sort_order: number
 }

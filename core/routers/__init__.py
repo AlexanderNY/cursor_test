@@ -15,6 +15,7 @@ from . import admin
 from . import threads
 from . import internal
 from . import smm
+from . import guide
 
 __all__ = [
     "healthcheck",
@@ -34,4 +35,5 @@ __all__ = [
     "threads",
     "internal",
     "smm",
+    "guide",
 ]

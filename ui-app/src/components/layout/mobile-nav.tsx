@@ -1,10 +1,10 @@
 import { useState } from 'react'
-import { NavLink, Link } from 'react-router-dom'
+import { NavLink, Link, useLocation } from 'react-router-dom'
 import { useAuth } from '@/contexts/auth-context'
 import { useTheme } from '@/contexts/theme-context'
 import { Button } from '@/components/ui'
 import { MenuIcon, CloseIcon, SunIcon, MoonIcon, LogOutIcon } from '@/components/icons'
-import { navItems, groupNavItem, adminNavItems } from '@/config/nav'
+import { navItems, topNavItems, groupNavItem, adminNavItems } from '@/config/nav'
 
 const iconClassName = 'h-5 w-5'
 
@@ -12,6 +12,7 @@ export function MobileNav() {
   const [isOpen, setIsOpen] = useState(false)
   const { user, logout } = useAuth()
   const { isDarkMode, toggleTheme } = useTheme()
+  const location = useLocation()
 
   return (
     <>
@@ -76,10 +77,28 @@ export function MobileNav() {
         </div>
 
         <nav className="p-4 space-y-1 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 140px)' }}>
+          <p className="px-4 pb-1 text-xs uppercase tracking-wide text-[var(--text-muted)]">Меню</p>
+          {topNavItems.map((item) => {
+            const isActive =
+              location.pathname === item.path ||
+              (item.path === '/profile' && location.pathname.startsWith('/profile'))
+            return (
+              <NavLink
+                key={item.path}
+                to={item.path}
+                onClick={() => setIsOpen(false)}
+                className={`nav-link ${isActive ? 'nav-link-active' : ''}`}
+              >
+                <item.Icon className={iconClassName} />
+                <span>{item.label}</span>
+              </NavLink>
+            )
+          })}
+          <div className="my-3 border-t border-[var(--border-color)]" />
           {navItems.map((item) => (
             <NavLink
               key={item.path}
-              to={item.path}
+              to={item.path === '/inbox' ? '/inbox?mode=comments' : item.path}
               onClick={() => setIsOpen(false)}
               className={({ isActive }) => `nav-link ${isActive ? 'nav-link-active' : ''}`}
             >
@@ -122,7 +141,7 @@ export function MobileNav() {
           <Link
             to="/feedback"
             onClick={() => setIsOpen(false)}
-            className="nav-link w-full justify-center"
+            className="nav-link w-full justify-center border border-[var(--border-color)]"
           >
             <svg xmlns="http://www.w3.org/2000/svg" className={iconClassName} fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />

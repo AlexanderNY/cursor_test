@@ -298,8 +298,29 @@ async def run_poll_cycle(token: str) -> bool:
                     await _mark_curl_one_time_done(by_platform["url"], data, token)
         elif notify_all:
             await _notify_bot(platform, by_platform[platform], token)
+    await _run_smm_jobs()
     _last_poll_at = datetime.utcnow()
     return changed
+
+
+async def _run_smm_jobs() -> None:
+    """Drain due smm_publish_jobs via Core internal API."""
+    if not getattr(settings, "SMM_JOBS_RUN_ENABLED", True):
+        return
+    base = (settings.CORE_SERVICE_URL or "").rstrip("/")
+    if not base:
+        return
+    url = f"{base}/internal/smm/jobs/run"
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            resp = await client.post(url, params={"limit": 50})
+        if resp.status_code >= 400:
+            logger.warning("SMM jobs run failed: %s %s", resp.status_code, resp.text)
+        else:
+            data = resp.json()
+            logger.info("SMM jobs processed: %s", data.get("processed"))
+    except Exception as e:
+        logger.warning("SMM jobs run error: %s", e)
 
 
 async def _persist_url_posts(schedule_response: dict[str, Any], token: str) -> None:

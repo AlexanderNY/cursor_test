@@ -25,6 +25,7 @@ from routers import (
     threads,
     internal,
     smm,
+    guide,
 )
 
 
@@ -63,6 +64,7 @@ app.include_router(admin.router)
 app.include_router(threads.router)
 app.include_router(internal.router)
 app.include_router(smm.router)
+app.include_router(guide.router)
 
 
 @app.exception_handler(QuotaExceededError)

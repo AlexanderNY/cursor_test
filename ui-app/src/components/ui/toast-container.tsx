@@ -14,14 +14,14 @@ export function ToastContainer() {
 
   return (
     <div
-      className="fixed top-4 right-4 z-[100] flex flex-col gap-2 max-w-md"
+      className="fixed top-4 right-4 z-[100] flex flex-col gap-2 max-w-md pointer-events-none"
       role="region"
-      aria-label="Notifications"
+      aria-label="Toasts"
     >
       {toasts.map((toast) => (
         <div
           key={toast.id}
-          className={`flex items-start gap-3 px-4 py-3 rounded-xl border shadow-lg ${variantStyles[toast.variant]}`}
+          className={`pointer-events-auto flex items-start gap-3 px-4 py-3 rounded-xl border shadow-lg ${variantStyles[toast.variant]}`}
           role="status"
         >
           <span className="flex-shrink-0 mt-0.5">

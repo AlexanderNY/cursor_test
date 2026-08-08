@@ -18,6 +18,15 @@ class Settings(BaseSettings):
     # Таймаут ожидания элемента по XPath (секунды)
     ELEMENT_WAIT_TIMEOUT_SECONDS: int = 10
 
+    # Лимит параллельных Chrome-сессий (защита RAM/CPU контейнера)
+    SELENIUM_MAX_CONCURRENT: int = 2
+
+    # Сколько ждать свободный слот Selenium; иначе ошибка busy без нового Chrome
+    SELENIUM_ACQUIRE_TIMEOUT_SECONDS: float = 60.0
+
+    # Жёсткий потолок одной сессии (Timer → quit/kill); ≥ page load + element wait
+    SCRAPE_HARD_TIMEOUT_SECONDS: int = 60
+
     # Оптимизация скриншота: ресайз и JPEG
     SCREENSHOT_MAX_PIXELS: int = 1920  # макс. сторона (длинная)
     SCREENSHOT_JPEG_QUALITY: int = 85

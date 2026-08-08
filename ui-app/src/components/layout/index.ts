@@ -2,4 +2,5 @@ export { Layout } from './layout'
 export { Sidebar } from './sidebar'
 export { Header } from './header'
 export { MobileNav } from './mobile-nav'
+export { NotificationToasts } from './notification-toasts'
 

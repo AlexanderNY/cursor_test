@@ -23,9 +23,9 @@ def _tariff_from_price_id(price_id: Optional[str]) -> Optional[str]:
     if not price_id:
         return None
     if settings.STRIPE_PRICE_BASIC and price_id == settings.STRIPE_PRICE_BASIC:
-        return "basic"
+        return "standard"
     if settings.STRIPE_PRICE_PREMIUM and price_id == settings.STRIPE_PRICE_PREMIUM:
-        return "premium"
+        return "full"
     return None
 
 
@@ -184,8 +184,16 @@ async def process_stripe_webhook_payload(payload: bytes, stripe_signature: Optio
             subscription = data_obj.get("subscription")
             meta_tariff = meta.get("tariff")
             t = None
-            if isinstance(meta_tariff, str) and meta_tariff.lower() in ("free", "basic", "premium"):
-                t = meta_tariff.lower()
+            if isinstance(meta_tariff, str) and meta_tariff.lower() in (
+                "free",
+                "standard",
+                "full",
+                "basic",
+                "premium",
+            ):
+                from billing.plan_definitions import normalize_tariff_code
+
+                t = normalize_tariff_code(meta_tariff)
             await _update_user_subscription_fields(
                 uid,
                 billing_customer_id=customer if isinstance(customer, str) else None,

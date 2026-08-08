@@ -2,7 +2,7 @@ export type BrandNetwork = 'tg' | 'vk'
 export type ChannelKind = 'channel' | 'group' | 'public'
 export type ChannelRole = 'own' | 'competitor' | 'source'
 export type InboxType = 'dm' | 'comment' | 'reaction'
-export type InboxStatus = 'new' | 'read' | 'replied' | 'archived'
+export type InboxStatus = 'new' | 'read' | 'replied' | 'archived' | 'reply_failed' | 'in_progress'
 export type AutomationType = 'rss' | 'tg_repost' | 'mention'
 export type GroupRole = 'admin' | 'editor' | 'analyst' | 'manager' | 'author'
 
@@ -37,6 +37,13 @@ export interface BrandChannel {
   role: ChannelRole
   color_override?: string | null
   created_at?: string | null
+  publish_enabled?: boolean
+  collect_enabled?: boolean
+  discussion_external_id?: string | null
+  discussion_title?: string | null
+  comments_collect_enabled?: boolean
+  brand_name?: string
+  brand_color?: string
 }
 
 export interface InboxItem {
@@ -53,6 +60,12 @@ export interface InboxItem {
   created_at?: string | null
   reply_text?: string
   reply_queued?: boolean
+  reply_job_id?: number
+  reply_error?: string
+  reply_status?: string
+  external_msg_id?: string | null
+  edited_text?: string | null
+  meta?: Record<string, unknown> | null
 }
 
 export interface PublishJobTarget {

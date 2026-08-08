@@ -1,4 +1,5 @@
 import { useState, FormEvent, useEffect, type ReactNode } from 'react'
+import { Link } from 'react-router-dom'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -105,6 +106,8 @@ export function CreatePostPage() {
   const [aiBusy, setAiBusy] = useState(false)
   const [csvResult, setCsvResult] = useState('')
   const [adaptPreview, setAdaptPreview] = useState<Record<string, string> | null>(null)
+  const [requireApproval, setRequireApproval] = useState(false)
+  const [planFeatures, setPlanFeatures] = useState<Record<string, boolean>>({})
 
   const [editingPostId, setEditingPostId] = useState<number | null>(null)
   const [posts, setPosts] = useState<CpostPostListItem[]>([])
@@ -120,6 +123,12 @@ export function CreatePostPage() {
   const [isLoadingProfile, setIsLoadingProfile] = useState(true)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+
+  useEffect(() => {
+    void smmService.getPlan().then((p) => {
+      setPlanFeatures((p.limits?.features || {}) as Record<string, boolean>)
+    }).catch(() => undefined)
+  }, [])
 
   useEffect(() => {
     async function loadProfile() {
@@ -748,8 +757,17 @@ export function CreatePostPage() {
                   <div className="grid gap-2 sm:grid-cols-2 text-xs">
                     {Object.entries(adaptPreview).map(([net, text]) => (
                       <div key={net} className="rounded border border-[var(--border-color)] p-2">
-                        <p className="uppercase text-[var(--text-muted)] mb-1">{net}</p>
-                        <p className="whitespace-pre-wrap">{text}</p>
+                        <p className="uppercase text-[var(--text-muted)] mb-1">{net} override</p>
+                        <textarea
+                          value={text}
+                          rows={4}
+                          className="w-full bg-transparent whitespace-pre-wrap text-[var(--text-primary)] border border-[var(--border-color)] rounded p-1"
+                          onChange={(e) =>
+                            setAdaptPreview((prev) =>
+                              prev ? { ...prev, [net]: e.target.value } : prev,
+                            )
+                          }
+                        />
                       </div>
                     ))}
                   </div>
@@ -779,13 +797,16 @@ export function CreatePostPage() {
                     ))}
                     {ownChannels.length === 0 && (
                       <p className="text-xs text-[var(--text-muted)]">
-                        Нет own-каналов — добавьте в Brands
+                        Нет own-каналов — добавьте в{' '}
+                        <Link to="/channels" className="text-primary-400 hover:underline">
+                          Channels
+                        </Link>
                       </p>
                     )}
                   </div>
                 </div>
 
-                <div className="flex flex-wrap items-end gap-3">
+                  <div className="flex flex-wrap items-end gap-3">
                   <div>
                     <label className="text-sm text-[var(--text-secondary)]">Schedule (SMM)</label>
                     <input
@@ -795,6 +816,16 @@ export function CreatePostPage() {
                       className="block mt-1 px-3 py-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)]"
                     />
                   </div>
+                  {planFeatures.approval_workflow && (
+                    <label className="flex items-center gap-2 text-sm self-center">
+                      <input
+                        type="checkbox"
+                        checked={requireApproval}
+                        onChange={(e) => setRequireApproval(e.target.checked)}
+                      />
+                      Require approval
+                    </label>
+                  )}
                   <Button
                     type="button"
                     onClick={async () => {
@@ -807,6 +838,15 @@ export function CreatePostPage() {
                         .filter((c) => selectedChannelIds.includes(c.id))
                         .map((c) => ({ network: c.network, external_id: c.external_id }))
                       try {
+                        const overrides = adaptPreview
+                          ? Object.fromEntries(
+                              Object.entries(adaptPreview).map(([net, t]) => [net, { text: t }]),
+                            )
+                          : undefined
+                        let status: string = smmPublishAt ? 'scheduled' : 'ready'
+                        if (requireApproval && planFeatures.approval_workflow) {
+                          status = 'pending_approval'
+                        }
                         await smmService.createJob({
                           brand_id: selectedBrandId,
                           text: postContent,
@@ -817,19 +857,26 @@ export function CreatePostPage() {
                           targets,
                           publish_at: smmPublishAt ? fromDatetimeLocal(smmPublishAt) : null,
                           adapt: true,
-                          status: smmPublishAt ? 'scheduled' : 'ready',
+                          status,
+                          adapter_overrides: overrides,
                         })
                         setSuccess(
-                          smmPublishAt
-                            ? 'SMM job scheduled — see Calendar'
-                            : 'SMM job created for selected channels',
+                          status === 'pending_approval'
+                            ? 'SMM job awaiting approval — see Calendar'
+                            : smmPublishAt
+                              ? 'SMM job scheduled — see Calendar'
+                              : 'SMM job created for selected channels',
                         )
                       } catch (err) {
                         setError(err instanceof Error ? err.message : 'SMM job failed')
                       }
                     }}
                   >
-                    {smmPublishAt ? 'Schedule to calendar' : 'Send to brand channels'}
+                    {requireApproval
+                      ? 'Submit for approval'
+                      : smmPublishAt
+                        ? 'Schedule to calendar'
+                        : 'Send to brand channels'}
                   </Button>
                   <label className="text-sm cursor-pointer underline text-primary-400">
                     Import CSV

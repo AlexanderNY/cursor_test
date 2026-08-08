@@ -21,9 +21,9 @@
 #
 # В config.py дефолты пустые:
     DATABASE_URL: str = ""
-    JWT_SECRET_KEY: str = ""   # gateway, core
+    JWT_SECRET_KEY: str = ""   # gateway, core — openssl rand -hex 32 (без символа $)
     SECRET_KEY: str = ""       # auth — должен совпадать с JWT_SECRET_KEY
-#
+# Docker Compose интерполирует $VAR в .env: не кладите bcrypt ($2b$12$...) как JWT.
 # Ротация после утечки в git:
 #   1) сменить пароль PostgreSQL
 #   2) openssl rand -hex 32 → новый JWT / SECRET_KEY

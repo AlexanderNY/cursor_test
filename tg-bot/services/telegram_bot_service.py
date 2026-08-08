@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from typing import Dict, Set
+from typing import Dict, List, Set
 
 from telethon import events
 from telethon.client import TelegramClient
@@ -20,6 +20,8 @@ from .routing_engine import RoutingEngine, ensure_rule_ids
 from .event_logger import EventLogger
 from .post_enrichment import PostEnrichmentService
 from .summary_aggregator import SummaryAggregator
+from .discussion_bindings import list_discussion_bindings
+from .inbox_ingest import push_inbox_ingest
 
 
 logger = logging.getLogger(__name__)
@@ -56,6 +58,8 @@ class TelegramBotService:
         self._maintenance_task = None
         self._digest_task = None
         self._engagement_task = None
+        self._discussion_refresh_task = None
+        self._discussion_map: Dict[str, List[dict]] = {}
 
     async def start(self) -> None:
         if self._running:
@@ -68,6 +72,7 @@ class TelegramBotService:
 
         logger.info("Starting Telegram Bot Service...")
         await self.client_manager.start_all_clients()
+        await self._refresh_discussion_map()
 
         clients = self.client_manager.get_all_clients()
         for user_id, client in clients.items():
@@ -76,7 +81,7 @@ class TelegramBotService:
                 continue
 
             ensure_rule_ids(profile)
-            chats = self._collect_monitored_chats(profile)
+            chats = self._collect_monitored_chats(profile, user_id)
             if chats:
                 self._register_unified_handler(client, user_id, profile, chats)
                 _log_action(
@@ -92,10 +97,32 @@ class TelegramBotService:
         self._maintenance_task = asyncio.create_task(self._maintenance_loop())
         self._digest_task = asyncio.create_task(self._digest_loop())
         self._engagement_task = asyncio.create_task(self._engagement_loop())
+        self._discussion_refresh_task = asyncio.create_task(self._discussion_refresh_loop())
 
         logger.info("Telegram Bot Service started successfully")
 
-    def _collect_monitored_chats(self, profile: Dict) -> list:
+    async def _refresh_discussion_map(self) -> None:
+        bindings = await list_discussion_bindings()
+        mapping: Dict[str, List[dict]] = {}
+        for b in bindings:
+            key = str(b["discussion_id"]).strip()
+            mapping.setdefault(key, []).append(b)
+        self._discussion_map = mapping
+        _log_action("Discussion map: %d chats", len(mapping))
+
+    async def _discussion_refresh_loop(self) -> None:
+        while self._running:
+            try:
+                await asyncio.sleep(60)
+                if not self._running:
+                    break
+                await self._refresh_discussion_map()
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error("discussion refresh error: %s", e, exc_info=True)
+
+    def _collect_monitored_chats(self, profile: Dict, user_id: int) -> list:
         chats: Set[str] = set()
         if profile.get("collect_enabled"):
             for chat in profile.get("chats_to_read") or []:
@@ -110,6 +137,10 @@ class TelegramBotService:
                     if chat:
                         chats.add(str(chat).strip())
 
+        for disc_id, bindings in self._discussion_map.items():
+            if any(b["user_id"] == user_id for b in bindings):
+                chats.add(disc_id)
+
         return self.message_handler.get_chats_list(list(chats))
 
     async def _publisher_loop(self) -> None:
@@ -120,10 +151,11 @@ class TelegramBotService:
                 if not self._running:
                     break
                 if not get_breaker("telegram").allow_request():
-                    logger.warning("Publisher loop skipped: Telegram circuit open")
+                    logger.warning("Publisher loop skipped: telegram circuit open")
                     continue
-                published = await self.post_publisher.publish_ready_posts()
-                _log_action("Publisher loop: published %d posts", published)
+                if self.post_publisher:
+                    published = await self.post_publisher.publish_ready_posts()
+                    _log_action("Publisher loop: published %d posts", published)
             except asyncio.CancelledError:
                 break
             except Exception as e:
@@ -135,13 +167,6 @@ class TelegramBotService:
                 await asyncio.sleep(3600)
                 if not self._running:
                     break
-                removed_events = await self.event_logger.cleanup_old_events()
-                removed_dedup = await self.event_logger.cleanup_expired_dedup()
-                _log_action(
-                    "Maintenance: removed %d old events, %d expired dedup entries",
-                    removed_events,
-                    removed_dedup,
-                )
             except asyncio.CancelledError:
                 break
             except Exception as e:
@@ -185,6 +210,8 @@ class TelegramBotService:
         async def handle_new_message(event: events.NewMessage.Event):
             try:
                 _log_action("Processing message %s for user %s", event.message.id, user_id)
+
+                await self._maybe_ingest_discussion_comment(user_id, event)
 
                 message_metadata: Dict = {}
                 collect_chat = self.message_handler.chat_id_in_list(
@@ -231,6 +258,52 @@ class TelegramBotService:
             except Exception as e:
                 logger.error("Error handling message for user %s: %s", user_id, e, exc_info=True)
 
+    async def _maybe_ingest_discussion_comment(
+        self, user_id: int, event: events.NewMessage.Event
+    ) -> None:
+        chat_key = str(event.chat_id)
+        bindings = [
+            b for b in (self._discussion_map.get(chat_key) or []) if b["user_id"] == user_id
+        ]
+        if not bindings:
+            for disc_id, blist in self._discussion_map.items():
+                if self.message_handler.chat_id_in_list(event.chat_id, [disc_id]):
+                    bindings = [b for b in blist if b["user_id"] == user_id]
+                    if bindings:
+                        break
+        if not bindings:
+            return
+        if getattr(event.message, "out", False):
+            return
+        text = event.raw_text or (event.message.message if event.message else "") or ""
+        sender = await event.get_sender()
+        author = None
+        if sender:
+            author = (
+                getattr(sender, "username", None)
+                or getattr(sender, "first_name", None)
+                or getattr(sender, "title", None)
+            )
+            if author:
+                author = str(author)[:255]
+        reply_to = getattr(event.message, "reply_to_msg_id", None)
+        msg_id = event.message.id
+        await push_inbox_ingest(
+            user_id=user_id,
+            network="tg",
+            external_id=chat_key,
+            text=text,
+            author=author,
+            external_msg_id=f"tg:{chat_key}:{msg_id}",
+            item_type="comment",
+            meta={
+                "tg_msg_id": msg_id,
+                "reply_to_msg_id": reply_to,
+                "discussion_id": chat_key,
+            },
+        )
+        _log_action("Ingested discussion comment user=%s chat=%s msg=%s", user_id, chat_key, msg_id)
+
     async def stop(self) -> None:
         if not self._running:
             return
@@ -243,6 +316,7 @@ class TelegramBotService:
             self._maintenance_task,
             self._digest_task,
             self._engagement_task,
+            self._discussion_refresh_task,
         ):
             if task:
                 task.cancel()
@@ -255,6 +329,7 @@ class TelegramBotService:
         self._maintenance_task = None
         self._digest_task = None
         self._engagement_task = None
+        self._discussion_refresh_task = None
 
         if self.client_manager:
             await self.client_manager.stop_all_clients()

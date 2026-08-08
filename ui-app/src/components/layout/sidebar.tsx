@@ -1,11 +1,40 @@
-import { NavLink, Link } from 'react-router-dom'
+import { useCallback, useEffect, useState } from 'react'
+import { NavLink, Link, useLocation } from 'react-router-dom'
 import { useAuth } from '@/contexts/auth-context'
+import { useBrand } from '@/contexts/brand-context'
 import { navItems, groupNavItem, adminNavItems } from '@/config/nav'
+import { smmService } from '@/services/smm-service'
 
 const iconClassName = 'h-5 w-5'
+const INBOX_BADGE_POLL_MS = 25_000
 
 export function Sidebar() {
   const { user } = useAuth()
+  const { selectedBrandId } = useBrand()
+  const location = useLocation()
+  const [newComments, setNewComments] = useState(0)
+
+  const loadBadge = useCallback(async () => {
+    if (!user) return
+    try {
+      const res = await smmService.listInbox({
+        brand_id: selectedBrandId ?? undefined,
+        type: 'comment',
+        status: 'new',
+        limit: 50,
+      })
+      setNewComments(res.items?.length ?? 0)
+    } catch {
+      /* ignore */
+    }
+  }, [user, selectedBrandId])
+
+  useEffect(() => {
+    if (!user) return
+    void loadBadge()
+    const t = setInterval(() => void loadBadge(), INBOX_BADGE_POLL_MS)
+    return () => clearInterval(t)
+  }, [user, loadBadge])
 
   return (
     <aside className="w-64 h-screen bg-[var(--bg-secondary)] border-r border-[var(--border-color)] flex flex-col">
@@ -38,13 +67,18 @@ export function Sidebar() {
         {navItems.map((item) => (
           <NavLink
             key={item.path}
-            to={item.path}
+            to={item.path === '/inbox' ? '/inbox?mode=comments' : item.path}
             className={({ isActive }) =>
-              `nav-link ${isActive ? 'nav-link-active' : ''}`
+              `nav-link ${isActive || (item.path === '/inbox' && location.pathname === '/inbox') ? 'nav-link-active' : ''}`
             }
           >
             <item.Icon className={iconClassName} />
-            <span>{item.label}</span>
+            <span className="flex-1">{item.label}</span>
+            {item.path === '/inbox' && newComments > 0 && (
+              <span className="ml-auto text-[10px] font-semibold min-w-[1.25rem] h-5 px-1.5 rounded-full bg-amber-500 text-white flex items-center justify-center">
+                {newComments > 99 ? '99+' : newComments}
+              </span>
+            )}
           </NavLink>
         ))}
         {(user?.role === 'manager' || user?.role === 'author' || user?.role === 'admin' || user?.role_in_group || user?.group_id) && (
@@ -83,7 +117,7 @@ export function Sidebar() {
       <div className="p-4 border-t border-[var(--border-color)] space-y-3">
         <Link
           to="/feedback"
-          className="nav-link w-full justify-center"
+          className="nav-link w-full justify-center border border-[var(--border-color)]"
         >
           <svg xmlns="http://www.w3.org/2000/svg" className={iconClassName} fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
@@ -91,10 +125,7 @@ export function Sidebar() {
           <span>Обратная связь</span>
         </Link>
         <p className="text-xs text-[var(--text-muted)] text-center">
-          © 2026 Control Panel ·{' '}
-          <Link to="/about" className="text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/50 rounded">About</Link>
-          {' · '}
-          <Link to="/pricing" className="text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/50 rounded">Pricing</Link>
+          © 2026 Control Panel
         </p>
       </div>
     </aside>

@@ -32,7 +32,8 @@ services:
       minio:
         condition: service_started
     ports:
-      - "8002:8002"
+      # Только localhost: не публиковать Core наружу (иначе X-User-* spoof в обход gateway)
+      - "127.0.0.1:8002:8002"
     environment:
       <<: *ai-environment
       DATABASE_URL: ${DATABASE_URL}
@@ -66,7 +67,8 @@ services:
       context: .
       dockerfile: ./auth/Dockerfile
     ports:
-      - "8001:8001"
+      # Только localhost: не публиковать Auth наружу (иначе identity spoof в обход gateway)
+      - "127.0.0.1:8001:8001"
     environment:
       - API_GATEWAY_URL=http://api_gateway:8000
       - DATABASE_URL=${DATABASE_URL}

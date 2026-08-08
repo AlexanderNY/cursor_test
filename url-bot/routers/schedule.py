@@ -1,6 +1,5 @@
 """Роутер для обработки команд от scheduler."""
 
-import asyncio
 import logging
 from typing import Any
 
@@ -8,7 +7,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 
 from schemas import ScheduleRequest
-from services.scraping_service import scrape_url
+from services.scraping_service import scrape_url_async
 
 logger = logging.getLogger(__name__)
 
@@ -51,8 +50,7 @@ async def handle_schedule(request: ScheduleRequest) -> ScheduleResponse:
         for item in schedule.urls:
             if not item.url or not item.xpath:
                 continue
-            result = await asyncio.to_thread(
-                scrape_url,
+            result = await scrape_url_async(
                 item.url,
                 item.xpath,
                 item.take_screenshot or False,

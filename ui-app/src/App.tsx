@@ -19,6 +19,7 @@ import { PollsPage, PollsIndexRedirect, PollsContentSection, PollsDiagnosticsSec
 import { ChecksPage, ChecksIndexRedirect, AiCheckSection, ServicesStatusSection, ProcessorSection, CollectorSection, SchedulerSection, PostingDiagnosticsSection } from '@/pages/checks'
 import { TeamPage } from '@/pages/team/team'
 import { BrandsPage } from '@/pages/brands/brands'
+import { ChannelsPage } from '@/pages/channels/channels'
 import { InboxPage } from '@/pages/inbox/inbox'
 import { CalendarPage } from '@/pages/calendar/calendar'
 import { SmmAnalyticsPage } from '@/pages/smm-analytics/analytics'
@@ -87,13 +88,16 @@ function App() {
       <Route path="/sign-in" element={<PublicRoute><SignInPage /></PublicRoute>} />
       <Route path="/sign-up" element={<PublicRoute><SignUpPage /></PublicRoute>} />
       <Route path="/reset-password" element={<PublicRoute><ResetPasswordPage /></PublicRoute>} />
-      
+
       <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
         <Route index element={<Navigate to="/profile" replace />} />
+        <Route path="about" element={<AboutPage />} />
+        <Route path="guide" element={<Navigate to="/about" replace />} />
         <Route path="profile" element={<ProfilePage />} />
         <Route path="billing" element={<Navigate to="/profile?tab=billing" replace />} />
         <Route path="statistics" element={<Navigate to="/profile?tab=statistics" replace />} />
         <Route path="brands" element={<BrandsPage />} />
+        <Route path="channels" element={<ChannelsPage />} />
         <Route path="inbox" element={<InboxPage />} />
         <Route path="calendar" element={<CalendarPage />} />
         <Route path="analytics" element={<SmmAnalyticsPage />} />
@@ -127,7 +131,6 @@ function App() {
           <Route path="posting-diagnostics" element={<PostingDiagnosticsSection />} />
           <Route path="ai" element={<AiCheckSection />} />
         </Route>
-        <Route path="about" element={<AboutPage />} />
         <Route path="pricing" element={<PricingPage />} />
         <Route path="feedback" element={<FeedbackPage />} />
       </Route>

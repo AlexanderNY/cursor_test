@@ -1,53 +1,175 @@
-import { useEffect, useState } from 'react'
+import { FormEvent, KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { PageContainer, PageHeader } from '@/components/ui'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Alert } from '@/components/ui/alert'
 import { useBrand } from '@/contexts/brand-context'
 import { smmService } from '@/services/smm-service'
-import type { InboxItem, InboxStatus, InboxType } from '@/types/smm'
+import type { InboxItem, InboxStatus } from '@/types/smm'
 import { getErrorMessage } from '@/services/api-client'
 
+const DEFAULT_SNIPPETS = [
+  'Спасибо!',
+  'Сейчас гляну…',
+  'Отличный вопрос!',
+  'Напишите в ЛС — разберёмся',
+  'Уже в работе',
+  'Да, всё верно',
+  'Хорошая идея, спасибо!',
+]
+
+const COMMENTS_POLL_MS = 20_000
+const DEFAULT_POLL_MS = 12_000
+
+function snippetsKey(brandId: number | null): string {
+  return `smm_reply_snippets_${brandId ?? 'all'}`
+}
+
+function loadSnippets(brandId: number | null): string[] {
+  try {
+    const raw = localStorage.getItem(snippetsKey(brandId))
+    if (!raw) return DEFAULT_SNIPPETS
+    const parsed = JSON.parse(raw) as unknown
+    if (Array.isArray(parsed) && parsed.every((x) => typeof x === 'string')) {
+      return parsed.length > 0 ? parsed : DEFAULT_SNIPPETS
+    }
+  } catch {
+    /* ignore */
+  }
+  return DEFAULT_SNIPPETS
+}
+
+function saveSnippets(brandId: number | null, list: string[]) {
+  localStorage.setItem(snippetsKey(brandId), JSON.stringify(list.slice(0, 12)))
+}
+
+function formatAge(iso?: string | null): string {
+  if (!iso) return ''
+  const t = new Date(iso).getTime()
+  if (Number.isNaN(t)) return ''
+  const sec = Math.max(0, Math.floor((Date.now() - t) / 1000))
+  if (sec < 45) return 'только что'
+  if (sec < 3600) return `${Math.floor(sec / 60)} мин`
+  if (sec < 86400) return `${Math.floor(sec / 3600)} ч`
+  return `${Math.floor(sec / 86400)} д`
+}
+
+function channelLabel(
+  item: InboxItem,
+  ownChannels: { id: number; title?: string | null; external_id: string }[],
+): string {
+  if (!item.channel_id) return item.thread_id || ''
+  const ch = ownChannels.find((c) => c.id === item.channel_id)
+  return ch?.title || ch?.external_id || String(item.channel_id)
+}
+
 export function InboxPage() {
-  const { brands, selectedBrandId, selectedBrand } = useBrand()
+  const { brands, selectedBrandId, selectedBrand, ownChannels } = useBrand()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const modeParam = searchParams.get('mode')
+  const isCommentsMode = modeParam === 'comments' || modeParam === 'comment'
+
   const [items, setItems] = useState<InboxItem[]>([])
   const [selected, setSelected] = useState<InboxItem | null>(null)
-  const [network, setNetwork] = useState<string>('')
-  const [type, setType] = useState<string>('')
-  const [status, setStatus] = useState<string>('new')
+  const [network, setNetwork] = useState('')
+  const [status, setStatus] = useState('new')
   const [reply, setReply] = useState('')
+  const [editedText, setEditedText] = useState('')
+  const [redirectIds, setRedirectIds] = useState<number[]>([])
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [sending, setSending] = useState(false)
+  const [aiBusy, setAiBusy] = useState(false)
+  const [snippets, setSnippets] = useState<string[]>(() => loadSnippets(selectedBrandId))
+  const [snippetEdit, setSnippetEdit] = useState('')
+  const replyRef = useRef<HTMLTextAreaElement>(null)
+  const knownIdsRef = useRef<Set<number>>(new Set())
+  const notifyReadyRef = useRef(false)
 
-  async function load() {
-    setLoading(true)
-    setError('')
-    try {
-      const res = await smmService.listInbox({
-        brand_id: selectedBrandId ?? undefined,
-        network: network || undefined,
-        type: type || undefined,
-        status: status || undefined,
-        limit: 50,
-      })
-      setItems(res.items)
-      if (selected && !res.items.some((i) => i.id === selected.id)) {
-        setSelected(null)
+  const typeFilter = isCommentsMode ? 'comment' : ''
+
+  const pollMs = isCommentsMode ? COMMENTS_POLL_MS : DEFAULT_POLL_MS
+
+  useEffect(() => {
+    setSnippets(loadSnippets(selectedBrandId))
+  }, [selectedBrandId])
+
+  const brandColor = useCallback(
+    (brandId?: number | null): string => {
+      return brands.find((b) => b.id === brandId)?.color ?? '#64748b'
+    },
+    [brands],
+  )
+
+  const load = useCallback(
+    async (opts?: { silent?: boolean }) => {
+      if (!opts?.silent) setLoading(true)
+      setError('')
+      try {
+        const res = await smmService.listInbox({
+          brand_id: selectedBrandId ?? undefined,
+          network: network || undefined,
+          type: typeFilter || undefined,
+          status: status || undefined,
+          limit: 50,
+        })
+        const next = res.items
+        if (notifyReadyRef.current && isCommentsMode) {
+          const fresh = next.filter(
+            (i) => i.status === 'new' && !knownIdsRef.current.has(i.id),
+          )
+          if (fresh.length > 0 && typeof Notification !== 'undefined') {
+            if (Notification.permission === 'granted') {
+              const first = fresh[0]
+              new Notification('Новый комментарий', {
+                body: `${first.author || 'Unknown'}: ${(first.text || '').slice(0, 120)}`,
+                tag: `inbox-comment-${first.id}`,
+              })
+            }
+          }
+        }
+        knownIdsRef.current = new Set(next.map((i) => i.id))
+        notifyReadyRef.current = true
+        setItems(next)
+        setSelected((prev) => {
+          if (!prev) return prev
+          const updated = next.find((i) => i.id === prev.id)
+          return updated ?? null
+        })
+      } catch (err) {
+        setError(getErrorMessage(err))
+      } finally {
+        if (!opts?.silent) setLoading(false)
       }
-    } catch (err) {
-      setError(getErrorMessage(err))
-    } finally {
-      setLoading(false)
-    }
-  }
+    },
+    [selectedBrandId, network, typeFilter, status, isCommentsMode],
+  )
 
   useEffect(() => {
     void load()
-  }, [selectedBrandId, network, type, status])
+    const t = setInterval(() => void load({ silent: true }), pollMs)
+    return () => clearInterval(t)
+  }, [load, pollMs])
 
-  function brandColor(brandId?: number | null): string {
-    return brands.find((b) => b.id === brandId)?.color ?? '#64748b'
+  useEffect(() => {
+    if (!isCommentsMode || !selected) return
+    const id = window.setTimeout(() => replyRef.current?.focus(), 50)
+    return () => clearTimeout(id)
+  }, [isCommentsMode, selected?.id])
+
+  function setMode(comments: boolean) {
+    const next = new URLSearchParams(searchParams)
+    if (comments) next.set('mode', 'comments')
+    else next.delete('mode')
+    setSearchParams(next, { replace: true })
+  }
+
+  async function ensureNotifyPermission() {
+    if (typeof Notification === 'undefined') return
+    if (Notification.permission === 'default') {
+      await Notification.requestPermission()
+    }
   }
 
   async function handleRead(item: InboxItem) {
@@ -55,6 +177,7 @@ export function InboxPage() {
       const updated = await smmService.markInboxRead(item.id)
       setItems((prev) => prev.map((i) => (i.id === item.id ? updated : i)))
       setSelected(updated)
+      setEditedText(updated.edited_text || updated.text || '')
     } catch (err) {
       setError(getErrorMessage(err))
     }
@@ -71,30 +194,145 @@ export function InboxPage() {
   }
 
   async function handleReply() {
-    if (!selected || !reply.trim()) return
+    if (!selected || !reply.trim() || sending) return
+    setSending(true)
+    setError('')
     try {
       const updated = await smmService.replyInbox(selected.id, reply.trim())
       setItems((prev) => prev.map((i) => (i.id === selected.id ? updated : i)))
       setSelected(updated)
-      setReply('')
+      if (updated.status === 'replied') setReply('')
+      if (updated.reply_error) setError(updated.reply_error)
+    } catch (err) {
+      setError(getErrorMessage(err))
+    } finally {
+      setSending(false)
+    }
+  }
+
+  function onReplyKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key !== 'Enter') return
+    if (e.shiftKey) return
+    // Enter or Ctrl/Cmd+Enter sends (Shift+Enter = newline)
+    if (!e.ctrlKey && !e.metaKey && e.key === 'Enter') {
+      e.preventDefault()
+      void handleReply()
+      return
+    }
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault()
+      void handleReply()
+    }
+  }
+
+  async function handleAiDraft() {
+    if (!reply.trim() && !selected?.text) return
+    setAiBusy(true)
+    setError('')
+    try {
+      const source =
+        reply.trim() ||
+        `Короткий дружелюбный ответ на комментарий: «${(selected?.text || '').slice(0, 280)}»`
+      const res = await smmService.aiRewrite(source, {
+        tone: 'живой, неформальный, короткий',
+        network: selected?.network || 'tg',
+      })
+      setReply(res.text)
+      replyRef.current?.focus()
+    } catch (err) {
+      setError(getErrorMessage(err))
+    } finally {
+      setAiBusy(false)
+    }
+  }
+
+  async function handleSaveEdit() {
+    if (!selected) return
+    try {
+      const updated = await smmService.editInbox(selected.id, editedText)
+      setItems((prev) => prev.map((i) => (i.id === selected.id ? updated : i)))
+      setSelected(updated)
     } catch (err) {
       setError(getErrorMessage(err))
     }
   }
 
+  async function handleRedirect(pending = false) {
+    if (!selected || redirectIds.length === 0) return
+    const targets = ownChannels
+      .filter((c) => redirectIds.includes(c.id))
+      .map((c) => ({ network: c.network, external_id: c.external_id }))
+    try {
+      await smmService.redirectInbox(selected.id, {
+        targets,
+        use_edited: true,
+        pending_approval: pending,
+      })
+      setRedirectIds([])
+      await load()
+    } catch (err) {
+      setError(getErrorMessage(err))
+    }
+  }
+
+  function insertSnippet(text: string) {
+    setReply((prev) => (prev ? `${prev.trim()} ${text}` : text))
+    replyRef.current?.focus()
+  }
+
+  function addSnippet(e: FormEvent) {
+    e.preventDefault()
+    const t = snippetEdit.trim()
+    if (!t) return
+    const next = [...snippets.filter((s) => s !== t), t].slice(0, 12)
+    setSnippets(next)
+    saveSnippets(selectedBrandId, next)
+    setSnippetEdit('')
+  }
+
+  const newCount = useMemo(
+    () => items.filter((i) => i.status === 'new').length,
+    [items],
+  )
+
   return (
     <PageContainer>
       <PageHeader
-        title="Inbox"
+        title={isCommentsMode ? 'Inbox · Comments' : 'Inbox'}
         description={
-          selectedBrand
-            ? `Единая лента DM / комментарии / реакции · ${selectedBrand.name}`
-            : 'Единая лента DM / комментарии / реакции TG + VK'
+          isCommentsMode
+            ? `Быстрые ответы в discussion · poll ${COMMENTS_POLL_MS / 1000}s${
+                selectedBrand ? ` · ${selectedBrand.name}` : ''
+              }`
+            : selectedBrand
+              ? `DM / comments / reactions · ${selectedBrand.name}`
+              : 'Единая лента TG + VK'
         }
       />
       {error && <Alert variant="error">{error}</Alert>}
 
-      <div className="flex flex-wrap gap-2 mb-4">
+      <div className="flex flex-wrap gap-2 mb-4 items-center">
+        <div className="flex rounded-md border border-[var(--border-color)] overflow-hidden text-sm">
+          <button
+            type="button"
+            className={`px-3 py-2 ${!isCommentsMode ? 'bg-[var(--bg-tertiary)] font-medium' : ''}`}
+            onClick={() => setMode(false)}
+          >
+            All
+          </button>
+          <button
+            type="button"
+            className={`px-3 py-2 border-l border-[var(--border-color)] ${
+              isCommentsMode ? 'bg-[var(--bg-tertiary)] font-medium' : ''
+            }`}
+            onClick={() => {
+              setMode(true)
+              void ensureNotifyPermission()
+            }}
+          >
+            Comments{newCount > 0 && isCommentsMode ? ` (${newCount})` : ''}
+          </button>
+        </div>
         <select
           className="rounded-md border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-sm"
           value={network}
@@ -106,16 +344,6 @@ export function InboxPage() {
         </select>
         <select
           className="rounded-md border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-sm"
-          value={type}
-          onChange={(e) => setType(e.target.value as InboxType | '')}
-        >
-          <option value="">All types</option>
-          <option value="dm">DM</option>
-          <option value="comment">Comment</option>
-          <option value="reaction">Reaction</option>
-        </select>
-        <select
-          className="rounded-md border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-sm"
           value={status}
           onChange={(e) => setStatus(e.target.value as InboxStatus | '')}
         >
@@ -123,11 +351,17 @@ export function InboxPage() {
           <option value="new">New</option>
           <option value="read">Read</option>
           <option value="replied">Replied</option>
+          <option value="reply_failed">Reply failed</option>
           <option value="archived">Archived</option>
         </select>
         <Button variant="secondary" onClick={() => void load()} disabled={loading}>
           Refresh
         </Button>
+        {isCommentsMode && typeof Notification !== 'undefined' && Notification.permission !== 'granted' && (
+          <Button size="sm" variant="ghost" onClick={() => void ensureNotifyPermission()}>
+            Enable desktop alerts
+          </Button>
+        )}
       </div>
 
       <div className="grid gap-4 lg:grid-cols-5">
@@ -135,7 +369,11 @@ export function InboxPage() {
           <CardContent className="p-0 divide-y divide-[var(--border-color)] max-h-[70vh] overflow-y-auto">
             {items.length === 0 && (
               <p className="p-4 text-sm text-[var(--text-muted)]">
-                {loading ? 'Loading…' : 'Inbox пуст. Collector будет наполнять ленту.'}
+                {loading
+                  ? 'Loading…'
+                  : isCommentsMode
+                    ? 'Нет комментариев. Привяжите Discussion chat в Channels.'
+                    : 'Inbox пуст.'}
               </p>
             )}
             {items.map((item) => (
@@ -144,6 +382,8 @@ export function InboxPage() {
                 type="button"
                 onClick={() => {
                   setSelected(item)
+                  setEditedText(item.edited_text || item.text || '')
+                  setReply('')
                   if (item.status === 'new') void handleRead(item)
                 }}
                 className={`w-full text-left px-3 py-3 flex gap-3 hover:bg-[var(--bg-tertiary)] ${
@@ -156,11 +396,17 @@ export function InboxPage() {
                 />
                 <div className="min-w-0 flex-1">
                   <div className="flex justify-between gap-2 text-xs text-[var(--text-muted)]">
-                    <span className="uppercase">{item.network} · {item.type}</span>
-                    <span>{item.status}</span>
+                    <span className="uppercase">
+                      {item.network}
+                      {!isCommentsMode && ` · ${item.type}`}
+                    </span>
+                    <span>{formatAge(item.created_at)}</span>
                   </div>
                   <p className="text-sm font-medium truncate">{item.author || 'Unknown'}</p>
                   <p className="text-sm text-[var(--text-secondary)] truncate">{item.text}</p>
+                  <p className="text-xs text-[var(--text-muted)] truncate mt-0.5">
+                    {channelLabel(item, ownChannels)} · {item.status}
+                  </p>
                 </div>
               </button>
             ))}
@@ -169,38 +415,178 @@ export function InboxPage() {
 
         <Card className="lg:col-span-3">
           <CardContent className="p-4 space-y-4 min-h-[320px]">
-            {!selected && (
-              <p className="text-sm text-[var(--text-muted)]">Выберите сообщение</p>
-            )}
+            {!selected && <p className="text-sm text-[var(--text-muted)]">Выберите сообщение</p>}
             {selected && (
               <>
-                <div className="flex items-center gap-2">
-                  <span
-                    className="h-3 w-3 rounded-full"
-                    style={{ backgroundColor: brandColor(selected.brand_id) }}
-                  />
-                  <span className="text-sm text-[var(--text-muted)] uppercase">
-                    {selected.network} · {selected.type}
-                  </span>
-                </div>
-                <h3 className="text-lg font-semibold">{selected.author || 'Unknown'}</h3>
-                <p className="whitespace-pre-wrap text-[var(--text-primary)]">{selected.text}</p>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <h3 className="text-lg font-semibold">{selected.author || 'Unknown'}</h3>
+                    <p className="text-xs text-[var(--text-muted)]">
+                      {channelLabel(selected, ownChannels)} · {formatAge(selected.created_at)} ·{' '}
+                      {selected.status}
+                    </p>
+                  </div>
                   <Button variant="secondary" size="sm" onClick={() => void handleArchive(selected)}>
                     Archive
                   </Button>
                 </div>
-                <div className="space-y-2 pt-4 border-t border-[var(--border-color)]">
-                  <Input
-                    label="Reply"
+                <p className="whitespace-pre-wrap text-[var(--text-primary)]">{selected.text}</p>
+                {selected.status === 'reply_failed' && selected.reply_error && (
+                  <Alert variant="error">{selected.reply_error}</Alert>
+                )}
+
+                <div className="space-y-2 pt-2 border-t border-[var(--border-color)]">
+                  <div className="flex flex-wrap gap-1.5">
+                    {snippets.map((s) => (
+                      <button
+                        key={s}
+                        type="button"
+                        className="text-xs px-2 py-1 rounded border border-[var(--border-color)] hover:bg-[var(--bg-tertiary)]"
+                        onClick={() => insertSnippet(s)}
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                  <form onSubmit={addSnippet} className="flex gap-2">
+                    <input
+                      className="flex-1 rounded-md border border-[var(--border-color)] bg-[var(--bg-primary)] px-2 py-1 text-xs"
+                      placeholder="Новый сниппет…"
+                      value={snippetEdit}
+                      onChange={(e) => setSnippetEdit(e.target.value)}
+                    />
+                    <Button type="submit" size="sm" variant="ghost" disabled={!snippetEdit.trim()}>
+                      Add
+                    </Button>
+                  </form>
+                  <label className="text-sm text-[var(--text-secondary)]">
+                    Reply in thread
+                    <span className="text-[var(--text-muted)] ml-2 font-normal">
+                      Enter — отправить · Shift+Enter — новая строка
+                    </span>
+                  </label>
+                  <textarea
+                    ref={replyRef}
+                    className="w-full mt-1 rounded-md border border-[var(--border-color)] bg-[var(--bg-primary)] p-2 text-sm min-h-[88px]"
                     value={reply}
                     onChange={(e) => setReply(e.target.value)}
-                    placeholder="Ответ…"
+                    onKeyDown={onReplyKeyDown}
+                    placeholder="Быстрый ответ…"
                   />
-                  <Button onClick={() => void handleReply()} disabled={!reply.trim()}>
-                    Send reply
-                  </Button>
+                  <div className="flex flex-wrap gap-2">
+                    <Button onClick={() => void handleReply()} disabled={!reply.trim() || sending}>
+                      {sending ? 'Sending…' : 'Reply'}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      disabled={aiBusy}
+                      onClick={() => void handleAiDraft()}
+                    >
+                      {aiBusy ? 'AI…' : 'AI draft (живой тон)'}
+                    </Button>
+                  </div>
                 </div>
+
+                {!isCommentsMode && (
+                  <>
+                    <div>
+                      <label className="text-sm text-[var(--text-secondary)]">Edit before redirect</label>
+                      <textarea
+                        className="w-full mt-1 rounded-md border border-[var(--border-color)] bg-[var(--bg-primary)] p-2 text-sm min-h-[80px]"
+                        value={editedText}
+                        onChange={(e) => setEditedText(e.target.value)}
+                      />
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        className="mt-2"
+                        onClick={() => void handleSaveEdit()}
+                      >
+                        Save edit
+                      </Button>
+                    </div>
+                    <div className="space-y-2 pt-4 border-t border-[var(--border-color)]">
+                      <p className="text-sm font-medium text-[var(--text-secondary)]">
+                        Redirect / Repost (secondary)
+                      </p>
+                      <div className="space-y-1 max-h-28 overflow-y-auto">
+                        {ownChannels.map((c) => (
+                          <label key={c.id} className="flex items-center gap-2 text-sm">
+                            <input
+                              type="checkbox"
+                              checked={redirectIds.includes(c.id)}
+                              onChange={() =>
+                                setRedirectIds((prev) =>
+                                  prev.includes(c.id)
+                                    ? prev.filter((x) => x !== c.id)
+                                    : [...prev, c.id],
+                                )
+                              }
+                            />
+                            <span className="uppercase text-[var(--text-muted)]">{c.network}</span>
+                            {c.title || c.external_id}
+                          </label>
+                        ))}
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          disabled={redirectIds.length === 0}
+                          onClick={() => void handleRedirect(false)}
+                        >
+                          Redirect now
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={redirectIds.length === 0}
+                          onClick={() => void handleRedirect(true)}
+                        >
+                          Send for approval
+                        </Button>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {isCommentsMode && (
+                  <details className="pt-2 border-t border-[var(--border-color)] text-sm">
+                    <summary className="cursor-pointer text-[var(--text-secondary)]">
+                      Redirect / Repost (secondary)
+                    </summary>
+                    <div className="mt-2 space-y-2">
+                      <div className="space-y-1 max-h-28 overflow-y-auto">
+                        {ownChannels.map((c) => (
+                          <label key={c.id} className="flex items-center gap-2 text-sm">
+                            <input
+                              type="checkbox"
+                              checked={redirectIds.includes(c.id)}
+                              onChange={() =>
+                                setRedirectIds((prev) =>
+                                  prev.includes(c.id)
+                                    ? prev.filter((x) => x !== c.id)
+                                    : [...prev, c.id],
+                                )
+                              }
+                            />
+                            <span className="uppercase text-[var(--text-muted)]">{c.network}</span>
+                            {c.title || c.external_id}
+                          </label>
+                        ))}
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        disabled={redirectIds.length === 0}
+                        onClick={() => void handleRedirect(false)}
+                      >
+                        Redirect now
+                      </Button>
+                    </div>
+                  </details>
+                )}
               </>
             )}
           </CardContent>

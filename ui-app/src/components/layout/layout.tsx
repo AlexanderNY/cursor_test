@@ -2,6 +2,7 @@ import { Outlet } from 'react-router-dom'
 import { Sidebar } from './sidebar'
 import { Header } from './header'
 import { MobileNav } from './mobile-nav'
+import { NotificationToasts } from './notification-toasts'
 import { useIsMobile } from '@/hooks'
 
 export function Layout() {
@@ -11,6 +12,7 @@ export function Layout() {
     return (
       <div className="min-h-screen">
         <MobileNav />
+        <NotificationToasts />
         <main className="pt-20 p-4 pb-6">
           <Outlet />
         </main>
@@ -21,8 +23,9 @@ export function Layout() {
   return (
     <div className="flex min-h-screen">
       <Sidebar />
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col min-w-0">
         <Header />
+        <NotificationToasts />
         <main className="flex-1 p-6 overflow-auto">
           <Outlet />
         </main>
@@ -30,4 +33,3 @@ export function Layout() {
     </div>
   )
 }
-

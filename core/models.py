@@ -1576,6 +1576,85 @@ CREATE INDEX IF NOT EXISTS idx_smm_automations_user ON smm_automations(user_id);
 CREATE INDEX IF NOT EXISTS idx_smm_competitor_channel ON smm_competitor_snapshots(channel_id);
 """
 
+SMM_OPS_MIGRATION = """
+DO $$ BEGIN
+  ALTER TABLE smm_brand_channels ADD COLUMN publish_enabled BOOLEAN DEFAULT TRUE;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE smm_brand_channels ADD COLUMN collect_enabled BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE smm_inbox_items ADD COLUMN external_msg_id VARCHAR(128);
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE smm_inbox_items ADD COLUMN edited_text TEXT;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE smm_publish_jobs ADD COLUMN retry_count INTEGER DEFAULT 0;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE smm_publish_jobs ADD COLUMN last_error TEXT;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_smm_inbox_dedup
+  ON smm_inbox_items (user_id, network, external_msg_id)
+  WHERE external_msg_id IS NOT NULL;
+CREATE TABLE IF NOT EXISTS smm_channel_counters (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    channel_id INTEGER NOT NULL REFERENCES smm_brand_channels(id) ON DELETE CASCADE,
+    day DATE NOT NULL,
+    sent INTEGER DEFAULT 0,
+    received INTEGER DEFAULT 0,
+    failed INTEGER DEFAULT 0,
+    UNIQUE (channel_id, day)
+);
+CREATE INDEX IF NOT EXISTS idx_smm_channel_counters_user_day
+  ON smm_channel_counters(user_id, day);
+CREATE TABLE IF NOT EXISTS smm_ai_usage (
+    user_id INTEGER NOT NULL,
+    month CHAR(7) NOT NULL,
+    calls INTEGER DEFAULT 0,
+    PRIMARY KEY (user_id, month)
+);
+"""
+
+SMM_COMMENTS_MIGRATION = """
+DO $$ BEGIN
+  ALTER TABLE smm_brand_channels ADD COLUMN discussion_external_id VARCHAR(128);
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE smm_brand_channels ADD COLUMN discussion_title VARCHAR(255);
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE smm_brand_channels ADD COLUMN comments_collect_enabled BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+CREATE INDEX IF NOT EXISTS idx_smm_channels_discussion
+  ON smm_brand_channels (network, discussion_external_id)
+  WHERE discussion_external_id IS NOT NULL;
+DO $$ BEGIN
+  ALTER TABLE smm_inbox_items ADD COLUMN meta JSONB DEFAULT '{}'::jsonb;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ALTER TABLE smm_inbox_items DROP CONSTRAINT IF EXISTS smm_inbox_items_status_check;
+ALTER TABLE smm_inbox_items ADD CONSTRAINT smm_inbox_items_status_check
+  CHECK (status IN ('new', 'read', 'replied', 'archived', 'reply_failed', 'in_progress'));
+"""
+
+GUIDE_BLOCKS_TABLE = """
+CREATE TABLE IF NOT EXISTS guide_blocks (
+    id SERIAL PRIMARY KEY,
+    slug VARCHAR(64) NOT NULL UNIQUE,
+    toc_label VARCHAR(128) NOT NULL DEFAULT '',
+    title VARCHAR(255) NOT NULL DEFAULT '',
+    subtitle TEXT NOT NULL DEFAULT '',
+    body TEXT NOT NULL DEFAULT '',
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    is_visible BOOLEAN NOT NULL DEFAULT TRUE,
+    style JSONB NOT NULL DEFAULT '{}'::jsonb,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_guide_blocks_sort ON guide_blocks(sort_order);
+"""
+
 VK_POSTS_PUBLISH_AT_MIGRATION = """
 DO $$
 BEGIN
@@ -1674,5 +1753,8 @@ ALL_TABLES = [
     SMM_AUTOMATIONS_TABLE,
     SMM_COMPETITOR_SNAPSHOTS_TABLE,
     SMM_INDEXES,
+    SMM_OPS_MIGRATION,
+    SMM_COMMENTS_MIGRATION,
+    GUIDE_BLOCKS_TABLE,
     VK_POSTS_PUBLISH_AT_MIGRATION,
 ]

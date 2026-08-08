@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { PageContainer, PageHeader } from '@/components/ui'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -14,6 +15,7 @@ export function CalendarPage() {
   const { selectedBrand, selectedBrandId, brands } = useBrand()
   const [jobs, setJobs] = useState<PublishJob[]>([])
   const [slots, setSlots] = useState<BestTimeSlot[]>([])
+  const [planFeatures, setPlanFeatures] = useState<Record<string, boolean>>({})
   const [cursor, setCursor] = useState(() => {
     const d = new Date()
     return new Date(d.getFullYear(), d.getMonth(), 1)
@@ -26,12 +28,16 @@ export function CalendarPage() {
     try {
       const from = new Date(cursor.getFullYear(), cursor.getMonth(), 1).toISOString()
       const to = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0, 23, 59, 59).toISOString()
-      const list = await smmService.listJobs({
-        brand_id: selectedBrandId ?? undefined,
-        from,
-        to,
-      })
+      const [list, plan] = await Promise.all([
+        smmService.listJobs({
+          brand_id: selectedBrandId ?? undefined,
+          from,
+          to,
+        }),
+        smmService.getPlan().catch(() => null),
+      ])
       setJobs(list)
+      if (plan?.limits?.features) setPlanFeatures(plan.limits.features as Record<string, boolean>)
     } catch (err) {
       setError(getErrorMessage(err))
     }
@@ -40,6 +46,11 @@ export function CalendarPage() {
   useEffect(() => {
     void load()
   }, [cursor, selectedBrandId])
+
+  const pendingApproval = useMemo(
+    () => jobs.filter((j) => j.status === 'pending_approval'),
+    [jobs],
+  )
 
   const daysInMonth = useMemo(() => {
     const y = cursor.getFullYear()
@@ -70,6 +81,10 @@ export function CalendarPage() {
   }
 
   async function loadBestTimes() {
+    if (!planFeatures.best_times) {
+      setError('Best times requires Standard or Full — see Pricing')
+      return
+    }
     try {
       const res = await smmService.bestTimes(selectedBrandId)
       setSlots(res.slots ?? [])
@@ -82,6 +97,15 @@ export function CalendarPage() {
     const pub = new Date(cursor.getFullYear(), cursor.getMonth(), day, 12, 0, 0)
     try {
       await smmService.updateJob(jobId, { publish_at: pub.toISOString(), status: 'scheduled' })
+      await load()
+    } catch (err) {
+      setError(getErrorMessage(err))
+    }
+  }
+
+  async function approve(jobId: number) {
+    try {
+      await smmService.approveJob(jobId)
       await load()
     } catch (err) {
       setError(getErrorMessage(err))
@@ -112,8 +136,40 @@ export function CalendarPage() {
         >
           Next
         </Button>
-        <Button onClick={() => void loadBestTimes()}>ИИ: лучшее время</Button>
+        <Button
+          onClick={() => void loadBestTimes()}
+          disabled={!planFeatures.best_times}
+          title={!planFeatures.best_times ? 'Upgrade to Standard+' : undefined}
+        >
+          ИИ: лучшее время
+        </Button>
+        {!planFeatures.best_times && (
+          <Link to="/pricing" className="text-sm text-primary-400 hover:underline">
+            Upgrade
+          </Link>
+        )}
       </div>
+
+      {pendingApproval.length > 0 && (
+        <Card className="mb-4">
+          <CardHeader>
+            <CardTitle className="text-base">Pending approval</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {pendingApproval.map((j) => (
+              <div
+                key={j.id}
+                className="flex items-center justify-between gap-2 text-sm border-b border-[var(--border-color)] py-2"
+              >
+                <span className="truncate">{j.source_text.slice(0, 80)}</span>
+                <Button size="sm" onClick={() => void approve(j.id)}>
+                  Approve
+                </Button>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-4">
         <Card className="lg:col-span-3">
@@ -144,8 +200,9 @@ export function CalendarPage() {
                           onDragStart={() => setDraggingId(j.id)}
                           className="text-[10px] truncate rounded px-1 py-0.5 mb-0.5 text-white cursor-grab"
                           style={{ backgroundColor: brandColor(j.brand_id) }}
-                          title={j.source_text}
+                          title={`${j.status}: ${j.source_text}`}
                         >
+                          {j.status === 'pending_approval' ? '⏳ ' : ''}
                           {j.source_text.slice(0, 40)}
                         </div>
                       ))}

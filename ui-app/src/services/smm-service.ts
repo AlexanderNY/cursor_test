@@ -11,8 +11,26 @@ import type {
 } from '@/types/smm'
 
 export const smmService = {
-  async getPalette(): Promise<{ colors: string[]; max_own_channels: number }> {
+  async getPalette(): Promise<{
+    colors: string[]
+    max_own_channels: number
+    tariff?: string
+    limits?: Record<string, unknown>
+  }> {
     const { data } = await apiClient.get('/smm/palette')
+    return data
+  },
+
+  async getPlan(): Promise<{
+    tariff: string
+    limits: {
+      features?: Record<string, boolean>
+      max_targets_per_job?: number
+      schedule_horizon_days?: number
+      [key: string]: unknown
+    }
+  }> {
+    const { data } = await apiClient.get('/smm/plan')
     return data
   },
 
@@ -41,6 +59,33 @@ export const smmService = {
   async listChannels(brandId: number): Promise<BrandChannel[]> {
     const { data } = await apiClient.get(`/smm/brands/${brandId}/channels`)
     return data.channels ?? []
+  },
+
+  async listAllChannels(brandId?: number): Promise<(BrandChannel & { brand_name?: string; brand_color?: string })[]> {
+    const { data } = await apiClient.get('/smm/channels', {
+      params: brandId ? { brand_id: brandId } : undefined,
+    })
+    return data.channels ?? []
+  },
+
+  async updateChannel(
+    brandId: number,
+    channelId: number,
+    payload: Partial<{
+      title: string
+      kind: string
+      role: string
+      color_override: string
+      external_id: string
+      publish_enabled: boolean
+      collect_enabled: boolean
+      discussion_external_id: string | null
+      discussion_title: string | null
+      comments_collect_enabled: boolean
+    }>,
+  ): Promise<BrandChannel> {
+    const { data } = await apiClient.patch(`/smm/brands/${brandId}/channels/${channelId}`, payload)
+    return data
   },
 
   async addChannel(
@@ -89,6 +134,53 @@ export const smmService = {
     return data
   },
 
+  async editInbox(id: number, edited_text: string): Promise<InboxItem> {
+    const { data } = await apiClient.patch(`/smm/inbox/${id}`, { edited_text })
+    return data
+  },
+
+  async redirectInbox(
+    id: number,
+    payload: {
+      targets: { network: string; external_id: string }[]
+      use_edited?: boolean
+      publish_at?: string | null
+      pending_approval?: boolean
+    },
+  ): Promise<{ job: PublishJob; inbox_item: InboxItem }> {
+    const { data } = await apiClient.post(`/smm/inbox/${id}/redirect`, payload)
+    return data
+  },
+
+  async channelStats(brandId?: number | null, period = '7d'): Promise<{
+    channels: {
+      channel_id: number
+      network: string
+      external_id: string
+      title?: string
+      sent: number
+      received: number
+      failed: number
+      role?: string
+    }[]
+    period: string
+  }> {
+    const { data } = await apiClient.get('/smm/analytics/channel-stats', {
+      params: { brand_id: brandId ?? undefined, period },
+    })
+    return data
+  },
+
+  async runDueJobs(limit = 50): Promise<{ processed: number }> {
+    const { data } = await apiClient.post('/smm/jobs/run-due', null, { params: { limit } })
+    return data
+  },
+
+  async approveJob(id: number): Promise<PublishJob> {
+    const { data } = await apiClient.post(`/smm/jobs/${id}/approve`)
+    return data
+  },
+
   async createJob(payload: {
     brand_id?: number | null
     text: string
@@ -97,6 +189,7 @@ export const smmService = {
     publish_at?: string | null
     adapt?: boolean
     status?: string
+    adapter_overrides?: Record<string, { text?: string }>
   }): Promise<PublishJob> {
     const { data } = await apiClient.post('/smm/jobs', payload)
     return data

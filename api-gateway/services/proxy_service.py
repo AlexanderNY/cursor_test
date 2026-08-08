@@ -9,12 +9,16 @@ from middleware.jwt_validator import jwt_validator
 class ProxyService:
     """Сервис проксирования HTTP запросов к downstream сервисам."""
     
-    # Headers которые не нужно пробрасывать
+    # Headers которые не нужно пробрасывать.
+    # X-User-* обязательно вычищать: иначе клиент может подставить identity
+    # на публичных маршрутах без JWT; gateway выставляет их только из токена ниже.
     EXCLUDED_HEADERS: set[str] = {
         "host",
         "content-length",
         "transfer-encoding",
         "connection",
+        "x-user-id",
+        "x-user-role",
     }
     
     def __init__(self, http_client: httpx.AsyncClient):
@@ -42,10 +46,19 @@ class ProxyService:
         """
         actual_method = override_method or method
         request_headers = self.prepare_headers(dict(request.headers))
+        # На случай иного регистра ключей после копирования — принудительно снять identity
+        for spoofed in ("X-User-Id", "X-User-Role", "x-user-id", "x-user-role"):
+            request_headers.pop(spoofed, None)
         if extra_headers:
-            request_headers.update(extra_headers)
+            # extra_headers от gateway-кода допускаются, но клиентский spoof уже снят
+            cleaned_extra = {
+                k: v
+                for k, v in extra_headers.items()
+                if k.lower() not in {"x-user-id", "x-user-role"}
+            }
+            request_headers.update(cleaned_extra)
 
-        # Добавляем X-User-Id и X-User-Role из JWT (если есть валидный токен)
+        # Добавляем X-User-Id и X-User-Role ТОЛЬКО из JWT (если есть валидный токен)
         authorization_header = request_headers.get("authorization") or request_headers.get("Authorization")
         if authorization_header:
             try:

@@ -10,6 +10,15 @@ from datetime import datetime, timedelta
 from typing import Any, Optional
 
 from database import get_db_connection, release_db_connection
+from exceptions import QuotaExceededError
+from services.quota_service import (
+    ensure_monthly_post_quota,
+    ensure_smm_feature,
+    ensure_smm_limit,
+    get_user_tariff,
+    plan_feature,
+    plan_limit,
+)
 
 BRAND_PALETTE = [
     "#3B82F6",
@@ -21,8 +30,6 @@ BRAND_PALETTE = [
     "#06B6D4",
     "#84CC16",
 ]
-
-MAX_OWN_CHANNELS = 20
 
 _HEX_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
 
@@ -40,7 +47,8 @@ def _row_brand(r: tuple) -> dict[str, Any]:
 
 
 def _row_channel(r: tuple) -> dict[str, Any]:
-    return {
+    # Supports ops cols (publish/collect) and comments cols (discussion_*)
+    out = {
         "id": r[0],
         "brand_id": r[1],
         "network": r[2],
@@ -50,11 +58,27 @@ def _row_channel(r: tuple) -> dict[str, Any]:
         "role": r[6],
         "color_override": r[7],
         "created_at": r[8].isoformat() if r[8] else None,
+        "publish_enabled": True,
+        "collect_enabled": False,
+        "discussion_external_id": None,
+        "discussion_title": None,
+        "comments_collect_enabled": False,
     }
+    if len(r) > 9:
+        out["publish_enabled"] = bool(r[9]) if r[9] is not None else True
+    if len(r) > 10:
+        out["collect_enabled"] = bool(r[10]) if r[10] is not None else False
+    if len(r) > 11:
+        out["discussion_external_id"] = r[11]
+    if len(r) > 12:
+        out["discussion_title"] = r[12]
+    if len(r) > 13:
+        out["comments_collect_enabled"] = bool(r[13]) if r[13] is not None else False
+    return out
 
 
 def _row_inbox(r: tuple) -> dict[str, Any]:
-    return {
+    out = {
         "id": r[0],
         "user_id": r[1],
         "brand_id": r[2],
@@ -66,14 +90,37 @@ def _row_inbox(r: tuple) -> dict[str, Any]:
         "text": r[8],
         "status": r[9],
         "created_at": r[10].isoformat() if r[10] else None,
+        "external_msg_id": None,
+        "edited_text": None,
+        "meta": {},
     }
+    if len(r) > 11:
+        out["external_msg_id"] = r[11]
+    if len(r) > 12:
+        out["edited_text"] = r[12]
+    if len(r) > 13:
+        meta = r[13]
+        out["meta"] = meta if isinstance(meta, dict) else (json.loads(meta) if meta else {})
+    return out
+
+
+CHANNEL_SELECT = """
+id, brand_id, network, external_id, title, kind, role,
+color_override, created_at, publish_enabled, collect_enabled,
+discussion_external_id, discussion_title, comments_collect_enabled
+"""
+
+INBOX_SELECT = """
+id, user_id, brand_id, network, channel_id, thread_id,
+type, author, text, status, created_at, external_msg_id, edited_text, meta
+"""
 
 
 def _row_job(r: tuple) -> dict[str, Any]:
     media = r[4] if isinstance(r[4], list) else (json.loads(r[4]) if r[4] else [])
     targets = r[5] if isinstance(r[5], list) else (json.loads(r[5]) if r[5] else [])
     adapters = r[6] if isinstance(r[6], dict) else (json.loads(r[6]) if r[6] else {})
-    return {
+    out = {
         "id": r[0],
         "user_id": r[1],
         "brand_id": r[2],
@@ -85,7 +132,14 @@ def _row_job(r: tuple) -> dict[str, Any]:
         "status": r[8],
         "created_at": r[9].isoformat() if r[9] else None,
         "updated_at": r[10].isoformat() if r[10] else None,
+        "retry_count": 0,
+        "last_error": None,
     }
+    if len(r) > 11:
+        out["retry_count"] = int(r[11] or 0)
+    if len(r) > 12:
+        out["last_error"] = r[12]
+    return out
 
 
 def _row_automation(r: tuple) -> dict[str, Any]:
@@ -151,8 +205,8 @@ class SmmService:
     ) -> dict:
         if not _HEX_RE.match(color):
             color = BRAND_PALETTE[0]
-        if color not in BRAND_PALETTE and not _HEX_RE.match(color):
-            color = BRAND_PALETTE[0]
+        brands = await self.list_brands(user_id)
+        await ensure_smm_limit(user_id, "max_brands", len(brands), units=1)
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
@@ -238,7 +292,8 @@ class SmmService:
                 await cur.execute(
                     """
                     SELECT id, brand_id, network, external_id, title, kind, role,
-                           color_override, created_at
+                           color_override, created_at, publish_enabled, collect_enabled,
+                           discussion_external_id, discussion_title, comments_collect_enabled
                     FROM smm_brand_channels WHERE brand_id = %s ORDER BY role, title
                     """,
                     (brand_id,),
@@ -287,18 +342,21 @@ class SmmService:
             raise ValueError("invalid kind")
         if role == "own":
             count = await self.count_own_channels(user_id)
-            if count >= MAX_OWN_CHANNELS:
-                raise ValueError(f"Own channel limit ({MAX_OWN_CHANNELS}) reached")
+            await ensure_smm_limit(user_id, "max_own_channels", count, units=1)
+        if role == "competitor":
+            await ensure_smm_feature(user_id, "competitors")
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
                     INSERT INTO smm_brand_channels
-                        (brand_id, network, external_id, title, kind, role, color_override)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                        (brand_id, network, external_id, title, kind, role, color_override,
+                         publish_enabled, collect_enabled)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                     RETURNING id, brand_id, network, external_id, title, kind, role,
-                              color_override, created_at
+                              color_override, created_at, publish_enabled, collect_enabled,
+                              discussion_external_id, discussion_title, comments_collect_enabled
                     """,
                     (
                         brand_id,
@@ -308,6 +366,8 @@ class SmmService:
                         kind,
                         role,
                         color_override,
+                        role == "own",
+                        role in ("source", "own"),
                     ),
                 )
                 row = await cur.fetchone()
@@ -325,11 +385,27 @@ class SmmService:
         brand = await self.get_brand(user_id, brand_id)
         if not brand:
             return None
-        allowed = {"title", "kind", "role", "color_override", "external_id"}
+        allowed = {
+            "title",
+            "kind",
+            "role",
+            "color_override",
+            "external_id",
+            "publish_enabled",
+            "collect_enabled",
+            "discussion_external_id",
+            "discussion_title",
+            "comments_collect_enabled",
+        }
         updates = []
         params: list[Any] = []
         for key, val in fields.items():
-            if key in allowed and val is not None:
+            if key not in allowed:
+                continue
+            # allow clearing discussion ids with empty string → NULL
+            if key in ("discussion_external_id", "discussion_title") and val == "":
+                val = None
+            if val is not None or key in ("discussion_external_id", "discussion_title"):
                 updates.append(f"{key} = %s")
                 params.append(val)
         if not updates:
@@ -344,12 +420,49 @@ class SmmService:
                     UPDATE smm_brand_channels SET {', '.join(updates)}
                     WHERE id = %s AND brand_id = %s
                     RETURNING id, brand_id, network, external_id, title, kind, role,
-                              color_override, created_at
+                              color_override, created_at, publish_enabled, collect_enabled,
+                              discussion_external_id, discussion_title, comments_collect_enabled
                     """,
                     params,
                 )
                 row = await cur.fetchone()
                 return _row_channel(row) if row else None
+        finally:
+            await release_db_connection(conn)
+
+    async def list_all_channels(
+        self, user_id: int, brand_id: Optional[int] = None
+    ) -> list[dict]:
+        conditions = ["b.user_id = %s"]
+        params: list[Any] = [user_id]
+        if brand_id is not None:
+            conditions.append("c.brand_id = %s")
+            params.append(brand_id)
+        where = " AND ".join(conditions)
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    f"""
+                    SELECT c.id, c.brand_id, c.network, c.external_id, c.title, c.kind, c.role,
+                           c.color_override, c.created_at, c.publish_enabled, c.collect_enabled,
+                           c.discussion_external_id, c.discussion_title, c.comments_collect_enabled,
+                           b.name AS brand_name, b.color AS brand_color
+                    FROM smm_brand_channels c
+                    JOIN smm_brands b ON b.id = c.brand_id
+                    WHERE {where}
+                    ORDER BY b.name, c.role, c.title
+                    """,
+                    params,
+                )
+                rows = await cur.fetchall()
+                result = []
+                for r in rows:
+                    ch = _row_channel(r[:14])
+                    ch["brand_name"] = r[14]
+                    ch["brand_color"] = r[15]
+                    result.append(ch)
+                return result
         finally:
             await release_db_connection(conn)
 
@@ -403,7 +516,7 @@ class SmmService:
                 await cur.execute(
                     f"""
                     SELECT id, user_id, brand_id, network, channel_id, thread_id,
-                           type, author, text, status, created_at
+                           type, author, text, status, created_at, external_msg_id, edited_text, meta
                     FROM smm_inbox_items
                     WHERE {where}
                     ORDER BY id DESC
@@ -460,7 +573,7 @@ class SmmService:
                     UPDATE smm_inbox_items SET status = %s
                     WHERE id = %s AND user_id = %s
                     RETURNING id, user_id, brand_id, network, channel_id, thread_id,
-                              type, author, text, status, created_at
+                              type, author, text, status, created_at, external_msg_id, edited_text, meta
                     """,
                     (status, item_id, user_id),
                 )
@@ -470,12 +583,165 @@ class SmmService:
             await release_db_connection(conn)
 
     async def reply_inbox(self, user_id: int, item_id: int, text: str) -> Optional[dict]:
-        item = await self.update_inbox_status(user_id, item_id, "replied")
+        await ensure_smm_feature(user_id, "inbox_reply")
+        item = await self.get_inbox_item(user_id, item_id)
         if not item:
             return None
-        item["reply_text"] = text
-        item["reply_queued"] = True
-        return item
+
+        # Fast path: TG comment → direct Telethon reply_to (bypass publish jobs)
+        if item.get("type") == "comment" and item.get("network") == "tg":
+            return await self._reply_tg_comment(user_id, item, text)
+
+        targets = []
+        if item.get("channel_id"):
+            channels = await self.list_all_channels(user_id)
+            ch = next((c for c in channels if c["id"] == item["channel_id"]), None)
+            if ch:
+                targets = [{"network": ch["network"], "external_id": ch["external_id"]}]
+        if not targets and item.get("network"):
+            thread = item.get("thread_id")
+            if not thread:
+                raise ValueError("Cannot resolve reply target")
+            targets = [{"network": item["network"], "external_id": thread}]
+        job = await self.create_job(
+            user_id=user_id,
+            brand_id=item.get("brand_id"),
+            text=text,
+            media=[],
+            targets=targets,
+            adapt=True,
+            status="ready",
+        )
+        executed = await self.execute_job(job)
+        final = executed.get("status") if executed else "failed"
+        if final in ("published", "partial"):
+            updated = await self.update_inbox_status(user_id, item_id, "replied")
+        else:
+            updated = await self.update_inbox_status(user_id, item_id, "reply_failed")
+        if updated:
+            updated["reply_text"] = text
+            updated["reply_job_id"] = job["id"]
+            updated["reply_queued"] = False
+            updated["reply_status"] = final
+        return updated
+
+    async def _reply_tg_comment(self, user_id: int, item: dict, text: str) -> dict:
+        """Direct reply in discussion chat via tg-bot."""
+        import httpx
+        from config import settings
+
+        await ensure_monthly_post_quota(user_id, units=1)
+        meta = item.get("meta") or {}
+        chat_id = item.get("thread_id") or meta.get("discussion_id")
+        reply_to = meta.get("tg_msg_id")
+        if not reply_to and item.get("external_msg_id"):
+            # external_msg_id like tg:{chat}:{msg_id}
+            parts = str(item["external_msg_id"]).split(":")
+            if len(parts) >= 3 and parts[-1].isdigit():
+                reply_to = int(parts[-1])
+        if not chat_id or not reply_to:
+            raise ValueError("Missing discussion chat or message id for comment reply")
+
+        await self.update_inbox_status(user_id, item["id"], "in_progress")
+        base = (settings.TG_BOT_SERVICE_URL or "").rstrip("/")
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                resp = await client.post(
+                    f"{base}/tg/reply",
+                    json={
+                        "user_id": user_id,
+                        "chat_id": str(chat_id),
+                        "reply_to_msg_id": int(reply_to),
+                        "text": text,
+                    },
+                )
+            if resp.status_code >= 400:
+                detail = resp.text[:300]
+                updated = await self.update_inbox_status(user_id, item["id"], "reply_failed")
+                if updated:
+                    updated["reply_error"] = detail
+                    updated["reply_text"] = text
+                return updated or item
+            data = resp.json() if resp.content else {}
+            updated = await self.update_inbox_status(user_id, item["id"], "replied")
+            if updated:
+                updated["reply_text"] = text
+                updated["reply_queued"] = False
+                updated["reply_status"] = "sent"
+                updated["tg_reply"] = data
+            return updated or item
+        except Exception as exc:
+            updated = await self.update_inbox_status(user_id, item["id"], "reply_failed")
+            if updated:
+                updated["reply_error"] = str(exc)
+                updated["reply_text"] = text
+            return updated or item
+
+    async def get_inbox_item(self, user_id: int, item_id: int) -> Optional[dict]:
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT id, user_id, brand_id, network, channel_id, thread_id,
+                           type, author, text, status, created_at, external_msg_id, edited_text, meta
+                    FROM smm_inbox_items WHERE id = %s AND user_id = %s
+                    """,
+                    (item_id, user_id),
+                )
+                row = await cur.fetchone()
+                return _row_inbox(row) if row else None
+        finally:
+            await release_db_connection(conn)
+
+    async def set_inbox_edited_text(
+        self, user_id: int, item_id: int, edited_text: str
+    ) -> Optional[dict]:
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    UPDATE smm_inbox_items SET edited_text = %s
+                    WHERE id = %s AND user_id = %s
+                    RETURNING id, user_id, brand_id, network, channel_id, thread_id,
+                              type, author, text, status, created_at, external_msg_id, edited_text, meta
+                    """,
+                    (edited_text, item_id, user_id),
+                )
+                row = await cur.fetchone()
+                return _row_inbox(row) if row else None
+        finally:
+            await release_db_connection(conn)
+
+    async def redirect_inbox(
+        self,
+        user_id: int,
+        item_id: int,
+        targets: list[dict],
+        use_edited: bool = True,
+        publish_at: Optional[str] = None,
+        pending_approval: bool = False,
+    ) -> dict:
+        await ensure_smm_feature(user_id, "inbox_redirect")
+        item = await self.get_inbox_item(user_id, item_id)
+        if not item:
+            raise ValueError("Inbox item not found")
+        text = (item.get("edited_text") if use_edited and item.get("edited_text") else item.get("text")) or ""
+        status = "pending_approval" if pending_approval else "ready"
+        if pending_approval:
+            await ensure_smm_feature(user_id, "approval_workflow")
+        job = await self.create_job(
+            user_id=user_id,
+            brand_id=item.get("brand_id"),
+            text=text,
+            media=[],
+            targets=targets,
+            publish_at=publish_at,
+            adapt=True,
+            status=status,
+        )
+        return {"job": job, "inbox_item": item}
 
     async def create_job(
         self,
@@ -487,18 +753,53 @@ class SmmService:
         publish_at: Optional[str] = None,
         adapt: bool = True,
         status: str = "ready",
+        adapter_overrides: Optional[dict] = None,
+        charge_quota: bool = False,
     ) -> dict:
         media = media or []
         targets = targets or []
-        adapters = adapt_for_networks(text, media, targets) if adapt else {}
+        tariff = await get_user_tariff(user_id)
+        max_targets = plan_limit(tariff, "max_targets_per_job", 1)
+        if len(targets) > max_targets:
+            raise QuotaExceededError(
+                resource="max_targets_per_job", limit=max_targets, used=len(targets)
+            )
+        if len(targets) > 1 and not plan_feature(tariff, "multi_channel_send", True):
+            raise QuotaExceededError(
+                resource="feature:multi_channel_send", limit=1, used=len(targets)
+            )
         pub_at = None
         if publish_at:
             try:
                 pub_at = datetime.fromisoformat(publish_at.replace("Z", "+00:00"))
             except ValueError:
                 pub_at = None
+            if pub_at:
+                if not plan_feature(tariff, "schedule", True):
+                    raise QuotaExceededError(
+                        resource="feature:schedule", limit=0, used=0
+                    )
+                horizon = plan_limit(tariff, "schedule_horizon_days", 7)
+                now = datetime.utcnow()
+                pub_naive = pub_at.replace(tzinfo=None) if pub_at.tzinfo else pub_at
+                if pub_naive > now + timedelta(days=horizon):
+                    raise QuotaExceededError(
+                        resource="schedule_horizon_days", limit=horizon, used=horizon + 1
+                    )
         if pub_at and status == "ready":
             status = "scheduled"
+        # Quota is charged on successful publish in execute_job (not at create)
+        if charge_quota:
+            units = max(1, len(targets)) if status != "draft" else 0
+            if units:
+                await ensure_monthly_post_quota(user_id, units=units)
+        adapters = adapt_for_networks(text, media, targets) if adapt else {}
+        if adapter_overrides:
+            for net, payload in adapter_overrides.items():
+                if not isinstance(payload, dict):
+                    continue
+                base = adapters.get(net) if isinstance(adapters.get(net), dict) else {}
+                adapters[net] = {**base, **payload}
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
@@ -508,7 +809,7 @@ class SmmService:
                         (user_id, brand_id, source_text, media, targets, adapters_result, publish_at, status)
                     VALUES (%s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s, %s)
                     RETURNING id, user_id, brand_id, source_text, media, targets, adapters_result,
-                              publish_at, status, created_at, updated_at
+                              publish_at, status, created_at, updated_at, retry_count, last_error
                     """,
                     (
                         user_id,
@@ -670,6 +971,9 @@ class SmmService:
     ) -> dict:
         if type_ not in ("rss", "tg_repost", "mention"):
             raise ValueError("type must be rss, tg_repost, or mention")
+        await ensure_smm_feature(user_id, "automations")
+        existing = await self.list_automations(user_id)
+        await ensure_smm_limit(user_id, "max_automations", len(existing), units=1)
         brand = await self.get_brand(user_id, brand_id)
         if not brand:
             raise ValueError("Brand not found")
@@ -972,6 +1276,376 @@ class SmmService:
                 return {"id": row[0]}
         finally:
             await release_db_connection(conn)
+
+    async def channel_stats(
+        self, user_id: int, brand_id: Optional[int] = None, period: str = "7d"
+    ) -> list[dict]:
+        tariff = await get_user_tariff(user_id)
+        max_days = plan_limit(tariff, "stats_retention_days", 7)
+        days = 7 if period == "7d" else (30 if period == "30d" else (90 if period == "90d" else 7))
+        days = min(days, max_days)
+        since = (datetime.utcnow() - timedelta(days=days)).date()
+        channels = await self.list_all_channels(user_id, brand_id)
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                result = []
+                for ch in channels:
+                    await cur.execute(
+                        """
+                        SELECT COALESCE(SUM(sent),0), COALESCE(SUM(received),0), COALESCE(SUM(failed),0)
+                        FROM smm_channel_counters
+                        WHERE user_id = %s AND channel_id = %s AND day >= %s
+                        """,
+                        (user_id, ch["id"], since),
+                    )
+                    row = await cur.fetchone()
+                    sent = int(row[0] or 0) if row else 0
+                    received = int(row[1] or 0) if row else 0
+                    failed = int(row[2] or 0) if row else 0
+                    # Fallback: count inbox received for channel
+                    if received == 0:
+                        await cur.execute(
+                            """
+                            SELECT COUNT(*) FROM smm_inbox_items
+                            WHERE user_id = %s AND channel_id = %s AND created_at >= %s
+                            """,
+                            (user_id, ch["id"], datetime.utcnow() - timedelta(days=days)),
+                        )
+                        r2 = await cur.fetchone()
+                        received = int(r2[0] or 0) if r2 else 0
+                    result.append(
+                        {
+                            "channel_id": ch["id"],
+                            "brand_id": ch["brand_id"],
+                            "brand_name": ch.get("brand_name"),
+                            "network": ch["network"],
+                            "external_id": ch["external_id"],
+                            "title": ch.get("title"),
+                            "role": ch["role"],
+                            "sent": sent,
+                            "received": received,
+                            "failed": failed,
+                        }
+                    )
+                return result
+        finally:
+            await release_db_connection(conn)
+
+    async def bump_channel_counter(
+        self, user_id: int, channel_id: int, *, sent: int = 0, received: int = 0, failed: int = 0
+    ) -> None:
+        day = datetime.utcnow().date()
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    INSERT INTO smm_channel_counters (user_id, channel_id, day, sent, received, failed)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (channel_id, day) DO UPDATE SET
+                        sent = smm_channel_counters.sent + EXCLUDED.sent,
+                        received = smm_channel_counters.received + EXCLUDED.received,
+                        failed = smm_channel_counters.failed + EXCLUDED.failed
+                    """,
+                    (user_id, channel_id, day, sent, received, failed),
+                )
+        finally:
+            await release_db_connection(conn)
+
+    async def fetch_due_jobs(self, limit: int = 50) -> list[dict]:
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT id, user_id, brand_id, source_text, media, targets, adapters_result,
+                           publish_at, status, created_at, updated_at, retry_count, last_error
+                    FROM smm_publish_jobs
+                    WHERE status IN ('ready', 'scheduled')
+                      AND (publish_at IS NULL OR publish_at <= NOW())
+                    ORDER BY COALESCE(publish_at, created_at) ASC
+                    LIMIT %s
+                    """,
+                    (limit,),
+                )
+                rows = await cur.fetchall()
+                return [_row_job(r) for r in rows]
+        finally:
+            await release_db_connection(conn)
+
+    async def execute_job(self, job: dict) -> dict:
+        """Materialize job into tg_posts / vk_posts per target; update adapters_result."""
+        from services.post_service import post_service
+
+        job_id = job["id"]
+        user_id = job["user_id"]
+        targets = job.get("targets") or []
+        media = job.get("media") or []
+        text = job.get("source_text") or ""
+        adapters = job.get("adapters_result") or {}
+        per_target: dict[str, Any] = (
+            dict(adapters["targets"]) if isinstance(adapters.get("targets"), dict) else {}
+        )
+
+        channels = await self.list_all_channels(user_id)
+        await self.update_job(user_id, job_id, status="publishing")
+        ok = 0
+        fail = 0
+        for t in targets:
+            network = t.get("network")
+            external_id = str(t.get("external_id") or "")
+            key = f"{network}:{external_id}"
+            ch = next(
+                (
+                    c
+                    for c in channels
+                    if c["network"] == network and str(c["external_id"]) == external_id
+                ),
+                None,
+            )
+            if ch and ch.get("publish_enabled") is False:
+                per_target[key] = {"status": "skipped", "error": "publish_enabled=false"}
+                fail += 1
+                continue
+            try:
+                await ensure_monthly_post_quota(user_id, units=1)
+                if network == "tg":
+                    tg_text = (adapters.get("tg") or {}).get("text", text)
+                    await post_service.create_tg_post_record(
+                        user_id=user_id,
+                        text=tg_text,
+                        images=media if media else None,
+                        to_tg=True,
+                        publish_at=None,
+                        target_channels=[external_id] if external_id else None,
+                        skip_quota=True,
+                    )
+                elif network == "vk":
+                    vk_payload = adapters.get("vk") or {}
+                    vk_text = vk_payload.get("text", re.sub(r"<[^>]+>", "", text))
+                    await post_service.create_vk_post_record(
+                        user_id=user_id,
+                        text=vk_text,
+                        images=media,
+                        to_vk=True,
+                        target_groups=[external_id] if external_id else None,
+                        skip_quota=True,
+                    )
+                else:
+                    raise ValueError(f"Unsupported network {network}")
+                per_target[key] = {"status": "published"}
+                ok += 1
+                if ch:
+                    await self.bump_channel_counter(user_id, ch["id"], sent=1)
+            except Exception as exc:
+                per_target[key] = {"status": "failed", "error": str(exc)}
+                fail += 1
+                if ch:
+                    await self.bump_channel_counter(user_id, ch["id"], failed=1)
+
+        adapters_out = {**adapters, "targets": per_target}
+        if fail == 0:
+            final = "published"
+        elif ok == 0:
+            final = "failed"
+        else:
+            final = "partial"
+        tariff = await get_user_tariff(user_id)
+        max_retry = 3 if tariff == "full" else (2 if tariff == "standard" else 0)
+        retry = int(job.get("retry_count") or 0)
+        last_error = None
+        if final == "failed" and retry < max_retry:
+            final = "ready"
+            retry += 1
+            last_error = "retry scheduled"
+        updated = await self.update_job(
+            user_id,
+            job_id,
+            status=final,
+            adapters_result=adapters_out,
+        )
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    UPDATE smm_publish_jobs
+                    SET retry_count = %s, last_error = %s, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = %s
+                    """,
+                    (retry, last_error or (None if final != "failed" else "publish failed"), job_id),
+                )
+        finally:
+            await release_db_connection(conn)
+        return updated or job
+
+    async def run_due_jobs(self, limit: int = 50) -> dict:
+        jobs = await self.fetch_due_jobs(limit)
+        results = []
+        for job in jobs:
+            try:
+                results.append(await self.execute_job(job))
+            except Exception as exc:
+                results.append({"id": job["id"], "error": str(exc)})
+        return {"processed": len(results), "jobs": results}
+
+    async def ingest_inbox_item(self, user_id: int, data: dict) -> dict:
+        """Idempotent ingest with optional external_msg_id dedup."""
+        item_type = data.get("type") or data.get("item_type") or "comment"
+        if item_type not in ("dm", "comment", "reaction"):
+            item_type = "comment"
+        meta = data.get("meta") or {}
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                ext = data.get("external_msg_id")
+                if ext:
+                    await cur.execute(
+                        """
+                        SELECT id FROM smm_inbox_items
+                        WHERE user_id = %s AND network = %s AND external_msg_id = %s
+                        """,
+                        (user_id, data["network"], ext),
+                    )
+                    existing = await cur.fetchone()
+                    if existing:
+                        item = await self.get_inbox_item(user_id, existing[0])
+                        return item or {"id": existing[0], "deduped": True}
+                await cur.execute(
+                    """
+                    INSERT INTO smm_inbox_items
+                        (user_id, brand_id, network, channel_id, thread_id, type, author, text,
+                         status, external_msg_id, meta)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+                    RETURNING id, user_id, brand_id, network, channel_id, thread_id,
+                              type, author, text, status, created_at, external_msg_id, edited_text, meta
+                    """,
+                    (
+                        user_id,
+                        data.get("brand_id"),
+                        data["network"],
+                        data.get("channel_id"),
+                        data.get("thread_id"),
+                        item_type,
+                        data.get("author"),
+                        data.get("text"),
+                        data.get("status", "new"),
+                        ext,
+                        json.dumps(meta),
+                    ),
+                )
+                row = await cur.fetchone()
+                item = _row_inbox(row)
+                if item.get("channel_id"):
+                    await self.bump_channel_counter(user_id, item["channel_id"], received=1)
+                return item
+        finally:
+            await release_db_connection(conn)
+
+    async def resolve_collect_channel(
+        self, user_id: int, network: str, external_id: str
+    ) -> Optional[dict]:
+        """Find brand channel with collect_enabled for ingest."""
+        channels = await self.list_all_channels(user_id)
+        ext = str(external_id).strip()
+        for c in channels:
+            if c["network"] != network:
+                continue
+            if str(c["external_id"]).strip() != ext:
+                continue
+            if c.get("collect_enabled") is False:
+                continue
+            return c
+        for c in channels:
+            if (
+                c["network"] == network
+                and str(c["external_id"]).strip() == ext
+                and c.get("role") in ("own", "source")
+            ):
+                return c
+        return None
+
+    async def resolve_discussion_channel(
+        self, user_id: int, network: str, discussion_id: str
+    ) -> Optional[dict]:
+        """Match message chat_id to brand channel.discussion_external_id."""
+        channels = await self.list_all_channels(user_id)
+        disc = str(discussion_id).strip()
+        for c in channels:
+            if c["network"] != network:
+                continue
+            linked = c.get("discussion_external_id")
+            if not linked or str(linked).strip() != disc:
+                continue
+            # Bound discussion: collect when comments_collect_enabled (default on bind in UI)
+            if c.get("comments_collect_enabled") is False:
+                continue
+            return c
+        return None
+
+    async def ingest_from_collector(
+        self,
+        user_id: int,
+        network: str,
+        external_id: str,
+        text: str,
+        author: Optional[str] = None,
+        external_msg_id: Optional[str] = None,
+        item_type: str = "comment",
+        meta: Optional[dict] = None,
+    ) -> Optional[dict]:
+        meta = meta or {}
+        # Comments from discussion chat: resolve by discussion_external_id
+        if item_type == "comment":
+            ch = await self.resolve_discussion_channel(user_id, network, external_id)
+            if not ch:
+                ch = await self.resolve_collect_channel(user_id, network, external_id)
+            if not ch:
+                return None
+            return await self.ingest_inbox_item(
+                user_id,
+                {
+                    "brand_id": ch["brand_id"],
+                    "network": network,
+                    "channel_id": ch["id"],
+                    "thread_id": external_id,
+                    "type": "comment",
+                    "author": author,
+                    "text": text or "",
+                    "external_msg_id": external_msg_id,
+                    "status": "new",
+                    "meta": {
+                        **meta,
+                        "discussion_id": external_id,
+                        "channel_external_id": ch["external_id"],
+                    },
+                },
+            )
+        if item_type not in ("dm", "reaction"):
+            return None
+        ch = await self.resolve_collect_channel(user_id, network, external_id)
+        if not ch:
+            return None
+        return await self.ingest_inbox_item(
+            user_id,
+            {
+                "brand_id": ch["brand_id"],
+                "network": network,
+                "channel_id": ch["id"],
+                "thread_id": external_id,
+                "type": item_type,
+                "author": author,
+                "text": text or "",
+                "external_msg_id": external_msg_id,
+                "status": "new",
+                "meta": meta,
+            },
+        )
+
+    async def approve_job(self, user_id: int, job_id: int) -> Optional[dict]:
+        await ensure_smm_feature(user_id, "approval_workflow")
+        return await self.update_job(user_id, job_id, status="ready")
 
 
 smm_service = SmmService()

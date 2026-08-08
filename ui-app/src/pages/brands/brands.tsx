@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { PageContainer, PageHeader } from '@/components/ui'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -105,8 +106,13 @@ export function BrandsPage() {
     <PageContainer>
       <PageHeader
         title="Brands"
-        description="Цветовые связки каналов TG/VK (до 20 own-каналов)"
+        description="Цветовые связки каналов TG/VK. Операционка каналов — /channels"
       />
+      <p className="mb-4 text-sm">
+        <Link to="/channels" className="text-primary-400 hover:underline">
+          Открыть хаб каналов →
+        </Link>
+      </p>
       {error && <Alert variant="error">{error}</Alert>}
 
       <div className="grid gap-6 lg:grid-cols-2">

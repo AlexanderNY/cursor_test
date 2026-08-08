@@ -16,6 +16,7 @@ import {
   CheckCircleIcon,
   ChartBarIcon,
   UsersIcon,
+  CreditCardIcon,
 } from '@/components/icons'
 
 export interface NavItem {
@@ -24,9 +25,16 @@ export interface NavItem {
   Icon: ComponentType<{ className?: string }>
 }
 
-export const navItems: NavItem[] = [
+/** Top header links (not in sidebar) */
+export const topNavItems: NavItem[] = [
   { path: '/profile', label: 'Profile', Icon: UserIcon },
+  { path: '/pricing', label: 'Pricing', Icon: CreditCardIcon },
+  { path: '/about', label: 'Справка', Icon: DocumentTextIcon },
+]
+
+export const navItems: NavItem[] = [
   { path: '/brands', label: 'Brands', Icon: UsersIcon },
+  { path: '/channels', label: 'Channels', Icon: LinkIcon },
   { path: '/inbox', label: 'Inbox', Icon: DocumentTextIcon },
   { path: '/posts', label: 'Posts', Icon: PlusIcon },
   { path: '/calendar', label: 'Calendar', Icon: CheckCircleIcon },

@@ -9,10 +9,12 @@ class Settings(BaseSettings):
     """Настройки Scheduler."""
 
     API_GATEWAY_URL: str = "http://localhost:8000"
+    CORE_SERVICE_URL: str = "http://localhost:8002"
     DATABASE_URL: str = ""
 
     POLL_INTERVAL_SECONDS: int =  60
     NOTIFY_ON_CHANGE_ONLY: bool =  True
+    SMM_JOBS_RUN_ENABLED: bool = True
 
     SCHEDULER_LOGIN: Optional[str] = None
     SCHEDULER_PASSWORD: Optional[str] = None

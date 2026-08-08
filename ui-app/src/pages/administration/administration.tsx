@@ -12,6 +12,7 @@ import { useAuth } from '@/contexts/auth-context'
 import { coreService } from '@/services/core-service'
 import { notificationsService } from '@/services/notifications-service'
 import { feedbackService } from '@/services/feedback-service'
+import { GuideBlocksAdmin } from '@/pages/administration/guide-blocks-admin'
 import { Input } from '@/components/ui/input'
 import type { User, RoleTariffHistoryEntry, GroupResponse, AdminAuditLogEntry } from '@/types/auth'
 import type {
@@ -28,7 +29,7 @@ import type {
 import { FEEDBACK_TYPE_LABELS } from '@/types/core'
 import { platformStatusCell, platformTableStatusColumns } from '@/pages/checks/checks-utils'
 
-type AdminTab = 'users' | 'audit' | 'groups' | 'statistics' | 'schedule' | 'notifications' | 'feedback' | 'posts-tables' | 'runtime-location' | 'storage'
+type AdminTab = 'users' | 'audit' | 'groups' | 'statistics' | 'schedule' | 'notifications' | 'feedback' | 'guide' | 'posts-tables' | 'runtime-location' | 'storage'
 
 const ADMIN_TABS: AdminTab[] = [
   'users',
@@ -38,6 +39,7 @@ const ADMIN_TABS: AdminTab[] = [
   'schedule',
   'notifications',
   'feedback',
+  'guide',
   'posts-tables',
   'runtime-location',
   'storage',
@@ -76,7 +78,7 @@ export function AdministrationPage() {
   const [isLoadingHistory, setIsLoadingHistory] = useState(false)
   const [historyError, setHistoryError] = useState('')
   const ROLES = ['guest', 'user', 'admin', 'manager', 'author'] as const
-  const TARIFFS = ['free', 'basic', 'premium']
+  const TARIFFS = ['free', 'standard', 'full']
   const SUBSCRIPTION_STATUS_FILTERS: { value: string; label: string }[] = [
     { value: '', label: 'All statuses' },
     { value: '__null__', label: 'No status' },
@@ -734,6 +736,16 @@ export function AdministrationPage() {
           }`}
         >
           Обратная связь
+        </button>
+        <button
+          onClick={() => setActiveTab('guide')}
+          className={`px-4 py-2 font-medium text-sm transition-colors ${
+            activeTab === 'guide'
+              ? 'text-primary-400 border-b-2 border-primary-400'
+              : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+          }`}
+        >
+          Справка
         </button>
         <button
           onClick={() => setActiveTab('posts-tables')}
@@ -1654,6 +1666,8 @@ export function AdministrationPage() {
           </CardContent>
         </Card>
       )}
+
+      {activeTab === 'guide' && <GuideBlocksAdmin />}
 
       {activeTab === 'feedback' && (
         <Card className="animate-slide-up">

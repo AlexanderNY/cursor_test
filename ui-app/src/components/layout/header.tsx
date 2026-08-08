@@ -1,78 +1,61 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@/contexts/auth-context'
 import { useTheme } from '@/contexts/theme-context'
 import { useBrand } from '@/contexts/brand-context'
 import { Button } from '@/components/ui'
-import { notificationsService } from '@/services/notifications-service'
-import type { Notification } from '@/types/core'
+import { smmService } from '@/services/smm-service'
+import { topNavItems } from '@/config/nav'
 
-const NOTIFICATIONS_POLL_INTERVAL_MS = 12_000
+const INBOX_COMMENT_POLL_MS = 25_000
 
 export function Header() {
-  const { user, logout } = useAuth()
+  const { logout } = useAuth()
   const { isDarkMode, toggleTheme } = useTheme()
   const { brands, selectedBrandId, setSelectedBrandId, selectedBrand } = useBrand()
   const navigate = useNavigate()
-  const notificationRef = useRef<HTMLDivElement>(null)
-  const [notifications, setNotifications] = useState<Notification[]>([])
-  const [currentNotificationIndex, setCurrentNotificationIndex] = useState(0)
-  const [_isLoadingNotifications, setIsLoadingNotifications] = useState(false)
+  const location = useLocation()
+  const [newCommentCount, setNewCommentCount] = useState(0)
+  const prevCommentCountRef = useRef(0)
+  const commentNotifyReadyRef = useRef(false)
 
-  const loadNotifications = useCallback(async () => {
-    setIsLoadingNotifications(true)
+  const loadNewComments = useCallback(async () => {
     try {
-      const response = await notificationsService.getNotifications()
-      setNotifications(response.notifications || [])
-      setCurrentNotificationIndex(0)
-    } catch (error) {
-      console.error('Failed to load notifications:', error)
-      setNotifications([])
-    } finally {
-      setIsLoadingNotifications(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    loadNotifications()
-  }, [loadNotifications])
-
-  useEffect(() => {
-    if (!user) return
-    const interval = setInterval(loadNotifications, NOTIFICATIONS_POLL_INTERVAL_MS)
-    return () => clearInterval(interval)
-  }, [user, loadNotifications])
-
-  function handleNextNotification() {
-    if (notifications.length === 0) return
-    setCurrentNotificationIndex((prev) => (prev + 1) % notifications.length)
-  }
-
-  function handlePrevNotification() {
-    if (notifications.length === 0) return
-    setCurrentNotificationIndex((prev) => (prev - 1 + notifications.length) % notifications.length)
-  }
-
-  const currentNotification = notifications[currentNotificationIndex]
-  const isAuthNotification = currentNotification?.type?.startsWith('tg_auth')
-
-  const handleNotificationClick = useCallback(
-    (e: React.MouseEvent<HTMLDivElement>) => {
-      const target = e.target as HTMLElement
-      const anchor = target.closest('a')
-      if (!anchor) return
-      const href = anchor.getAttribute('href')
-      if (href && href.startsWith('/')) {
-        e.preventDefault()
-        navigate(href)
+      const res = await smmService.listInbox({
+        brand_id: selectedBrandId ?? undefined,
+        type: 'comment',
+        status: 'new',
+        limit: 50,
+      })
+      const count = res.items?.length ?? 0
+      if (
+        commentNotifyReadyRef.current &&
+        count > prevCommentCountRef.current &&
+        typeof Notification !== 'undefined' &&
+        Notification.permission === 'granted'
+      ) {
+        new Notification('Новые комментарии', {
+          body: `Непрочитанных: ${count}`,
+          tag: 'inbox-comments-badge',
+        })
       }
-    },
-    [navigate]
-  )
+      prevCommentCountRef.current = count
+      commentNotifyReadyRef.current = true
+      setNewCommentCount(count)
+    } catch {
+      /* ignore badge errors */
+    }
+  }, [selectedBrandId])
+
+  useEffect(() => {
+    void loadNewComments()
+    const interval = setInterval(() => void loadNewComments(), INBOX_COMMENT_POLL_MS)
+    return () => clearInterval(interval)
+  }, [loadNewComments])
 
   return (
-    <header className="h-[115px] bg-[var(--bg-secondary)] border-b border-[var(--border-color)] flex items-center justify-between px-6">
-      <div className="flex items-center gap-4 flex-1">
+    <header className="h-16 shrink-0 bg-[var(--bg-secondary)] border-b border-[var(--border-color)] flex items-center justify-between gap-4 px-6">
+      <div className="flex items-center gap-4 min-w-0 flex-1">
         {brands.length > 0 && (
           <div className="flex items-center gap-2 shrink-0">
             <span
@@ -81,7 +64,7 @@ export function Header() {
             />
             <select
               aria-label="Brand switcher"
-              className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-tertiary)] px-3 py-1.5 text-sm text-[var(--text-primary)] max-w-[180px]"
+              className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-tertiary)] px-3 py-1.5 text-sm text-[var(--text-primary)] max-w-[160px]"
               value={selectedBrandId ?? ''}
               onChange={(e) =>
                 setSelectedBrandId(e.target.value ? Number(e.target.value) : null)
@@ -97,52 +80,49 @@ export function Header() {
           </div>
         )}
 
-        {notifications.length > 0 && (
-          <div
-            role="region"
-            aria-label="Notifications"
-            aria-live="polite"
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl border max-w-md ${
-              isAuthNotification
-                ? 'bg-amber-500/10 border-amber-500/50'
-                : 'bg-[var(--bg-tertiary)] border-[var(--border-color)]'
-            }`}
-          >
-            <button
-              type="button"
-              onClick={handlePrevNotification}
-              disabled={notifications.length <= 1}
-              className="p-1 rounded hover:bg-[var(--bg-secondary)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/50"
-              aria-label="Previous notification"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-[var(--text-secondary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-            </button>
-
-            <div
-              ref={notificationRef}
-              onClick={handleNotificationClick}
-              className="flex-1 text-sm text-[var(--text-primary)] text-center px-2 notification-content"
-              dangerouslySetInnerHTML={{ __html: currentNotification?.message || '' }}
-            />
-
-            <button
-              type="button"
-              onClick={handleNextNotification}
-              disabled={notifications.length <= 1}
-              className="p-1 rounded hover:bg-[var(--bg-secondary)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/50"
-              aria-label="Next notification"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-[var(--text-secondary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
-            </button>
-          </div>
-        )}
+        <nav className="flex items-center gap-1 min-w-0 overflow-x-auto" aria-label="Основное меню">
+          {topNavItems.map((item) => {
+            const isActive =
+              location.pathname === item.path ||
+              (item.path === '/profile' && location.pathname.startsWith('/profile'))
+            return (
+              <NavLink
+                key={item.path}
+                to={item.path}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm whitespace-nowrap transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/50 ${
+                  isActive
+                    ? 'bg-[var(--bg-tertiary)] text-primary-400'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)]'
+                }`}
+              >
+                <item.Icon className="h-4 w-4" />
+                <span>{item.label}</span>
+              </NavLink>
+            )
+          })}
+        </nav>
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2 shrink-0">
+        <button
+          type="button"
+          onClick={() => navigate('/inbox?mode=comments')}
+          className="relative p-2 rounded-xl hover:bg-[var(--bg-tertiary)] transition-colors text-[var(--text-secondary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/50"
+          aria-label={
+            newCommentCount > 0
+              ? `Inbox comments, ${newCommentCount} new`
+              : 'Inbox comments'
+          }
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+          </svg>
+          {newCommentCount > 0 && (
+            <span className="absolute -top-0.5 -right-0.5 min-w-[1.1rem] h-[1.1rem] px-1 rounded-full bg-amber-500 text-[10px] font-semibold text-white flex items-center justify-center">
+              {newCommentCount > 99 ? '99+' : newCommentCount}
+            </span>
+          )}
+        </button>
         <button
           type="button"
           onClick={toggleTheme}

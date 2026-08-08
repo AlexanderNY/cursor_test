@@ -144,6 +144,7 @@ PUBLIC_ENDPOINTS: list[str] = [
     "/auth/reset-password/confirm",
     "/auth/billing/plans",
     "/auth/billing/webhooks/stripe",
+    "/core/guide/blocks",
     "/health",
 ]
 

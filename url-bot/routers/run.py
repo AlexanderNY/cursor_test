@@ -1,12 +1,12 @@
 """Эндпоинт тестового запуска скрапинга по запросу."""
 
-import asyncio
 import logging
 
 from fastapi import APIRouter, HTTPException
 
 from schemas import RunRequest, RunResponse
-from services.scraping_service import scrape_url
+from services.scraping_service import scrape_url_async
+from services.url_safety import UnsafeUrlError, validate_public_http_url
 
 logger = logging.getLogger(__name__)
 
@@ -22,8 +22,11 @@ async def run_scrape(request: RunRequest) -> RunResponse:
     """
     if not request.url or not request.xpath:
         raise HTTPException(status_code=400, detail="url and xpath are required")
-    result = await asyncio.to_thread(
-        scrape_url,
+    try:
+        validate_public_http_url(request.url)
+    except UnsafeUrlError as e:
+        raise HTTPException(status_code=400, detail=f"URL not allowed: {e}") from e
+    result = await scrape_url_async(
         request.url,
         request.xpath,
         request.take_screenshot,

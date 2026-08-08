@@ -1,5 +1,5 @@
 import { useState, useEffect, FormEvent, useCallback } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { Alert } from '@/components/ui/alert'
 import { PageHeader, PageContainer } from '@/components/ui'
 import { apiClient } from '@/services/api-client'
@@ -729,6 +729,11 @@ export function TelegramPage() {
   return (
     <PageContainer maxWidth="wide">
       <PageHeader title="Telegram Integration" description="Manage your Telegram posts and settings" />
+      <p className="mb-4 text-sm">
+        <Link to="/channels" className="text-primary-400 hover:underline">
+          Управлять каналами → /channels
+        </Link>
+      </p>
 
       {error && <Alert variant="error" className="animate-slide-down">{error}</Alert>}
       {success && <Alert variant="success" className="animate-slide-down">{success}</Alert>}

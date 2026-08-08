@@ -498,6 +498,11 @@ export function VKontaktePage() {
   return (
     <PageContainer maxWidth="wide">
       <PageHeader title="VKontakte Integration" description="Configure your VKontakte account settings and post management" />
+      <p className="mb-4 text-sm">
+        <Link to="/channels" className="text-primary-400 hover:underline">
+          Управлять каналами → /channels
+        </Link>
+      </p>
 
       {error && (
         <Alert variant="error" className="animate-slide-down">

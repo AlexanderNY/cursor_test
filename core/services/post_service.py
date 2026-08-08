@@ -195,6 +195,7 @@ class PostService:
         to_instagram: bool = False,
         publish_at: Optional[Any] = None,
         target_channels: Optional[List[str]] = None,
+        skip_quota: bool = False,
     ) -> Dict:
         """Создает пост Telegram в таблице tg_posts.
         
@@ -205,6 +206,7 @@ class PostService:
             to_*: цели дублирования в другие сети
             publish_at: отложенная публикация (UTC)
             target_channels: каналы назначения (override профиля)
+            skip_quota: если True — квота уже проверена вызывающим (SMM jobs)
         
         Returns:
             Созданный пост из таблицы tg_posts
@@ -216,7 +218,8 @@ class PostService:
 
         conn = await get_db_connection()
         try:
-            await ensure_monthly_post_quota(user_id, conn=conn)
+            if not skip_quota:
+                await ensure_monthly_post_quota(user_id, conn=conn)
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
@@ -1418,6 +1421,7 @@ class PostService:
         to_instagram: bool = False,
         publish_at: Optional[Any] = None,
         target_groups: Optional[List[str]] = None,
+        skip_quota: bool = False,
     ) -> Dict:
         """Создаёт пост VKontakte в таблице vk_posts (status=created; collector переносит в posts, затем pipeline до ready для публикации)."""
         limit = self.PLATFORM_LIMITS.get("vk", 15985)
@@ -1432,7 +1436,8 @@ class PostService:
         targets_json = json.dumps(target_groups or [])
         conn = await get_db_connection()
         try:
-            await ensure_monthly_post_quota(user_id, conn=conn)
+            if not skip_quota:
+                await ensure_monthly_post_quota(user_id, conn=conn)
             async with conn.cursor() as cur:
                 await cur.execute(
                     """

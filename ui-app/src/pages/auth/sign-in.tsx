@@ -86,11 +86,16 @@ export function SignInPage() {
           </form>
         </CardContent>
         
-        <CardFooter className="justify-center">
+        <CardFooter className="justify-center flex-col gap-2">
           <p className="text-[var(--text-secondary)]">
             Don't have an account?{' '}
             <Link to="/sign-up" className="text-primary-400 hover:text-primary-300 font-medium transition-colors">
               Sign Up
+            </Link>
+          </p>
+          <p className="text-sm text-[var(--text-muted)]">
+            <Link to="/about" className="text-primary-400 hover:text-primary-300 transition-colors">
+              Справка по сервису
             </Link>
           </p>
         </CardFooter>

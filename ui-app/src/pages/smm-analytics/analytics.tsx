@@ -10,7 +10,7 @@ import { smmService } from '@/services/smm-service'
 import type { AnalyticsOverview, AnalyticsPost, BrandChannel } from '@/types/smm'
 import { getErrorMessage } from '@/services/api-client'
 
-type Tab = 'overview' | 'competitors'
+type Tab = 'overview' | 'channels' | 'competitors'
 
 export function SmmAnalyticsPage() {
   const { selectedBrandId, channels, refreshChannels } = useBrand()
@@ -18,12 +18,16 @@ export function SmmAnalyticsPage() {
   const [period, setPeriod] = useState('7d')
   const [overview, setOverview] = useState<AnalyticsOverview | null>(null)
   const [posts, setPosts] = useState<AnalyticsPost[]>([])
+  const [channelStats, setChannelStats] = useState<
+    { channel_id: number; network: string; external_id: string; title?: string; sent: number; received: number; failed: number; role?: string }[]
+  >([])
   const [error, setError] = useState('')
   const [compNetwork, setCompNetwork] = useState<'tg' | 'vk'>('tg')
   const [compId, setCompId] = useState('')
   const [compTitle, setCompTitle] = useState('')
   const [compPosts, setCompPosts] = useState<unknown[]>([])
   const [selectedComp, setSelectedComp] = useState<BrandChannel | null>(null)
+  const [canCompetitors, setCanCompetitors] = useState(true)
 
   const competitors = channels.filter((c) => c.role === 'competitor')
 
@@ -31,12 +35,17 @@ export function SmmAnalyticsPage() {
     void (async () => {
       setError('')
       try {
-        const [ov, list] = await Promise.all([
+        const plan = await smmService.getPlan().catch(() => null)
+        const feats = (plan?.limits?.features || {}) as Record<string, boolean>
+        setCanCompetitors(Boolean(feats.competitors))
+        const [ov, list, stats] = await Promise.all([
           smmService.analyticsOverview(selectedBrandId, period),
           smmService.analyticsPosts(selectedBrandId, 'er'),
+          smmService.channelStats(selectedBrandId, period).catch(() => ({ channels: [] })),
         ])
         setOverview(ov)
         setPosts(list)
+        setChannelStats(stats.channels ?? [])
       } catch (err) {
         setError(getErrorMessage(err))
       }
@@ -82,16 +91,63 @@ export function SmmAnalyticsPage() {
         <Button variant={tab === 'overview' ? 'primary' : 'secondary'} onClick={() => setTab('overview')}>
           Overview
         </Button>
+        <Button variant={tab === 'channels' ? 'primary' : 'secondary'} onClick={() => setTab('channels')}>
+          Channels
+        </Button>
         <Button
           variant={tab === 'competitors' ? 'primary' : 'secondary'}
           onClick={() => setTab('competitors')}
+          disabled={!canCompetitors}
+          title={!canCompetitors ? 'Competitors require Full plan' : undefined}
         >
           Competitors
         </Button>
+        {!canCompetitors && (
+          <Link to="/pricing" className="text-sm text-primary-400 hover:underline self-center">
+            Upgrade for competitors
+          </Link>
+        )}
         <Link to="/telegram" className="ml-auto text-sm text-primary-400 hover:underline self-center">
           TG deep-dive →
         </Link>
       </div>
+
+      {tab === 'channels' && (
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle>Send / receive by channel</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-[var(--text-muted)] border-b border-[var(--border-color)]">
+                    <th className="py-2 pr-2">Channel</th>
+                    <th className="py-2 pr-2">Net</th>
+                    <th className="py-2 pr-2">Sent</th>
+                    <th className="py-2 pr-2">Received</th>
+                    <th className="py-2">Failed</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {channelStats.map((c) => (
+                    <tr key={c.channel_id} className="border-b border-[var(--border-color)]">
+                      <td className="py-2 pr-2">{c.title || c.external_id}</td>
+                      <td className="py-2 pr-2 uppercase">{c.network}</td>
+                      <td className="py-2 pr-2">{c.sent}</td>
+                      <td className="py-2 pr-2">{c.received}</td>
+                      <td className="py-2">{c.failed}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {channelStats.length === 0 && (
+                <p className="text-sm text-[var(--text-muted)] py-4">Нет данных за период</p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {tab === 'overview' && (
         <>
