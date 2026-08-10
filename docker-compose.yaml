@@ -6,13 +6,10 @@ x-public-url: &public-url "http://95.165.87.163"
 # IP привязки портов на хосте (LAN-IP ПК или 0.0.0.0). НЕ ставьте сюда IP роутера.
 x-bind-host: &bind-host "${BIND_HOST:-0.0.0.0}"
 
+# UI/API only on loopback for direct debug; public traffic goes through ui-edge (edge_net).
 x-ui-public-ports: &ui-public-ports
-  - "${BIND_HOST:-0.0.0.0}:8100:8100/tcp"
-  - "${BIND_HOST:-0.0.0.0}:8100:8100/udp"
-
-x-ui-edge-ports: &ui-edge-ports
-  - "${BIND_HOST:-0.0.0.0}:80:80/tcp"
-  - "${BIND_HOST:-0.0.0.0}:443:443/tcp"
+  - "127.0.0.1:8100:8100/tcp"
+  - "127.0.0.1:8100:8100/udp"
 
 x-ai-environment: &ai-environment
   AI_SERVICE_URL: http://ollama:11434
@@ -84,8 +81,9 @@ services:
     build: 
       context: .
       dockerfile: ./api-gateway/Dockerfile
+    container_name: gateway
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     environment:
       # Instagram bot: порт 8011, сервис instagram-bot (не 172.20.10.14:8012 — это другой сервис)
       - INSTAGRAM_BOT_SERVICE_URL=http://instagram-bot:8011
@@ -96,10 +94,13 @@ services:
       - TG_GAME_SERVICE_URL=http://tg-game:8015
       - GAME_ADMIN_API_TOKEN=122
       - JWT_SECRET_KEY=${JWT_SECRET_KEY}
-      - CORS_ORIGINS=http://localhost:5173,http://localhost:8100,http://127.0.0.1:8100,http://192.168.1.66,http://192.168.1.66:8100,http://95.165.87.163,https://95.165.87.163,http://copyparse.ru,https://copyparse.ru,http://www.copyparse.ru,https://www.copyparse.ru,http://9to18.ru,https://9to18.ru,http://www.9to18.ru,https://www.9to18.ru
+      - CORS_ORIGINS=http://localhost:5173,http://localhost:8100,http://127.0.0.1:8100,http://192.168.1.66,http://192.168.1.66:8100,http://95.165.87.163,https://95.165.87.163,http://copyparse.ru,https://copyparse.ru,http://www.copyparse.ru,https://www.copyparse.ru
     networks:
       monitoring_network:
         ipv4_address: 172.20.10.250
+      edge_net:
+        aliases:
+          - gateway
 
   scheduler:
     build: 
@@ -121,7 +122,8 @@ services:
   ui:
     build: 
       context: .
-      dockerfile: ./ui-app/Dockerfile    
+      dockerfile: ./ui-app/Dockerfile
+    container_name: ui
     ports: *ui-public-ports
     environment:
       - VITE_API_GATEWAY_URL=http://gateway:8000
@@ -135,32 +137,9 @@ services:
     networks:
       monitoring_network:
         ipv4_address: 172.20.10.100
-
-  ui-edge:
-    image: nginx:1.27-alpine
-    depends_on:
-      - ui
-      - ui-9to18
-    ports: *ui-edge-ports
-    volumes:
-      - ./deploy/ui-edge/conf.d:/etc/nginx/conf.d:ro
-      - ./deploy/ui-edge/includes:/etc/nginx/includes:ro
-      - ${UI_SSL_CERT_DIR:-./deploy/ui-edge/certs}:/etc/nginx/certs:ro
-    networks:
-      monitoring_network:
-        ipv4_address: 172.20.10.101
-
-  ui-9to18:
-    build:
-      context: .
-      dockerfile: ./ui-9to18/Dockerfile
-    ports:
-      - "${BIND_HOST:-0.0.0.0}:8200:8200/tcp"
-    environment:
-      - VITE_API_GATEWAY_URL=http://gateway:8000
-    networks:
-      monitoring_network:
-        ipv4_address: 172.20.10.102
+      edge_net:
+        aliases:
+          - ui
 
   wp-bot:
     build: 
@@ -494,3 +473,7 @@ networks:
     ipam:
       config:
         - subnet: 172.20.0.0/16
+  # Shared with deploy/ui-edge and ui-9to18. Create once: deploy/scripts/create-edge-net.ps1
+  edge_net:
+    external: true
+    name: edge_net

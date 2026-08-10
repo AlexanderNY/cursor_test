@@ -1,6 +1,8 @@
 # Edge proxy (ui-edge)
 
-Единая точка входа HTTP/HTTPS для нескольких сайтов на одном сервере.
+Отдельный деплой-юнит: единая точка входа HTTP/HTTPS для нескольких сайтов.
+
+См. также [deploy/DEPLOYMENT.md](../DEPLOYMENT.md).
 
 ## Схема
 
@@ -9,62 +11,66 @@
                          │                         └─ /tg/game/media/ → gateway:8000
 Интернет :80 / :443 ──── ui-edge (nginx)
                          │
-                         └─ www.9to18.ru ──────→ ui-9to18:8200  (HTTP, без TLS)
+                         └─ www.9to18.ru ──────→ ui-9to18:8200
 ```
 
-## Структура каталогов
+## Структура
 
 ```
 deploy/ui-edge/
+├── docker-compose.yml       # standalone stack (сеть edge_net)
 ├── README.md
 ├── conf.d/
 │   ├── 00-upstreams.conf
 │   ├── 05-default.conf
-│   ├── copyparse.conf           # активен
-│   └── 9to18.conf               # HTTP-only (HTTPS — позже)
+│   ├── copyparse.conf
+│   └── 9to18.conf
 ├── includes/
 │   ├── proxy-ui.conf
 │   └── proxy-api-gateway.conf
-└── certs/
-    ├── copyparse/
-    └── 9to18/                   # fullchain.pem + privkey.pem
+├── certs/
+│   ├── copyparse/
+│   └── 9to18/
+└── scripts/
+    ├── gen-self-signed.ps1
+    └── gen-self-signed.sh
 ```
 
-Приложение второго сайта: **`ui-9to18/`** (Vite + React, порт 8200).
+Upstream’ы резолвятся по именам контейнеров/сервисов в сети **`edge_net`**: `ui`, `ui-9to18`, `gateway` (Docker DNS `127.0.0.11` в рантайме — edge может стартовать до приложений).
 
-## 9to18.ru
-
-Работает по **HTTP** (порт 80), без сертификата. Заглушка «Сайт в разработке» в `ui-9to18/`.
-
-DNS: A-записи `9to18.ru` и `www.9to18.ru` → IP сервера.
+## Запуск
 
 ```powershell
-docker compose up -d ui-9to18 ui-edge
-curl -I http://9to18.ru
+# один раз
+..\scripts\create-edge-net.ps1
+
+# сертификаты (prod PEM или self-signed для проверки)
+.\scripts\gen-self-signed.ps1
+
+docker compose -f deploy/ui-edge/docker-compose.yml up -d
 ```
 
-### HTTPS (когда будет сертификат)
-
-1. `deploy/ui-edge/certs/9to18/fullchain.pem` и `privkey.pem`
-2. Добавить в `conf.d/9to18.conf` блок `listen 443 ssl`
-3. `docker compose up -d ui-edge`
-
-### Уже настроено
-
-- `gateway` → `CORS_ORIGINS` включает `9to18.ru` / `www.9to18.ru`
-- `ui-9to18/vite.config.ts` → `allowedHosts: ['.9to18.ru']`
-
-## copyparse.ru
-
-Работает по умолчанию при `docker compose up -d ui-edge ui`.
-
-## Проверка конфигурации
+Из каталога `deploy/ui-edge`:
 
 ```powershell
+docker compose up -d
 docker compose exec ui-edge nginx -t
 ```
 
-## Связанная документация
+## 9to18.ru
 
-- [docs/SSL_CERT_RENEWAL.md](../../docs/SSL_CERT_RENEWAL.md) — TLS для copyparse (аналогично для 9to18)
-- [ui-9to18/README.md](../../ui-9to18/README.md) — фронтенд 9to18
+HTTP и HTTPS. Сертификаты: `certs/9to18/fullchain.pem`, `privkey.pem`.
+
+Приложение: отдельный стек [`ui-9to18/`](../../ui-9to18/).
+
+## copyparse.ru
+
+HTTP и HTTPS. Сертификаты: `certs/copyparse/`. Upstream: сервис `ui` из монорепо-compose.
+
+## Проверка
+
+```powershell
+curl -I -H "Host: www.copyparse.ru" http://127.0.0.1
+curl -I -H "Host: www.9to18.ru" http://127.0.0.1
+curl -Ik -H "Host: www.9to18.ru" https://127.0.0.1
+```

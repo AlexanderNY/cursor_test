@@ -1,0 +1,21 @@
+# Standalone 9to18.ru frontend. Requires: docker network create edge_net
+# Reachable from ui-edge as ui-9to18:8200
+
+services:
+  ui-9to18:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: ui-9to18
+    # No host port publish — traffic only via ui-edge on edge_net
+    expose:
+      - "8200"
+    networks:
+      - edge_net
+    restart: unless-stopped
+
+networks:
+  edge_net:
+    external: true
+    name: edge_net

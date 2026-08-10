@@ -1,0 +1,8 @@
+node_modules
+dist
+public/pyodide
+*.tsbuildinfo
+.git
+.gitignore
+README.md
+docker-compose*.yml

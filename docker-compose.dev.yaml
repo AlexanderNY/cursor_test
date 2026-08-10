@@ -1,0 +1,38 @@
+# Local all-in-one: copyparse + ui-9to18 + ui-edge on edge_net
+# Usage:
+#   .\deploy\scripts\create-edge-net.ps1
+#   .\deploy\ui-edge\scripts\gen-self-signed.ps1   # if certs missing
+#   docker compose -f docker-compose.yaml -f docker-compose.dev.yaml up -d
+
+services:
+  ui-9to18:
+    build:
+      context: ./ui-9to18
+      dockerfile: Dockerfile
+      target: production
+    container_name: ui-9to18
+    expose:
+      - "8200"
+    networks:
+      edge_net:
+        aliases:
+          - ui-9to18
+    restart: unless-stopped
+
+  ui-edge:
+    image: nginx:1.27-alpine
+    container_name: ui-edge
+    depends_on:
+      - ui
+      - ui-9to18
+      - gateway
+    ports:
+      - "${BIND_HOST:-0.0.0.0}:80:80/tcp"
+      - "${BIND_HOST:-0.0.0.0}:443:443/tcp"
+    volumes:
+      - ./deploy/ui-edge/conf.d:/etc/nginx/conf.d:ro
+      - ./deploy/ui-edge/includes:/etc/nginx/includes:ro
+      - ${UI_SSL_CERT_DIR:-./deploy/ui-edge/certs}:/etc/nginx/certs:ro
+    networks:
+      - edge_net
+    restart: unless-stopped

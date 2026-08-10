@@ -1,0 +1,15 @@
+# Local Vite dev override: docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+services:
+  ui-9to18:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    # Optional direct access while developing
+    ports:
+      - "${BIND_HOST:-127.0.0.1}:8200:8200/tcp"
+    volumes:
+      - ./src:/src/src
+      - ./public:/src/public
+      - ./index.html:/src/index.html
+      - ./vite.config.ts:/src/vite.config.ts

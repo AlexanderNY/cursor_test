@@ -214,7 +214,6 @@ function drawPaperObstacle(ctx: CanvasRenderingContext2D, width: number, height:
 }
 
 function drawToothbrushObstacle(ctx: CanvasRenderingContext2D, width: number, height: number): void {
-  const hw = width / 2
   const hh = height / 2
   const handleW = width * 0.62
   const headW = width * 0.95
@@ -569,7 +568,7 @@ function drawBoss(
   ctx.stroke()
 
   if (bossKind === 'leech') {
-    drawEyes(ctx, x, y, facing)
+    drawEyes(ctx, x, y, facing, 2, { x: playerX, y: playerY })
   }
   if (bossKind === 'swarm') {
     ctx.fillStyle = '#431407'
@@ -690,7 +689,7 @@ function drawEnemy(
 }
 
 const ENEMY_KIND_PALETTE: Record<
-  RenderState['enemies'][number]['kind'],
+  NonNullable<RenderState['enemies'][number]['kind']>,
   { fill: string; burst: string; stroke: string; chaseStroke: string }
 > = {
   grazer: {
@@ -1193,7 +1192,7 @@ export function drawHudBars(
   state: RenderState,
   viewportWidth: number,
 ): void {
-  const { red, green, weight, perks = [], radius, stamina = 100, stamina_max = 100, is_sprinting: isSprinting } =
+  const { red, green, weight, radius, stamina = 100, stamina_max = 100, is_sprinting: isSprinting } =
     state.player
   const barWidth = Math.min(240, viewportWidth - 32)
   const x = 16

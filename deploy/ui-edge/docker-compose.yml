@@ -1,0 +1,22 @@
+# Standalone edge proxy. Requires external network: docker network create edge_net
+# Upstream services on edge_net: ui:8100, ui-9to18:8200, gateway:8000
+
+services:
+  ui-edge:
+    image: nginx:1.27-alpine
+    container_name: ui-edge
+    ports:
+      - "${BIND_HOST:-0.0.0.0}:80:80/tcp"
+      - "${BIND_HOST:-0.0.0.0}:443:443/tcp"
+    volumes:
+      - ./conf.d:/etc/nginx/conf.d:ro
+      - ./includes:/etc/nginx/includes:ro
+      - ${UI_SSL_CERT_DIR:-./certs}:/etc/nginx/certs:ro
+    networks:
+      - edge_net
+    restart: unless-stopped
+
+networks:
+  edge_net:
+    external: true
+    name: edge_net

@@ -1,8 +1,9 @@
 # ui-9to18
 
-Фронтенд для **9to18.ru**. За edge-прокси `ui-edge` на порту **8200** (внутри Docker-сети).
+Автономный фронтенд для **9to18.ru** (Vite + React, игра Bowl на Pyodide).
+Без связи с `ui-app` и backend API.
 
-Автономный SPA без связи с `ui-app` и backend API.
+За edge-прокси `ui-edge` слушает порт **8200** внутри сети `edge_net`.
 
 ## Маршруты
 
@@ -20,20 +21,27 @@ npm install
 npm run dev
 ```
 
-Pyodide WASM загружается **локально** из `public/pyodide/` (копируется из `node_modules` при `npm install` / `npm run dev`).
-
 http://localhost:8200
 
-## Docker
+Pyodide WASM копируется в `public/pyodide/` при `npm run dev` / `npm run build`.
 
-Поднимается вместе с `ui-edge`:
+## Docker (production static)
+
+Требуется сеть `edge_net` (см. [deploy/DEPLOYMENT.md](../deploy/DEPLOYMENT.md)):
 
 ```powershell
-docker compose up -d ui-9to18 ui-edge
+..\deploy\scripts\create-edge-net.ps1
+docker compose -f ui-9to18/docker-compose.yml up -d --build
 ```
 
-Проверка: http://9to18.ru (нужна A-запись на IP сервера).
+Dev-режим (Vite):
 
-## HTTPS позже
+```powershell
+docker compose -f ui-9to18/docker-compose.yml -f ui-9to18/docker-compose.dev.yml up -d --build
+```
 
-Сертификаты в `deploy/ui-edge/certs/9to18/`, блок `listen 443 ssl` в `deploy/ui-edge/conf.d/9to18.conf`.
+## Вынос в отдельный репозиторий
+
+Каталог `ui-9to18/` самодостаточен: скопируйте его как корень нового repo. Dockerfile уже использует context `.`.
+
+Маршрутизация домена и TLS остаются в [`deploy/ui-edge`](../deploy/ui-edge/).
