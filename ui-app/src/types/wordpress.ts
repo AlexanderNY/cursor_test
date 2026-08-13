@@ -75,6 +75,8 @@ export interface WordPressPost {
   to_threads?: boolean
   to_dzen?: boolean
   to_instagram?: boolean
+  target_channels?: string[]
+  target_groups?: string[]
   post: {
     title: string
     content: string

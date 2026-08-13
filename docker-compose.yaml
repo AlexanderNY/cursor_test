@@ -16,7 +16,8 @@ x-ai-environment: &ai-environment
   AI_MODEL: qwen2.5:3b
   AI_TIMEOUT_SEC: "60"
   AI_REALTIME_TIMEOUT_SEC: "15"
-  AI_ENABLED: "false"
+  # Kill-switch поверх тоггла Checks → AI. По умолчанию true — иначе UI «Включена», а запросы падают.
+  AI_ENABLED: "${AI_ENABLED:-true}"
   CORE_SERVICE_URL: http://core:8002
   AI_SETTINGS_URL: http://core:8002/internal/ai-enabled
 
@@ -36,6 +37,7 @@ services:
       DATABASE_URL: ${DATABASE_URL}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY}
       S3_ENDPOINT_URL: http://minio:9000
+      S3_PUBLIC_ENDPOINT_URL: ${S3_PUBLIC_ENDPOINT_URL:-http://localhost:9000}
       S3_BUCKET: uploads
       S3_ACCESS_KEY: ${S3_ACCESS_KEY:-admin}
       S3_SECRET_KEY: ${S3_SECRET_KEY}
@@ -110,11 +112,19 @@ services:
       - "8003:8003"
     environment:
       - API_GATEWAY_URL=http://gateway:8000
+      - CORE_SERVICE_URL=http://core:8002
       - DATABASE_URL=${DATABASE_URL}
       - POLL_INTERVAL_SECONDS=60
       - NOTIFY_ON_CHANGE_ONLY=true
-      - SCHEDULER_LOGIN=
-      - SCHEDULER_PASSWORD=
+      - TG_BOT_SERVICE_URL=http://tg-bot:8004
+      - WP_BOT_SERVICE_URL=http://wp-bot:8006
+      - VK_BOT_SERVICE_URL=http://vk-bot:8005
+      - TW_BOT_SERVICE_URL=http://tw-bot:8011
+      - URL_BOT_SERVICE_URL=http://url-bot:8007
+      - THREADS_BOT_SERVICE_URL=http://th-bot:8013
+      - DZEN_BOT_SERVICE_URL=http://dzen-bot:8012
+      - INSTAGRAM_BOT_SERVICE_URL=http://instagram-bot:8011
+      - TZ=${TZ:-Europe/Moscow}
     networks:
       monitoring_network:
         ipv4_address: 172.20.10.3
@@ -168,6 +178,7 @@ services:
       API_GATEWAY_URL: http://gateway:8000
       CHROME_BIN: /usr/bin/chromium
       CHROMEDRIVER_PATH: /usr/bin/chromedriver
+      TZ: ${TZ:-Europe/Moscow}
     networks:
       monitoring_network:
         ipv4_address: 172.20.10.7
@@ -358,10 +369,14 @@ services:
       LOG_BOT_ACTIONS: "false"
       RELOAD_PROFILES_INTERVAL_SEC: "300"
       MAX_CONCURRENT_CLIENTS: "20"
+      # SOCKS5/HTTP proxy for Telethon when MTProto is blocked (Clash etc.)
+      TELEGRAM_PROXY_URL: ${TELEGRAM_PROXY_URL:-}
       CHROME_BIN: /usr/bin/chromium
       CHROMEDRIVER_PATH: /usr/bin/chromedriver
     volumes:
       - tg-bot-sessions:/app/sessions
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       monitoring_network:
         ipv4_address: 172.20.10.4
@@ -452,6 +467,9 @@ services:
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-admin}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      # Чтобы Console/ссылки открывались с хоста, а не как http://minio:9000
+      MINIO_SERVER_URL: ${MINIO_SERVER_URL:-http://localhost:9000}
+      MINIO_BROWSER_REDIRECT_URL: ${MINIO_BROWSER_REDIRECT_URL:-http://localhost:9001}
     volumes:
       - ./minio_data:/data  # папка на вашем диске для хранения файлов
     command: server /data --console-address ":9001"

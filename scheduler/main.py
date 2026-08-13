@@ -97,12 +97,13 @@ async def start_discovery(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)
 ):
     """Принудительный запуск одного цикла сбора расписаний.
-    
-    Выполняет один цикл: запрос core, diff, сохранение, оповещение.
+
+    JWT нужен только для доступа к endpoint (admin через gateway).
+    Сам цикл ходит в Core/ботов напрямую по user_id из БД, без service-login.
     """
     try:
-        token = await get_auth_token(credentials)
-        changed = await run_poll_cycle(token)
+        await get_auth_token(credentials)
+        changed = await run_poll_cycle()
         return {
             "status": "success",
             "message": "Discovery cycle completed",
@@ -160,15 +161,12 @@ async def start_bot(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)
 ):
     """Принудительный запуск ботов для указанных платформ.
-    
-    Args:
-        request: Запрос с списком платформ для запуска
-        credentials: JWT токен авторизации
+
+    JWT — доступ к endpoint; расписания и notify — напрямую Core/боты по user_id из БД.
     """
     try:
-        token = await get_auth_token(credentials)
-        
-        # Валидация платформ (совпадает с BOT_PLATFORMS в schedule_poll_service)
+        await get_auth_token(credentials)
+
         valid_platforms = list(BOT_PLATFORMS)
         invalid_platforms = [p for p in request.platforms if p not in valid_platforms]
         if invalid_platforms:
@@ -176,21 +174,19 @@ async def start_bot(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Invalid platforms: {invalid_platforms}. Valid platforms: {valid_platforms}"
             )
-        
-        # Получаем расписания для указанных платформ
-        schedules = await _fetch_schedules(token)
+
+        schedules = await _fetch_schedules()
         by_platform: dict[str, list[dict]] = {p: [] for p in request.platforms}
-        
+
         for s in schedules:
             p = s.get("platform")
             if p in by_platform:
                 by_platform[p].append(s)
-        
-        # Запускаем боты для каждой платформы
+
         results = {}
         for platform in request.platforms:
             try:
-                await _notify_bot(platform, by_platform[platform], token)
+                await _notify_bot(platform, by_platform[platform])
                 results[platform] = {
                     "status": "success",
                     "schedules_count": len(by_platform[platform])
@@ -201,7 +197,7 @@ async def start_bot(
                     "status": "error",
                     "error": str(e)
                 }
-        
+
         return {
             "status": "success",
             "message": "Bots started",

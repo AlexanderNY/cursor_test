@@ -126,6 +126,8 @@ async def create_instagram_post(
         to_dzen = data.to_dzen
         to_threads = data.to_threads
         to_instagram = data.to_instagram
+        target_channels = list(data.target_channels or [])
+        target_groups = list(data.target_groups or [])
     else:
         if caption is None:
             raise HTTPException(status_code=400, detail="caption or data body required")
@@ -133,6 +135,8 @@ async def create_instagram_post(
         images_list = []
         to_tg = to_tw = to_wp = to_vk = to_dzen = to_threads = False
         to_instagram = True
+        target_channels = []
+        target_groups = []
 
     try:
         for img in images or []:
@@ -151,6 +155,8 @@ async def create_instagram_post(
             to_dzen=to_dzen,
             to_threads=to_threads,
             to_instagram=to_instagram,
+            target_channels=target_channels,
+            target_groups=target_groups,
         )
         return post
     except ValueError as e:

@@ -127,6 +127,7 @@ async def create_tg_post(
     to_instagram: bool = Form(False),
     publish_at: Optional[str] = Form(None),
     target_channels: Optional[str] = Form(None),
+    target_groups: Optional[str] = Form(None),
     x_user_id: Optional[str] = Header(None)
 ):
     """Создает пост для Telegram (max 4096 символов) с поддержкой изображений.
@@ -136,6 +137,7 @@ async def create_tg_post(
         image: Опциональное изображение
         publish_at: ISO datetime для отложенной публикации
         target_channels: JSON-массив каналов
+        target_groups: JSON-массив VK-групп
         
     Returns:
         Созданный пост
@@ -157,15 +159,20 @@ async def create_tg_post(
             image_url = f"/uploads/tg/{file_name}"
             images.append(image_url)
 
-        channels = None
-        if target_channels:
+        def _parse_id_list(raw: Optional[str]) -> Optional[list]:
+            if not raw:
+                return None
             import json as _json
             try:
-                parsed = _json.loads(target_channels)
+                parsed = _json.loads(raw)
                 if isinstance(parsed, list):
-                    channels = [str(c).strip() for c in parsed if str(c).strip()]
+                    return [str(c).strip() for c in parsed if str(c).strip()]
             except (_json.JSONDecodeError, TypeError):
-                channels = [c.strip() for c in target_channels.split(",") if c.strip()]
+                return [c.strip() for c in raw.split(",") if c.strip()]
+            return None
+
+        channels = _parse_id_list(target_channels)
+        groups = _parse_id_list(target_groups)
         
         post = await post_service.create_tg_post_record(
             user_id=user_id,
@@ -180,6 +187,7 @@ async def create_tg_post(
             to_instagram=to_instagram,
             publish_at=publish_at or None,
             target_channels=channels,
+            target_groups=groups,
         )
         return post
     except ValueError as e:

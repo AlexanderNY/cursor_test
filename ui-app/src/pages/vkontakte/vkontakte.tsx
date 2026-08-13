@@ -8,12 +8,15 @@ import { PageHeader, PageContainer } from '@/components/ui'
 import {
   TargetSocialNetworksWidget,
   createDefaultTargets,
+  EMPTY_SELECTED_BRAND_CHANNELS,
   type TargetSocialNetworks,
+  type SelectedBrandChannels,
 } from '@/components/target-social-networks'
 import { TipTapEditor } from '@/components/ui/tiptap-editor'
 import { apiClient } from '@/services/api-client'
 import { vkontakteService } from '@/services/vkontakte-service'
 import { useAuth } from '@/contexts/auth-context'
+import { formatDateTime } from '@/utils/date'
 import type {
   VKontakteProfile,
   VKontaktePostListItem,
@@ -105,6 +108,9 @@ export function VKontaktePage() {
   const [postTargets, setPostTargets] = useState<TargetSocialNetworks>(() =>
     createDefaultTargets('vk')
   )
+  const [selectedChannels, setSelectedChannels] = useState<SelectedBrandChannels>({
+    ...EMPTY_SELECTED_BRAND_CHANNELS,
+  })
   const [editingPostId, setEditingPostId] = useState<number | null>(null)
 
   // Posts list
@@ -277,16 +283,21 @@ export function VKontaktePage() {
           to_instagram: postTargets.instagram,
           images: imagesList.length ? imagesList : undefined,
           publish_at: publishAt ? new Date(publishAt).toISOString() : undefined,
-          target_groups: targetGroupsText
-            .split(/[\n,]+/)
-            .map((s) => s.trim())
-            .filter(Boolean),
+          target_groups: [
+            ...selectedChannels.vk,
+            ...targetGroupsText
+              .split(/[\n,]+/)
+              .map((s) => s.trim())
+              .filter(Boolean),
+          ].filter((v, i, a) => a.indexOf(v) === i),
+          target_channels: selectedChannels.tg.length ? selectedChannels.tg : undefined,
         })
         setSuccess('Post created successfully')
         setPostContent('')
         setPostImages([])
         setPublishAt('')
         setTargetGroupsText('')
+        setSelectedChannels({ ...EMPTY_SELECTED_BRAND_CHANNELS })
         if (hasLoadedPosts) loadPosts()
       }
     } catch (err) {
@@ -935,7 +946,12 @@ export function VKontaktePage() {
               </div>
 
               {!editingPostId && (
-                <TargetSocialNetworksWidget value={postTargets} onChange={setPostTargets} />
+                <TargetSocialNetworksWidget
+                  value={postTargets}
+                  onChange={setPostTargets}
+                  selectedChannels={selectedChannels}
+                  onSelectedChannelsChange={setSelectedChannels}
+                />
               )}
               <CardFooter className="px-0">
                 <Button type="submit" isLoading={isCreatingPost} className="w-full sm:w-auto">
@@ -987,7 +1003,7 @@ export function VKontaktePage() {
                           </span>
                         </td>
                         <td className="py-2 pr-4 text-[var(--text-secondary)]">
-                          {new Date(post.created_at).toLocaleDateString()}
+                          {formatDateTime(post.created_at)}
                         </td>
                         <td className="py-2 pr-4 text-right">
                           <div className="flex items-center justify-end gap-1">

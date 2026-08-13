@@ -103,6 +103,8 @@ async def create_manual_post(
             likes=data.likes,
             views=data.views,
             is_ad=data.is_ad,
+            target_channels=data.target_channels,
+            target_groups=data.target_groups,
         )
         return post
     except ValueError as e:
@@ -171,6 +173,8 @@ async def update_cpost_post(
         views=data.views,
         is_ad=data.is_ad,
         status=data.status,
+        target_channels=data.target_channels,
+        target_groups=data.target_groups,
     )
     if not post:
         raise HTTPException(status_code=404, detail="Post not found")

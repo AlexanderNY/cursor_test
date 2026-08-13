@@ -85,6 +85,8 @@ async def create_threads_post(
     to_wp: bool = Form(False),
     to_vk: bool = Form(False),
     to_threads: bool = Form(True),
+    target_channels: Optional[str] = Form(None),
+    target_groups: Optional[str] = Form(None),
     x_user_id: Optional[str] = Header(None),
 ):
     """Создает пост для Threads (max 500 символов) с поддержкой изображений. Файлы — в S3 или локально."""
@@ -105,6 +107,19 @@ async def create_threads_post(
                 await async_fs.write_bytes(UPLOADS_THREADS_DIR / file_name, content)
                 image_url = f"/uploads/threads/{file_name}"
             images.append(image_url)
+
+        def _parse_id_list(raw: Optional[str]) -> Optional[list]:
+            if not raw:
+                return None
+            import json as _json
+            try:
+                parsed = _json.loads(raw)
+                if isinstance(parsed, list):
+                    return [str(c).strip() for c in parsed if str(c).strip()]
+            except (_json.JSONDecodeError, TypeError):
+                return [c.strip() for c in raw.split(",") if c.strip()]
+            return None
+
         post = await post_service.create_threads_post_record(
             user_id=user_id,
             text=text,
@@ -114,6 +129,8 @@ async def create_threads_post(
             to_wp=to_wp,
             to_vk=to_vk,
             to_threads=to_threads,
+            target_channels=_parse_id_list(target_channels),
+            target_groups=_parse_id_list(target_groups),
         )
         return post
     except ValueError as e:

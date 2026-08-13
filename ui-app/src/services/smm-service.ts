@@ -1,5 +1,9 @@
 import { apiClient } from './api-client'
 import type {
+  AiAssistAction,
+  AiAssistActionId,
+  AiProcessParams,
+  AiProcessResponse,
   AnalyticsOverview,
   AnalyticsPost,
   AutomationRule,
@@ -82,9 +86,19 @@ export const smmService = {
       discussion_external_id: string | null
       discussion_title: string | null
       comments_collect_enabled: boolean
+      alert_enabled: boolean
+      save_conditions: string[]
+      processing: BrandChannel['processing']
+      alert_delivery: BrandChannel['alert_delivery']
+      alert_rules: BrandChannel['alert_rules']
     }>,
   ): Promise<BrandChannel> {
     const { data } = await apiClient.patch(`/smm/brands/${brandId}/channels/${channelId}`, payload)
+    return data
+  },
+
+  async getChannel(channelId: number): Promise<BrandChannel> {
+    const { data } = await apiClient.get(`/smm/channels/${channelId}`)
     return data
   },
 
@@ -321,6 +335,22 @@ export const smmService = {
     targets: string[] = ['tg', 'vk'],
   ): Promise<{ variants: Record<string, string>; fallback?: boolean }> {
     const { data } = await apiClient.post('/smm/ai/adapt', { text, targets })
+    return data
+  },
+
+  async getAiActions(): Promise<AiAssistAction[]> {
+    const { data } = await apiClient.get('/smm/ai/actions')
+    return data.actions ?? []
+  },
+
+  async aiProcess(payload: {
+    action: AiAssistActionId
+    text: string
+    params?: AiProcessParams
+    source?: 'inbox' | 'post'
+    source_id?: number
+  }): Promise<AiProcessResponse> {
+    const { data } = await apiClient.post('/smm/ai/process', payload)
     return data
   },
 }

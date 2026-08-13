@@ -4,15 +4,24 @@ export type ConditionsMode = 'any_of' | 'all_of' | 'regex'
 
 export type SentimentFilter = 'positive' | 'negative' | 'neutral'
 
+/** Канал/чат: ID (+ опциональное название) */
+export interface TelegramChatRef {
+  id: string
+  title?: string
+}
+
+export type TelegramChatRefInput = string | TelegramChatRef
+
 export interface TelegramAlertRule {
   id?: string
   enabled: boolean
   priority?: number
-  chats_to_read: string[]
+  chats_to_read: TelegramChatRefInput[]
   save_conditions: string[]
   conditions_mode?: ConditionsMode
   category_filter?: string
   channel_to_post?: string
+  channel_to_post_title?: string
   alert_text?: string
   dedup_window_sec?: number
   rate_limit_per_hour?: number
@@ -32,10 +41,10 @@ export interface TelegramConfig {
   api_hash?: string
   telegram_username?: string
   auth_phone_number?: string
-  chats_to_read: string[]
+  chats_to_read: TelegramChatRefInput[]
   save_conditions: string[]
   channel_to_post?: string
-  channels_to_post?: string[]
+  channels_to_post?: TelegramChatRefInput[]
   alert_enabled?: boolean
   alert_rules?: TelegramAlertRule[]
   process_enabled: boolean
@@ -202,4 +211,3 @@ export type TelegramTab =
   | 'profile'
   | 'processing'
   | 'auth'
-  | 'analytics'

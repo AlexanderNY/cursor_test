@@ -45,7 +45,11 @@ async def submit_phone_code(request: PhoneCodeRequest):
     if not client:
         raise HTTPException(
             status_code=404,
-            detail="No pending authorization found for this user"
+            detail=(
+                "No pending Telegram session for this user. "
+                "Connection to Telegram may have failed — check tg-bot logs "
+                "and TELEGRAM_PROXY_URL, then save profile / reload bot and request a new code."
+            ),
         )
     
     # Обрабатываем код
@@ -81,7 +85,11 @@ async def submit_password(request: PasswordRequest):
     if not client:
         raise HTTPException(
             status_code=404,
-            detail="No pending authorization found for this user"
+            detail=(
+                "No pending Telegram session for this user. "
+                "Connection to Telegram may have failed — check tg-bot logs "
+                "and TELEGRAM_PROXY_URL, then save profile / reload bot."
+            ),
         )
     
     # Обрабатываем пароль

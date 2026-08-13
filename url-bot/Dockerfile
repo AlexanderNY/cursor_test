@@ -2,12 +2,12 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# 1. Установка Chromium, драйвера и обязательных зависимостей
-# Используем одну команду RUN для минимизации слоев
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# 1. Chromium + deps; Acquire::Retries helps flaky deb.debian.org mirrors
+RUN printf 'Acquire::Retries "5";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\n' \
+      > /etc/apt/apt.conf.d/80-retries \
+ && apt-get update && apt-get install -y --no-install-recommends \
     chromium \
     chromium-driver \
-    # Зависимости для работы Chromium в headless-режиме:
     libnss3 \
     libglib2.0-0 \
     libxkbcommon0 \

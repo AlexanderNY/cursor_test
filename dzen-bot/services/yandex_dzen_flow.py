@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import TYPE_CHECKING, List, Literal, Optional
+from typing import TYPE_CHECKING, Callable, List, Literal, Optional
 
 from selenium.common.exceptions import StaleElementReferenceException, TimeoutException
 from selenium.webdriver import Keys
@@ -289,7 +289,10 @@ def _check_authenticated(driver: "WebDriver") -> bool:
 
 
 def dzen_entry_run_until_push_or_ok(
-    driver: "WebDriver", login: str, password: str
+    driver: "WebDriver",
+    login: str,
+    password: str,
+    on_checkpoint: Optional[Callable[["WebDriver", str], None]] = None,
 ) -> DzenFlowResult:
     """
     Открывает dzen.ru, проходит сценарий входа.
@@ -299,12 +302,24 @@ def dzen_entry_run_until_push_or_ok(
     if not (login and password):
         raise YandexAuthError("Пустой логин или пароль")
 
+    def _checkpoint(label: str) -> None:
+        if not on_checkpoint:
+            return
+        try:
+            on_checkpoint(driver, label)
+        except Exception:
+            logger.debug("dzen auth checkpoint %s failed", label, exc_info=True)
+
+    def _return_push(label: str) -> DzenFlowResult:
+        _checkpoint(label)
+        return "push"
+
     base = (getattr(settings, "DZEN_ENTRY_BASE_URL", None) or "https://dzen.ru/").strip()
-    short_w = 45.0
 
     driver.get(base)
     time.sleep(2.0)
     dismiss_passport_overlays(driver)
+    _checkpoint("verify_yandex_dzen_home")
     if _detect_captcha_block(driver):
         raise YandexAuthError(
             "Обнаружена проверка SmartCaptcha/«не робот» на dzen.ru. "
@@ -314,9 +329,11 @@ def dzen_entry_run_until_push_or_ok(
     _click_voyti_on_dzen(driver, 25.0)
     time.sleep(1.0)
     dismiss_passport_overlays(driver)
+    _checkpoint("verify_yandex_after_voyti")
     _click_yandex_id_entry(driver, 25.0)
     time.sleep(2.0)
     dismiss_passport_overlays(driver)
+    _checkpoint("verify_yandex_id_entry")
 
     if _detect_captcha_block(driver):
         raise YandexAuthError("Капча/антибот на этапе Яндекс ID. " + _safe_page_hint(driver))
@@ -325,28 +342,30 @@ def dzen_entry_run_until_push_or_ok(
     if not used_pochta:
         if not _enter_login_and_submit(driver, login, 25.0):
             if page_indicates_push_code(driver):
-                return "push"
+                return _return_push("verify_yandex_push_before_login")
             raise YandexAuthError(
                 "Не найдено поле логина (в т.ч. Email or phone / passp-field-login). "
                 + _safe_page_hint(driver)
             )
 
     dismiss_passport_overlays(driver)
+    _checkpoint("verify_yandex_after_login")
 
     if page_indicates_push_code(driver):
-        return "push"
+        return _return_push("verify_yandex_push_after_login")
 
     try:
         _enter_password_and_submit(
             driver, password, float(getattr(settings, "YANDEX_PASSPORT_PASSWORD_TIMEOUT_SEC", 40))
         )
     except PushCodeRequiredError:
-        return "push"
+        return _return_push("verify_yandex_push_password")
     time.sleep(2.0)
     dismiss_passport_overlays(driver)
+    _checkpoint("verify_yandex_after_password")
 
     if page_indicates_push_code(driver):
-        return "push"
+        return _return_push("verify_yandex_push_after_password")
 
     if "passport.yandex.ru" in (driver.current_url or "").lower() and "auth" in (driver.current_url or ""):
         err = _find_first(
@@ -356,7 +375,10 @@ def dzen_entry_run_until_push_or_ok(
         msg = err.text.strip() if err else "Не удалось войти. Проверьте логин и пароль."
         raise YandexAuthError(msg or "Ошибка входа в Яндекс ID.")
 
-    return "ok" if _check_authenticated(driver) or not page_indicates_push_code(driver) else "push"
+    if _check_authenticated(driver) or not page_indicates_push_code(driver):
+        _checkpoint("verify_yandex_ok")
+        return "ok"
+    return _return_push("verify_yandex_push_final")
 
 
 def _find_push_code_input(driver: "WebDriver", timeout: float = 25.0):

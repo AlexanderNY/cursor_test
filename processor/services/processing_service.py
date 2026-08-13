@@ -19,12 +19,49 @@ from config import (
     settings,
     PROFILE_TABLE_MAP,
     PROCESSING_SETTINGS_FIELDS,
+    PLATFORM_FLAGS,
 )
 from services.text_cleaner import remove_emojis, remove_images, clean_html
 from services.ai_processor import process_with_ai, summarize_text
 from services.platform_formatter import prepare_platform_texts
 
 logger = logging.getLogger(__name__)
+
+
+async def _log_cycle(
+    *,
+    status: str = "ok",
+    detail: str | None = None,
+    items_processed: int = 0,
+) -> None:
+    try:
+        async with get_db_connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    INSERT INTO service_cycle_log (
+                        service_name, cycle_type, status, detail, items_processed
+                    ) VALUES (%s, %s, %s, %s, %s)
+                    """,
+                    ("processor", "process", status, (detail or "")[:2000] or None, int(items_processed or 0)),
+                )
+    except Exception as exc:
+        logger.debug("service_cycle_log skip: %s", exc)
+
+_SERVICE_NAME_TO_FLAG = {name: flag for flag, name in PLATFORM_FLAGS.items()}
+_DESTINATION_FLAGS = list(PLATFORM_FLAGS.keys())
+_SOURCE_PLATFORM_TABLE = {
+    "tg": "tg_posts",
+    "wp": "wp_posts",
+    "url": "url_posts",
+    "curl": "url_posts",
+    "vk": "vk_posts",
+    "tw": "tw_posts",
+    "threads": "threads_posts",
+    "instagram": "instagram_posts",
+    "dzen": "dzen_posts",
+    "cpost": "cpost_posts",
+}
 
 
 class ProcessingService:
@@ -47,6 +84,10 @@ class ProcessingService:
         """
         cycle_count = 0
 
+        requeued = await self._requeue_orphan_reviews()
+        if requeued:
+            logger.info("Requeued %d orphan review posts without destination flags", requeued)
+
         async with get_db_connection() as conn:
             cur = await conn.cursor()
             try:
@@ -55,7 +96,7 @@ class ProcessingService:
                 # 1. Выбрать посты со статусом 'collected'
                 await cur.execute(
                     """
-                    SELECT id, user_id, source_platform, post_text, images,
+                    SELECT id, user_id, source_platform, source_id, post_text, images,
                            to_tg, to_tw, to_wp, to_vk, to_threads, to_dzen, to_instagram
                     FROM posts
                     WHERE status = 'collected'
@@ -71,10 +112,11 @@ class ProcessingService:
                     await cur.execute("COMMIT")
                     self.last_run_at = datetime.utcnow()
                     self.last_cycle_processed = 0
+                    await _log_cycle(items_processed=0)
                     return 0
 
                 col_names = [
-                    "id", "user_id", "source_platform", "post_text", "images",
+                    "id", "user_id", "source_platform", "source_id", "post_text", "images",
                     "to_tg", "to_tw", "to_wp", "to_vk", "to_threads", "to_dzen", "to_instagram",
                 ]
 
@@ -116,6 +158,7 @@ class ProcessingService:
         if cycle_count > 0:
             logger.info("Processing cycle done: %d posts processed", cycle_count)
 
+        await _log_cycle(items_processed=cycle_count)
         return cycle_count
 
     async def _process_single_post(self, post: Dict[str, Any]) -> None:
@@ -141,6 +184,7 @@ class ProcessingService:
 
         # Загрузить настройки обработки из профиля
         proc_settings = await self._load_processing_settings(user_id, source_platform)
+        self._apply_destination_flags(post, proc_settings)
 
         is_process_enabled = proc_settings.get("process_enabled", False)
 
@@ -154,15 +198,7 @@ class ProcessingService:
         ai_enrichment = await self._maybe_enrich_text(text, proc_settings)
 
         # Подготовить тексты для целевых платформ (всегда)
-        post_flags = {
-            "to_tg": post.get("to_tg", False),
-            "to_tw": post.get("to_tw", False),
-            "to_wp": post.get("to_wp", False),
-            "to_vk": post.get("to_vk", False),
-            "to_threads": post.get("to_threads", False),
-            "to_dzen": post.get("to_dzen", False),
-            "to_instagram": post.get("to_instagram", False),
-        }
+        post_flags = {flag: bool(post.get(flag)) for flag in _DESTINATION_FLAGS}
         platform_texts = await prepare_platform_texts(
             text=text,
             post_flags=post_flags,
@@ -174,10 +210,7 @@ class ProcessingService:
 
         # Определить финальный статус
         is_review = proc_settings.get("status_review_after_process", False)
-        has_any_target = any(
-            post.get(flag)
-            for flag in ("to_tg", "to_tw", "to_wp", "to_vk", "to_threads", "to_dzen", "to_instagram")
-        )
+        has_any_target = any(post_flags.values())
         if is_review or not has_any_target:
             final_status = "review"
             if not has_any_target:
@@ -195,13 +228,15 @@ class ProcessingService:
             images=images,
             platform_texts=platform_texts,
             status=final_status,
+            destination_flags=post_flags,
         )
+        await self._sync_source_status(post, final_status)
 
         logger.info(
             "Post id=%s processed -> status=%s (platforms: %s)",
             post_id,
             final_status,
-            ", ".join(platform_texts.keys()) if platform_texts else "none",
+            ", ".join(k for k in platform_texts.keys() if not k.startswith("_")) or "none",
         )
 
     async def _load_processing_settings(
@@ -361,6 +396,89 @@ class ProcessingService:
             logger.exception("AI enrichment failed")
             return None
 
+    async def _requeue_orphan_reviews(self) -> int:
+        """Возвращает в collected review-посты без to_* — иначе они навсегда зависают."""
+        try:
+            async with get_db_connection() as conn:
+                async with conn.cursor() as cur:
+                    await cur.execute(
+                        """
+                        UPDATE posts
+                        SET status = 'collected', updated_at = CURRENT_TIMESTAMP
+                        WHERE status = 'review'
+                          AND COALESCE(to_tg, false) = false
+                          AND COALESCE(to_tw, false) = false
+                          AND COALESCE(to_wp, false) = false
+                          AND COALESCE(to_vk, false) = false
+                          AND COALESCE(to_threads, false) = false
+                          AND COALESCE(to_dzen, false) = false
+                          AND COALESCE(to_instagram, false) = false
+                        """
+                    )
+                    return int(cur.rowcount or 0)
+        except Exception:
+            logger.exception("Failed to requeue orphan review posts")
+            return 0
+
+    def _apply_destination_flags(
+        self,
+        post: Dict[str, Any],
+        proc_settings: Dict[str, Any],
+    ) -> None:
+        """Заполняет to_* из process_services, если флаги ещё не заданы."""
+        if any(post.get(flag) for flag in _DESTINATION_FLAGS):
+            return
+
+        services = proc_settings.get("process_services") or []
+        if isinstance(services, str):
+            try:
+                services = json.loads(services)
+            except (json.JSONDecodeError, TypeError):
+                services = []
+        if not isinstance(services, list):
+            services = []
+
+        for item in services:
+            flag = _SERVICE_NAME_TO_FLAG.get(str(item).strip().lower())
+            if flag:
+                post[flag] = True
+
+        if any(post.get(flag) for flag in _DESTINATION_FLAGS):
+            return
+
+        # Сбор из TG без выбранных сервисов: публикуем обратно в Telegram
+        if post.get("source_platform") == "tg":
+            post["to_tg"] = True
+
+    async def _sync_source_status(self, post: Dict[str, Any], status: str) -> None:
+        """Синхронизирует статус исходной *_posts записи (processing → ready/review)."""
+        source_platform = post.get("source_platform")
+        source_id = post.get("source_id")
+        table = _SOURCE_PLATFORM_TABLE.get(source_platform or "")
+        if not table or source_id is None:
+            return
+        # Distribute сам переводит source в ready при status=ready + to_*
+        if status == "ready":
+            return
+        try:
+            async with get_db_connection() as conn:
+                async with conn.cursor() as cur:
+                    await cur.execute(
+                        f"""
+                        UPDATE {table}
+                        SET status = %s, updated_at = CURRENT_TIMESTAMP
+                        WHERE id = %s
+                        """,
+                        (status, source_id),
+                    )
+        except Exception:
+            logger.exception(
+                "Failed to sync source status table=%s id=%s status=%s",
+                table,
+                source_id,
+                status,
+            )
+
     async def _save_processed_post(
         self,
         post_id: int,
@@ -368,6 +486,7 @@ class ProcessingService:
         images: List[str],
         platform_texts: Dict[str, str],
         status: str,
+        destination_flags: Optional[Dict[str, bool]] = None,
     ) -> None:
         """Сохраняет обработанный пост в БД.
 
@@ -377,7 +496,9 @@ class ProcessingService:
             images: Список изображений (может быть пустым после remove_images).
             platform_texts: Словарь {platform: text} для каждой целевой платформы.
             status: Финальный статус ('ready' или 'review').
+            destination_flags: Флаги to_* для записи в posts.
         """
+        flags = destination_flags or {}
         async with get_db_connection() as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
@@ -387,6 +508,13 @@ class ProcessingService:
                         images = %s,
                         platform_texts = %s,
                         status = %s,
+                        to_tg = %s,
+                        to_tw = %s,
+                        to_wp = %s,
+                        to_vk = %s,
+                        to_threads = %s,
+                        to_dzen = %s,
+                        to_instagram = %s,
                         updated_at = CURRENT_TIMESTAMP
                     WHERE id = %s
                     """,
@@ -395,6 +523,13 @@ class ProcessingService:
                         json.dumps(images, ensure_ascii=False),
                         json.dumps(platform_texts, ensure_ascii=False),
                         status,
+                        bool(flags.get("to_tg")),
+                        bool(flags.get("to_tw")),
+                        bool(flags.get("to_wp")),
+                        bool(flags.get("to_vk")),
+                        bool(flags.get("to_threads")),
+                        bool(flags.get("to_dzen")),
+                        bool(flags.get("to_instagram")),
                         post_id,
                     ),
                 )

@@ -4,7 +4,8 @@ import asyncio
 import json
 import logging
 import os
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
+from urllib.parse import urlparse, unquote
 from telethon import TelegramClient
 from telethon.errors import (
     PhoneNumberInvalidError,
@@ -24,6 +25,44 @@ def _log_action(msg: str, *args, **kwargs) -> None:
         logger.info(msg, *args, **kwargs)
     else:
         logger.debug(msg, *args, **kwargs)
+
+
+def parse_telegram_proxy(proxy_url: str) -> Optional[Dict[str, Any]]:
+    """Парсит TELEGRAM_PROXY_URL в dict для Telethon.
+
+    Поддерживает socks5://, socks5h://, socks4://, http://, https://
+    с опциональными user:pass.
+    """
+    raw = (proxy_url or "").strip()
+    if not raw:
+        return None
+
+    parsed = urlparse(raw)
+    scheme = (parsed.scheme or "").lower()
+    type_map = {
+        "socks5": "socks5",
+        "socks5h": "socks5",
+        "socks4": "socks4",
+        "socks4a": "socks4",
+        "http": "http",
+        "https": "http",
+    }
+    proxy_type = type_map.get(scheme)
+    if not proxy_type or not parsed.hostname or not parsed.port:
+        logger.warning("Invalid TELEGRAM_PROXY_URL (need scheme://host:port): %s", raw)
+        return None
+
+    proxy: Dict[str, Any] = {
+        "proxy_type": proxy_type,
+        "addr": parsed.hostname,
+        "port": int(parsed.port),
+        "rdns": True,
+    }
+    if parsed.username:
+        proxy["username"] = unquote(parsed.username)
+    if parsed.password:
+        proxy["password"] = unquote(parsed.password)
+    return proxy
 
 
 class TelegramClientManager:
@@ -46,10 +85,25 @@ class TelegramClientManager:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
-                    SELECT * FROM tg_profiles
-                    WHERE (collect_enabled = TRUE OR publish_enabled = TRUE OR alert_enabled = TRUE)
-                      AND api_id IS NOT NULL
-                      AND api_hash IS NOT NULL
+                    SELECT * FROM tg_profiles p
+                    WHERE p.api_id IS NOT NULL
+                      AND p.api_hash IS NOT NULL
+                      AND (
+                        p.collect_enabled = TRUE
+                        OR p.publish_enabled = TRUE
+                        OR p.alert_enabled = TRUE
+                        OR EXISTS (
+                          SELECT 1 FROM smm_brand_channels c
+                          JOIN smm_brands b ON b.id = c.brand_id
+                          WHERE b.user_id = p.user_id
+                            AND c.network = 'tg'
+                            AND (
+                              COALESCE(c.collect_enabled, FALSE) = TRUE
+                              OR COALESCE(c.alert_enabled, FALSE) = TRUE
+                              OR COALESCE(c.comments_collect_enabled, FALSE) = TRUE
+                            )
+                        )
+                      )
                     """
                 )
                 rows = await cur.fetchall()
@@ -282,11 +336,25 @@ class TelegramClientManager:
 
             # Создаем клиент с уникальным именем сессии для каждого пользователя
             session_name = f'sessions/tg_session_{user_id}'
+            proxy = parse_telegram_proxy(settings.TELEGRAM_PROXY_URL)
+            client_kwargs: Dict[str, Any] = {
+                "system_version": "4.16.30-vxASPA",
+            }
+            if proxy:
+                client_kwargs["proxy"] = proxy
+                _log_action(
+                    "Using Telegram proxy %s://%s:%s for user %s",
+                    proxy["proxy_type"],
+                    proxy["addr"],
+                    proxy["port"],
+                    user_id,
+                )
+
             client = TelegramClient(
                 session_name,
                 api_id,
                 api_hash,
-                system_version="4.16.30-vxASPA"
+                **client_kwargs,
             )
             
             # Подключаемся к Telegram
@@ -296,6 +364,17 @@ class TelegramClientManager:
                 raise
             except Exception as e:
                 logger.error(f"Error connecting client for user {user_id}: {e}")
+                await self._update_auth_state(user_id, auth_state='failed')
+                await notification_service.send_error_notification(
+                    user_id,
+                    "Не удалось подключиться к Telegram (сеть/блокировка MTProto). "
+                    "Нужен SOCKS5/HTTP proxy: задайте TELEGRAM_PROXY_URL "
+                    "(например socks5://host.docker.internal:10808) и перезапустите tg-bot."
+                )
+                try:
+                    await client.disconnect()
+                except Exception:
+                    pass
                 return None
             
             # Проверяем авторизацию
@@ -434,8 +513,14 @@ class TelegramClientManager:
                     _log_action("Started client for user %s", user_id)
                 else:
                     self._profiles[user_id] = profile
-                    total += 1
-                    _log_action("Client for user %s pending authorization", user_id)
+                    if user_id in self._pending_clients:
+                        total += 1
+                        _log_action("Client for user %s pending authorization", user_id)
+                    else:
+                        _log_action(
+                            "Client for user %s not started (connect failed or missing phone)",
+                            user_id,
+                        )
 
             if i + batch_size < len(profiles) and batch_delay > 0:
                 await asyncio.sleep(batch_delay)

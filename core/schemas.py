@@ -90,6 +90,54 @@ class ScheduleResponse(BaseModel):
 
 # ==================== Telegram ====================
 
+class TelegramChatRef(BaseModel):
+    """Ссылка на чат/канал: ID (+ опциональное название для UI)."""
+    id: str = Field(..., min_length=1, max_length=100)
+    title: Optional[str] = Field(None, max_length=255)
+
+    @field_validator("id", mode="before")
+    @classmethod
+    def normalize_id(cls, value: Any) -> str:
+        return str(value or "").strip()
+
+    @field_validator("title", mode="before")
+    @classmethod
+    def normalize_title(cls, value: Any) -> Optional[str]:
+        if value is None:
+            return None
+        title = str(value).strip()
+        return title[:255] if title else None
+
+
+def normalize_chat_refs(value: Any, *, max_items: int = 10) -> List[TelegramChatRef]:
+    """Принимает list[str] | list[dict] | list[TelegramChatRef] → list[TelegramChatRef]."""
+    if not isinstance(value, list):
+        return []
+    result: List[TelegramChatRef] = []
+    for item in value:
+        if len(result) >= max_items:
+            break
+        if isinstance(item, TelegramChatRef):
+            result.append(item)
+            continue
+        if isinstance(item, str):
+            trimmed = item.strip()
+            if trimmed:
+                result.append(TelegramChatRef(id=trimmed))
+            continue
+        if isinstance(item, dict):
+            raw_id = item.get("id") or item.get("external_id") or item.get("value")
+            if raw_id is None:
+                continue
+            chat_id = str(raw_id).strip()
+            if not chat_id:
+                continue
+            raw_title = item.get("title") or item.get("label") or item.get("name")
+            title = str(raw_title).strip() if raw_title else None
+            result.append(TelegramChatRef(id=chat_id, title=title or None))
+    return result
+
+
 class ConditionsMode(str, Enum):
     ANY_OF = "any_of"
     ALL_OF = "all_of"
@@ -107,11 +155,12 @@ class TelegramAlertRule(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid4()))
     enabled: bool = True
     priority: int = 0
-    chats_to_read: List[str] = Field(default_factory=list, max_length=10)
+    chats_to_read: List[TelegramChatRef] = Field(default_factory=list, max_length=10)
     save_conditions: List[str] = Field(default_factory=list, max_length=10)
     conditions_mode: ConditionsMode = ConditionsMode.ANY_OF
     category_filter: Optional[str] = None
     channel_to_post: Optional[str] = None
+    channel_to_post_title: Optional[str] = Field(None, max_length=255)
     alert_text: Optional[str] = Field(None, max_length=1000)
     dedup_window_sec: int = Field(default=3600, ge=0, le=86400)
     rate_limit_per_hour: Optional[int] = Field(default=None, ge=1, le=1000)
@@ -122,7 +171,12 @@ class TelegramAlertRule(BaseModel):
     tags: List[str] = Field(default_factory=list, max_length=10)
     stop_on_match: bool = False
 
-    @field_validator("chats_to_read", "save_conditions", "tags", mode="before")
+    @field_validator("chats_to_read", mode="before")
+    @classmethod
+    def normalize_chats_to_read(cls, value: Any) -> List[TelegramChatRef]:
+        return normalize_chat_refs(value, max_items=10)
+
+    @field_validator("save_conditions", "tags", mode="before")
     @classmethod
     def trim_string_lists(cls, value: Any) -> List[str]:
         if not isinstance(value, list):
@@ -137,6 +191,14 @@ class TelegramAlertRule(BaseModel):
                 break
         return result
 
+    @field_validator("channel_to_post_title", mode="before")
+    @classmethod
+    def normalize_channel_title(cls, value: Any) -> Optional[str]:
+        if value is None:
+            return None
+        title = str(value).strip()
+        return title[:255] if title else None
+
 
 class TelegramProfileBase(BaseModel):
     """Базовая модель профиля Telegram."""
@@ -148,10 +210,10 @@ class TelegramProfileBase(BaseModel):
     api_hash: Optional[str] = None
     telegram_username: Optional[str] = None
     auth_phone_number: Optional[str] = None
-    chats_to_read: List[str] = []
+    chats_to_read: List[TelegramChatRef] = Field(default_factory=list)
     save_conditions: List[str] = []
     channel_to_post: Optional[str] = None
-    channels_to_post: List[str] = Field(default_factory=list)
+    channels_to_post: List[TelegramChatRef] = Field(default_factory=list)
     alert_enabled: bool = False
     alert_rules: List[TelegramAlertRule] = Field(default_factory=list, max_length=10)
     process_enabled: bool = False
@@ -171,6 +233,11 @@ class TelegramProfileBase(BaseModel):
     classification_categories: List[str] = Field(
         default_factory=lambda: ["новости", "реклама", "технологии", "финансы", "другое"]
     )
+
+    @field_validator("chats_to_read", "channels_to_post", mode="before")
+    @classmethod
+    def normalize_profile_chat_refs(cls, value: Any) -> List[TelegramChatRef]:
+        return normalize_chat_refs(value, max_items=20)
 
     @field_validator("classification_categories", mode="before")
     @classmethod
@@ -458,6 +525,8 @@ class TwitterPost(BaseModel):
     to_threads: bool = False
     to_dzen: bool = False
     to_instagram: bool = False
+    target_channels: List[str] = []
+    target_groups: List[str] = []
 
 
 class TwitterFollowingUser(BaseModel):
@@ -576,6 +645,8 @@ class WordPressPost(BaseModel):
     to_threads: bool = False
     to_dzen: bool = False
     to_instagram: bool = False
+    target_channels: List[str] = []
+    target_groups: List[str] = []
 
 
 # ==================== VKontakte ====================
@@ -640,6 +711,7 @@ class VKontaktePost(BaseModel):
     images: Optional[List[str]] = None
     publish_at: Optional[datetime] = None
     target_groups: Optional[List[str]] = None
+    target_channels: Optional[List[str]] = None
 
 
 # ==================== Dzen ====================
@@ -690,6 +762,8 @@ class DzenPost(BaseModel):
     to_dzen: bool = True
     to_threads: bool = False
     to_instagram: bool = False
+    target_channels: List[str] = []
+    target_groups: List[str] = []
 
 
 class DzenPostUpdate(BaseModel):
@@ -754,6 +828,8 @@ class InstagramPost(BaseModel):
     to_dzen: bool = False
     to_threads: bool = False
     to_instagram: bool = True
+    target_channels: List[str] = []
+    target_groups: List[str] = []
 
 
 class InstagramPostUpdate(BaseModel):
@@ -905,6 +981,8 @@ class CpostPost(BaseModel):
     to_threads: bool = False
     to_dzen: bool = False
     to_instagram: bool = False
+    target_channels: List[str] = []
+    target_groups: List[str] = []
 
 
 class CpostPostUpdate(BaseModel):
@@ -932,6 +1010,8 @@ class CpostPostUpdate(BaseModel):
     to_threads: Optional[bool] = None
     to_dzen: Optional[bool] = None
     to_instagram: Optional[bool] = None
+    target_channels: Optional[List[str]] = None
+    target_groups: Optional[List[str]] = None
 
 
 # ==================== Post (общая модель) ====================
@@ -1162,10 +1242,13 @@ class PostRow(BaseModel):
     to_wp: bool = False
     to_vk: bool = False
     to_dzen: bool = False
+    to_threads: bool = False
+    to_instagram: bool = False
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     source_platform: Optional[str] = None
     source_id: Optional[int] = None
+    published_channel: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -1174,6 +1257,33 @@ class PostRow(BaseModel):
 class PostsListResponse(BaseModel):
     """Ответ со списком постов (админ)."""
     posts: List[PostRow] = []
+
+
+class PipelineEventItem(BaseModel):
+    """Одно событие пайплайна для диагностики."""
+    id: Optional[int] = None
+    user_id: Optional[int] = None
+    channel: Optional[str] = None
+    event_type: Optional[str] = None
+    platform: Optional[str] = None
+    rule_id: Optional[str] = None
+    service: Optional[str] = None
+    cycle_type: Optional[str] = None
+    status: Optional[str] = None
+    summary: Optional[str] = None
+    items_processed: Optional[int] = None
+    created_at: Optional[str] = None
+
+
+class PipelineEventsResponse(BaseModel):
+    """Списки срабатываний для Administration → Posts."""
+    alerting: List[PipelineEventItem] = Field(default_factory=list)
+    publishing: List[PipelineEventItem] = Field(default_factory=list)
+    collection: List[PipelineEventItem] = Field(default_factory=list)
+    custom_url: List[PipelineEventItem] = Field(default_factory=list)
+    services: List[PipelineEventItem] = Field(default_factory=list)
+    services_error: Optional[str] = None
+    collected_at: Optional[str] = None
 
 
 class StorageFileItem(BaseModel):
@@ -1232,6 +1342,7 @@ class AiCheckResponse(BaseModel):
 class AiSettingsResponse(BaseModel):
     """Глобальный флаг нейросети (Ollama) для отладки без AI."""
     enabled: bool
+    env_enabled: bool = True
     model: str
     service_url: str
 

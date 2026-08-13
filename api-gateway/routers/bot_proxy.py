@@ -210,7 +210,7 @@ async def dzen_bot_verify_yandex_start(
         settings.DZEN_BOT_SERVICE_URL,
         "/dzen-bot/verify-yandex/start",
         request,
-        timeout_seconds=180.0,
+        timeout_seconds=300.0,
     )
 
 
@@ -252,7 +252,7 @@ async def dzen_bot_verify_yandex(
         settings.DZEN_BOT_SERVICE_URL,
         "/dzen-bot/verify-yandex",
         request,
-        timeout_seconds=180.0,
+        timeout_seconds=300.0,
     )
 
 

@@ -5,6 +5,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/com
 import { Button } from '@/components/ui/button'
 import { authService } from '@/services/auth-service'
 import type { BillingEventRow, BillingMeResponse } from '@/types/auth'
+import { formatDateTime } from '@/utils/date'
 
 export function BillingTabContent() {
   const { user } = useAuth()
@@ -95,7 +96,7 @@ export function BillingTabContent() {
             <div className="flex justify-between">
               <span className="text-[var(--text-secondary)]">Current period ends</span>
               <span className="font-medium">
-                {new Date(me.subscription_current_period_end).toLocaleString()}
+                {formatDateTime(me.subscription_current_period_end)}
               </span>
             </div>
           )}
@@ -133,7 +134,7 @@ export function BillingTabContent() {
                 <li key={ev.id} className="flex justify-between gap-2">
                   <span>{ev.event_type}</span>
                   <span className="text-[var(--text-muted)] whitespace-nowrap">
-                    {new Date(ev.created_at).toLocaleString()}
+                    {formatDateTime(ev.created_at)}
                   </span>
                 </li>
               ))}

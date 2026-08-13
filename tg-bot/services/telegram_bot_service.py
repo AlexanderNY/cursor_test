@@ -22,6 +22,11 @@ from .post_enrichment import PostEnrichmentService
 from .summary_aggregator import SummaryAggregator
 from .discussion_bindings import list_discussion_bindings
 from .inbox_ingest import push_inbox_ingest
+from .brand_channel_flow import (
+    list_tg_flow_channels,
+    find_channel_for_chat,
+    channel_alert_rules_as_profile_rules,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -60,6 +65,7 @@ class TelegramBotService:
         self._engagement_task = None
         self._discussion_refresh_task = None
         self._discussion_map: Dict[str, List[dict]] = {}
+        self._brand_channels: List[dict] = []
 
     async def start(self) -> None:
         if self._running:
@@ -72,7 +78,7 @@ class TelegramBotService:
 
         logger.info("Starting Telegram Bot Service...")
         await self.client_manager.start_all_clients()
-        await self._refresh_discussion_map()
+        await self._refresh_flow_maps()
 
         clients = self.client_manager.get_all_clients()
         for user_id, client in clients.items():
@@ -101,6 +107,11 @@ class TelegramBotService:
 
         logger.info("Telegram Bot Service started successfully")
 
+    async def _refresh_flow_maps(self) -> None:
+        await self._refresh_discussion_map()
+        self._brand_channels = await list_tg_flow_channels()
+        _log_action("Brand flow channels: %d", len(self._brand_channels))
+
     async def _refresh_discussion_map(self) -> None:
         bindings = await list_discussion_bindings()
         mapping: Dict[str, List[dict]] = {}
@@ -116,7 +127,7 @@ class TelegramBotService:
                 await asyncio.sleep(60)
                 if not self._running:
                     break
-                await self._refresh_discussion_map()
+                await self._refresh_flow_maps()
             except asyncio.CancelledError:
                 break
             except Exception as e:
@@ -126,16 +137,25 @@ class TelegramBotService:
         chats: Set[str] = set()
         if profile.get("collect_enabled"):
             for chat in profile.get("chats_to_read") or []:
-                if chat:
-                    chats.add(str(chat).strip())
+                chat_id = self.message_handler.chat_ref_id(chat)
+                if chat_id:
+                    chats.add(chat_id)
 
         if profile.get("alert_enabled"):
             from .alert_service import get_active_rules
 
             for rule in get_active_rules(profile):
                 for chat in rule.get("chats_to_read") or []:
-                    if chat:
-                        chats.add(str(chat).strip())
+                    chat_id = self.message_handler.chat_ref_id(chat)
+                    if chat_id:
+                        chats.add(chat_id)
+
+        for ch in self._brand_channels:
+            if ch.get("user_id") != user_id:
+                continue
+            ext = str(ch.get("external_id") or "").strip()
+            if ext:
+                chats.add(ext)
 
         for disc_id, bindings in self._discussion_map.items():
             if any(b["user_id"] == user_id for b in bindings):
@@ -214,33 +234,56 @@ class TelegramBotService:
                 await self._maybe_ingest_discussion_comment(user_id, event)
 
                 message_metadata: Dict = {}
-                collect_chat = self.message_handler.chat_id_in_list(
+                brand_ch = await find_channel_for_chat(
+                    user_id, event.chat_id, self._brand_channels
+                )
+
+                profile_collect = self.message_handler.chat_id_in_list(
                     event.chat_id,
                     profile.get("chats_to_read") or [],
                 )
+                channel_collect = bool(brand_ch and brand_ch.get("collect_enabled"))
 
-                if profile.get("collect_enabled") and collect_chat:
-                    save_conditions = profile.get("save_conditions") or []
-                    should_save = self.message_handler.should_save_message(event, save_conditions)
+                if (profile.get("collect_enabled") and profile_collect) or channel_collect:
+                    if channel_collect and brand_ch is not None:
+                        save_conditions = brand_ch.get("save_conditions") or []
+                        collect_profile = dict(profile)
+                        processing = brand_ch.get("processing") or {}
+                        if isinstance(processing, dict) and processing:
+                            collect_profile.update(processing)
+                            if processing.get("process_services") is not None:
+                                collect_profile["process_services"] = processing.get(
+                                    "process_services"
+                                )
+                    else:
+                        save_conditions = profile.get("save_conditions") or []
+                        collect_profile = profile
+
+                    should_save = self.message_handler.should_save_message(
+                        event, save_conditions
+                    )
                     if should_save:
                         images = await self.image_handler.download_images(event, user_id)
                         post = await self.post_collector.save_post(
                             user_id=user_id,
                             event=event,
                             images=images,
-                            profile=profile,
+                            profile=collect_profile,
                         )
                         if post:
                             await self.event_logger.log_event(
                                 user_id,
                                 "collected",
                                 event,
-                                metadata={"post_id": post.get("id")},
+                                metadata={
+                                    "post_id": post.get("id"),
+                                    "brand_channel_id": brand_ch.get("id") if brand_ch else None,
+                                },
                             )
                             enrichment = await self.post_enrichment.enrich_post_if_enabled(
                                 post_id=post["id"],
                                 text=post.get("post_text") or "",
-                                profile=profile,
+                                profile=collect_profile,
                             )
                             if enrichment:
                                 message_metadata = enrichment
@@ -254,6 +297,21 @@ class TelegramBotService:
                         event=event,
                         message_metadata=message_metadata,
                     )
+
+                if brand_ch and brand_ch.get("alert_enabled"):
+                    channel_rules = channel_alert_rules_as_profile_rules(brand_ch)
+                    if channel_rules:
+                        channel_profile = {
+                            "alert_enabled": True,
+                            "alert_rules": channel_rules,
+                        }
+                        await self.routing_engine.process(
+                            client=client,
+                            user_id=user_id,
+                            profile=channel_profile,
+                            event=event,
+                            message_metadata=message_metadata,
+                        )
 
             except Exception as e:
                 logger.error("Error handling message for user %s: %s", user_id, e, exc_info=True)

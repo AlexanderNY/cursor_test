@@ -143,6 +143,11 @@ class RoutingEngine:
                     event,
                     rule_id=rule.get("id"),
                     matched_conditions=matched_conditions,
+                    metadata={
+                        "channel": (rule.get("channel_to_post") or "").strip(),
+                        "channel_title": rule.get("channel_to_post_title"),
+                        "source_chat_id": event.chat_id,
+                    },
                 )
                 sent_count += 1
 
@@ -183,7 +188,8 @@ class RoutingEngine:
                         """,
                         (user_id, text_hash, event.chat_id, channel or None),
                     )
-                    return cur.fetchone() is not None
+                    row = await cur.fetchone()
+                    return row is not None
             finally:
                 await release_db_connection(conn)
         except Exception as exc:

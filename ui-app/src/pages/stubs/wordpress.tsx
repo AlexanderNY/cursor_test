@@ -9,7 +9,9 @@ import { wordpressService } from '@/services/wordpress-service'
 import {
   TargetSocialNetworksWidget,
   createDefaultTargets,
+  EMPTY_SELECTED_BRAND_CHANNELS,
   type TargetSocialNetworks,
+  type SelectedBrandChannels,
 } from '@/components/target-social-networks'
 import type { WordPressPost, WordPressPostListItem, PostStatus, PublishScheduleType } from '@/types/wordpress'
 
@@ -77,6 +79,9 @@ export function WordPressPage() {
   const [postTargets, setPostTargets] = useState<TargetSocialNetworks>(() =>
     createDefaultTargets('wp')
   )
+  const [selectedChannels, setSelectedChannels] = useState<SelectedBrandChannels>({
+    ...EMPTY_SELECTED_BRAND_CHANNELS,
+  })
 
   // Posts list state
   const [posts, setPosts] = useState<WordPressPostListItem[]>([])
@@ -385,6 +390,8 @@ export function WordPressPage() {
       to_threads: postTargets.threads,
       to_dzen: postTargets.dzen,
       to_instagram: postTargets.instagram,
+      target_channels: selectedChannels.tg,
+      target_groups: selectedChannels.vk,
       post: {
         title: postTitle,
         content: postContent,
@@ -417,6 +424,7 @@ export function WordPressPage() {
         await wordpressService.createPost(post)
         setSuccess('Post created successfully')
         setPostTitle('')
+        setSelectedChannels({ ...EMPTY_SELECTED_BRAND_CHANNELS })
         setPostContent('')
         setPostStatus('draft')
         setPostCategories([''])
@@ -740,7 +748,12 @@ export function WordPressPage() {
               </div>
 
               {editingPostId === null && (
-                <TargetSocialNetworksWidget value={postTargets} onChange={setPostTargets} />
+                <TargetSocialNetworksWidget
+                  value={postTargets}
+                  onChange={setPostTargets}
+                  selectedChannels={selectedChannels}
+                  onSelectedChannelsChange={setSelectedChannels}
+                />
               )}
 
               <CardFooter className="px-0">

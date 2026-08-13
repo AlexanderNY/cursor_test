@@ -27,6 +27,45 @@ export interface Brand {
   updated_at?: string | null
 }
 
+export interface ChannelProcessingConfig {
+  process_enabled?: boolean
+  processing_description?: string | null
+  remove_emojis?: boolean
+  remove_images?: boolean
+  clean_html?: boolean
+  process_services?: string[]
+  status_review_after_process?: boolean
+  add_static_html?: boolean
+  static_html_content?: string | null
+  summarize_enabled?: boolean
+  summarize_min_length?: number
+  classification_enabled?: boolean
+  classification_categories?: string[]
+}
+
+export interface ChannelAlertDelivery {
+  channel_to_post?: string | null
+  channel_to_post_title?: string | null
+  alert_text?: string | null
+  include_ai_summary?: boolean
+}
+
+export interface ChannelAlertRule {
+  id: string
+  enabled?: boolean
+  priority?: number
+  save_conditions?: string[]
+  conditions_mode?: 'any_of' | 'all_of'
+  category_filter?: string | null
+  dedup_window_sec?: number
+  rate_limit_per_hour?: number | null
+  time_windows?: { start: string; end: string }[]
+  min_text_length?: number
+  sentiment_filter?: 'positive' | 'negative' | 'neutral' | null
+  tags?: string[]
+  stop_on_match?: boolean
+}
+
 export interface BrandChannel {
   id: number
   brand_id: number
@@ -42,6 +81,11 @@ export interface BrandChannel {
   discussion_external_id?: string | null
   discussion_title?: string | null
   comments_collect_enabled?: boolean
+  alert_enabled?: boolean
+  save_conditions?: string[]
+  processing?: ChannelProcessingConfig
+  alert_delivery?: ChannelAlertDelivery
+  alert_rules?: ChannelAlertRule[]
   brand_name?: string
   brand_color?: string
 }
@@ -157,3 +201,36 @@ export function roleLabel(role?: string | null): string {
       return role ?? '—'
   }
 }
+
+export type AiAssistActionId = 'summarize' | 'categorize' | 'rewrite' | 'reply_draft'
+
+export interface AiAssistAction {
+  id: AiAssistActionId
+  title: string
+  description: string
+  params: string[]
+}
+
+export interface AiProcessParams {
+  note?: string
+  tone?: string
+  network?: string
+  max_len?: number
+  categories?: string[]
+}
+
+export interface AiProcessResult {
+  text?: string
+  category?: string
+  confidence?: number
+  meta?: Record<string, unknown>
+}
+
+export interface AiProcessResponse {
+  task_id: number
+  action: AiAssistActionId
+  result: AiProcessResult
+  model: string
+  latency_ms: number
+}
+

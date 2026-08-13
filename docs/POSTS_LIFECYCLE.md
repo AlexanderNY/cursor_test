@@ -69,11 +69,11 @@
 - **Кто ставит:** сервис **Collector** (цикл distribute).
 - **Действия:**
   - `SELECT ... FROM posts WHERE status = 'ready'`
-  - для каждого поста по флагам `to_tg`, `to_wp`, `to_vk`:
+  - для каждого поста по флагам `to_tg`, `to_wp`, `to_vk`, `to_dzen`, `to_instagram`, `to_tw`:
     - если целевая платформа **та же**, что источник (например, пост из TG и to_tg):  
       `UPDATE tg_posts SET status = 'ready', post_text = ..., images = ... WHERE id = source_id`
     - если целевая платформа **другая**:  
-      `INSERT INTO tg_posts (wp_posts, vk_posts, ...) (... status = 'ready')`
+      `INSERT INTO tg_posts (wp_posts, vk_posts, dzen_posts, ...) (... status = 'ready')`
   - `UPDATE posts SET status = 'distributed'`
 - **Смысл:** пост перенесён в платформенные таблицы со статусом **ready**; дальнейшая публикация идёт уже из `*_posts` (tg-bot, wp-bot, vk-bot и т.д.). В **posts** для него цикл завершён.
 
@@ -94,7 +94,7 @@
 ## Важные поля в `posts`
 
 - **source_platform**, **source_id** — откуда пост попал (например `tg`, id в `tg_posts`). Нужны для дедупликации (ON CONFLICT) и для обновления той же строки при distribute (TG → TG).
-- **to_tg**, **to_wp**, **to_vk** — в какие платформы распределять пост при статусе **ready**.
+- **to_tg**, **to_wp**, **to_vk**, **to_dzen**, **to_instagram**, **to_tw** — в какие платформы распределять пост при статусе **ready**.
 - **platform_texts** (JSONB) — тексты, подготовленные под каждую платформу (лимиты длины и т.д.); при distribute подставляются в целевые таблицы.
 
 ---

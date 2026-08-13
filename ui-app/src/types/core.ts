@@ -224,10 +224,37 @@ export interface PostRow {
   updated_at?: string | null
   source_platform?: string | null
   source_id?: number | null
+  /** Канал публикации (tg) или целевые платформы → tg,wp,… */
+  published_channel?: string | null
 }
 
 export interface PostsListResponse {
   posts: PostRow[]
+}
+
+export interface PipelineEventItem {
+  id?: number | null
+  user_id?: number | null
+  channel?: string | null
+  event_type?: string | null
+  platform?: string | null
+  rule_id?: string | null
+  service?: string | null
+  cycle_type?: string | null
+  status?: string | null
+  summary?: string | null
+  items_processed?: number | null
+  created_at?: string | null
+}
+
+export interface PipelineEventsResponse {
+  alerting: PipelineEventItem[]
+  publishing: PipelineEventItem[]
+  collection: PipelineEventItem[]
+  custom_url: PipelineEventItem[]
+  services: PipelineEventItem[]
+  services_error?: string | null
+  collected_at?: string | null
 }
 
 /** Результат цикла диагностики постинга (Telegram и пайплайн). */
@@ -296,6 +323,7 @@ export interface AiCheckResponse {
 
 export interface AiSettingsResponse {
   enabled: boolean
+  env_enabled?: boolean
   model: string
   service_url: string
 }

@@ -122,12 +122,43 @@ class ProfileService:
                         data.get("api_hash"),
                         data.get("telegram_username"),
                         data.get("auth_phone_number"),
-                        json.dumps(data.get("chats_to_read", [])),
+                        json.dumps(
+                            [
+                                (
+                                    item.model_dump(exclude_none=True)
+                                    if hasattr(item, "model_dump")
+                                    else item
+                                    if isinstance(item, dict)
+                                    else {"id": str(item)}
+                                )
+                                for item in (data.get("chats_to_read", []) or [])
+                            ],
+                            ensure_ascii=False,
+                            default=str,
+                        ),
                         json.dumps(data.get("save_conditions", [])),
                         data.get("channel_to_post"),
-                        json.dumps(data.get("channels_to_post") or (
-                            [data["channel_to_post"]] if data.get("channel_to_post") else []
-                        )),
+                        json.dumps(
+                            [
+                                (
+                                    item.model_dump(exclude_none=True)
+                                    if hasattr(item, "model_dump")
+                                    else item
+                                    if isinstance(item, dict)
+                                    else {"id": str(item)}
+                                )
+                                for item in (
+                                    data.get("channels_to_post")
+                                    or (
+                                        [{"id": data["channel_to_post"]}]
+                                        if data.get("channel_to_post")
+                                        else []
+                                    )
+                                )
+                            ],
+                            ensure_ascii=False,
+                            default=str,
+                        ),
                         data.get("alert_enabled", False),
                         alert_rules_json,
                         data.get("process_enabled", False),

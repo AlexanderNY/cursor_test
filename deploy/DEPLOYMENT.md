@@ -1,5 +1,8 @@
 # Деплой: ui-edge, 9to18, copyparse
 
+Локальная установка и `.env`: [../docs/INSTALLATION.md](../docs/INSTALLATION.md).  
+Архитектура: [../docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md).
+
 Три независимых деплой-юнита на одной VM с общей Docker-сетью `edge_net`.
 
 ```

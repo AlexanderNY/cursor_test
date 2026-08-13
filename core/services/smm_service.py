@@ -46,8 +46,21 @@ def _row_brand(r: tuple) -> dict[str, Any]:
     }
 
 
+def _parse_json_field(value: Any, default: Any) -> Any:
+    if value is None:
+        return default
+    if isinstance(value, (dict, list)):
+        return value
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except (json.JSONDecodeError, TypeError):
+            return default
+    return default
+
+
 def _row_channel(r: tuple) -> dict[str, Any]:
-    # Supports ops cols (publish/collect) and comments cols (discussion_*)
+    # Supports ops, comments, and channel-flow config columns
     out = {
         "id": r[0],
         "brand_id": r[1],
@@ -63,6 +76,11 @@ def _row_channel(r: tuple) -> dict[str, Any]:
         "discussion_external_id": None,
         "discussion_title": None,
         "comments_collect_enabled": False,
+        "alert_enabled": False,
+        "save_conditions": [],
+        "processing": {},
+        "alert_delivery": {},
+        "alert_rules": [],
     }
     if len(r) > 9:
         out["publish_enabled"] = bool(r[9]) if r[9] is not None else True
@@ -74,6 +92,20 @@ def _row_channel(r: tuple) -> dict[str, Any]:
         out["discussion_title"] = r[12]
     if len(r) > 13:
         out["comments_collect_enabled"] = bool(r[13]) if r[13] is not None else False
+    if len(r) > 14:
+        out["alert_enabled"] = bool(r[14]) if r[14] is not None else False
+    if len(r) > 15:
+        sc = _parse_json_field(r[15], [])
+        out["save_conditions"] = sc if isinstance(sc, list) else []
+    if len(r) > 16:
+        proc = _parse_json_field(r[16], {})
+        out["processing"] = proc if isinstance(proc, dict) else {}
+    if len(r) > 17:
+        delivery = _parse_json_field(r[17], {})
+        out["alert_delivery"] = delivery if isinstance(delivery, dict) else {}
+    if len(r) > 18:
+        rules = _parse_json_field(r[18], [])
+        out["alert_rules"] = rules if isinstance(rules, list) else []
     return out
 
 
@@ -107,8 +139,11 @@ def _row_inbox(r: tuple) -> dict[str, Any]:
 CHANNEL_SELECT = """
 id, brand_id, network, external_id, title, kind, role,
 color_override, created_at, publish_enabled, collect_enabled,
-discussion_external_id, discussion_title, comments_collect_enabled
+discussion_external_id, discussion_title, comments_collect_enabled,
+alert_enabled, save_conditions, processing, alert_delivery, alert_rules
 """
+
+CHANNEL_RETURNING = CHANNEL_SELECT
 
 INBOX_SELECT = """
 id, user_id, brand_id, network, channel_id, thread_id,
@@ -290,10 +325,8 @@ class SmmService:
         try:
             async with conn.cursor() as cur:
                 await cur.execute(
-                    """
-                    SELECT id, brand_id, network, external_id, title, kind, role,
-                           color_override, created_at, publish_enabled, collect_enabled,
-                           discussion_external_id, discussion_title, comments_collect_enabled
+                    f"""
+                    SELECT {CHANNEL_SELECT}
                     FROM smm_brand_channels WHERE brand_id = %s ORDER BY role, title
                     """,
                     (brand_id,),
@@ -349,14 +382,12 @@ class SmmService:
         try:
             async with conn.cursor() as cur:
                 await cur.execute(
-                    """
+                    f"""
                     INSERT INTO smm_brand_channels
                         (brand_id, network, external_id, title, kind, role, color_override,
                          publish_enabled, collect_enabled)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    RETURNING id, brand_id, network, external_id, title, kind, role,
-                              color_override, created_at, publish_enabled, collect_enabled,
-                              discussion_external_id, discussion_title, comments_collect_enabled
+                    RETURNING {CHANNEL_RETURNING}
                     """,
                     (
                         brand_id,
@@ -372,6 +403,33 @@ class SmmService:
                 )
                 row = await cur.fetchone()
                 return _row_channel(row)
+        finally:
+            await release_db_connection(conn)
+
+    async def get_channel(self, user_id: int, channel_id: int) -> Optional[dict]:
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    f"""
+                    SELECT c.id, c.brand_id, c.network, c.external_id, c.title, c.kind, c.role,
+                           c.color_override, c.created_at, c.publish_enabled, c.collect_enabled,
+                           c.discussion_external_id, c.discussion_title, c.comments_collect_enabled,
+                           c.alert_enabled, c.save_conditions, c.processing, c.alert_delivery, c.alert_rules,
+                           b.name AS brand_name, b.color AS brand_color
+                    FROM smm_brand_channels c
+                    JOIN smm_brands b ON b.id = c.brand_id
+                    WHERE c.id = %s AND b.user_id = %s
+                    """,
+                    (channel_id, user_id),
+                )
+                row = await cur.fetchone()
+                if not row:
+                    return None
+                ch = _row_channel(row[:19])
+                ch["brand_name"] = row[19]
+                ch["brand_color"] = row[20]
+                return ch
         finally:
             await release_db_connection(conn)
 
@@ -396,7 +454,13 @@ class SmmService:
             "discussion_external_id",
             "discussion_title",
             "comments_collect_enabled",
+            "alert_enabled",
+            "save_conditions",
+            "processing",
+            "alert_delivery",
+            "alert_rules",
         }
+        json_fields = {"save_conditions", "processing", "alert_delivery", "alert_rules"}
         updates = []
         params: list[Any] = []
         for key, val in fields.items():
@@ -405,6 +469,8 @@ class SmmService:
             # allow clearing discussion ids with empty string → NULL
             if key in ("discussion_external_id", "discussion_title") and val == "":
                 val = None
+            if key in json_fields and val is not None:
+                val = json.dumps(val, ensure_ascii=False)
             if val is not None or key in ("discussion_external_id", "discussion_title"):
                 updates.append(f"{key} = %s")
                 params.append(val)
@@ -419,9 +485,7 @@ class SmmService:
                     f"""
                     UPDATE smm_brand_channels SET {', '.join(updates)}
                     WHERE id = %s AND brand_id = %s
-                    RETURNING id, brand_id, network, external_id, title, kind, role,
-                              color_override, created_at, publish_enabled, collect_enabled,
-                              discussion_external_id, discussion_title, comments_collect_enabled
+                    RETURNING {CHANNEL_RETURNING}
                     """,
                     params,
                 )
@@ -447,6 +511,7 @@ class SmmService:
                     SELECT c.id, c.brand_id, c.network, c.external_id, c.title, c.kind, c.role,
                            c.color_override, c.created_at, c.publish_enabled, c.collect_enabled,
                            c.discussion_external_id, c.discussion_title, c.comments_collect_enabled,
+                           c.alert_enabled, c.save_conditions, c.processing, c.alert_delivery, c.alert_rules,
                            b.name AS brand_name, b.color AS brand_color
                     FROM smm_brand_channels c
                     JOIN smm_brands b ON b.id = c.brand_id
@@ -458,9 +523,9 @@ class SmmService:
                 rows = await cur.fetchall()
                 result = []
                 for r in rows:
-                    ch = _row_channel(r[:14])
-                    ch["brand_name"] = r[14]
-                    ch["brand_color"] = r[15]
+                    ch = _row_channel(r[:19])
+                    ch["brand_name"] = r[19]
+                    ch["brand_color"] = r[20]
                     result.append(ch)
                 return result
         finally:
@@ -563,7 +628,7 @@ class SmmService:
     async def update_inbox_status(
         self, user_id: int, item_id: int, status: str
     ) -> Optional[dict]:
-        if status not in ("new", "read", "replied", "archived"):
+        if status not in ("new", "read", "replied", "archived", "reply_failed", "in_progress"):
             raise ValueError("invalid status")
         conn = await get_db_connection()
         try:

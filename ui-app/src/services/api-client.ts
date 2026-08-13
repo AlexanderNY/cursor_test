@@ -10,6 +10,37 @@ export const apiClient = axios.create({
   },
 })
 
+/** FastAPI detail: string | validation[] | { message, ... } */
+export function normalizeErrorDetail(detail: unknown): string {
+  if (detail == null || detail === '') return ''
+  if (typeof detail === 'string') return detail
+  if (Array.isArray(detail)) {
+    return detail
+      .map((item) => {
+        if (typeof item === 'string') return item
+        if (item && typeof item === 'object' && 'msg' in item) {
+          return String((item as { msg: unknown }).msg)
+        }
+        try {
+          return JSON.stringify(item)
+        } catch {
+          return String(item)
+        }
+      })
+      .filter(Boolean)
+      .join('; ')
+  }
+  if (typeof detail === 'object' && detail !== null && 'message' in detail) {
+    const msg = (detail as { message: unknown }).message
+    if (typeof msg === 'string' && msg.trim()) return msg
+  }
+  try {
+    return JSON.stringify(detail)
+  } catch {
+    return String(detail)
+  }
+}
+
 apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
     const token = localStorage.getItem('access_token')
@@ -29,7 +60,7 @@ apiClient.interceptors.response.use(
     const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean }
     
     // Проверяем что это именно ошибка истечения токена, а не другая 401 ошибка
-    const errorDetail = error.response?.data?.detail || ''
+    const errorDetail = normalizeErrorDetail(error.response?.data?.detail)
     const isTokenExpired = errorDetail.includes('Token has expired')
     
     if (error.response?.status === 401 && isTokenExpired && !originalRequest._retry) {
@@ -70,18 +101,18 @@ apiClient.interceptors.response.use(
 )
 
 export interface ApiError {
-  detail: string
+  detail?: string | Record<string, unknown> | Array<unknown>
 }
 
 export function getErrorMessage(error: unknown): string {
   if (axios.isAxiosError(error)) {
     const axiosError = error as AxiosError<ApiError>
-    return axiosError.response?.data?.detail || axiosError.message || 'An error occurred'
+    const detail = normalizeErrorDetail(axiosError.response?.data?.detail)
+    if (detail) return detail
+    return axiosError.message || 'An error occurred'
   }
   if (error instanceof Error) {
     return error.message
   }
   return 'An unknown error occurred'
 }
-
-

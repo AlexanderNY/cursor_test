@@ -28,7 +28,10 @@ export const threadsService = {
     await apiClient.post('/threads/profile', config)
   },
 
-  async createPost(text: string, imageFile?: File, targets?: TargetSocialNetworks): Promise<void> {
+  async createPost(text: string, imageFile?: File, targets?: TargetSocialNetworks, options?: {
+    targetChannels?: string[]
+    targetGroups?: string[]
+  }): Promise<void> {
     const formData = new FormData()
     formData.append('text', text)
     if (imageFile) {
@@ -40,6 +43,12 @@ export const threadsService = {
       formData.append('to_wp', String(targets.wp))
       formData.append('to_vk', String(targets.vk))
       formData.append('to_threads', String(targets.threads))
+    }
+    if (options?.targetChannels?.length) {
+      formData.append('target_channels', JSON.stringify(options.targetChannels))
+    }
+    if (options?.targetGroups?.length) {
+      formData.append('target_groups', JSON.stringify(options.targetGroups))
     }
     await apiClient.post('/threads/post', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },

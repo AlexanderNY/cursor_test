@@ -4,9 +4,9 @@ import { Button } from '@/components/ui/button'
 import {
   TargetSocialNetworksWidget,
   type TargetSocialNetworks,
+  type SelectedBrandChannels,
 } from '@/components/target-social-networks'
 import type { TgPostTemplate } from '@/types/telegram'
-import { type AvailableChannel, channelIdToString } from './telegram-helpers'
 
 export interface CreatePostTabProps {
   postText: string
@@ -19,9 +19,8 @@ export interface CreatePostTabProps {
   onPostTargetsChange: (value: TargetSocialNetworks) => void
   publishAt: string
   onPublishAtChange: (value: string) => void
-  targetChannels: string[]
-  onTargetChannelsChange: (channels: string[]) => void
-  availableChannels: AvailableChannel[]
+  selectedChannels: SelectedBrandChannels
+  onSelectedChannelsChange: (value: SelectedBrandChannels) => void
   templates: TgPostTemplate[]
   selectedTemplateId: string
   onSelectedTemplateChange: (id: string) => void
@@ -43,9 +42,8 @@ export function CreatePostTab({
   onPostTargetsChange,
   publishAt,
   onPublishAtChange,
-  targetChannels,
-  onTargetChannelsChange,
-  availableChannels,
+  selectedChannels,
+  onSelectedChannelsChange,
   templates,
   selectedTemplateId,
   onSelectedTemplateChange,
@@ -55,14 +53,6 @@ export function CreatePostTab({
   isCreatingPost,
   onSubmit,
 }: CreatePostTabProps) {
-  function toggleTargetChannel(channelId: string) {
-    if (targetChannels.includes(channelId)) {
-      onTargetChannelsChange(targetChannels.filter((c) => c !== channelId))
-    } else {
-      onTargetChannelsChange([...targetChannels, channelId])
-    }
-  }
-
   return (
     <Card className="animate-slide-up">
       <CardHeader>
@@ -150,7 +140,12 @@ export function CreatePostTab({
 
           {editingPostId === null && (
             <>
-              <TargetSocialNetworksWidget value={postTargets} onChange={onPostTargetsChange} />
+              <TargetSocialNetworksWidget
+                value={postTargets}
+                onChange={onPostTargetsChange}
+                selectedChannels={selectedChannels}
+                onSelectedChannelsChange={onSelectedChannelsChange}
+              />
 
               <div>
                 <label className="text-sm font-medium text-[var(--text-secondary)] block mb-2">
@@ -164,29 +159,6 @@ export function CreatePostTab({
                 />
                 <p className="text-xs text-[var(--text-muted)] mt-1">Leave empty to publish immediately when approved</p>
               </div>
-
-              {availableChannels.length > 0 && (
-                <div className="p-4 bg-[var(--bg-secondary)] rounded-xl space-y-3 border border-[var(--border-color)]">
-                  <label className="text-sm font-medium text-[var(--text-secondary)] block">Target channels</label>
-                  <div className="space-y-2 max-h-48 overflow-y-auto">
-                    {availableChannels.map((ch) => {
-                      const idStr = channelIdToString(ch.id)
-                      return (
-                        <label key={ch.id} className="flex items-center gap-2 cursor-pointer text-sm text-[var(--text-primary)]">
-                          <input
-                            type="checkbox"
-                            checked={targetChannels.includes(idStr)}
-                            onChange={() => toggleTargetChannel(idStr)}
-                            className="w-4 h-4 text-primary-500 rounded"
-                          />
-                          <span className="font-mono text-xs">{idStr}</span>
-                          <span className="text-[var(--text-muted)]">: {ch.title}</span>
-                        </label>
-                      )
-                    })}
-                  </div>
-                </div>
-              )}
             </>
           )}
 

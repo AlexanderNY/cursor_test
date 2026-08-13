@@ -19,7 +19,14 @@ from database import get_db_connection, release_db_connection
 from .selenium_diag import capture_diag_for_ui, capture_selenium_error_to_s3
 from .selenium_driver import create_chrome_driver
 from .selenium_errors import format_selenium_exception
-from .pending_yandex_session import get_session, pop_and_quit, put_session
+from .pending_yandex_session import (
+    clear_last_diag_url,
+    get_last_diag_url,
+    get_session,
+    pop_and_quit,
+    put_session,
+    set_last_diag_url,
+)
 from .yandex_auth import PushCodeRequiredError, YandexAuthError, ensure_dzen_session, dismiss_passport_overlays
 from .yandex_dzen_flow import (
     complete_auth_after_push_code,
@@ -35,19 +42,22 @@ _PUSH_MESSAGE = "Введите код из пуш-уведомления Янд
 
 
 def _diag_url(driver: Optional[WebDriver], label: str, user_id: Optional[int]) -> Optional[str]:
-    return capture_diag_for_ui(driver, label, user_id=user_id).get("diag_image_url")
+    url = capture_diag_for_ui(driver, label, user_id=user_id).get("diag_image_url")
+    if user_id is not None and url:
+        set_last_diag_url(user_id, url)
+    return url
 
 
 def _push_code_start_response(driver: WebDriver, user_id: int, label: str) -> Dict[str, Any]:
-    diag = capture_diag_for_ui(driver, label, user_id=user_id)
-    put_session(user_id, driver)
+    diag_url = _diag_url(driver, label, user_id)
+    put_session(user_id, driver, awaiting_push=True, in_progress=False)
     return {
         "ok": True,
         "need_push_code": True,
         "message": _PUSH_MESSAGE,
         "subscriptions": [],
         "error": None,
-        "diag_image_url": diag.get("diag_image_url"),
+        "diag_image_url": diag_url,
     }
 
 # Ссылки на каналы/паблишеров в ленте подписок
@@ -199,6 +209,7 @@ def verify_subscriptions_sync(
 
 def verify_yandex_start_sync(user_id: int, login: str, password: str) -> Dict[str, Any]:
     """Dzen-вход с возможностью паузы на пуш. При пуше WebDriver в pending (не quit)."""
+    clear_last_diag_url(user_id)
     pop_and_quit(user_id)
     login = (login or "").strip()
     password = (password or "").strip()
@@ -215,12 +226,18 @@ def verify_yandex_start_sync(user_id: int, login: str, password: str) -> Dict[st
     keep_driver = False
     try:
         driver = create_chrome_driver()
-        rflow = dzen_entry_run_until_push_or_ok(driver, login, password)
+        put_session(user_id, driver, awaiting_push=False, in_progress=True)
+        _diag_url(driver, "verify_yandex_start_chrome", user_id)
+        rflow = dzen_entry_run_until_push_or_ok(
+            driver,
+            login,
+            password,
+            on_checkpoint=lambda d, label: _diag_url(d, label, user_id),
+        )
         if rflow == "push":
-            res = _push_code_start_response(driver, user_id, "verify_yandex_start_push")
             keep_driver = True
-            driver = None
-            return res
+            return _push_code_start_response(driver, user_id, "verify_yandex_start_push")
+        _diag_url(driver, "verify_yandex_start_collect", user_id)
         subs, wmsg = run_subscriptions_collection_driver(driver, user_id)
         res: Dict[str, Any] = {
             "ok": True,
@@ -233,6 +250,7 @@ def verify_yandex_start_sync(user_id: int, login: str, password: str) -> Dict[st
         if wmsg and "не подтверждена" in wmsg:
             res["ok"] = False
             res["error"] = wmsg
+            res["diag_image_url"] = _diag_url(driver, "verify_yandex_start_unconfirmed", user_id)
         return res
     except PushCodeRequiredError:
         if not driver:
@@ -242,12 +260,10 @@ def verify_yandex_start_sync(user_id: int, login: str, password: str) -> Dict[st
                 "message": _PUSH_MESSAGE,
                 "subscriptions": [],
                 "error": None,
-                "diag_image_url": None,
+                "diag_image_url": get_last_diag_url(user_id),
             }
-        res = _push_code_start_response(driver, user_id, "verify_yandex_start_push_exc")
         keep_driver = True
-        driver = None
-        return res
+        return _push_code_start_response(driver, user_id, "verify_yandex_start_push_exc")
     except YandexAuthError as e:
         du = _diag_url(driver, "verify_yandex_start_auth_err", user_id)
         return {
@@ -256,7 +272,7 @@ def verify_yandex_start_sync(user_id: int, login: str, password: str) -> Dict[st
             "subscriptions": [],
             "error": str(e),
             "message": None,
-            "diag_image_url": du,
+            "diag_image_url": du or get_last_diag_url(user_id),
         }
     except Exception as e:
         friendly = format_selenium_exception(e)
@@ -268,14 +284,11 @@ def verify_yandex_start_sync(user_id: int, login: str, password: str) -> Dict[st
             "subscriptions": [],
             "error": friendly,
             "message": None,
-            "diag_image_url": durl,
+            "diag_image_url": durl or get_last_diag_url(user_id),
         }
     finally:
-        if driver and not keep_driver:
-            try:
-                driver.quit()
-            except Exception:
-                pass
+        if not keep_driver:
+            pop_and_quit(user_id)
 
 
 def verify_yandex_push_code_sync(
@@ -355,20 +368,47 @@ def verify_yandex_push_code_sync(
 
 
 def verify_yandex_pending_diag_sync(user_id: int) -> Dict[str, Any]:
-    """Снимок текущего экрана pending WebDriver (для UI при таймауте push-code)."""
+    """Снимок текущего экрана или последний кэш (для UI при таймауте проверки)."""
+    cached = get_last_diag_url(user_id)
     s = get_session(user_id)
-    if not s:
-        return {"diag_image_url": None, "error": "Нет активной сессии Selenium."}
-    acquired = s.op_lock.acquire(blocking=False)
-    if not acquired:
+    need_push = bool(s and s.awaiting_push)
+    message = _PUSH_MESSAGE if need_push else None
+
+    if s and not s.in_progress:
+        acquired = s.op_lock.acquire(blocking=False)
+        if acquired:
+            try:
+                url = _diag_url(s.driver, "pending_diag_refresh", user_id)
+                shown = url or cached
+                return {
+                    "diag_image_url": shown,
+                    "error": None if shown else "Не удалось снять экран Selenium.",
+                    "need_push_code": need_push,
+                    "message": message,
+                }
+            finally:
+                s.op_lock.release()
+
+    if cached:
+        return {
+            "diag_image_url": cached,
+            "error": None,
+            "need_push_code": need_push,
+            "message": message,
+        }
+    if s:
         return {
             "diag_image_url": None,
-            "error": "Сессия занята проверкой. Повторите обновление скрина через несколько секунд.",
+            "error": "Проверка ещё выполняется — снимок появится через несколько секунд.",
+            "need_push_code": need_push,
+            "message": message,
         }
-    try:
-        return {"diag_image_url": _diag_url(s.driver, "pending_diag_refresh", user_id)}
-    finally:
-        s.op_lock.release()
+    return {
+        "diag_image_url": None,
+        "error": "Нет активного скрина. Браузер ещё не открылся либо сессия уже закрыта.",
+        "need_push_code": False,
+        "message": None,
+    }
 
 
 async def fetch_yandex_credentials(user_id: int) -> Tuple[Optional[str], Optional[str]]:

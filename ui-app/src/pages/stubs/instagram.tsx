@@ -7,7 +7,9 @@ import { PageHeader, PageContainer } from '@/components/ui'
 import {
   TargetSocialNetworksWidget,
   createDefaultTargets,
+  EMPTY_SELECTED_BRAND_CHANNELS,
   type TargetSocialNetworks,
+  type SelectedBrandChannels,
 } from '@/components/target-social-networks'
 import { instagramService } from '@/services/instagram-service'
 import type {
@@ -16,6 +18,7 @@ import type {
   InstagramPostListItem,
   ScheduleType,
 } from '@/types/instagram'
+import { formatDateTime } from '@/utils/date'
 
 function generateId(): string {
   return Math.random().toString(36).substring(2, 9)
@@ -50,6 +53,9 @@ export function InstagramPage() {
   const [postTargets, setPostTargets] = useState<TargetSocialNetworks>(() =>
     createDefaultTargets('instagram')
   )
+  const [selectedChannels, setSelectedChannels] = useState<SelectedBrandChannels>({
+    ...EMPTY_SELECTED_BRAND_CHANNELS,
+  })
   const [imageFiles, setImageFiles] = useState<FileList | null>(null)
   const [editingPostId, setEditingPostId] = useState<number | null>(null)
 
@@ -167,11 +173,14 @@ export function InstagramPage() {
             to_dzen: postTargets.dzen,
             to_threads: postTargets.threads,
             to_instagram: postTargets.instagram,
+            target_channels: selectedChannels.tg,
+            target_groups: selectedChannels.vk,
           })
         }
         setSuccess('Post created successfully')
         setPostCaption('')
         setImageFiles(null)
+        setSelectedChannels({ ...EMPTY_SELECTED_BRAND_CHANNELS })
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save post')
@@ -614,7 +623,12 @@ export function InstagramPage() {
                 </div>
               )}
               {!editingPostId && (
-                <TargetSocialNetworksWidget value={postTargets} onChange={setPostTargets} />
+                <TargetSocialNetworksWidget
+                  value={postTargets}
+                  onChange={setPostTargets}
+                  selectedChannels={selectedChannels}
+                  onSelectedChannelsChange={setSelectedChannels}
+                />
               )}
             </CardContent>
             <CardFooter>
@@ -652,7 +666,7 @@ export function InstagramPage() {
                     <div className="flex-1 min-w-0">
                       <p className="truncate">{post.post_text || '(no caption)'}</p>
                       <p className="text-sm text-[var(--muted)]">
-                        #{post.id} · {post.status} · {post.created_at}
+                        #{post.id} · {post.status} · {formatDateTime(post.created_at)}
                       </p>
                     </div>
                     <div className="flex gap-2">

@@ -17,12 +17,16 @@ logger = logging.getLogger(__name__)
 
 _lock = threading.RLock()
 _store: Dict[int, "PendingSession"] = {}
+# Последний JPEG data URL по user_id — отдаём в UI, даже если HTTP-ответ проверки уже отвалился по таймауту.
+_last_diag_url: Dict[int, str] = {}
 
 
 @dataclass
 class PendingSession:
     driver: "WebDriver"
     created_at: float
+    awaiting_push: bool = False
+    in_progress: bool = True
     op_lock: threading.RLock = field(default_factory=threading.RLock, repr=False)
 
 
@@ -39,6 +43,23 @@ def _quit_driver_safe(driver: Optional["WebDriver"]) -> None:
         logger.debug("pending session quit: %s", e)
 
 
+def set_last_diag_url(user_id: int, url: Optional[str]) -> None:
+    if not url:
+        return
+    with _lock:
+        _last_diag_url[user_id] = url
+
+
+def get_last_diag_url(user_id: int) -> Optional[str]:
+    with _lock:
+        return _last_diag_url.get(user_id)
+
+
+def clear_last_diag_url(user_id: int) -> None:
+    with _lock:
+        _last_diag_url.pop(user_id, None)
+
+
 def cleanup_stale_unlocked() -> None:
     now = time.time()
     t = _ttl()
@@ -50,14 +71,37 @@ def cleanup_stale_unlocked() -> None:
             logger.info("Pending dzen session expired user_id=%s", uid)
 
 
-def put_session(user_id: int, driver: "WebDriver") -> None:
+def put_session(
+    user_id: int,
+    driver: "WebDriver",
+    *,
+    awaiting_push: bool = False,
+    in_progress: bool = True,
+) -> None:
     with _lock:
         cleanup_stale_unlocked()
         old = _store.pop(user_id, None)
+        op_lock = threading.RLock()
+        created_at = time.time()
         if old:
-            _quit_driver_safe(old.driver)
-        _store[user_id] = PendingSession(driver=driver, created_at=time.time())
-        logger.info("Pending dzen session stored user_id=%s", user_id)
+            if old.driver is not driver:
+                _quit_driver_safe(old.driver)
+            else:
+                op_lock = old.op_lock
+                created_at = old.created_at
+        _store[user_id] = PendingSession(
+            driver=driver,
+            created_at=created_at,
+            awaiting_push=awaiting_push,
+            in_progress=in_progress,
+            op_lock=op_lock,
+        )
+        logger.info(
+            "Pending dzen session stored user_id=%s awaiting_push=%s in_progress=%s",
+            user_id,
+            awaiting_push,
+            in_progress,
+        )
 
 
 def get_session(user_id: int) -> Optional[PendingSession]:

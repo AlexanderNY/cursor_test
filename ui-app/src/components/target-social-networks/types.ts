@@ -9,6 +9,17 @@ export type TargetSocialNetworkKey =
 
 export type TargetSocialNetworks = Record<TargetSocialNetworkKey, boolean>
 
+/** Выбранные brand-каналы по сети (external_id) */
+export type SelectedBrandChannels = {
+  tg: string[]
+  vk: string[]
+}
+
+export const EMPTY_SELECTED_BRAND_CHANNELS: SelectedBrandChannels = {
+  tg: [],
+  vk: [],
+}
+
 /** Порядок: Telegram → VK → Instagram → Threads → WordPress → Дзен → Twitter */
 export const TARGET_SOCIAL_NETWORK_ORDER: TargetSocialNetworkKey[] = [
   'tg',

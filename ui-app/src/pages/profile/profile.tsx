@@ -12,6 +12,7 @@ import { authService } from '@/services/auth-service'
 import { decodeJwt, formatTokenDate, getTimeUntilExpiry } from '@/utils/jwt-utils'
 import { StatisticsTabContent } from '@/pages/stubs/statistics'
 import { BillingTabContent } from '@/pages/billing/billing'
+import { formatDateTime } from '@/utils/date'
 
 type ProfileTab = 'main' | 'billing' | 'statistics' | 'group'
 
@@ -331,7 +332,7 @@ export function ProfilePage() {
             <div className="flex justify-between items-center py-3">
               <span className="text-[var(--text-secondary)]">Member since</span>
               <span className="font-medium">
-                {user?.created_at ? new Date(user.created_at).toLocaleDateString() : 'N/A'}
+                {user?.created_at ? formatDateTime(user.created_at) : 'N/A'}
               </span>
             </div>
           </CardContent>

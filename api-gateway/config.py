@@ -87,6 +87,7 @@ RATE_LIMITS_CONFIG: dict[str, dict[str, int]] = {
     "/core/admin/services-status": {"requests": 60, "window_seconds": 60},
     "/core/admin/posts-tables": {"requests": 60, "window_seconds": 60},
     "/core/admin/posts": {"requests": 60, "window_seconds": 60},
+    "/core/admin/pipeline-events": {"requests": 30, "window_seconds": 60},
     "/core/admin/checks/ai": {"requests": 20, "window_seconds": 60},
     "/auth/users": {"requests": 30, "window_seconds": 60},
     "/auth/users/export": {"requests": 20, "window_seconds": 60},

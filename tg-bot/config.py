@@ -52,6 +52,10 @@ class Settings(BaseSettings):
     AI_TIMEOUT_SEC: float = 60.0
     AI_REALTIME_TIMEOUT_SEC: float = 15.0
 
+    # SOCKS5/HTTP proxy for Telethon (MTProto). Example:
+    # socks5://host.docker.internal:10808
+    TELEGRAM_PROXY_URL: str = ""
+
     class Config:
         env_file = ".env"
         case_sensitive = True

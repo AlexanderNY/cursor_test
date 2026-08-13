@@ -10,6 +10,28 @@ from config import settings, SOURCE_TABLES
 
 logger = logging.getLogger(__name__)
 
+
+async def _log_cycle(
+    cycle_type: str,
+    *,
+    status: str = "ok",
+    detail: str | None = None,
+    items_processed: int = 0,
+) -> None:
+    try:
+        async with get_db_connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    INSERT INTO service_cycle_log (
+                        service_name, cycle_type, status, detail, items_processed
+                    ) VALUES (%s, %s, %s, %s, %s)
+                    """,
+                    ("collector", cycle_type, status, (detail or "")[:2000] or None, int(items_processed or 0)),
+                )
+    except Exception as exc:
+        logger.debug("service_cycle_log skip: %s", exc)
+
 # Колонки, общие для всех *_posts и posts (без id, created_at, updated_at)
 _POST_COLUMNS = [
     "user_id", "domain", "url", "title", "author", "avatar",
@@ -17,6 +39,7 @@ _POST_COLUMNS = [
     "comments", "reposts", "likes", "views", "is_ad", "status",
     "post_type", "to_tg", "to_tw", "to_wp", "to_vk", "to_dzen", "to_instagram",
     "to_threads",
+    "target_channels", "target_groups",
 ]
 
 
@@ -65,6 +88,13 @@ class CollectService:
             logger.info("Collect cycle done: %d posts total", cycle_count)
         if errors:
             logger.warning("Collect cycle had %d error(s): %s", len(errors), errors)
+
+        await _log_cycle(
+            "collect",
+            status="error" if errors and cycle_count == 0 else ("partial" if errors else "ok"),
+            detail="; ".join(errors) if errors else None,
+            items_processed=cycle_count,
+        )
 
         return cycle_count, errors
 
@@ -139,6 +169,13 @@ class CollectService:
                     images_idx = _POST_COLUMNS.index("images")
                     if values[images_idx] is not None and not isinstance(values[images_idx], str):
                         values[images_idx] = json.dumps(values[images_idx], ensure_ascii=False)
+
+                    for json_col in ("target_channels", "target_groups"):
+                        idx = _POST_COLUMNS.index(json_col)
+                        if values[idx] is None:
+                            values[idx] = "[]"
+                        elif not isinstance(values[idx], str):
+                            values[idx] = json.dumps(values[idx], ensure_ascii=False)
 
                     await cur.execute(
                         f"""

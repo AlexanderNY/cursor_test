@@ -6,19 +6,16 @@ import { apiClient } from '@/services/api-client'
 import { telegramService, type TgAuthStatus } from '@/services/telegram-service'
 import {
   createDefaultTargets,
+  EMPTY_SELECTED_BRAND_CHANNELS,
+  type SelectedBrandChannels,
   type TargetSocialNetworks,
 } from '@/components/target-social-networks'
 import { useAuth } from '@/contexts/auth-context'
 import type {
   PublishScheduleType,
+  TelegramChatRef,
   TelegramPostListItem,
-  TgAnalyticsOverview,
-  TgAnalyticsChannelItem,
-  TgAnalyticsKeywordItem,
   TgAnalyticsAlertItem,
-  TgAnalyticsTimelinePoint,
-  TgAnalyticsSentimentBreakdown,
-  TgAnalyticsEngagement,
   TgPostTemplate,
   TelegramTab,
 } from '@/types/telegram'
@@ -35,6 +32,9 @@ import {
   fromDatetimeLocalValue,
   getWeekStart,
   getWeekRange,
+  chatRefsFromInputs,
+  chatRefsFromDynamicFields,
+  dynamicFieldsFromChatRefs,
   type ScheduleMinute,
   type DynamicField,
   type AlertRuleBlock,
@@ -45,7 +45,6 @@ import { PostsTab } from './posts-tab'
 import { CalendarTab } from './calendar-tab'
 import { ProfileSettingsTab } from './profile-settings-tab'
 import { ProcessingTab } from './processing-tab'
-import { AnalyticsTab } from './analytics-tab'
 import { AuthTab } from './auth-tab'
 
 const TAB_ORDER: { id: TelegramTab; label: string; accent?: boolean }[] = [
@@ -53,7 +52,6 @@ const TAB_ORDER: { id: TelegramTab; label: string; accent?: boolean }[] = [
   { id: 'posts', label: 'Posts' },
   { id: 'calendar', label: 'Calendar' },
   { id: 'profile', label: 'Profile Settings' },
-  { id: 'analytics', label: 'Аналитика' },
   { id: 'processing', label: 'Обработка' },
   { id: 'auth', label: 'Авторизация', accent: true },
 ]
@@ -81,10 +79,11 @@ export function TelegramPage() {
   const [telegramUsername, setTelegramUsername] = useState('')
   const [authPhoneNumber, setAuthPhoneNumber] = useState('')
   const [channelToPost, setChannelToPost] = useState('')
-  const [channelsToPost, setChannelsToPost] = useState<string[]>([])
+  const [channelToPostTitle, setChannelToPostTitle] = useState('')
+  const [channelsToPost, setChannelsToPost] = useState<TelegramChatRef[]>([])
   const [alertEnabled, setAlertEnabled] = useState(false)
   const [alertRules, setAlertRules] = useState<AlertRuleBlock[]>(() => [createEmptyAlertRuleBlock()])
-  const [chatsToRead, setChatsToRead] = useState<DynamicField[]>([{ id: generateId(), value: '' }])
+  const [chatsToRead, setChatsToRead] = useState<DynamicField[]>([{ id: generateId(), value: '', label: '' }])
   const [saveConditions, setSaveConditions] = useState<DynamicField[]>([{ id: generateId(), value: '' }])
   const [processEnabled, setProcessEnabled] = useState(false)
   const [processingDescription, setProcessingDescription] = useState('')
@@ -105,18 +104,13 @@ export function TelegramPage() {
   const [classificationEnabled, setClassificationEnabled] = useState(false)
   const [classificationCategories, setClassificationCategories] = useState('новости, реклама, технологии, финансы, другое')
   const [recentAlerts, setRecentAlerts] = useState<TgAnalyticsAlertItem[]>([])
-  const [analyticsOverview, setAnalyticsOverview] = useState<TgAnalyticsOverview | null>(null)
-  const [analyticsChannels, setAnalyticsChannels] = useState<TgAnalyticsChannelItem[]>([])
-  const [analyticsKeywords, setAnalyticsKeywords] = useState<TgAnalyticsKeywordItem[]>([])
-  const [analyticsTimeline, setAnalyticsTimeline] = useState<TgAnalyticsTimelinePoint[]>([])
-  const [analyticsSentiment, setAnalyticsSentiment] = useState<TgAnalyticsSentimentBreakdown | null>(null)
-  const [engagement, setEngagement] = useState<TgAnalyticsEngagement | null>(null)
-  const [isLoadingAnalytics, setIsLoadingAnalytics] = useState(false)
 
   const [postText, setPostText] = useState('')
   const [postTargets, setPostTargets] = useState<TargetSocialNetworks>(() => createDefaultTargets('tg'))
   const [publishAt, setPublishAt] = useState('')
-  const [targetChannels, setTargetChannels] = useState<string[]>([])
+  const [selectedChannels, setSelectedChannels] = useState<SelectedBrandChannels>(
+    () => ({ ...EMPTY_SELECTED_BRAND_CHANNELS }),
+  )
   const [templates, setTemplates] = useState<TgPostTemplate[]>([])
   const [selectedTemplateId, setSelectedTemplateId] = useState('')
   const [isSavingTemplate, setIsSavingTemplate] = useState(false)
@@ -181,12 +175,6 @@ export function TelegramPage() {
   }, [activeTab, hasLoadedPosts])
 
   useEffect(() => {
-    if (activeTab === 'analytics') {
-      loadAnalytics()
-    }
-  }, [activeTab])
-
-  useEffect(() => {
     if (activeTab === 'create') {
       loadTemplates()
     }
@@ -204,32 +192,6 @@ export function TelegramPage() {
       setTemplates(data)
     } catch (err) {
       console.warn('Templates load failed', err)
-    }
-  }
-
-  async function loadAnalytics() {
-    setIsLoadingAnalytics(true)
-    try {
-      const [overview, channels, keywords, alerts, timeline, sentiment, engagementData] = await Promise.all([
-        telegramService.getAnalyticsOverview('7d'),
-        telegramService.getAnalyticsChannels('7d', 10),
-        telegramService.getAnalyticsKeywords('7d', 20),
-        telegramService.getAnalyticsAlerts('7d', 10),
-        telegramService.getAnalyticsTimeline('7d', 'hour'),
-        telegramService.getAnalyticsSentiment('7d'),
-        telegramService.getAnalyticsEngagement('7d', 10),
-      ])
-      setAnalyticsOverview(overview)
-      setAnalyticsChannels(channels)
-      setAnalyticsKeywords(keywords)
-      setRecentAlerts(alerts)
-      setAnalyticsTimeline(timeline)
-      setAnalyticsSentiment(sentiment)
-      setEngagement(engagementData)
-    } catch (err) {
-      console.warn('Analytics load failed', err)
-    } finally {
-      setIsLoadingAnalytics(false)
     }
   }
 
@@ -271,11 +233,21 @@ export function TelegramPage() {
         setTelegramUsername(profile.telegram_username || '')
         setAuthPhoneNumber(profile.auth_phone_number || '')
         setChannelToPost(profile.channel_to_post || '')
-        setChannelsToPost(profile.channels_to_post?.length ? profile.channels_to_post : profile.channel_to_post ? [profile.channel_to_post] : [])
+        {
+          const channelRefs = chatRefsFromInputs(
+            profile.channels_to_post?.length
+              ? profile.channels_to_post
+              : profile.channel_to_post
+                ? [profile.channel_to_post]
+                : [],
+          )
+          setChannelsToPost(channelRefs)
+          setChannelToPostTitle(channelRefs[0]?.title || '')
+        }
         setAlertEnabled(profile.alert_enabled ?? false)
         setAlertRules(mapAlertRulesFromProfile(profile.alert_rules))
         if (profile.chats_to_read && profile.chats_to_read.length > 0) {
-          setChatsToRead(profile.chats_to_read.map((chat) => ({ id: generateId(), value: chat })))
+          setChatsToRead(dynamicFieldsFromChatRefs(profile.chats_to_read))
         }
         if (profile.save_conditions && profile.save_conditions.length > 0) {
           setSaveConditions(profile.save_conditions.map((condition) => ({ id: generateId(), value: condition })))
@@ -342,10 +314,16 @@ export function TelegramPage() {
       api_hash: apiHash || undefined,
       telegram_username: telegramUsername || undefined,
       auth_phone_number: authPhoneNumber || undefined,
-      chats_to_read: chatsToRead.map((f) => f.value).filter(Boolean),
+      chats_to_read: chatRefsFromDynamicFields(chatsToRead),
       save_conditions: saveConditions.map((f) => f.value).filter(Boolean),
-      channel_to_post: channelsToPost[0] || channelToPost || undefined,
-      channels_to_post: channelsToPost.length ? channelsToPost : undefined,
+      channel_to_post: channelsToPost[0]?.id || channelToPost || undefined,
+      channels_to_post: (() => {
+        if (channelsToPost.length) return channelsToPost
+        const id = channelToPost.trim()
+        if (!id) return undefined
+        const title = channelToPostTitle.trim()
+        return [title ? { id, title } : { id }]
+      })(),
       alert_enabled: alertEnabled,
       alert_rules: serializeAlertRules(alertRules),
       process_enabled: processEnabled,
@@ -470,7 +448,7 @@ export function TelegramPage() {
         await telegramService.updatePost(editingPostId, postText, imageFile || undefined, {
           publishAt: publishAtIso,
           clearPublishAt: !publishAtIso,
-          targetChannels: targetChannels.length ? targetChannels : undefined,
+          targetChannels: selectedChannels.tg.length ? selectedChannels.tg : undefined,
         })
         setSuccess('Post updated successfully')
         setEditingPostId(null)
@@ -479,7 +457,8 @@ export function TelegramPage() {
       } else {
         await telegramService.createPost(postText, imageFile || undefined, postTargets, {
           publishAt: publishAtIso,
-          targetChannels: targetChannels.length ? targetChannels : undefined,
+          targetChannels: selectedChannels.tg.length ? selectedChannels.tg : undefined,
+          targetGroups: selectedChannels.vk.length ? selectedChannels.vk : undefined,
         })
         setSuccess('Post created successfully')
         resetPostForm()
@@ -494,7 +473,7 @@ export function TelegramPage() {
   function resetPostForm() {
     setPostText('')
     setPublishAt('')
-    setTargetChannels([])
+    setSelectedChannels({ ...EMPTY_SELECTED_BRAND_CHANNELS })
     setImageFile(null)
     if (imagePreview?.startsWith('blob:')) {
       URL.revokeObjectURL(imagePreview)
@@ -586,15 +565,19 @@ export function TelegramPage() {
   }
 
   function addField(setter: React.Dispatch<React.SetStateAction<DynamicField[]>>) {
-    setter((prev) => [...prev, { id: generateId(), value: '' }])
+    setter((prev) => [...prev, { id: generateId(), value: '', label: '' }])
   }
 
   function removeField(setter: React.Dispatch<React.SetStateAction<DynamicField[]>>, id: string) {
     setter((prev) => prev.filter((field) => field.id !== id))
   }
 
-  function updateField(setter: React.Dispatch<React.SetStateAction<DynamicField[]>>, id: string, value: string) {
-    setter((prev) => prev.map((field) => (field.id === id ? { ...field, value } : field)))
+  function updateField(
+    setter: React.Dispatch<React.SetStateAction<DynamicField[]>>,
+    id: string,
+    patch: Partial<Pick<DynamicField, 'value' | 'label'>>,
+  ) {
+    setter((prev) => prev.map((field) => (field.id === id ? { ...field, ...patch } : field)))
   }
 
   function addAlertRule() {
@@ -613,7 +596,11 @@ export function TelegramPage() {
     setAlertRules((prev) =>
       prev.map((rule) => {
         if (rule.id !== ruleId || rule[field].length >= MAX_ALERT_LIST_ITEMS) return rule
-        return { ...rule, [field]: [...rule[field], { id: generateId(), value: '' }] }
+        const empty =
+          field === 'chatsToRead'
+            ? { id: generateId(), value: '', label: '' }
+            : { id: generateId(), value: '' }
+        return { ...rule, [field]: [...rule[field], empty] }
       }),
     )
   }
@@ -627,11 +614,19 @@ export function TelegramPage() {
     )
   }
 
-  function updateAlertRuleField(ruleId: string, field: 'chatsToRead' | 'saveConditions', fieldId: string, value: string) {
+  function updateAlertRuleField(
+    ruleId: string,
+    field: 'chatsToRead' | 'saveConditions',
+    fieldId: string,
+    patch: Partial<Pick<DynamicField, 'value' | 'label'>>,
+  ) {
     setAlertRules((prev) =>
       prev.map((rule) => {
         if (rule.id !== ruleId) return rule
-        return { ...rule, [field]: rule[field].map((item) => (item.id === fieldId ? { ...item, value } : item)) }
+        return {
+          ...rule,
+          [field]: rule[field].map((item) => (item.id === fieldId ? { ...item, ...patch } : item)),
+        }
       }),
     )
   }
@@ -778,9 +773,8 @@ export function TelegramPage() {
           onPostTargetsChange={setPostTargets}
           publishAt={publishAt}
           onPublishAtChange={setPublishAt}
-          targetChannels={targetChannels}
-          onTargetChannelsChange={setTargetChannels}
-          availableChannels={availableChannels}
+          selectedChannels={selectedChannels}
+          onSelectedChannelsChange={setSelectedChannels}
           templates={templates}
           selectedTemplateId={selectedTemplateId}
           onSelectedTemplateChange={setSelectedTemplateId}
@@ -832,6 +826,8 @@ export function TelegramPage() {
           onPublishScheduleMinuteChange={setPublishScheduleMinute}
           channelToPost={channelToPost}
           onChannelToPostChange={setChannelToPost}
+          channelToPostTitle={channelToPostTitle}
+          onChannelToPostTitleChange={setChannelToPostTitle}
           channelsToPost={channelsToPost}
           onChannelsToPostChange={setChannelsToPost}
           availableChannels={availableChannels}
@@ -899,18 +895,6 @@ export function TelegramPage() {
           classificationCategories={classificationCategories}
           onClassificationCategoriesChange={setClassificationCategories}
           onSubmit={handleSaveProcessing}
-        />
-      )}
-
-      {activeTab === 'analytics' && (
-        <AnalyticsTab
-          isLoadingAnalytics={isLoadingAnalytics}
-          analyticsOverview={analyticsOverview}
-          analyticsChannels={analyticsChannels}
-          analyticsKeywords={analyticsKeywords}
-          analyticsTimeline={analyticsTimeline}
-          analyticsSentiment={analyticsSentiment}
-          engagement={engagement}
         />
       )}
 

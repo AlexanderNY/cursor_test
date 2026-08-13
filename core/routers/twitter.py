@@ -120,6 +120,8 @@ async def create_tw_post(
             to_threads=data.to_threads,
             to_dzen=data.to_dzen,
             to_instagram=data.to_instagram,
+            target_channels=data.target_channels,
+            target_groups=data.target_groups,
         )
         return post
     except ValueError as e:

@@ -6,6 +6,7 @@ import type {
   DzenPostListItem,
   DzenPostFull,
   DzenVerifyResponse,
+  DzenPendingDiagResponse,
 } from '@/types/dzen'
 
 export const dzenService = {
@@ -62,7 +63,7 @@ export const dzenService = {
   },
 
   async verifyYandexStart(): Promise<DzenVerifyResponse> {
-    const response = await apiClient.post<DzenVerifyResponse>('/dzen-bot/verify-yandex/start', {}, { timeout: 180_000 })
+    const response = await apiClient.post<DzenVerifyResponse>('/dzen-bot/verify-yandex/start', {}, { timeout: 300_000 })
     return response.data
   },
 
@@ -75,8 +76,8 @@ export const dzenService = {
     return response.data
   },
 
-  async fetchVerifyPendingDiag(): Promise<{ diag_image_url?: string | null; error?: string | null }> {
-    const response = await apiClient.get<{ diag_image_url?: string | null; error?: string | null }>(
+  async fetchVerifyPendingDiag(): Promise<DzenPendingDiagResponse> {
+    const response = await apiClient.get<DzenPendingDiagResponse>(
       '/dzen-bot/verify-yandex/pending-diag',
       { timeout: 45_000 }
     )

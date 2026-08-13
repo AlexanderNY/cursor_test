@@ -503,6 +503,7 @@ async def create_vk_post(
             to_instagram=data.to_instagram,
             publish_at=data.publish_at,
             target_groups=data.target_groups,
+            target_channels=data.target_channels,
         )
         return post
     except ValueError as e:

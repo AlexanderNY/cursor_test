@@ -38,10 +38,29 @@ WP_POSTS_COMPOSITE_INDEX = """
 CREATE INDEX IF NOT EXISTS idx_wp_posts_status_created ON wp_posts(status, created_at);
 """
 
+SERVICE_CYCLE_LOG_TABLE = """
+CREATE TABLE IF NOT EXISTS service_cycle_log (
+    id SERIAL PRIMARY KEY,
+    service_name VARCHAR(50) NOT NULL,
+    cycle_type VARCHAR(50) NOT NULL,
+    status VARCHAR(20) DEFAULT 'ok',
+    detail TEXT,
+    items_processed INTEGER DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
+SERVICE_CYCLE_LOG_INDEXES = """
+CREATE INDEX IF NOT EXISTS idx_service_cycle_log_created ON service_cycle_log(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_service_cycle_log_service_created ON service_cycle_log(service_name, created_at DESC);
+"""
+
 ALL_TABLES = [
     POSTS_SOURCE_MIGRATION,
     POSTS_SOURCE_INDEX,
     POSTS_COMPOSITE_INDEX,
     TG_POSTS_COMPOSITE_INDEX,
     WP_POSTS_COMPOSITE_INDEX,
+    SERVICE_CYCLE_LOG_TABLE,
+    SERVICE_CYCLE_LOG_INDEXES,
 ]

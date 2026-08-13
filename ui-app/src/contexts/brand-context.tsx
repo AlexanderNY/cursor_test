@@ -19,6 +19,8 @@ interface BrandContextValue {
   selectedBrandId: number | null
   channels: BrandChannel[]
   ownChannels: BrandChannel[]
+  /** own + publish_enabled (для выбора в Target Social Networks) */
+  publishableChannels: BrandChannel[]
   isLoading: boolean
   setSelectedBrandId: (id: number | null) => void
   refreshBrands: () => Promise<void>
@@ -103,6 +105,11 @@ export function BrandProvider({ children }: { children: ReactNode }) {
     [channels],
   )
 
+  const publishableChannels = useMemo(
+    () => ownChannels.filter((c) => c.publish_enabled !== false),
+    [ownChannels],
+  )
+
   const value = useMemo(
     () => ({
       brands,
@@ -110,6 +117,7 @@ export function BrandProvider({ children }: { children: ReactNode }) {
       selectedBrandId,
       channels,
       ownChannels,
+      publishableChannels,
       isLoading,
       setSelectedBrandId,
       refreshBrands,
@@ -121,6 +129,7 @@ export function BrandProvider({ children }: { children: ReactNode }) {
       selectedBrandId,
       channels,
       ownChannels,
+      publishableChannels,
       isLoading,
       setSelectedBrandId,
       refreshBrands,

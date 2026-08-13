@@ -6,9 +6,31 @@ from datetime import datetime
 from typing import Any
 
 from database import get_db_connection
-from config import settings, TARGET_TABLES
+from config import settings, TARGET_TABLES, SOURCE_TABLES
 
 logger = logging.getLogger(__name__)
+
+
+async def _log_cycle(
+    cycle_type: str,
+    *,
+    status: str = "ok",
+    detail: str | None = None,
+    items_processed: int = 0,
+) -> None:
+    try:
+        async with get_db_connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    INSERT INTO service_cycle_log (
+                        service_name, cycle_type, status, detail, items_processed
+                    ) VALUES (%s, %s, %s, %s, %s)
+                    """,
+                    ("collector", cycle_type, status, (detail or "")[:2000] or None, int(items_processed or 0)),
+                )
+    except Exception as exc:
+        logger.debug("service_cycle_log skip: %s", exc)
 
 # Колонки для вставки в целевую *_posts таблицу (posts.to_dzen, to_instagram и posts.videos — в миграциях)
 _POST_COLUMNS = [
@@ -17,6 +39,7 @@ _POST_COLUMNS = [
     "comments", "reposts", "likes", "views", "is_ad", "status",
     "post_type", "to_tg", "to_tw", "to_wp", "to_vk", "to_dzen", "to_instagram",
     "to_threads",
+    "target_channels", "target_groups",
 ]
 
 # Все флаги to_* для проверки
@@ -24,6 +47,8 @@ _TARGET_FLAGS = list(TARGET_TABLES.keys())
 
 # Ключи в platform_texts (из processor) для каждой целевой платформы
 _PLATFORM_TEXT_KEYS = {"tg": "telegram", "wp": "wordpress", "vk": "vkontakte", "dzen": "dzen", "instagram": "instagram"}
+
+_SOURCE_TABLE_BY_PLATFORM = {item["platform"]: item["table"] for item in SOURCE_TABLES}
 
 
 class DistributeService:
@@ -46,6 +71,10 @@ class DistributeService:
             Количество распределённых постов за цикл.
         """
         batch_size = settings.DISTRIBUTE_BATCH_SIZE
+
+        recovered = await self._recover_stuck_processing_sources()
+        if recovered:
+            logger.info("Recovered %d source posts stuck in processing", recovered)
 
         async with get_db_connection() as conn:
             cur = await conn.cursor()
@@ -107,6 +136,9 @@ class DistributeService:
                             cur, target_table, record
                         )
 
+                    # Исходная запись не должна оставаться в processing после раздачи
+                    await self._finalize_source_status(cur, record)
+
                 # 4. Обновить статус в posts
                 if distributed_ids:
                     ids_placeholder = ", ".join(
@@ -131,6 +163,7 @@ class DistributeService:
                 if count > 0:
                     logger.info("Distribute cycle done: %d posts", count)
 
+                await _log_cycle("distribute", items_processed=count)
                 return count
 
             except Exception:
@@ -138,6 +171,53 @@ class DistributeService:
                 raise
             finally:
                 cur.close()
+
+    async def _recover_stuck_processing_sources(self) -> int:
+        """Закрывает source *_posts в processing, если posts уже distributed."""
+        total = 0
+        try:
+            async with get_db_connection() as conn:
+                async with conn.cursor() as cur:
+                    for platform, table in _SOURCE_TABLE_BY_PLATFORM.items():
+                        await cur.execute(
+                            f"""
+                            UPDATE {table} AS src
+                            SET status = 'distributed', updated_at = CURRENT_TIMESTAMP
+                            WHERE src.status = 'processing'
+                              AND EXISTS (
+                                  SELECT 1 FROM posts p
+                                  WHERE p.source_platform = %s
+                                    AND p.source_id = src.id
+                                    AND p.status = 'distributed'
+                              )
+                            """,
+                            (platform,),
+                        )
+                        total += int(cur.rowcount or 0)
+        except Exception:
+            logger.exception("Failed to recover stuck processing sources")
+            return total
+        return total
+
+    async def _finalize_source_status(self, cur: Any, record: dict[str, Any]) -> None:
+        """Закрывает исходную *_posts запись после раздачи.
+
+        Same-platform путь уже ставит ready; cross-platform иначе навсегда
+        остаётся в processing.
+        """
+        source_platform = record.get("source_platform")
+        source_id = record.get("source_id")
+        table = _SOURCE_TABLE_BY_PLATFORM.get(source_platform or "")
+        if not table or source_id is None:
+            return
+        await cur.execute(
+            f"""
+            UPDATE {table}
+            SET status = 'distributed', updated_at = CURRENT_TIMESTAMP
+            WHERE id = %s AND status = 'processing'
+            """,
+            (source_id,),
+        )
 
     async def _update_same_platform_target(
         self,
@@ -194,6 +274,16 @@ class DistributeService:
         elif isinstance(images_raw, list):
             has_images = len(images_raw) > 0
 
+        def _json_val(val: Any) -> str:
+            if val is None:
+                return "[]"
+            if isinstance(val, str):
+                return val
+            return json.dumps(val, ensure_ascii=False)
+
+        target_channels_json = _json_val(record.get("target_channels"))
+        target_groups_json = _json_val(record.get("target_groups"))
+
         if has_images:
             await cur.execute(
                 f"""
@@ -201,10 +291,12 @@ class DistributeService:
                 SET status = 'ready',
                     post_text = %s,
                     images = %s,
+                    target_channels = %s::jsonb,
+                    target_groups = %s::jsonb,
                     updated_at = CURRENT_TIMESTAMP
                 WHERE id = %s AND user_id = %s
                 """,
-                (post_text, images_decoded, source_id, user_id),
+                (post_text, images_decoded, target_channels_json, target_groups_json, source_id, user_id),
             )
         else:
             await cur.execute(
@@ -212,10 +304,12 @@ class DistributeService:
                 UPDATE {target_table}
                 SET status = 'ready',
                     post_text = %s,
+                    target_channels = %s::jsonb,
+                    target_groups = %s::jsonb,
                     updated_at = CURRENT_TIMESTAMP
                 WHERE id = %s AND user_id = %s
                 """,
-                (post_text, source_id, user_id),
+                (post_text, target_channels_json, target_groups_json, source_id, user_id),
             )
         logger.debug(
             "Updated %s id=%s (user_id=%s) to ready, images=%s",
@@ -250,6 +344,13 @@ class DistributeService:
         images_idx = _POST_COLUMNS.index("images")
         if values[images_idx] is not None and not isinstance(values[images_idx], str):
             values[images_idx] = json.dumps(values[images_idx], ensure_ascii=False)
+
+        for json_col in ("target_channels", "target_groups"):
+            idx = _POST_COLUMNS.index(json_col)
+            if values[idx] is None:
+                values[idx] = "[]"
+            elif not isinstance(values[idx], str):
+                values[idx] = json.dumps(values[idx], ensure_ascii=False)
 
         if target_table == "dzen_posts":
             videos_val = record.get("videos")

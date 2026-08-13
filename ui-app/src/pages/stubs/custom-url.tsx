@@ -6,6 +6,7 @@ import { Alert } from '@/components/ui/alert'
 import { PageHeader, PageContainer } from '@/components/ui'
 import { customURLService } from '@/services/custom-url-service'
 import type { URLConfig, CustomURLSettings, UrlPostListItem } from '@/types/custom-url'
+import { formatDateTime } from '@/utils/date'
 
 function generateId(): string {
   return Math.random().toString(36).substring(2, 9)
@@ -646,7 +647,7 @@ export function CustomURLPage() {
                           </span>
                         </td>
                         <td className="py-2 pr-4 text-[var(--text-secondary)]">
-                          {post.created_at ? new Date(post.created_at).toLocaleString() : '—'}
+                          {post.created_at ? formatDateTime(post.created_at) : '—'}
                         </td>
                       </tr>
                     ))}

@@ -1,64 +1,54 @@
 # Обзор сервисов: UI, API Gateway, эндпоинты и доступ к БД
 
+Актуальные диаграммы деплоя и пайплайна: [ARCHITECTURE.md](ARCHITECTURE.md).
+
 ## 0. Диаграмма взаимодействия сервисов
 
-Ниже упрощённая схема основных потоков:
-
 ```mermaid
-flowchart LR
-  UI[UI (frontend)] -->|/api| APIGW[API Gateway (8000)]
+flowchart TB
+  UI[UI :8100] -->|/api| GW[API Gateway :8000]
 
-  subgraph CoreStack[Core & Auth]
-    AUTH[Auth (8001)]
-    CORE[Core (8002)]
-    SCHED[Scheduler (8003)]
+  subgraph Platform[Платформа]
+    AUTH[Auth :8001]
+    CORE[Core :8002]
+    SCHED[Scheduler :8003]
+    COLL[Collector :8009]
+    PROC[Processor :8010]
+    AI[Ollama :11434]
   end
 
   subgraph Bots[Боты]
-    TGBOT[TG Bot (8004)]
-    VKBOT[VK Bot (8005)]
-    WPBOT[WP Bot (8006)]
-    URLBOT[URL Bot (8007)]
-    IGBOT[Instagram Bot (8012)]
+    TG[tg-bot :8004]
+    VK[vk-bot :8005]
+    WP[wp-bot :8006]
+    URL[url-bot :8007]
+    IG[instagram-bot :8011]
+    DZ[dzen-bot :8012]
+    TH[th-bot :8013]
+    TW[tw-bot]
+    GAME[tg-game :8015]
   end
 
-  subgraph External[Внешние сервисы]
-    WP[WordPress]
-    TG[Telegram]
-    VK[VK]
-    TW[Twitter]
-    DZEN[Яндекс Дзен RSS]
-    Instagram[Instagram]
-    Websites[Сайты для скрапинга]
+  subgraph Data[Данные]
+    PG[(PostgreSQL db_bot)]
+    S3[(MinIO)]
   end
 
-  subgraph DBCluster[PostgreSQL db_bot]
-    DBAUTH[(users, tokens...)]
-    DBCORE[(posts, profiles, notifications...)]
-    DBSCHED[(schedule_snapshots...)]
-    DBTEST[(products, orders...)]
+  subgraph Ext[Внешние платформы]
+    Telegram & VKontakte & Instagram & Threads
+    Twitter & WordPress & Dzen & Sites
   end
 
-  APIGW --> AUTH
-  APIGW --> CORE
-  APIGW --> SCHED
-  APIGW --> URLBOT
-  APIGW -->|/test/*| TEST[SelectCB/Test (8008)]
+  GW --> AUTH & CORE & SCHED
+  GW --> TG & VK & WP & URL & IG & DZ & TH & TW & GAME
 
-  CORE --> DBAUTH
-  CORE --> DBCORE
-  SCHED --> DBSCHED
-  TGBOT --> DBCORE
-  TEST --> DBTEST
+  AUTH & CORE & SCHED & COLL & PROC --> PG
+  CORE & TG & VK & IG & DZ & TH & TW & GAME --> S3
+  CORE & PROC --> AI
+  COLL -.->|collect/distribute| PG
+  PROC -.->|processing| PG
 
-  CORE -->|постинг| WP
-  CORE -->|постинг| TG
-  CORE -->|постинг| VK
-  CORE -->|постинг| TW
-  CORE -->|RSS-лента| DZEN
-  IGBOT -->|сбор/публикация| Instagram
-
-  URLBOT --> Websites
+  TG & VK & IG & TH & TW & WP & DZ & URL --> Ext
 ```
 
 ## 1. Запросы с UI
@@ -192,13 +182,15 @@ UI использует `apiClient` с `baseURL: '/api'`. Vite proxy перен�
 | `/instagram` | Core | Instagram профили, посты |
 | `/curl` | Core | Настройки cURL/скрапинга |
 | `/cpost` | Core | Ручные посты (профиль, CRUD постов) |
+| `/smm` | Core | SMM-аналитика, бренды, каналы, inbox |
+| `/threads` | Core | Threads профили и посты |
 | `/tg-bot/schedule` | TG Bot (8004) | POST → `/schedule` |
 | `/wp-bot/schedule` | WP Bot (8006) | POST → `/schedule` |
 | `/vk-bot/schedule` | VK Bot (8005) | POST → `/schedule` |
 | `/url-bot/schedule` | URL Bot (8007) | POST → `/schedule` |
 | `/url-bot/run` | URL Bot (8007) | POST → `/run` (без JWT) |
-| `/test` | SelectCB (8008) | products, search, submit |
-| Stubs | — | `/scheduler/*`, `/tg-bot/*`, `/vk-bot/*`, `/wp-bot/*`, `/url-bot/*` — ответ 501 |
+| bot proxy | dzen / ig / tw / th / tg-game | Прокси к ботам (см. `bot_proxy.py`) |
+| Stubs | — | отдельные `/scheduler/*`, `/*-bot/*` без реализации — 501 |
 
 ### 2.2 Особенности маппинга
 
@@ -276,14 +268,25 @@ UI использует `apiClient` с `baseURL: '/api'`. Vite proxy перен�
 
 Через Gateway вызывается только `POST /tg-bot/schedule` → `POST /schedule` на боте. В текущем коде tg-bot зарегистрирован только роутер `auth` (prefix `/tg`, эндпоинты `/tg/auth/code`, `/tg/auth/password`, `/tg/auth/status/{user_id}`). Эндпоинт `POST /schedule` для приёма команд от scheduler в репозитории не реализован (возможен в другой ветке или по плану).
 
-### 3.5 Instagram Bot (порт 8012)
+### 3.5 Instagram Bot (порт 8011)
 
 | Метод | Путь | Описание |
 |-------|------|----------|
 | GET | `/health` | Health |
 | POST | `/instagram/reload` | Запуск одного цикла сбора постов (в фоне) |
 
-Сервис использует instagrapi для сбора постов (свои + usernames_to_read) и публикации постов из `instagram_posts` со статусом `ready`. БД: `db_bot` (чтение/запись `instagram_profiles`, `instagram_posts`).
+Сервис использует instagrapi (и опционально Selenium) для сбора и публикации из `instagram_posts` со статусом `ready`. БД: `db_bot`.
+
+### 3.5a Прочие боты
+
+| Сервис | Порт | Назначение |
+|--------|------|------------|
+| dzen-bot | 8012 | Дзен (сессия Яндекса, диагностика в MinIO) |
+| th-bot | 8013 | Threads |
+| tw-bot | 8011 внутр. / host 8014 | Twitter / X |
+| tg-game | 8015 | Telegram game / заказы / медиа |
+| collector | 8009 | collect + distribute |
+| processor | 8010 | обработка `posts` + AI |
 
 ### 3.6 URL Bot (порт 8007)
 
@@ -293,71 +296,53 @@ UI использует `apiClient` с `baseURL: '/api'`. Vite proxy перен�
 | POST | `/run` | Тестовый запуск скрапинга (url, xpath, take_screenshot) |
 | POST | `/schedule` | Обработка расписаний от scheduler (platform=url) |
 
-### 3.7 SelectCB / Test (порт 8008)
-
-| Метод | Путь | Описание |
-|-------|------|----------|
-| GET | `/`, `/health` | Корень и health |
-| GET | `/test/products` | Список продуктов |
-| GET | `/test/search/{order_id}` | Поиск заказа |
-| POST | `/test/submit` | Создание заказа |
-
 ---
 
 ## 4. Базы данных и таблицы по сервисам
 
 ### 4.1 Общая схема
 
-- **auth**, **core**, **scheduler**, **tg-bot** в конфигах по умолчанию используют одну БД: **db_bot** (PostgreSQL).  
-- **core** в docker-compose имеет `DB_NAME=core_db`, но в `core/config.py` по умолчанию задан `DATABASE_URL` с `dbname=db_bot`, то есть фактически та же БД.  
-- **selectcb** использует отдельную БД (тот же хост, в конфиге по умолчанию тоже **db_bot** — при необходимости можно вынести в отдельную БД через `DATABASE_URL`).  
-- **url-bot** своей БД не использует.
+- Большинство сервисов используют одну БД **db_bot** (PostgreSQL) через `DATABASE_URL`.
+- **url-bot** своей БД не использует (HTTP к Core).
+- Медиа и диагностика — **MinIO** (bucket `uploads`).
 
 ### 4.2 Auth
 
-- **БД:** `db_bot` (из `DATABASE_URL`, docker: `host.docker.internal`).
-- **Таблицы:**  
-  `users`, `refresh_tokens`, `blacklisted_tokens`, `password_reset_tokens`, `email_verification_tokens`.
+- **Таблицы:** `users`, `refresh_tokens`, `blacklisted_tokens`, `password_reset_tokens`, `email_verification_tokens`.
 
 ### 4.3 Core
 
-- **БД:** `db_bot` (из `core/config.py`).
-- **Таблицы:**  
-  `posts`, `tg_profiles`, `tg_posts`, `tw_profiles`, `wp_profiles`, `wp_publish_profile`, `wp_collect_profile`, `wp_collect_sites`, `wp_posts`, `vk_profiles`, `dzen_profiles`, `dzen_posts`, `instagram_profiles`, `instagram_posts`, `curl_settings`, `cpost_profiles`, `notifications`. В `posts` и платформенных таблицах постов есть флаги `to_dzen`, `to_instagram`.  
-- **Чтение:** также читает таблицу **`schedule_snapshots`**, которая создаётся и заполняется сервисом **scheduler** в той же БД.
+- **Таблицы:** `posts`, `tg_*`, `tw_*`, `wp_*`, `vk_*`, `dzen_*`, `instagram_*`, `threads_*`, `url_*`, `cpost_*`, `curl_settings`, `notifications`, SMM/brands/channels (по мере миграций).
+- Флаги распределения в `posts`: `to_tg`, `to_wp`, `to_vk`, `to_dzen`, `to_instagram`, `to_tw`.
+- Читает `schedule_snapshots` (пишет scheduler).
 
-### 4.4 Scheduler
+### 4.4 Scheduler / Collector / Processor
 
-- **БД:** `db_bot` (из `DATABASE_URL` в docker-compose).
-- **Таблицы:**  
-  `schedule_snapshots`, `schedule_snapshots_wp`.
+| Сервис | Таблицы |
+|--------|---------|
+| Scheduler | `schedule_snapshots`, `schedule_snapshots_wp` |
+| Collector | чтение/запись `posts` и всех `*_posts` из `SOURCE_TABLES` |
+| Processor | `posts` (collected → processing → ready/review) |
 
-### 4.5 TG Bot
+### 4.5 Боты
 
-- **БД:** `db_bot` (из `tg-bot/config.py`). Таблицы не создаёт сам сервис (используются таблицы core, в т.ч. **tg_profiles** для статуса авторизации).
+Используют профили и `*_posts` своей платформы (+ MinIO для медиа). Сессии Telegram — volume `tg-bot-sessions`.
 
 ### 4.6 URL Bot
 
-- **БД:** нет. Работает только с Core/API по HTTP (скрапинг, вызов `/run` и `/schedule`).
-
-### 4.7 SelectCB (Test)
-
-- **БД:** в конфиге по умолчанию `db_bot` (можно задать отдельную через `DATABASE_URL`).
-- **Таблицы:**  
-  `products`, `orders`, `orderdetails`.
+- **БД:** нет. Скрапинг и вызовы `/run`, `/schedule`.
 
 ---
 
 ## 5. Сводная таблица доступа к БД
 
-| Сервис    | База данных | Таблицы (создание/использование) |
-|-----------|-------------|-----------------------------------|
-| Auth      | db_bot      | users, refresh_tokens, blacklisted_tokens, password_reset_tokens, email_verification_tokens |
-| Core      | db_bot      | posts, tg_profiles, tg_posts, tw_profiles, wp_*, vk_profiles, dzen_profiles, dzen_posts, instagram_profiles, instagram_posts, curl_settings, cpost_profiles, notifications; чтение: schedule_snapshots |
-| Scheduler | db_bot      | schedule_snapshots, schedule_snapshots_wp |
-| TG Bot    | db_bot      | чтение/запись tg_profiles (и др. при необходимости) |
-| Instagram Bot | db_bot  | чтение/запись instagram_profiles, instagram_posts |
-| URL Bot   | —           | нет |
-| SelectCB  | db_bot*     | products, orders, orderdetails |
-
-\* При необходимости SelectCB можно переключить на отдельную БД через `DATABASE_URL`.
+| Сервис | База | Использование |
+|--------|------|---------------|
+| Auth | db_bot | users, tokens |
+| Core | db_bot | профили, посты, SMM, notifications |
+| Scheduler | db_bot | schedule_snapshots* |
+| Collector / Processor | db_bot | posts + *_posts |
+| tg / vk / wp / ig / dzen / th / tw bots | db_bot | платформенные таблицы |
+| tg-game | db_bot | game orders / media meta |
+| URL Bot | — | нет |
+| MinIO | — | файлы uploads |

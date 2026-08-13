@@ -136,7 +136,11 @@ def get_active_rules(profile: Dict) -> List[Dict]:
         if not rule.get("id"):
             rule["id"] = str(uuid4())
 
-        chats = [c.strip() for c in (rule.get("chats_to_read") or []) if isinstance(c, str) and c.strip()]
+        chats: List[str] = []
+        for item in rule.get("chats_to_read") or []:
+            chat_id = MessageHandler.chat_ref_id(item)
+            if chat_id:
+                chats.append(chat_id)
         conditions = [
             c.strip() for c in (rule.get("save_conditions") or []) if isinstance(c, str) and c.strip()
         ]
@@ -155,6 +159,7 @@ def get_active_rules(profile: Dict) -> List[Dict]:
                 "conditions_mode": rule.get("conditions_mode") or "any_of",
                 "category_filter": rule.get("category_filter"),
                 "channel_to_post": channel,
+                "channel_to_post_title": rule.get("channel_to_post_title"),
                 "alert_text": alert_text,
                 "dedup_window_sec": int(rule.get("dedup_window_sec") or 3600),
                 "rate_limit_per_hour": rule.get("rate_limit_per_hour"),

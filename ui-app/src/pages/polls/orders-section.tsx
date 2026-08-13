@@ -7,6 +7,7 @@ import { TableSkeleton } from '@/components/ui/skeleton'
 import { gameService } from '@/services/game-service'
 import type { GameMenuOrder } from '@/types/game'
 import { formatOrderMoney } from '@/utils/menu-price'
+import { formatDateTime } from '@/utils/date'
 
 interface OrdersSectionProps {
   modeId: number | null
@@ -27,12 +28,7 @@ function formatPlayerName(
 }
 
 function formatDate(iso?: string | null): string {
-  if (!iso) return '—'
-  try {
-    return new Date(iso).toLocaleString('ru-RU')
-  } catch {
-    return iso
-  }
+  return formatDateTime(iso)
 }
 
 export function OrdersSection({

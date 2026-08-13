@@ -24,6 +24,8 @@ export interface CreatePostRequest {
   views?: number
   is_ad?: boolean
   status?: string
+  target_channels?: string[]
+  target_groups?: string[]
 }
 
 /** Post from list (table posts, post_type=cpost) — все поля таблицы posts */
@@ -86,4 +88,6 @@ export interface CpostPostUpdateRequest {
   to_threads?: boolean
   to_dzen?: boolean
   to_instagram?: boolean
+  target_channels?: string[]
+  target_groups?: string[]
 }

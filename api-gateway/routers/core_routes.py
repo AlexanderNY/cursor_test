@@ -160,6 +160,18 @@ async def get_posting_diagnostics(
     return await forward_to_core("/admin/posting-diagnostics", request)
 
 
+@router.get("/admin/pipeline-events")
+async def get_pipeline_events(
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+) -> Response:
+    """Списки срабатываний пайплайна для Administration → Posts.
+
+    GET /core/admin/pipeline-events -> GET /admin/pipeline-events на core сервисе
+    """
+    return await forward_to_core("/admin/pipeline-events", request)
+
+
 @router.get("/admin/runtime-location")
 async def get_admin_runtime_location(
     request: Request,

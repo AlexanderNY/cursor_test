@@ -3,25 +3,25 @@
 import base64
 import json
 import logging
-import os
 import uuid
 from datetime import datetime
-from pathlib import Path
 from typing import Any
 
 from database import get_db_connection, release_db_connection
 from services.quota_service import ensure_monthly_post_quota
 from exceptions import QuotaExceededError
 from shared import async_fs
+from storage_client import get_storage
 
 logger = logging.getLogger(__name__)
 
-# Каталог для сохранения скриншотов url (относительно cwd Core)
+# Каталог / ключ для скриншотов url (совпадает с путём в images)
 UPLOADS_URL_DIR = "uploads/url"
+S3_KEY_PREFIX = "uploads/url"
 
 
 async def _save_screenshot_from_base64(screenshot_base64: str, user_id: int) -> str | None:
-    """Декодирует base64, сохраняет в uploads/url/{user_id}/{date}/{uuid}.jpg. Возвращает относительный путь."""
+    """Декодирует base64, сохраняет в S3 (или локально). Возвращает путь /uploads/url/..."""
     if not screenshot_base64:
         return None
     try:
@@ -33,12 +33,18 @@ async def _save_screenshot_from_base64(screenshot_base64: str, user_id: int) -> 
         return None
     try:
         date_part = datetime.utcnow().strftime("%Y-%m-%d")
+        name = f"{uuid.uuid4().hex}.jpg"
+        rel_path = f"{S3_KEY_PREFIX}/{user_id}/{date_part}/{name}"
+        storage = get_storage()
+        if storage:
+            await storage.put(rel_path, data, content_type="image/jpeg")
+            return f"/{rel_path}"
+        from pathlib import Path
+
         dir_path = Path(UPLOADS_URL_DIR) / str(user_id) / date_part
         await async_fs.makedirs(dir_path)
-        name = f"{uuid.uuid4().hex}.jpg"
-        file_path = dir_path / name
-        await async_fs.write_bytes(file_path, data)
-        return f"/uploads/url/{user_id}/{date_part}/{name}"
+        await async_fs.write_bytes(dir_path / name, data)
+        return f"/{rel_path}"
     except Exception as e:
         logger.warning("Screenshot save failed: %s", e)
         return None
@@ -48,8 +54,8 @@ async def save_url_post(item: dict[str, Any]) -> int | None:
     """
     Сохраняет один пост из url-bot в url_posts.
 
-    Если передан screenshot_base64 — сохраняет файл в uploads/url/... и в images кладёт путь.
-    Если передан screenshot_path — в images кладёт путь как есть (файл уже сохранён url-bot).
+    Если передан screenshot_base64 — сохраняет файл в uploads/url/... (S3) и в images кладёт путь.
+    Если передан screenshot_path — в images кладёт путь как есть (файл уже должен быть в общем хранилище).
 
     Returns:
         id вставленной записи или None при ошибке.
@@ -63,12 +69,12 @@ async def save_url_post(item: dict[str, Any]) -> int | None:
     to_vk = item.get("to_vk", False)
 
     images: list[str] = []
-    if item.get("screenshot_path"):
-        images.append(item["screenshot_path"])
-    elif item.get("screenshot_base64"):
+    if item.get("screenshot_base64"):
         path = await _save_screenshot_from_base64(item["screenshot_base64"], user_id)
         if path:
             images.append(path)
+    elif item.get("screenshot_path"):
+        images.append(item["screenshot_path"])
 
     conn = await get_db_connection()
     try:

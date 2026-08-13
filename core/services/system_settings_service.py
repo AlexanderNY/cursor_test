@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from typing import Any, Optional
 
 from database import get_db_connection, release_db_connection
@@ -54,6 +55,10 @@ class SystemSettingsService:
         finally:
             await release_db_connection(conn)
 
+    @staticmethod
+    def is_env_ai_enabled() -> bool:
+        return os.getenv("AI_ENABLED", "true").strip().lower() in ("1", "true", "yes", "on")
+
     async def is_ai_enabled(self) -> bool:
         value = await self.get_value(AI_ENABLED_KEY, True)
         if isinstance(value, bool):
@@ -67,11 +72,10 @@ class SystemSettingsService:
         return bool(enabled)
 
     async def get_ai_settings(self) -> dict[str, Any]:
-        import os
-
         enabled = await self.is_ai_enabled()
         return {
             "enabled": enabled,
+            "env_enabled": self.is_env_ai_enabled(),
             "model": os.getenv("AI_MODEL", "qwen2.5:3b"),
             "service_url": os.getenv("AI_SERVICE_URL", "http://ollama:11434"),
         }

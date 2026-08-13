@@ -479,6 +479,11 @@ EXCEPTION WHEN duplicate_column THEN NULL;
 END $$;
 DO $$
 BEGIN
+  ALTER TABLE tg_posts ALTER COLUMN telegram_chat_id TYPE TEXT;
+EXCEPTION WHEN others THEN NULL;
+END $$;
+DO $$
+BEGIN
   ALTER TABLE tg_posts ADD COLUMN target_channels JSONB DEFAULT '[]';
 EXCEPTION WHEN duplicate_column THEN NULL;
 END $$;
@@ -563,6 +568,24 @@ CREATE INDEX IF NOT EXISTS idx_tg_events_user_created ON tg_events(user_id, crea
 CREATE INDEX IF NOT EXISTS idx_tg_events_type_created ON tg_events(event_type, created_at);
 CREATE INDEX IF NOT EXISTS idx_tg_events_hash_chat ON tg_events(text_hash, chat_id);
 CREATE INDEX IF NOT EXISTS idx_tg_events_rule_created ON tg_events(rule_id, created_at);
+"""
+
+# Журнал циклов scheduler / collector / processor (диагностика Administration → Posts)
+SERVICE_CYCLE_LOG_TABLE = """
+CREATE TABLE IF NOT EXISTS service_cycle_log (
+    id SERIAL PRIMARY KEY,
+    service_name VARCHAR(50) NOT NULL,
+    cycle_type VARCHAR(50) NOT NULL,
+    status VARCHAR(20) DEFAULT 'ok',
+    detail TEXT,
+    items_processed INTEGER DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
+SERVICE_CYCLE_LOG_INDEXES = """
+CREATE INDEX IF NOT EXISTS idx_service_cycle_log_created ON service_cycle_log(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_service_cycle_log_service_created ON service_cycle_log(service_name, created_at DESC);
 """
 
 # Кэш дедупликации алертов
@@ -918,6 +941,8 @@ CREATE TABLE IF NOT EXISTS threads_posts (
     to_wp BOOLEAN DEFAULT FALSE,
     to_vk BOOLEAN DEFAULT FALSE,
     to_threads BOOLEAN DEFAULT FALSE,
+    to_dzen BOOLEAN DEFAULT FALSE,
+    to_instagram BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -1101,6 +1126,26 @@ BEGIN
   ALTER TABLE url_posts ADD COLUMN to_dzen BOOLEAN DEFAULT FALSE;
 EXCEPTION WHEN duplicate_column THEN NULL;
 END $$;
+DO $$
+BEGIN
+  ALTER TABLE threads_posts ADD COLUMN to_dzen BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE tw_posts ADD COLUMN to_dzen BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE cpost_posts ADD COLUMN to_dzen BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE instagram_posts ADD COLUMN to_dzen BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
 """
 
 # Таблица instagram_profiles - настройки Instagram (instagrapi)
@@ -1222,6 +1267,21 @@ END $$;
 DO $$
 BEGIN
   ALTER TABLE dzen_posts ADD COLUMN to_instagram BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE threads_posts ADD COLUMN to_instagram BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE tw_posts ADD COLUMN to_instagram BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE cpost_posts ADD COLUMN to_instagram BOOLEAN DEFAULT FALSE;
 EXCEPTION WHEN duplicate_column THEN NULL;
 END $$;
 """
@@ -1639,6 +1699,27 @@ ALTER TABLE smm_inbox_items ADD CONSTRAINT smm_inbox_items_status_check
   CHECK (status IN ('new', 'read', 'replied', 'archived', 'reply_failed', 'in_progress'));
 """
 
+SMM_CHANNEL_FLOW_MIGRATION = """
+DO $$ BEGIN
+  ALTER TABLE smm_brand_channels ADD COLUMN alert_enabled BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE smm_brand_channels ADD COLUMN save_conditions JSONB DEFAULT '[]'::jsonb;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE smm_brand_channels ADD COLUMN processing JSONB DEFAULT '{}'::jsonb;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE smm_brand_channels ADD COLUMN alert_delivery JSONB DEFAULT '{}'::jsonb;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE smm_brand_channels ADD COLUMN alert_rules JSONB DEFAULT '[]'::jsonb;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+CREATE INDEX IF NOT EXISTS idx_smm_channels_tg_external
+  ON smm_brand_channels (network, external_id)
+  WHERE network = 'tg';
+"""
+
 GUIDE_BLOCKS_TABLE = """
 CREATE TABLE IF NOT EXISTS guide_blocks (
     id SERIAL PRIMARY KEY,
@@ -1669,6 +1750,30 @@ END $$;
 CREATE INDEX IF NOT EXISTS idx_vk_posts_publish_at ON vk_posts(publish_at);
 """
 
+# Brand destination overrides: конкретные TG-каналы / VK-группы для публикации
+TARGET_DESTINATIONS_MIGRATION = """
+DO $$ BEGIN ALTER TABLE posts ADD COLUMN target_channels JSONB DEFAULT '[]'; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE posts ADD COLUMN target_groups JSONB DEFAULT '[]'; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE cpost_posts ADD COLUMN target_channels JSONB DEFAULT '[]'; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE cpost_posts ADD COLUMN target_groups JSONB DEFAULT '[]'; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE tg_posts ADD COLUMN target_channels JSONB DEFAULT '[]'; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE tg_posts ADD COLUMN target_groups JSONB DEFAULT '[]'; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE vk_posts ADD COLUMN target_channels JSONB DEFAULT '[]'; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE vk_posts ADD COLUMN target_groups JSONB DEFAULT '[]'; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE wp_posts ADD COLUMN target_channels JSONB DEFAULT '[]'; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE wp_posts ADD COLUMN target_groups JSONB DEFAULT '[]'; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE tw_posts ADD COLUMN target_channels JSONB DEFAULT '[]'; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE tw_posts ADD COLUMN target_groups JSONB DEFAULT '[]'; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE threads_posts ADD COLUMN target_channels JSONB DEFAULT '[]'; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE threads_posts ADD COLUMN target_groups JSONB DEFAULT '[]'; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE dzen_posts ADD COLUMN target_channels JSONB DEFAULT '[]'; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE dzen_posts ADD COLUMN target_groups JSONB DEFAULT '[]'; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE instagram_posts ADD COLUMN target_channels JSONB DEFAULT '[]'; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE instagram_posts ADD COLUMN target_groups JSONB DEFAULT '[]'; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE url_posts ADD COLUMN target_channels JSONB DEFAULT '[]'; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE url_posts ADD COLUMN target_groups JSONB DEFAULT '[]'; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+"""
+
 ALL_TABLES = [
     POSTS_TABLE,
     POSTS_MIGRATION,
@@ -1684,6 +1789,8 @@ ALL_TABLES = [
     TG_POST_TEMPLATES_TABLE,
     TG_EVENTS_TABLE,
     TG_EVENTS_INDEXES,
+    SERVICE_CYCLE_LOG_TABLE,
+    SERVICE_CYCLE_LOG_INDEXES,
     TG_DEDUP_CACHE_TABLE,
     TG_DEDUP_CACHE_INDEXES,
     TG_SUMMARY_CACHE_TABLE,
@@ -1755,6 +1862,8 @@ ALL_TABLES = [
     SMM_INDEXES,
     SMM_OPS_MIGRATION,
     SMM_COMMENTS_MIGRATION,
+    SMM_CHANNEL_FLOW_MIGRATION,
     GUIDE_BLOCKS_TABLE,
     VK_POSTS_PUBLISH_AT_MIGRATION,
+    TARGET_DESTINATIONS_MIGRATION,
 ]

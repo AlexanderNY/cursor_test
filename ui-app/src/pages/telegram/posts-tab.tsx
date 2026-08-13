@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button'
 import { SkeletonCard } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/ui'
 import type { TelegramPostListItem } from '@/types/telegram'
+import { formatDateTime } from '@/utils/date'
 
 export interface PostsTabProps {
   posts: TelegramPostListItem[]
@@ -20,8 +21,7 @@ export interface PostsTabProps {
 
 function formatScheduled(publishAt?: string | null): string | null {
   if (!publishAt) return null
-  const d = new Date(publishAt)
-  return `Scheduled ${d.toLocaleString()}`
+  return `Scheduled ${formatDateTime(publishAt)}`
 }
 
 export function PostsTab({
@@ -94,7 +94,7 @@ export function PostsTab({
                         </span>
                       </td>
                       <td className="py-2 pr-4 text-[var(--text-secondary)]">
-                        {new Date(post.created_at).toLocaleDateString()}
+                        {formatDateTime(post.created_at)}
                       </td>
                       <td className="py-2 pr-4 text-right">
                         <div className="flex items-center justify-end gap-1 flex-wrap">

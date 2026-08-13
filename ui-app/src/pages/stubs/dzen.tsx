@@ -1,4 +1,4 @@
-import { useState, FormEvent, useEffect, useCallback } from 'react'
+import { useState, FormEvent, useEffect, useCallback, useRef } from 'react'
 import axios from 'axios'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -8,9 +8,13 @@ import { PageHeader, PageContainer } from '@/components/ui'
 import {
   TargetSocialNetworksWidget,
   createDefaultTargets,
+  EMPTY_SELECTED_BRAND_CHANNELS,
   type TargetSocialNetworks,
+  type SelectedBrandChannels,
 } from '@/components/target-social-networks'
 import { dzenService } from '@/services/dzen-service'
+import { getErrorMessage } from '@/services/api-client'
+import { formatDateTime } from '@/utils/date'
 import type {
   DzenProfile,
   DzenPostListItem,
@@ -42,7 +46,7 @@ function readStoredDiagUrl(): string | null {
 
 function writeStoredDiagUrl(url: string | null): void {
   try {
-    if (url) {
+    if (url && !url.startsWith('data:')) {
       sessionStorage.setItem(DZEN_AUTH_DIAG_STORAGE_KEY, url)
     } else {
       sessionStorage.removeItem(DZEN_AUTH_DIAG_STORAGE_KEY)
@@ -53,10 +57,17 @@ function writeStoredDiagUrl(url: string | null): void {
 }
 
 function isTimeoutError(err: unknown): boolean {
-  if (axios.isAxiosError(err)) {
-    return err.code === 'ECONNABORTED' || (err.message || '').toLowerCase().includes('timeout')
-  }
-  return err instanceof Error && err.message.toLowerCase().includes('timeout')
+  const text = `${axios.isAxiosError(err) ? err.code || '' : ''} ${getErrorMessage(err)}`.toLowerCase()
+  return (
+    (axios.isAxiosError(err) && err.code === 'ECONNABORTED') ||
+    text.includes('timeout') ||
+    text.includes('timed out') ||
+    text.includes('таймаут')
+  )
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 export function DzenPage() {
@@ -83,6 +94,9 @@ export function DzenPage() {
   const [postTargets, setPostTargets] = useState<TargetSocialNetworks>(() =>
     createDefaultTargets('dzen')
   )
+  const [selectedChannels, setSelectedChannels] = useState<SelectedBrandChannels>({
+    ...EMPTY_SELECTED_BRAND_CHANNELS,
+  })
   const [imageFiles, setImageFiles] = useState<FileList | null>(null)
   const [videoFiles, setVideoFiles] = useState<FileList | null>(null)
   const [editingPostId, setEditingPostId] = useState<number | null>(null)
@@ -101,9 +115,11 @@ export function DzenPage() {
   const [pushCode, setPushCode] = useState('')
   const [verifyDiagImageUrl, setVerifyDiagImageUrl] = useState<string | null>(null)
   const [diagImageLoadError, setDiagImageLoadError] = useState(false)
+  const [isRefreshingDiag, setIsRefreshingDiag] = useState(false)
   const [isCreatingPost, setIsCreatingPost] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+  const diagPollAbortRef = useRef(false)
 
   const loadProfile = useCallback(async () => {
     setIsLoadingProfile(true)
@@ -225,6 +241,8 @@ export function DzenPage() {
             to_dzen: postTargets.dzen,
             to_threads: postTargets.threads,
             to_instagram: postTargets.instagram,
+            target_channels: selectedChannels.tg,
+            target_groups: selectedChannels.vk,
           })
         }
         setSuccess('Post created successfully')
@@ -232,6 +250,7 @@ export function DzenPage() {
         setPostTitle('')
         setImageFiles(null)
         setVideoFiles(null)
+        setSelectedChannels({ ...EMPTY_SELECTED_BRAND_CHANNELS })
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save post')
@@ -340,14 +359,67 @@ export function DzenPage() {
     }
   }
 
-  async function refreshPendingDiagScreenshot(): Promise<void> {
+  async function refreshPendingDiagScreenshot(
+    pollMs = 0,
+    options?: { silent?: boolean }
+  ): Promise<boolean> {
+    const silent = options?.silent ?? false
+    if (!silent) {
+      setIsRefreshingDiag(true)
+    }
+    const deadline = Date.now() + pollMs
+    let lastError: string | null = null
+    let first = true
     try {
-      const diag = await dzenService.fetchVerifyPendingDiag()
-      if (diag.diag_image_url) {
-        setDiagFromResponse(diag.diag_image_url, false)
+      while (first || Date.now() < deadline) {
+        if (diagPollAbortRef.current && silent) {
+          return false
+        }
+        if (!first) {
+          await sleep(2500)
+        }
+        first = false
+        try {
+          const diag = await dzenService.fetchVerifyPendingDiag()
+          if (diag.need_push_code) {
+            setNeedPushCode(true)
+            setVerifyInfoMessage(diag.message ?? 'Введите код из пуш-уведомления.')
+          }
+          if (diag.diag_image_url) {
+            setDiagFromResponse(diag.diag_image_url, false)
+            return true
+          }
+          if (diag.error) {
+            lastError = diag.error
+          }
+        } catch (err) {
+          lastError = getErrorMessage(err)
+        }
+        if (pollMs <= 0) {
+          break
+        }
       }
-    } catch {
-      /* best effort */
+      if (lastError && !silent) {
+        setError((prev) => {
+          const suffix = lastError as string
+          if (!prev) return suffix
+          if (prev.includes(suffix)) return prev
+          return `${prev} ${suffix}`
+        })
+      }
+      return false
+    } finally {
+      if (!silent) {
+        setIsRefreshingDiag(false)
+      }
+    }
+  }
+
+  async function pollDiagWhilePending(): Promise<void> {
+    await sleep(3000)
+    while (!diagPollAbortRef.current) {
+      await refreshPendingDiagScreenshot(0, { silent: true })
+      await sleep(4000)
     }
   }
 
@@ -380,8 +452,11 @@ export function DzenPage() {
     setNeedPushCode(false)
     setPushCode('')
     setIsVerifyingAuth(true)
+    diagPollAbortRef.current = false
+    void pollDiagWhilePending()
     try {
       const res = await dzenService.verifyYandexStart()
+      diagPollAbortRef.current = true
       await loadProfile()
       if (res.ok && res.need_push_code) {
         setNeedPushCode(true)
@@ -396,11 +471,13 @@ export function DzenPage() {
         setError(
           'Превышен таймаут ожидания ответа. Проверка на сервере может ещё выполняться — обновляем скрин…'
         )
-        await refreshPendingDiagScreenshot()
+        await refreshPendingDiagScreenshot(60_000)
       } else {
-        setError(err instanceof Error ? err.message : 'Ошибка проверки авторизации')
+        setError(getErrorMessage(err) || 'Ошибка проверки авторизации')
+        await refreshPendingDiagScreenshot(15_000)
       }
     } finally {
+      diagPollAbortRef.current = true
       setIsVerifyingAuth(false)
     }
   }
@@ -414,8 +491,11 @@ export function DzenPage() {
     setError('')
     setSuccess('')
     setIsVerifyingAuth(true)
+    diagPollAbortRef.current = false
+    void pollDiagWhilePending()
     try {
       const res = await dzenService.verifyYandexPushCode(code)
+      diagPollAbortRef.current = true
       await loadProfile()
       if (res.ok) {
         setNeedPushCode(false)
@@ -436,11 +516,13 @@ export function DzenPage() {
         setError(
           'Превышен таймаут после отправки кода. Бот мог продолжить вход — обновляем скрин с текущего экрана…'
         )
-        await refreshPendingDiagScreenshot()
+        await refreshPendingDiagScreenshot(60_000)
       } else {
-        setError(err instanceof Error ? err.message : 'Ошибка отправки кода')
+        setError(getErrorMessage(err) || 'Ошибка отправки кода')
+        await refreshPendingDiagScreenshot(15_000)
       }
     } finally {
+      diagPollAbortRef.current = true
       setIsVerifyingAuth(false)
     }
   }
@@ -571,7 +653,12 @@ export function DzenPage() {
                       className="block w-full text-sm text-[var(--text-secondary)] file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:bg-primary-500 file:text-white"
                     />
                   </div>
-                  <TargetSocialNetworksWidget value={postTargets} onChange={setPostTargets} />
+                  <TargetSocialNetworksWidget
+                    value={postTargets}
+                    onChange={setPostTargets}
+                    selectedChannels={selectedChannels}
+                    onSelectedChannelsChange={setSelectedChannels}
+                  />
                 </>
               )}
               <CardFooter className="px-0">
@@ -625,7 +712,7 @@ export function DzenPage() {
                           </span>
                         </td>
                         <td className="py-2 pr-4 text-[var(--text-secondary)]">
-                          {new Date(post.created_at).toLocaleDateString()}
+                          {formatDateTime(post.created_at)}
                         </td>
                         <td className="py-2 pr-4 text-right">
                           <div className="flex items-center justify-end gap-1">
@@ -848,12 +935,24 @@ export function DzenPage() {
                     <Button type="button" variant="secondary" isLoading={isVerifyingAuth} onClick={() => void handleVerifyAuth()}>
                       Проверить авторизацию
                     </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      isLoading={isRefreshingDiag}
+                      onClick={() => void refreshPendingDiagScreenshot(0)}
+                    >
+                      Обновить скрин
+                    </Button>
                   </div>
                 </form>
-                {verifyDiagImageUrl && (
+                {(verifyDiagImageUrl || isRefreshingDiag) && (
                   <div className="space-y-2">
-                    <p className="text-xs text-[var(--text-muted)]">Снимок экрана для диагностики (страница в браузере бота):</p>
-                    {!diagImageLoadError ? (
+                    <p className="text-xs text-[var(--text-muted)]">
+                      {isRefreshingDiag && !verifyDiagImageUrl
+                        ? 'Ожидаем снимок экрана с сервера…'
+                        : 'Снимок экрана для диагностики (страница в браузере бота):'}
+                    </p>
+                    {verifyDiagImageUrl && !diagImageLoadError ? (
                       <img
                         src={verifyDiagImageUrl}
                         alt="Диагностика Selenium"
@@ -861,10 +960,12 @@ export function DzenPage() {
                         onLoad={() => setDiagImageLoadError(false)}
                         onError={() => setDiagImageLoadError(true)}
                       />
-                    ) : (
+                    ) : verifyDiagImageUrl && diagImageLoadError ? (
                       <p className="text-sm text-[var(--text-secondary)]">
-                        Не удалось загрузить скрин. Нажмите «Проверить авторизацию» ещё раз.
+                        Не удалось показать скрин. Нажмите «Обновить скрин».
                       </p>
+                    ) : (
+                      <p className="text-sm text-[var(--text-secondary)]">Запрашиваем снимок…</p>
                     )}
                   </div>
                 )}

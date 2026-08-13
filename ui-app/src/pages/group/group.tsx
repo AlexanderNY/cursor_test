@@ -10,6 +10,7 @@ import { authService } from '@/services/auth-service'
 import { coreService } from '@/services/core-service'
 import type { GroupResponse, GroupMemberResponse } from '@/types/auth'
 import type { UserStatisticsItem } from '@/types/core'
+import { formatDateTime } from '@/utils/date'
 
 export function GroupPage() {
   const { user, refreshUserData } = useAuth()
@@ -283,7 +284,7 @@ export function GroupPage() {
                           {m.role_in_group}
                         </span>
                       </td>
-                      <td className="py-3 px-4 text-[var(--text-secondary)] text-sm">{new Date(m.joined_at).toLocaleDateString()}</td>
+                      <td className="py-3 px-4 text-[var(--text-secondary)] text-sm">{formatDateTime(m.joined_at)}</td>
                       {isManager && (
                         <td className="py-3 px-4 text-right">
                           {m.role_in_group === 'author' && (

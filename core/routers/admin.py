@@ -21,6 +21,7 @@ from schemas import (
     PostRow,
     ProcessorRunResponse,
     PostingDiagnosticsResponse,
+    PipelineEventsResponse,
     StorageFileItem,
     StorageFilesResponse,
     StoragePresignedUrlResponse,
@@ -93,6 +94,15 @@ async def get_posting_diagnostics():
     """Цикл диагностики постинга: сводки tg_posts/posts по статусам и подсказки для администратора."""
     data = await admin_service.run_posting_diagnostics()
     return PostingDiagnosticsResponse(**data)
+
+
+@router.get("/pipeline-events", response_model=PipelineEventsResponse)
+async def get_pipeline_events(
+    limit: int = Query(50, ge=1, le=200),
+):
+    """Списки срабатываний alerting/publishing/collection/Custom URL/сервисов."""
+    data = await admin_service.get_pipeline_events(limit=limit)
+    return PipelineEventsResponse(**data)
 
 
 @router.get("/runtime-location", response_model=RuntimeLocationResponse)
@@ -270,6 +280,11 @@ async def run_ai_check(
 ):
     """Отправляет текст в AI-сервис и возвращает ответ. Только admin."""
     del admin_user
+    if not system_settings_service.is_env_ai_enabled():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="AI is disabled by AI_ENABLED=false. Set AI_ENABLED=true and recreate the core container.",
+        )
     if not await system_settings_service.is_ai_enabled():
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

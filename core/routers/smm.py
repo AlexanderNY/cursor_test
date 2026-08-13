@@ -72,6 +72,11 @@ class ChannelUpdate(BaseModel):
     discussion_external_id: Optional[str] = None
     discussion_title: Optional[str] = None
     comments_collect_enabled: Optional[bool] = None
+    alert_enabled: Optional[bool] = None
+    save_conditions: Optional[List[str]] = None
+    processing: Optional[dict[str, Any]] = None
+    alert_delivery: Optional[dict[str, Any]] = None
+    alert_rules: Optional[List[dict[str, Any]]] = None
 
 
 class InboxEdit(BaseModel):
@@ -149,6 +154,14 @@ class AiRewriteRequest(BaseModel):
 class AiAdaptRequest(BaseModel):
     text: str
     targets: List[str] = Field(default_factory=list)
+
+
+class AiProcessRequest(BaseModel):
+    action: Literal["summarize", "categorize", "rewrite", "reply_draft"]
+    text: str = Field(..., min_length=1, max_length=20000)
+    params: Optional[dict[str, Any]] = None
+    source: Optional[Literal["inbox", "post"]] = None
+    source_id: Optional[int] = None
 
 
 class CompetitorCreate(BaseModel):
@@ -261,6 +274,15 @@ async def add_channel(brand_id: int, body: ChannelCreate, x_user_id: Optional[st
         raise HTTPException(status_code=400, detail=str(exc))
 
 
+@router.get("/channels/{channel_id}")
+async def get_channel(channel_id: int, x_user_id: Optional[str] = Header(None)):
+    user_id = get_user_id(x_user_id)
+    ch = await smm_service.get_channel(user_id, channel_id)
+    if not ch:
+        raise HTTPException(status_code=404, detail="Channel not found")
+    return ch
+
+
 @router.patch("/brands/{brand_id}/channels/{channel_id}")
 async def update_channel(
     brand_id: int,
@@ -283,6 +305,11 @@ async def update_channel(
         discussion_external_id=body.discussion_external_id,
         discussion_title=body.discussion_title,
         comments_collect_enabled=body.comments_collect_enabled,
+        alert_enabled=body.alert_enabled,
+        save_conditions=body.save_conditions,
+        processing=body.processing,
+        alert_delivery=body.alert_delivery,
+        alert_rules=body.alert_rules,
     )
     if not ch:
         raise HTTPException(status_code=404, detail="Channel not found")
@@ -350,6 +377,8 @@ async def reply_item(item_id: int, body: InboxReply, x_user_id: Optional[str] = 
         item = await smm_service.reply_inbox(user_id, item_id, body.text)
     except QuotaExceededError as exc:
         raise _http_quota(exc)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     if not item:
         raise HTTPException(status_code=404, detail="Inbox item not found")
     return item
@@ -609,6 +638,41 @@ async def competitor_posts(channel_id: int, x_user_id: Optional[str] = Header(No
 
 
 # ---------- AI ----------
+
+@router.get("/ai/actions")
+async def ai_actions(x_user_id: Optional[str] = Header(None)):
+    """Каталог безопасных AI-действий (шаблоны, не свободный prompt)."""
+    get_user_id(x_user_id)
+    from services.ai_assist_service import list_actions
+
+    return {"actions": list_actions()}
+
+
+@router.post("/ai/process")
+async def ai_process(body: AiProcessRequest, x_user_id: Optional[str] = Header(None)):
+    """Шаблонный AI-запрос: action + text + ограниченные params."""
+    user_id = get_user_id(x_user_id)
+    if not plan_feature(await get_user_tariff(user_id), "ai_composer"):
+        raise HTTPException(status_code=402, detail="AI composer requires Standard or Full plan")
+    try:
+        await ensure_ai_calls_quota(user_id)
+    except QuotaExceededError as exc:
+        raise _http_quota(exc)
+
+    from services.ai_assist_service import AiAssistError, process as ai_process_action
+
+    try:
+        return await ai_process_action(
+            user_id,
+            body.action,
+            body.text,
+            body.params,
+            source=body.source,
+            source_id=body.source_id,
+        )
+    except AiAssistError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
+
 
 @router.post("/ai/summarize")
 async def ai_summarize(body: AiSummarizeRequest, x_user_id: Optional[str] = Header(None)):

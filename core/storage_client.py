@@ -32,6 +32,7 @@ def get_storage():
             secret_key=settings.S3_SECRET_KEY,
             region_name=settings.S3_REGION,
             use_ssl=settings.S3_USE_SSL,
+            public_endpoint_url=getattr(settings, "S3_PUBLIC_ENDPOINT_URL", None) or None,
         )
         return _storage
     except Exception:

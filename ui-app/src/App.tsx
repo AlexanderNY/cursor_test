@@ -20,6 +20,7 @@ import { ChecksPage, ChecksIndexRedirect, AiCheckSection, ServicesStatusSection,
 import { TeamPage } from '@/pages/team/team'
 import { BrandsPage } from '@/pages/brands/brands'
 import { ChannelsPage } from '@/pages/channels/channels'
+import { ChannelFlowPage } from '@/pages/channels/channel-flow'
 import { InboxPage } from '@/pages/inbox/inbox'
 import { CalendarPage } from '@/pages/calendar/calendar'
 import { SmmAnalyticsPage } from '@/pages/smm-analytics/analytics'
@@ -98,6 +99,7 @@ function App() {
         <Route path="statistics" element={<Navigate to="/profile?tab=statistics" replace />} />
         <Route path="brands" element={<BrandsPage />} />
         <Route path="channels" element={<ChannelsPage />} />
+        <Route path="channels/:channelId" element={<ChannelFlowPage />} />
         <Route path="inbox" element={<InboxPage />} />
         <Route path="calendar" element={<CalendarPage />} />
         <Route path="analytics" element={<SmmAnalyticsPage />} />

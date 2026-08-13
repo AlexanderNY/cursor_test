@@ -22,6 +22,13 @@ export interface DzenVerifyResponse {
   diag_image_url?: string | null
 }
 
+export interface DzenPendingDiagResponse {
+  diag_image_url?: string | null
+  error?: string | null
+  need_push_code?: boolean
+  message?: string | null
+}
+
 export interface DzenProfile {
   publish_enabled: boolean
   collect_enabled: boolean
@@ -50,6 +57,8 @@ export interface DzenPost {
   to_dzen?: boolean
   to_threads?: boolean
   to_instagram?: boolean
+  target_channels?: string[]
+  target_groups?: string[]
 }
 
 export interface DzenPostListItem {

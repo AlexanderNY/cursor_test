@@ -85,7 +85,9 @@ export function AiCheckSection() {
     }
   }
 
-  const isAiEnabled = aiSettings?.enabled ?? true
+  const isDbEnabled = aiSettings?.enabled ?? true
+  const isEnvEnabled = aiSettings?.env_enabled ?? true
+  const isAiEnabled = isDbEnabled && isEnvEnabled
 
   return (
     <div className="space-y-6">
@@ -113,7 +115,13 @@ export function AiCheckSection() {
                         : 'bg-amber-500/20 text-amber-400'
                   }`}
                 >
-                  {isLoadingSettings ? 'Загрузка…' : isAiEnabled ? 'Включена' : 'Отключена'}
+                  {isLoadingSettings
+                    ? 'Загрузка…'
+                    : isAiEnabled
+                      ? 'Включена'
+                      : !isEnvEnabled
+                        ? 'Заблокирована (AI_ENABLED)'
+                        : 'Отключена'}
                 </span>
                 {aiSettings?.model && (
                   <span className="text-sm text-[var(--text-muted)]">{aiSettings.model}</span>
@@ -122,13 +130,19 @@ export function AiCheckSection() {
               {aiSettings?.service_url && (
                 <p className="text-xs text-[var(--text-muted)] font-mono">{aiSettings.service_url}</p>
               )}
+              {!isEnvEnabled && (
+                <p className="text-xs text-amber-400 max-w-xl">
+                  Вызовы модели запрещены переменной AI_ENABLED=false. Поставьте AI_ENABLED=true и
+                  пересоздайте контейнеры (core и сервисы с AI).
+                </p>
+              )}
             </div>
 
             <div className="flex gap-2">
               <Button
                 type="button"
                 variant={isAiEnabled ? 'secondary' : 'default'}
-                disabled={isLoadingSettings || isSavingSettings || !isAiEnabled}
+                disabled={isLoadingSettings || isSavingSettings || !isDbEnabled}
                 isLoading={isSavingSettings && isAiEnabled}
                 onClick={() => handleToggleAi(false)}
               >
@@ -137,7 +151,7 @@ export function AiCheckSection() {
               <Button
                 type="button"
                 variant={!isAiEnabled ? 'secondary' : 'default'}
-                disabled={isLoadingSettings || isSavingSettings || isAiEnabled}
+                disabled={isLoadingSettings || isSavingSettings || isDbEnabled || !isEnvEnabled}
                 isLoading={isSavingSettings && !isAiEnabled}
                 onClick={() => handleToggleAi(true)}
               >
@@ -158,7 +172,9 @@ export function AiCheckSection() {
         <CardContent>
           {!isAiEnabled && (
             <Alert variant="warning" className="mb-4">
-              Нейросеть отключена — тестовый запрос недоступен. Включите AI выше.
+              {!isEnvEnabled
+                ? 'Тестовый запрос недоступен: AI_ENABLED=false. Пересоздайте контейнеры с AI_ENABLED=true.'
+                : 'Нейросеть отключена — тестовый запрос недоступен. Включите AI выше.'}
             </Alert>
           )}
 

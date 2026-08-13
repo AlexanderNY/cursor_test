@@ -130,6 +130,8 @@ async def create_dzen_post(
         to_dzen = data.to_dzen
         to_threads = data.to_threads
         to_instagram = data.to_instagram
+        target_channels = list(data.target_channels or [])
+        target_groups = list(data.target_groups or [])
     else:
         if text is None:
             raise HTTPException(status_code=400, detail="text or data body required")
@@ -141,6 +143,8 @@ async def create_dzen_post(
         to_dzen = True
         to_threads = False
         to_instagram = False
+        target_channels = []
+        target_groups = []
 
     try:
         for img in images or []:
@@ -164,6 +168,8 @@ async def create_dzen_post(
             to_dzen=to_dzen,
             to_threads=to_threads,
             to_instagram=to_instagram,
+            target_channels=target_channels,
+            target_groups=target_groups,
         )
         return post
     except ValueError as e:

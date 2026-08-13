@@ -1,5 +1,5 @@
 import { useState, FormEvent, Fragment, useEffect, type ReactNode } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, Navigate } from 'react-router-dom'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
@@ -17,26 +17,25 @@ import { Input } from '@/components/ui/input'
 import type { User, RoleTariffHistoryEntry, GroupResponse, AdminAuditLogEntry } from '@/types/auth'
 import type {
   UserStatisticsItem,
-  ScheduleSnapshot,
   Notification,
   Feedback,
   PostsTablesResponse,
   PostRow,
+  PipelineEventsResponse,
+  PipelineEventItem,
   StorageFileItem,
   StorageFilesResponse,
   RuntimeLocationResponse,
 } from '@/types/core'
 import { FEEDBACK_TYPE_LABELS } from '@/types/core'
 import { platformStatusCell, platformTableStatusColumns } from '@/pages/checks/checks-utils'
+import { formatDateTime } from '@/utils/date'
 
-type AdminTab = 'users' | 'audit' | 'groups' | 'statistics' | 'schedule' | 'notifications' | 'feedback' | 'guide' | 'posts-tables' | 'runtime-location' | 'storage'
+type AdminTab = 'users' | 'notifications' | 'feedback' | 'guide' | 'posts-tables' | 'runtime-location' | 'storage'
+type UsersSubTab = 'management' | 'groups' | 'audit' | 'statistics'
 
 const ADMIN_TABS: AdminTab[] = [
   'users',
-  'audit',
-  'groups',
-  'statistics',
-  'schedule',
   'notifications',
   'feedback',
   'guide',
@@ -45,30 +44,22 @@ const ADMIN_TABS: AdminTab[] = [
   'storage',
 ]
 
-/** Платформы для «Принудительный запуск ботов» (совпадает с scheduler BOT_PLATFORMS). */
-const SCHEDULE_BOT_PLATFORMS = [
-  'wp',
-  'tg',
-  'tw',
-  'vk',
-  'url',
-  'threads',
-  'dzen',
-  'instagram',
-] as const
+const USERS_SUB_TABS: { id: UsersSubTab; label: string }[] = [
+  { id: 'management', label: 'Users Management' },
+  { id: 'groups', label: 'Groups' },
+  { id: 'audit', label: 'Audit Log' },
+  { id: 'statistics', label: 'Statistics' },
+]
 
 export function AdministrationPage() {
   const { user: currentUser } = useAuth()
   const [searchParams] = useSearchParams()
   const [activeTab, setActiveTab] = useState<AdminTab>('users')
+  const [usersSubTab, setUsersSubTab] = useState<UsersSubTab>('management')
   const [users, setUsers] = useState<User[]>([])
   const [statistics, setStatistics] = useState<UserStatisticsItem[]>([])
-  const [schedules, setSchedules] = useState<ScheduleSnapshot[]>([])
   const [isLoadingUsers, setIsLoadingUsers] = useState(false)
   const [isLoadingStatistics, setIsLoadingStatistics] = useState(false)
-  const [isLoadingSchedule, setIsLoadingSchedule] = useState(false)
-  const [isStartingDiscovery, setIsStartingDiscovery] = useState(false)
-  const [isStartingBot, setIsStartingBot] = useState(false)
   const [usersError, setUsersError] = useState('')
   const [savingUserId, setSavingUserId] = useState<number | null>(null)
   const [blockingUserId, setBlockingUserId] = useState<number | null>(null)
@@ -94,12 +85,6 @@ export function AdministrationPage() {
   const [isLoadingAudit, setIsLoadingAudit] = useState(false)
   const [auditError, setAuditError] = useState('')
   const [statisticsError, setStatisticsError] = useState('')
-  const [scheduleError, setScheduleError] = useState('')
-  const [discoveryMessage, setDiscoveryMessage] = useState('')
-  const [botMessage, setBotMessage] = useState('')
-  const [selectedBots, setSelectedBots] = useState<{ [key: string]: boolean }>(() =>
-    Object.fromEntries(SCHEDULE_BOT_PLATFORMS.map((p) => [p, false]))
-  )
 
   // Notifications state
   const [notificationMessage, setNotificationMessage] = useState('')
@@ -125,6 +110,9 @@ export function AdministrationPage() {
   const [postsList, setPostsList] = useState<PostRow[]>([])
   const [isLoadingPostsList, setIsLoadingPostsList] = useState(false)
   const [postsListError, setPostsListError] = useState('')
+  const [pipelineEvents, setPipelineEvents] = useState<PipelineEventsResponse | null>(null)
+  const [isLoadingPipelineEvents, setIsLoadingPipelineEvents] = useState(false)
+  const [pipelineEventsError, setPipelineEventsError] = useState('')
 
   // S3 storage files (admin)
   const [storageFiles, setStorageFiles] = useState<StorageFilesResponse | null>(null)
@@ -350,71 +338,6 @@ export function AdministrationPage() {
     }
   }
 
-  async function handleLoadSchedule() {
-    setScheduleError('')
-    setIsLoadingSchedule(true)
-    try {
-      const response = await coreService.getSchedule()
-      setSchedules(response.schedules || [])
-    } catch (error) {
-      setScheduleError(error instanceof Error ? error.message : 'Failed to fetch schedule')
-      setSchedules([])
-    } finally {
-      setIsLoadingSchedule(false)
-    }
-  }
-
-  async function handleStartDiscovery() {
-    setDiscoveryMessage('')
-    setScheduleError('')
-    setIsStartingDiscovery(true)
-    try {
-      const response = await coreService.startDiscovery()
-      setDiscoveryMessage(response.message + (response.changed ? ' (Changes detected)' : ' (No changes)'))
-    } catch (error) {
-      setScheduleError(error instanceof Error ? error.message : 'Failed to start discovery')
-      setDiscoveryMessage('')
-    } finally {
-      setIsStartingDiscovery(false)
-    }
-  }
-
-  async function handleStartBot() {
-    const selectedPlatforms = Object.entries(selectedBots)
-      .filter(([_, selected]) => selected)
-      .map(([platform]) => platform)
-    
-    if (selectedPlatforms.length === 0) {
-      setBotMessage('Please select at least one bot')
-      return
-    }
-
-    setBotMessage('')
-    setScheduleError('')
-    setIsStartingBot(true)
-    try {
-      const response = await coreService.startBot(selectedPlatforms)
-      const results = Object.entries(response.results || {})
-        .map(([platform, result]: [string, any]) => 
-          `${platform}: ${result.status === 'success' ? 'Success' : 'Error'}`
-        )
-        .join(', ')
-      setBotMessage(`Bots started: ${results}`)
-    } catch (error) {
-      setScheduleError(error instanceof Error ? error.message : 'Failed to start bots')
-      setBotMessage('')
-    } finally {
-      setIsStartingBot(false)
-    }
-  }
-
-  function handleBotToggle(platform: string) {
-    setSelectedBots(prev => ({
-      ...prev,
-      [platform]: !prev[platform]
-    }))
-  }
-
   async function handleCreateNotification(e: FormEvent) {
     e.preventDefault()
     setNotificationError('')
@@ -511,6 +434,20 @@ export function AdministrationPage() {
     }
   }
 
+  async function handleLoadPipelineEvents() {
+    setPipelineEventsError('')
+    setIsLoadingPipelineEvents(true)
+    try {
+      const data = await coreService.getPipelineEvents(50)
+      setPipelineEvents(data)
+    } catch (error) {
+      setPipelineEventsError(error instanceof Error ? error.message : 'Failed to fetch pipeline events')
+      setPipelineEvents(null)
+    } finally {
+      setIsLoadingPipelineEvents(false)
+    }
+  }
+
   async function handleLoadStorageFiles() {
     setStorageFilesError('')
     setIsLoadingStorageFiles(true)
@@ -602,14 +539,39 @@ export function AdministrationPage() {
 
   useEffect(() => {
     const tabParam = searchParams.get('tab')
+    if (tabParam === 'schedule') {
+      return
+    }
+    if (tabParam === 'audit' || tabParam === 'groups' || tabParam === 'statistics') {
+      setActiveTab('users')
+      setUsersSubTab(tabParam)
+      return
+    }
     if (tabParam && ADMIN_TABS.includes(tabParam as AdminTab)) {
       setActiveTab(tabParam as AdminTab)
     }
+    const subParam = searchParams.get('sub')
+    if (
+      subParam === 'management' ||
+      subParam === 'groups' ||
+      subParam === 'audit' ||
+      subParam === 'statistics'
+    ) {
+      setUsersSubTab(subParam)
+    }
   }, [searchParams])
+
+  if (searchParams.get('tab') === 'schedule') {
+    return <Navigate to="/checks/scheduler" replace />
+  }
 
   const POSTS_TABLE_COLUMNS: { key: keyof PostRow; label: string }[] = [
     { key: 'id', label: 'ID' },
     { key: 'user_id', label: 'User ID' },
+    { key: 'status', label: 'Status' },
+    { key: 'published_channel', label: 'Published Channel' },
+    { key: 'source_platform', label: 'Source Platform' },
+    { key: 'source_id', label: 'Source ID' },
     { key: 'domain', label: 'Domain' },
     { key: 'url', label: 'URL' },
     { key: 'title', label: 'Title' },
@@ -625,7 +587,6 @@ export function AdministrationPage() {
     { key: 'likes', label: 'Likes' },
     { key: 'views', label: 'Views' },
     { key: 'is_ad', label: 'Is Ad' },
-    { key: 'status', label: 'Status' },
     { key: 'post_type', label: 'Post Type' },
     { key: 'to_tg', label: 'To TG' },
     { key: 'to_tw', label: 'To TW' },
@@ -633,19 +594,20 @@ export function AdministrationPage() {
     { key: 'to_vk', label: 'To VK' },
     { key: 'created_at', label: 'Created At' },
     { key: 'updated_at', label: 'Updated At' },
-    { key: 'source_platform', label: 'Source Platform' },
-    { key: 'source_id', label: 'Source ID' },
   ]
 
   function formatPostCell(post: PostRow, key: keyof PostRow): ReactNode {
     const v = post[key]
     if (v === null || v === undefined) return <span className="text-[var(--text-muted)]">—</span>
     if (key === 'post_date' || key === 'created_at' || key === 'updated_at') {
-      return <span className="text-[var(--text-secondary)] whitespace-nowrap">{new Date(String(v)).toLocaleString()}</span>
+      return <span className="text-[var(--text-secondary)] whitespace-nowrap">{formatDateTime(String(v))}</span>
     }
     if (key === 'images') {
       const arr = Array.isArray(v) ? v : []
       return <span className="text-[var(--text-secondary)]">{arr.length} items</span>
+    }
+    if (key === 'published_channel') {
+      return <span className="text-primary-400 font-mono text-xs">{String(v)}</span>
     }
     if (key === 'post_text' || key === 'screenshot' || key === 'url' || key === 'image_over_text' || key === 'avatar') {
       const s = String(v)
@@ -658,11 +620,81 @@ export function AdministrationPage() {
     return <span className="text-[var(--text-secondary)]">{String(v)}</span>
   }
 
+  function renderPipelineEventsTable(
+    title: string,
+    description: string,
+    rows: PipelineEventItem[],
+    mode: 'channel' | 'service' = 'channel',
+  ) {
+    return (
+      <div>
+        <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-1">{title}</h3>
+        <p className="text-sm text-[var(--text-muted)] mb-2">{description}</p>
+        {rows.length === 0 ? (
+          <p className="text-sm text-[var(--text-muted)]">Нет событий</p>
+        ) : (
+          <div className="overflow-x-auto rounded-xl border border-[var(--border-color)]">
+            <table className="w-full min-w-max">
+              <thead className="bg-[var(--bg-tertiary)]">
+                <tr>
+                  <th className="py-2 px-3 text-left text-xs font-medium text-[var(--text-secondary)]">Time</th>
+                  {mode === 'service' ? (
+                    <>
+                      <th className="py-2 px-3 text-left text-xs font-medium text-[var(--text-secondary)]">Service</th>
+                      <th className="py-2 px-3 text-left text-xs font-medium text-[var(--text-secondary)]">Cycle</th>
+                      <th className="py-2 px-3 text-left text-xs font-medium text-[var(--text-secondary)]">Status</th>
+                      <th className="py-2 px-3 text-right text-xs font-medium text-[var(--text-secondary)]">Items</th>
+                    </>
+                  ) : (
+                    <>
+                      <th className="py-2 px-3 text-left text-xs font-medium text-[var(--text-secondary)]">Channel</th>
+                      <th className="py-2 px-3 text-left text-xs font-medium text-[var(--text-secondary)]">Type</th>
+                      <th className="py-2 px-3 text-left text-xs font-medium text-[var(--text-secondary)]">User</th>
+                    </>
+                  )}
+                  <th className="py-2 px-3 text-left text-xs font-medium text-[var(--text-secondary)]">Summary</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[var(--border-color)]">
+                {rows.map((ev, idx) => (
+                  <tr key={`${ev.id ?? idx}-${ev.channel ?? ''}-${ev.created_at ?? idx}`} className="hover:bg-[var(--bg-tertiary)]">
+                    <td className="py-2 px-3 text-xs text-[var(--text-secondary)] whitespace-nowrap">
+                      {ev.created_at ? formatDateTime(ev.created_at) : '—'}
+                    </td>
+                    {mode === 'service' ? (
+                      <>
+                        <td className="py-2 px-3 text-sm text-[var(--text-primary)] font-medium">{ev.service ?? '—'}</td>
+                        <td className="py-2 px-3 text-sm text-[var(--text-secondary)]">{ev.cycle_type ?? '—'}</td>
+                        <td className="py-2 px-3 text-sm text-[var(--text-secondary)]">{ev.status ?? '—'}</td>
+                        <td className="py-2 px-3 text-sm text-right tabular-nums text-[var(--text-secondary)]">{ev.items_processed ?? 0}</td>
+                      </>
+                    ) : (
+                      <>
+                        <td className="py-2 px-3 text-sm font-mono text-primary-400 max-w-[220px] truncate" title={ev.channel ?? ''}>
+                          {ev.channel ?? '—'}
+                        </td>
+                        <td className="py-2 px-3 text-sm text-[var(--text-secondary)]">{ev.event_type ?? ev.platform ?? '—'}</td>
+                        <td className="py-2 px-3 text-sm text-[var(--text-secondary)]">{ev.user_id ?? '—'}</td>
+                      </>
+                    )}
+                    <td className="py-2 px-3 text-sm text-[var(--text-muted)] max-w-[320px] truncate" title={ev.summary ?? ''}>
+                      {ev.summary || '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    )
+  }
+
   return (
     <PageContainer maxWidth="wide">
       <PageHeader
         title="Administration"
-        description="Пользователи и группы, статистика, уведомления, таблицы постов, расписания, S3 и сведения о окружении. Мониторинг сервисов — в разделе Checks."
+        description="Пользователи и группы, статистика, уведомления, таблицы постов, S3 и сведения о окружении. Мониторинг сервисов и расписания — в разделе Checks."
       />
 
       {/* Tabs */}
@@ -676,46 +708,6 @@ export function AdministrationPage() {
           }`}
         >
           Users
-        </button>
-        <button
-          onClick={() => setActiveTab('audit')}
-          className={`px-4 py-2 font-medium text-sm transition-colors ${
-            activeTab === 'audit'
-              ? 'text-primary-400 border-b-2 border-primary-400'
-              : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-          }`}
-        >
-          Audit log
-        </button>
-        <button
-          onClick={() => setActiveTab('groups')}
-          className={`px-4 py-2 font-medium text-sm transition-colors ${
-            activeTab === 'groups'
-              ? 'text-primary-400 border-b-2 border-primary-400'
-              : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-          }`}
-        >
-          Groups
-        </button>
-        <button
-          onClick={() => setActiveTab('statistics')}
-          className={`px-4 py-2 font-medium text-sm transition-colors ${
-            activeTab === 'statistics'
-              ? 'text-primary-400 border-b-2 border-primary-400'
-              : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-          }`}
-        >
-          Statistics
-        </button>
-        <button
-          onClick={() => setActiveTab('schedule')}
-          className={`px-4 py-2 font-medium text-sm transition-colors ${
-            activeTab === 'schedule'
-              ? 'text-primary-400 border-b-2 border-primary-400'
-              : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-          }`}
-        >
-          Schedule
         </button>
         <button
           onClick={() => setActiveTab('notifications')}
@@ -779,9 +771,28 @@ export function AdministrationPage() {
         </button>
       </div>
 
-      {/* Users Tab */}
+      {/* Users Tab: Management / Groups / Audit Log */}
       {activeTab === 'users' && (
-        <Card className="animate-slide-up">
+        <div className="space-y-4 animate-slide-up">
+          <div className="flex flex-wrap gap-1 border-b border-[var(--border-color)]">
+            {USERS_SUB_TABS.map((sub) => (
+              <button
+                key={sub.id}
+                type="button"
+                onClick={() => setUsersSubTab(sub.id)}
+                className={`px-3 py-2 text-sm font-medium transition-colors ${
+                  usersSubTab === sub.id
+                    ? 'text-primary-400 border-b-2 border-primary-400'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                }`}
+              >
+                {sub.label}
+              </button>
+            ))}
+          </div>
+
+          {usersSubTab === 'management' && (
+        <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -956,7 +967,7 @@ export function AdministrationPage() {
                             </div>
                           </td>
                           <td className="py-3 px-4 text-[var(--text-secondary)]">
-                            {new Date(user.created_at).toLocaleDateString()}
+                            {formatDateTime(user.created_at)}
                           </td>
                           <td className="py-3 px-4 flex flex-wrap gap-2">
                             <Button
@@ -1004,7 +1015,7 @@ export function AdministrationPage() {
                                       {historyList.map((entry) => (
                                         <tr key={entry.id} className="border-b border-[var(--border-color)] last:border-0">
                                           <td className="py-2 px-3 text-[var(--text-secondary)]">
-                                            {new Date(entry.changed_at).toLocaleString()}
+                                            {formatDateTime(entry.changed_at)}
                                           </td>
                                           <td className="py-2 px-3 text-[var(--text-secondary)]">
                                             {entry.changed_by_user_id ?? '—'}
@@ -1040,10 +1051,10 @@ export function AdministrationPage() {
             )}
           </CardContent>
         </Card>
-      )}
+          )}
 
-      {activeTab === 'audit' && (
-        <Card className="animate-slide-up">
+          {usersSubTab === 'audit' && (
+        <Card>
           <CardHeader>
             <CardTitle>Admin audit log</CardTitle>
             <CardDescription>
@@ -1075,7 +1086,7 @@ export function AdministrationPage() {
                     {auditLog.map((row) => (
                       <tr key={row.id} className="border-b border-[var(--border-color)]">
                         <td className="py-2 px-3 whitespace-nowrap text-[var(--text-secondary)]">
-                          {new Date(row.created_at).toLocaleString()}
+                          {formatDateTime(row.created_at)}
                         </td>
                         <td className="py-2 px-3">{row.admin_user_id}</td>
                         <td className="py-2 px-3">{row.action}</td>
@@ -1096,11 +1107,10 @@ export function AdministrationPage() {
             )}
           </CardContent>
         </Card>
-      )}
+          )}
 
-      {/* Groups Tab */}
-      {activeTab === 'groups' && (
-        <Card className="animate-slide-up">
+          {usersSubTab === 'groups' && (
+        <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1162,7 +1172,7 @@ export function AdministrationPage() {
                         <p className="text-sm text-[var(--text-secondary)] whitespace-pre-wrap mb-2">{group.description}</p>
                       ) : null}
                       <p className="text-sm text-[var(--text-muted)] mb-4">
-                        ID: {group.id} · Создана: {new Date(group.created_at).toLocaleString()}
+                        ID: {group.id} · Создана: {formatDateTime(group.created_at)}
                       </p>
 
                       <div className="mb-4 space-y-2">
@@ -1261,11 +1271,10 @@ export function AdministrationPage() {
             )}
           </CardContent>
         </Card>
-      )}
+          )}
 
-      {/* Statistics Tab */}
-      {activeTab === 'statistics' && (
-        <Card className="animate-slide-up">
+          {usersSubTab === 'statistics' && (
+        <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1348,201 +1357,8 @@ export function AdministrationPage() {
             )}
           </CardContent>
         </Card>
-      )}
-
-      {/* Schedule Tab */}
-      {activeTab === 'schedule' && (
-        <Card className="animate-slide-up">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
-              Schedule Snapshots
-            </CardTitle>
-            <CardDescription>View schedule snapshots from schedule_snapshots table</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            {/* Кнопка запуска сбора расписаний */}
-            <div className="space-y-4 border-t border-[var(--border-color)] pt-4">
-              <div>
-                <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-2">Запуск сбора расписаний</h3>
-                <p className="text-sm text-[var(--text-secondary)] mb-4">
-                  Принудительно запускает один цикл сбора расписаний из core сервиса
-                </p>
-                <Button 
-                  onClick={handleStartDiscovery} 
-                  isLoading={isStartingDiscovery}
-                  className="w-full sm:w-auto"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                  </svg>
-                  Запуск сбора расписаний
-                </Button>
-                {discoveryMessage && (
-                  <Alert variant="success" className="mt-2 animate-slide-down">
-                    {discoveryMessage}
-                  </Alert>
-                )}
-              </div>
-            </div>
-
-            {/* Форма принудительного запуска ботов */}
-            <div className="space-y-4 border-t border-[var(--border-color)] pt-4">
-              <div>
-                <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-2">Принудительный запуск ботов</h3>
-                <p className="text-sm text-[var(--text-secondary)] mb-4">
-                  Выберите ботов для запуска и нажмите кнопку запуска
-                </p>
-                
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
-                  {SCHEDULE_BOT_PLATFORMS.map((platform) => (
-                    <label
-                      key={platform}
-                      className="flex items-center space-x-2 cursor-pointer p-3 rounded-lg border border-[var(--border-color)] hover:bg-[var(--bg-secondary)] transition-colors"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selectedBots[platform]}
-                        onChange={() => handleBotToggle(platform)}
-                        className="w-4 h-4 text-primary-400 rounded focus:ring-primary-400"
-                      />
-                      <span className="text-[var(--text-secondary)] font-medium uppercase">{platform}</span>
-                    </label>
-                  ))}
-                </div>
-
-                <Button 
-                  onClick={handleStartBot} 
-                  isLoading={isStartingBot}
-                  className="w-full sm:w-auto"
-                  disabled={Object.values(selectedBots).every(v => !v)}
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                  </svg>
-                  Запустить боты
-                </Button>
-                {botMessage && (
-                  <Alert variant={botMessage.includes('Error') ? 'error' : 'success'} className="mt-2 animate-slide-down">
-                    {botMessage}
-                  </Alert>
-                )}
-              </div>
-            </div>
-
-            {/* Кнопка получения расписания */}
-            <div className="space-y-4 border-t border-[var(--border-color)] pt-4">
-              <div>
-                <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-2">Просмотр расписаний</h3>
-                <p className="text-sm text-[var(--text-secondary)] mb-4">
-                  Загрузить расписания из таблицы schedule_snapshots
-                </p>
-                <Button 
-                  onClick={handleLoadSchedule} 
-                  isLoading={isLoadingSchedule}
-                  className="w-full sm:w-auto"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                  </svg>
-                  Получить расписание
-                </Button>
-              </div>
-            </div>
-
-            {scheduleError && (
-              <Alert variant="error" className="animate-slide-down">
-                {scheduleError}
-              </Alert>
-            )}
-
-            {schedules.length > 0 && (
-              <div className="overflow-x-auto animate-slide-down">
-                <table className="w-full border-collapse">
-                  <thead>
-                    <tr className="border-b border-[var(--border-color)]">
-                      <th className="text-left py-3 px-4 text-sm font-semibold text-[var(--text-primary)]">User ID</th>
-                      <th className="text-left py-3 px-4 text-sm font-semibold text-[var(--text-primary)]">Platform</th>
-                      <th className="text-left py-3 px-4 text-sm font-semibold text-[var(--text-primary)]">Publish Enabled</th>
-                      <th className="text-left py-3 px-4 text-sm font-semibold text-[var(--text-primary)]">Collect Enabled</th>
-                      <th className="text-left py-3 px-4 text-sm font-semibold text-[var(--text-primary)]">Schedule Type</th>
-                      <th className="text-left py-3 px-4 text-sm font-semibold text-[var(--text-primary)]">Time Intervals</th>
-                      <th className="text-left py-3 px-4 text-sm font-semibold text-[var(--text-primary)]">Updated At</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {schedules.map((schedule, index) => (
-                      <tr 
-                        key={`${schedule.user_id}-${schedule.platform}-${index}`} 
-                        className="border-b border-[var(--border-color)] hover:bg-[var(--bg-secondary)] transition-colors"
-                      >
-                        <td className="py-3 px-4 text-[var(--text-secondary)] font-medium">{schedule.user_id}</td>
-                        <td className="py-3 px-4">
-                          <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium bg-blue-500/20 text-blue-400">
-                            {schedule.platform}
-                          </span>
-                        </td>
-                        <td className="py-3 px-4">
-                          {schedule.publish_enabled ? (
-                            <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium bg-emerald-500/20 text-emerald-400">
-                              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                              </svg>
-                              Enabled
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium bg-gray-500/20 text-gray-400">
-                              Disabled
-                            </span>
-                          )}
-                        </td>
-                        <td className="py-3 px-4">
-                          {schedule.collect_enabled ? (
-                            <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium bg-emerald-500/20 text-emerald-400">
-                              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                              </svg>
-                              Enabled
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium bg-gray-500/20 text-gray-400">
-                              Disabled
-                            </span>
-                          )}
-                        </td>
-                        <td className="py-3 px-4 text-[var(--text-secondary)]">{schedule.schedule_type}</td>
-                        <td className="py-3 px-4 text-[var(--text-secondary)]">
-                          {schedule.time_intervals && schedule.time_intervals.length > 0 ? (
-                            <div className="flex flex-col gap-1">
-                              {schedule.time_intervals.map((interval, idx) => (
-                                <span key={idx} className="text-xs">
-                                  {interval.start} - {interval.end}
-                                </span>
-                              ))}
-                            </div>
-                          ) : (
-                            <span className="text-[var(--text-muted)]">No intervals</span>
-                          )}
-                        </td>
-                        <td className="py-3 px-4 text-[var(--text-secondary)]">
-                          {new Date(schedule.updated_at).toLocaleString()}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            {schedules.length === 0 && !isLoadingSchedule && !scheduleError && (
-              <p className="text-[var(--text-muted)] text-center py-8">
-                Click "Получить расписание" to fetch schedule snapshots
-              </p>
-            )}
-          </CardContent>
-        </Card>
+          )}
+        </div>
       )}
 
       {/* Notifications Tab */}
@@ -1625,7 +1441,7 @@ export function AdministrationPage() {
                         <tr key={notification.id} className="hover:bg-[var(--bg-tertiary)] transition-colors">
                           <td className="py-3 px-4 text-[var(--text-primary)] font-mono text-sm">{notification.id}</td>
                           <td className="py-3 px-4 text-[var(--text-secondary)] text-sm">
-                            {new Date(notification.created_at).toLocaleString()}
+                            {formatDateTime(notification.created_at)}
                           </td>
                           <td className="py-3 px-4 text-[var(--text-primary)]">
                             <div 
@@ -1767,22 +1583,77 @@ export function AdministrationPage() {
               </svg>
               Posts
             </CardTitle>
-            <CardDescription>Обзор таблиц постов и полная таблица posts</CardDescription>
+            <CardDescription>Обзор таблиц постов, события пайплайна и полная таблица posts</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            <Button
-              onClick={handleLoadPostsTables}
-              isLoading={isLoadingPostsTables}
-              className="w-full sm:w-auto"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-              Load Posts Tables
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                onClick={handleLoadPostsTables}
+                isLoading={isLoadingPostsTables}
+                className="w-full sm:w-auto"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                Load Posts Tables
+              </Button>
+              <Button
+                onClick={handleLoadPipelineEvents}
+                isLoading={isLoadingPipelineEvents}
+                variant="secondary"
+                className="w-full sm:w-auto"
+              >
+                Загрузить события пайплайна
+              </Button>
+            </div>
 
             {postsTablesError && (
               <Alert variant="error" className="animate-slide-down">{postsTablesError}</Alert>
+            )}
+            {pipelineEventsError && (
+              <Alert variant="error" className="animate-slide-down">{pipelineEventsError}</Alert>
+            )}
+
+            {pipelineEvents && (
+              <div className="space-y-6 animate-slide-down border border-[var(--border-color)] rounded-xl p-4 bg-[var(--bg-secondary)]">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <h3 className="text-lg font-semibold text-[var(--text-primary)]">Диагностика срабатываний</h3>
+                  {pipelineEvents.collected_at && (
+                    <span className="text-xs text-[var(--text-muted)]">
+                      Обновлено: {formatDateTime(pipelineEvents.collected_at)}
+                    </span>
+                  )}
+                </div>
+                {pipelineEvents.services_error && (
+                  <Alert variant="error">Service log: {pipelineEvents.services_error}</Alert>
+                )}
+                {renderPipelineEventsTable(
+                  'Alerting',
+                  'Срабатывания алертов с каналом назначения (или source chat).',
+                  pipelineEvents.alerting,
+                )}
+                {renderPipelineEventsTable(
+                  'Publishing',
+                  'Публикации в Telegram: по одной строке на каждый канал (telegram_chat_id / target_channels).',
+                  pipelineEvents.publishing,
+                )}
+                {renderPipelineEventsTable(
+                  'Collection (Parser)',
+                  'Сбор сообщений из каналов (parser / chats_to_read).',
+                  pipelineEvents.collection,
+                )}
+                {renderPipelineEventsTable(
+                  'Custom URL',
+                  'Срабатывания url-bot / url_posts (в колонке Channel — URL).',
+                  pipelineEvents.custom_url,
+                )}
+                {renderPipelineEventsTable(
+                  'Scheduler / Collector / Processor',
+                  'Циклы фоновых сервисов (service_cycle_log).',
+                  pipelineEvents.services,
+                  'service',
+                )}
+              </div>
             )}
 
             {postsTables && (
@@ -2133,7 +2004,7 @@ export function AdministrationPage() {
                             {obj.size >= 1024 ? `${(obj.size / 1024).toFixed(1)} KB` : `${obj.size} B`}
                           </td>
                           <td className="py-3 px-4 text-[var(--text-secondary)] text-sm">
-                            {obj.last_modified ? new Date(obj.last_modified).toLocaleString() : '—'}
+                            {obj.last_modified ? formatDateTime(obj.last_modified) : '—'}
                           </td>
                           <td className="py-3 px-4 text-right">
                             <div className="flex flex-wrap justify-end gap-2">

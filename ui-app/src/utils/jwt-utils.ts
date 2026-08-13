@@ -3,6 +3,8 @@
  * Декодирование без проверки подписи - только для отображения информации.
  */
 
+import { formatDateTime } from '@/utils/date'
+
 export interface JwtPayload {
   user_id: number
   type: 'access' | 'refresh'
@@ -50,15 +52,7 @@ export function decodeJwt(token: string): JwtPayload | null {
  * @returns Отформатированная дата и время
  */
 export function formatTokenDate(timestamp: number): string {
-  const date = new Date(timestamp * 1000)
-  return date.toLocaleString('ru-RU', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  })
+  return formatDateTime(timestamp * 1000)
 }
 
 /**

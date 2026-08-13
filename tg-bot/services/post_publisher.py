@@ -123,7 +123,7 @@ class PostPublisher:
                 await cur.execute(
                     """
                     SELECT p.id, p.user_id, p.post_text, p.images, p.status,
-                           p.publish_at, p.target_channels,
+                           p.publish_at, p.target_channels, p.url, p.title,
                            pr.channel_to_post, pr.channels_to_post,
                            pr.schedule_type, pr.time_intervals, pr.publish_enabled
                     FROM tg_posts p
@@ -180,15 +180,25 @@ class PostPublisher:
 
     def _resolve_channels(self, post: Dict) -> List[str]:
         """Приоритет: target_channels поста → channels_to_post профиля → channel_to_post."""
-        targets = _parse_json_list(post.get("target_channels"))
+        from .message_handler import MessageHandler
+
+        def _ids(items: List[Any]) -> List[str]:
+            result: List[str] = []
+            for item in items:
+                chat_id = MessageHandler.chat_ref_id(item)
+                if chat_id:
+                    result.append(chat_id)
+            return result
+
+        targets = _ids(_parse_json_list(post.get("target_channels")))
         if targets:
-            return [str(c).strip() for c in targets if str(c).strip()]
-        profile_channels = _parse_json_list(post.get("channels_to_post"))
+            return targets
+        profile_channels = _ids(_parse_json_list(post.get("channels_to_post")))
         if profile_channels:
-            return [str(c).strip() for c in profile_channels if str(c).strip()]
-        single = post.get("channel_to_post")
-        if single and str(single).strip():
-            return [str(single).strip()]
+            return profile_channels
+        single = MessageHandler.chat_ref_id(post.get("channel_to_post"))
+        if single:
+            return [single]
         return []
 
     def _resolve_image_path(self, image_path: str) -> Optional[str]:
@@ -286,11 +296,34 @@ class PostPublisher:
             else:
                 if storage:
                     key = s.lstrip("/")
-                    if key:
-                        body = await storage.get_bytes(key)
+                    candidates = [key]
+                    # bucket=uploads + path /uploads/url/... → также пробуем url/...
+                    if key.startswith("uploads/"):
+                        candidates.append(key[len("uploads/") :])
+                    for candidate in candidates:
+                        if not candidate:
+                            continue
+                        try:
+                            body = await storage.get_bytes(candidate)
+                        except Exception as exc:
+                            logger.debug(
+                                "Post id=%s: S3 get_bytes failed key=%s: %s",
+                                post_id,
+                                candidate,
+                                exc,
+                            )
+                            body = None
                         if body:
                             suffix = ".jpg"
+                            lower = candidate.lower()
+                            if lower.endswith(".png"):
+                                suffix = ".png"
+                            elif lower.endswith(".webp"):
+                                suffix = ".webp"
+                            elif lower.endswith(".gif"):
+                                suffix = ".gif"
                             local_path = await async_fs.write_temp_bytes(body, suffix=suffix)
+                            break
                 if not local_path:
                     local_path = self._resolve_image_path(ref)
             if local_path:
@@ -321,11 +354,22 @@ class PostPublisher:
             if path and path.startswith(tmp):
                 await async_fs.unlink_quiet(path)
 
+    def _fallback_publish_text(self, post: Dict) -> str:
+        """Текст для публикации при screenshot_only / пустом post_text."""
+        text = (post.get("post_text") or "").strip()
+        if text:
+            return text
+        title = (post.get("title") or "").strip()
+        url = (post.get("url") or "").strip()
+        if title and url:
+            return f"{title}\n{url}"
+        return title or url
+
     async def publish_post(self, post: Dict) -> bool:
         """Публикует один пост во все целевые каналы."""
         post_id = post.get("id")
         user_id = post.get("user_id")
-        text = post.get("post_text") or ""
+        text = self._fallback_publish_text(post)
         channels = post.get("_channels") or self._resolve_channels(post)
 
         if not channels:
@@ -344,14 +388,22 @@ class PostPublisher:
 
         image_paths = await self.resolve_images_for_publish(post_id, post.get("images"))
 
+        if not text and not image_paths:
+            logger.error(
+                "Post %s: empty text and no images — marking as error (content issue, not Telegram)",
+                post_id,
+            )
+            await self._update_post_status(post_id, "error")
+            return False
+
         try:
             if len(text) >= TG_MESSAGE_LIMIT:
                 text = text[: TG_MESSAGE_LIMIT - 3] + "..."
                 image_paths = []
 
-            async def _send_all() -> tuple[Any, Optional[str]]:
+            async def _send_all() -> tuple[Any, Optional[str], list[str]]:
                 last_message = None
-                last_channel_str = None
+                published_channels: list[str] = []
                 for channel_raw in channels:
                     channel = self._parse_channel_to_post(channel_raw)
                     if not channel:
@@ -363,25 +415,33 @@ class PostPublisher:
                             caption=text or None,
                         )
                     elif len(image_paths) == 1:
-                        last_message = await client.send_message(
-                            channel, text, file=image_paths[0]
+                        last_message = await client.send_file(
+                            channel,
+                            image_paths[0],
+                            caption=text or None,
+                            force_document=False,
                         )
                     else:
                         last_message = await client.send_message(channel, text)
-                    last_channel_str = str(channel_raw)
+                    published_channels.append(str(channel_raw))
                     _log_action(
                         "Published post %s to %s for user %s", post_id, channel, user_id
                     )
-                return last_message, last_channel_str
+                chat_ids_joined = ",".join(published_channels) if published_channels else None
+                return last_message, chat_ids_joined, published_channels
 
-            last_message, last_channel_str = await retry_async(
+            last_message, chat_ids_joined, published_channels = await retry_async(
                 _send_all,
                 retry_on=_is_retryable_telegram_error,
                 operation_name=f"publish_post id={post_id}",
             )
 
+            if not published_channels:
+                logger.error("Post %s: no channels published", post_id)
+                return False
+
             message_id = getattr(last_message, "id", None) if last_message else None
-            await self._update_post_published(post_id, message_id, last_channel_str)
+            await self._update_post_published(post_id, message_id, chat_ids_joined)
             breaker.record_success()
             return True
 
@@ -391,6 +451,11 @@ class PostPublisher:
                 post_id,
                 getattr(e, "seconds", "?"),
             )
+            return False
+        except ValueError as e:
+            # Контент (пустое сообщение и т.п.) — не открываем circuit breaker
+            logger.error("Post %s content error: %s — marking as error", post_id, e)
+            await self._update_post_status(post_id, "error")
             return False
         except Exception as e:
             logger.error(f"Error publishing post {post_id}: {e}", exc_info=True)

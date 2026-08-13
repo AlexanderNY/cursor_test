@@ -31,6 +31,7 @@ export interface TgAuthResponse {
 export interface CreatePostOptions {
   publishAt?: string | null
   targetChannels?: string[]
+  targetGroups?: string[]
 }
 
 export interface GetPostsParams {
@@ -88,6 +89,9 @@ export const telegramService = {
       }
       if (options?.targetChannels?.length) {
         formData.append('target_channels', JSON.stringify(options.targetChannels))
+      }
+      if (options?.targetGroups?.length) {
+        formData.append('target_groups', JSON.stringify(options.targetGroups))
       }
 
       await apiClient.post('/tg/post', formData, {

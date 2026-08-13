@@ -70,6 +70,8 @@ class Settings(BaseSettings):
 
     # S3-совместимое хранилище (MinIO по умолчанию на 172.20.10.200). Пустые ACCESS_KEY/SECRET_KEY — хранилище отключено (fallback на локальный диск).
     S3_ENDPOINT_URL: str = "http://172.20.10.200:9000"
+    # Публичный endpoint для браузера (presigned URL). В Docker API — http://minio:9000, в UI — http://localhost:9000.
+    S3_PUBLIC_ENDPOINT_URL: str = "http://localhost:9000"
     S3_BUCKET: str = "uploads"
     S3_ACCESS_KEY: str = ""
     S3_SECRET_KEY: str = ""

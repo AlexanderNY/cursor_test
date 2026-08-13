@@ -34,6 +34,7 @@ class S3Storage:
         secret_key: Optional[str] = None,
         region_name: str = "us-east-1",
         use_ssl: bool = True,
+        public_endpoint_url: Optional[str] = None,
     ):
         self.bucket = bucket
         self.endpoint_url = endpoint_url
@@ -41,6 +42,7 @@ class S3Storage:
         self.secret_key = secret_key
         self.region_name = region_name
         self.use_ssl = use_ssl
+        self.public_endpoint_url = (public_endpoint_url or "").strip() or None
         self._session = None
 
     def _client_kwargs(self) -> dict:
@@ -113,6 +115,26 @@ class S3Storage:
             logger.debug("get_bytes failed for key=%s: %s", key, e, exc_info=True)
             raise
 
+    def _rewrite_public_url(self, url: str) -> str:
+        """Подменяет внутренний endpoint (minio:9000) на публичный для браузера."""
+        if not url or not self.public_endpoint_url or not self.endpoint_url:
+            return url
+        from urllib.parse import urlparse, urlunparse
+
+        internal = urlparse(self.endpoint_url)
+        public = urlparse(self.public_endpoint_url)
+        parsed = urlparse(url)
+        if not internal.hostname or parsed.hostname != internal.hostname:
+            return url
+        if internal.port and parsed.port and parsed.port != internal.port:
+            return url
+        return urlunparse(
+            parsed._replace(
+                scheme=public.scheme or parsed.scheme,
+                netloc=public.netloc,
+            )
+        )
+
     async def get_presigned_url(self, key: str, expires_in: int = 3600) -> Optional[str]:
         """Возвращает presigned URL для скачивания. None при ошибке."""
         key = key.lstrip("/")
@@ -127,7 +149,7 @@ class S3Storage:
                     Params={"Bucket": self.bucket, "Key": key},
                     ExpiresIn=expires_in,
                 )
-                return url
+                return self._rewrite_public_url(url)
         except Exception as e:
             logger.warning("get_presigned_url failed for key=%s: %s", key, e)
             return None
@@ -207,6 +229,7 @@ def get_storage(
     secret_key: Optional[str] = None,
     region_name: str = "us-east-1",
     use_ssl: bool = True,
+    public_endpoint_url: Optional[str] = None,
 ) -> Optional[S3Storage]:
     """Возвращает экземпляр S3Storage при заданных параметрах, иначе None (хранилище отключено)."""
     if not bucket or not access_key or not secret_key:
@@ -218,4 +241,5 @@ def get_storage(
         secret_key=secret_key,
         region_name=region_name,
         use_ssl=use_ssl,
+        public_endpoint_url=public_endpoint_url,
     )

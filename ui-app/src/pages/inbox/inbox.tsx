@@ -4,10 +4,12 @@ import { PageContainer, PageHeader } from '@/components/ui'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
+import { AiAssistPanel } from '@/components/ai/AiAssistPanel'
 import { useBrand } from '@/contexts/brand-context'
 import { smmService } from '@/services/smm-service'
 import type { InboxItem, InboxStatus } from '@/types/smm'
 import { getErrorMessage } from '@/services/api-client'
+import { formatDateTime } from '@/utils/date'
 
 const DEFAULT_SNIPPETS = [
   'Спасибо!',
@@ -45,14 +47,7 @@ function saveSnippets(brandId: number | null, list: string[]) {
 }
 
 function formatAge(iso?: string | null): string {
-  if (!iso) return ''
-  const t = new Date(iso).getTime()
-  if (Number.isNaN(t)) return ''
-  const sec = Math.max(0, Math.floor((Date.now() - t) / 1000))
-  if (sec < 45) return 'только что'
-  if (sec < 3600) return `${Math.floor(sec / 60)} мин`
-  if (sec < 86400) return `${Math.floor(sec / 3600)} ч`
-  return `${Math.floor(sec / 86400)} д`
+  return formatDateTime(iso, '')
 }
 
 function channelLabel(
@@ -73,14 +68,13 @@ export function InboxPage() {
   const [items, setItems] = useState<InboxItem[]>([])
   const [selected, setSelected] = useState<InboxItem | null>(null)
   const [network, setNetwork] = useState('')
-  const [status, setStatus] = useState('new')
+  const [status, setStatus] = useState('')
   const [reply, setReply] = useState('')
   const [editedText, setEditedText] = useState('')
   const [redirectIds, setRedirectIds] = useState<number[]>([])
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [sending, setSending] = useState(false)
-  const [aiBusy, setAiBusy] = useState(false)
   const [snippets, setSnippets] = useState<string[]>(() => loadSnippets(selectedBrandId))
   const [snippetEdit, setSnippetEdit] = useState('')
   const replyRef = useRef<HTMLTextAreaElement>(null)
@@ -225,27 +219,6 @@ export function InboxPage() {
     }
   }
 
-  async function handleAiDraft() {
-    if (!reply.trim() && !selected?.text) return
-    setAiBusy(true)
-    setError('')
-    try {
-      const source =
-        reply.trim() ||
-        `Короткий дружелюбный ответ на комментарий: «${(selected?.text || '').slice(0, 280)}»`
-      const res = await smmService.aiRewrite(source, {
-        tone: 'живой, неформальный, короткий',
-        network: selected?.network || 'tg',
-      })
-      setReply(res.text)
-      replyRef.current?.focus()
-    } catch (err) {
-      setError(getErrorMessage(err))
-    } finally {
-      setAiBusy(false)
-    }
-  }
-
   async function handleSaveEdit() {
     if (!selected) return
     try {
@@ -376,7 +349,9 @@ export function InboxPage() {
                     : 'Inbox пуст.'}
               </p>
             )}
-            {items.map((item) => (
+            {items.map((item) => {
+              const isNew = item.status === 'new'
+              return (
               <button
                 key={item.id}
                 type="button"
@@ -384,7 +359,7 @@ export function InboxPage() {
                   setSelected(item)
                   setEditedText(item.edited_text || item.text || '')
                   setReply('')
-                  if (item.status === 'new') void handleRead(item)
+                  if (isNew) void handleRead(item)
                 }}
                 className={`w-full text-left px-3 py-3 flex gap-3 hover:bg-[var(--bg-tertiary)] ${
                   selected?.id === item.id ? 'bg-[var(--bg-tertiary)]' : ''
@@ -396,20 +371,33 @@ export function InboxPage() {
                 />
                 <div className="min-w-0 flex-1">
                   <div className="flex justify-between gap-2 text-xs text-[var(--text-muted)]">
-                    <span className="uppercase">
+                    <span className="uppercase flex items-center gap-1.5">
+                      {isNew && (
+                        <span
+                          className="inline-block h-1.5 w-1.5 rounded-full bg-primary-500"
+                          title="New"
+                          aria-label="New"
+                        />
+                      )}
                       {item.network}
                       {!isCommentsMode && ` · ${item.type}`}
                     </span>
                     <span>{formatAge(item.created_at)}</span>
                   </div>
-                  <p className="text-sm font-medium truncate">{item.author || 'Unknown'}</p>
-                  <p className="text-sm text-[var(--text-secondary)] truncate">{item.text}</p>
+                  <p className={`text-sm truncate ${isNew ? 'font-semibold text-[var(--text-primary)]' : 'font-medium'}`}>
+                    {item.author || 'Unknown'}
+                  </p>
+                  <p className={`text-sm truncate ${isNew ? 'text-[var(--text-primary)]' : 'text-[var(--text-secondary)]'}`}>
+                    {item.text}
+                  </p>
                   <p className="text-xs text-[var(--text-muted)] truncate mt-0.5">
-                    {channelLabel(item, ownChannels)} · {item.status}
+                    {channelLabel(item, ownChannels)}
+                    {item.status !== 'new' && item.status !== 'read' ? ` · ${item.status}` : ''}
                   </p>
                 </div>
               </button>
-            ))}
+              )
+            })}
           </CardContent>
         </Card>
 
@@ -434,6 +422,27 @@ export function InboxPage() {
                 {selected.status === 'reply_failed' && selected.reply_error && (
                   <Alert variant="error">{selected.reply_error}</Alert>
                 )}
+
+                <AiAssistPanel
+                  sourceText={selected.text || ''}
+                  source="inbox"
+                  sourceId={selected.id}
+                  defaultAction="reply_draft"
+                  defaultNetwork={selected.network || 'tg'}
+                  applyTargets={[
+                    { id: 'reply', label: 'В ответ' },
+                    { id: 'edited', label: 'В edit before redirect' },
+                  ]}
+                  defaultApplyTarget="reply"
+                  onApply={(text, meta) => {
+                    if (meta.target === 'edited') {
+                      setEditedText(text)
+                    } else {
+                      setReply(text)
+                      replyRef.current?.focus()
+                    }
+                  }}
+                />
 
                 <div className="space-y-2 pt-2 border-t border-[var(--border-color)]">
                   <div className="flex flex-wrap gap-1.5">
@@ -476,14 +485,6 @@ export function InboxPage() {
                   <div className="flex flex-wrap gap-2">
                     <Button onClick={() => void handleReply()} disabled={!reply.trim() || sending}>
                       {sending ? 'Sending…' : 'Reply'}
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      disabled={aiBusy}
-                      onClick={() => void handleAiDraft()}
-                    >
-                      {aiBusy ? 'AI…' : 'AI draft (живой тон)'}
                     </Button>
                   </div>
                 </div>

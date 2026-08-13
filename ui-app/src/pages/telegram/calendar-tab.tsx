@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { SkeletonCard } from '@/components/ui/skeleton'
 import type { TelegramPostListItem } from '@/types/telegram'
 import { formatWeekLabel, getWeekStart, toDatetimeLocalValue, fromDatetimeLocalValue } from './telegram-helpers'
+import { formatDateTime } from '@/utils/date'
 
 export interface CalendarTabProps {
   posts: TelegramPostListItem[]
@@ -143,7 +144,7 @@ export function CalendarTab({
                           </span>
                           {post.publish_at && (
                             <span className="text-[10px] text-primary-400">
-                              {new Date(post.publish_at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
+                              {formatDateTime(post.publish_at)}
                             </span>
                           )}
                         </div>

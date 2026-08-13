@@ -1,4 +1,9 @@
-"""Опрос core, сохранение снимков и оповещение ботов."""
+"""Опрос core, сохранение снимков и оповещение ботов.
+
+Фоновый poll работает без JWT и без SCHEDULER_LOGIN: расписания берутся из Core/БД
+по профилям авторизованных пользователей (user_id), боты и curl вызываются напрямую
+в Docker-сети.
+"""
 
 import asyncio
 import hashlib
@@ -38,48 +43,48 @@ def _payload_hash(schedules: list[dict[str, Any]]) -> str:
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
-async def _login() -> str:
-    base = settings.API_GATEWAY_URL.rstrip("/")
-    url = f"{base}/auth/login"
-    payload = {
-        "username": settings.SCHEDULER_LOGIN or "",
-        "password": settings.SCHEDULER_PASSWORD or "",
+def _bot_service_url(platform: str) -> str | None:
+    """Базовый URL бота платформы в Docker-сети."""
+    mapping = {
+        "tg": settings.TG_BOT_SERVICE_URL,
+        "wp": settings.WP_BOT_SERVICE_URL,
+        "vk": settings.VK_BOT_SERVICE_URL,
+        "tw": settings.TW_BOT_SERVICE_URL,
+        "url": settings.URL_BOT_SERVICE_URL,
+        "threads": settings.THREADS_BOT_SERVICE_URL,
+        "dzen": settings.DZEN_BOT_SERVICE_URL,
+        "instagram": settings.INSTAGRAM_BOT_SERVICE_URL,
     }
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        resp = await client.post(url, json=payload)
-    if resp.status_code != 200:
-        raise RuntimeError(f"Login failed: {resp.status_code} {resp.text}")
-    data = resp.json()
-    return data["access_token"]
+    url = mapping.get(platform) or ""
+    return url.rstrip("/") if url else None
 
 
-async def _fetch_schedules(token: str) -> list[dict[str, Any]]:
-    base = settings.API_GATEWAY_URL.rstrip("/")
-    url = f"{base}/core/schedules"
-    headers = {"Authorization": f"Bearer {token}"}
+async def _fetch_schedules() -> list[dict[str, Any]]:
+    """Расписания всех пользователей из Core (агрегация профилей в БД)."""
+    base = (settings.CORE_SERVICE_URL or "").rstrip("/")
+    if not base:
+        raise RuntimeError("CORE_SERVICE_URL is not configured")
+    url = f"{base}/schedules"
     async with httpx.AsyncClient(timeout=30.0) as client:
-        resp = await client.get(url, headers=headers)
-    if resp.status_code == 401:
-        raise RuntimeError("Unauthorized")
+        resp = await client.get(url)
     resp.raise_for_status()
     data = resp.json()
     return data.get("schedules") or []
 
 
 async def _fetch_profiles_parallel(token: str) -> dict[str, list[dict[str, Any]]]:
-    """Параллельно получает все профили через API Gateway.
-    
+    """Параллельно получает профили через API Gateway (admin UI, JWT вызывающего).
+
     Args:
-        token: JWT токен авторизации
-        
+        token: JWT токен авторизации вызывающего администратора
+
     Returns:
-        Словарь с данными профилей по платформам (wp, tg, tw, vk, threads, dzen, instagram).
+        Словарь с данными профилей по платформам.
     """
     base = settings.API_GATEWAY_URL.rstrip("/")
     headers = {"Authorization": f"Bearer {token}"}
-    
+
     async def fetch_platform_profiles(platform: str) -> tuple[str, list[dict[str, Any]]]:
-        """Получает профили для одной платформы."""
         url = f"{base}/{platform}/profiles"
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
@@ -92,8 +97,7 @@ async def _fetch_profiles_parallel(token: str) -> dict[str, list[dict[str, Any]]
         except Exception as e:
             logger.warning("Failed to fetch %s profiles: %s", platform, e)
             return platform, []
-    
-    # Параллельный запрос всех платформ
+
     results = await asyncio.gather(
         fetch_platform_profiles("wp"),
         fetch_platform_profiles("tg"),
@@ -102,43 +106,26 @@ async def _fetch_profiles_parallel(token: str) -> dict[str, list[dict[str, Any]]
         fetch_platform_profiles("threads"),
         fetch_platform_profiles("dzen"),
         fetch_platform_profiles("instagram"),
-        return_exceptions=True
+        return_exceptions=True,
     )
-    
-    # Собираем результаты в словарь
-    profiles_data = {}
+
+    profiles_data: dict[str, list[dict[str, Any]]] = {}
     for result in results:
         if isinstance(result, Exception):
             logger.error("Error fetching profiles: %s", result)
             continue
         platform, profiles = result
         profiles_data[platform] = profiles
-    
+
     return profiles_data
 
 
 def _transform_profiles_to_schedules(profiles_data: dict[str, list[dict[str, Any]]]) -> list[dict[str, Any]]:
-    """Преобразует данные профилей в формат расписаний.
-    
-    Args:
-        profiles_data: Словарь с профилями по платформам
-        
-    Returns:
-        Список расписаний в формате:
-        {
-            "user_id": int,
-            "platform": str,
-            "publish_enabled": bool,
-            "collect_enabled": bool,
-            "schedule_type": str,
-            "time_intervals": list
-        }
-    """
+    """Преобразует данные профилей в формат расписаний."""
     schedules = []
-    
+
     for platform, profiles in profiles_data.items():
         for profile in profiles:
-            # Парсим time_intervals: строка "HH:MM" или JSON-массив
             time_intervals = profile.get("time_intervals", [])
             if isinstance(time_intervals, str):
                 if time_intervals and ":" in time_intervals and len(time_intervals) <= 5:
@@ -148,17 +135,17 @@ def _transform_profiles_to_schedules(profiles_data: dict[str, list[dict[str, Any
                         time_intervals = json.loads(time_intervals) if time_intervals else []
                     except json.JSONDecodeError:
                         time_intervals = []
-            
+
             schedule = {
                 "user_id": profile.get("user_id"),
                 "platform": platform,
                 "publish_enabled": bool(profile.get("publish_enabled", False)),
                 "collect_enabled": bool(profile.get("collect_enabled", False)),
                 "schedule_type": profile.get("schedule_type") or "immediate",
-                "time_intervals": time_intervals if isinstance(time_intervals, list) else []
+                "time_intervals": time_intervals if isinstance(time_intervals, list) else [],
             }
             schedules.append(schedule)
-    
+
     return schedules
 
 
@@ -188,7 +175,6 @@ async def _store_snapshot(schedules: list[dict[str, Any]]) -> None:
     async with get_db_connection() as conn:
         cur = await conn.cursor()
         try:
-            # Начинаем транзакцию через SQL
             await cur.execute("BEGIN")
             await cur.execute("DELETE FROM schedule_snapshots")
             for s in schedules:
@@ -209,7 +195,6 @@ async def _store_snapshot(schedules: list[dict[str, Any]]) -> None:
                         ti,
                     ),
                 )
-            # Копируем строки с platform == 'wp' в schedule_snapshots_wp
             wp_schedules = [s for s in schedules if s.get("platform") == "wp"]
             await cur.execute("DELETE FROM schedule_snapshots_wp")
             for s in wp_schedules:
@@ -230,33 +215,39 @@ async def _store_snapshot(schedules: list[dict[str, Any]]) -> None:
                         ti,
                     ),
                 )
-            # Коммитим транзакцию через SQL
             await cur.execute("COMMIT")
         except Exception:
-            # Откатываем транзакцию через SQL
             await cur.execute("ROLLBACK")
             raise
         finally:
             cur.close()
 
 
-def _bot_schedule_gateway_path(platform: str) -> str:
-    """Путь на API Gateway для POST оповещения бота о расписании."""
-    if platform == "threads":
-        return "/threads-bot/schedule"
-    return f"/{platform}-bot/schedule"
-
-
 async def _notify_bot(
-    platform: str, schedules: list[dict[str, Any]], token: str
+    platform: str,
+    schedules: list[dict[str, Any]],
+    *,
+    timeout_seconds: float = 60.0,
 ) -> dict[str, Any] | None:
-    """Оповещает бота. Возвращает JSON ответа при успехе (для url — details для сохранения в Core)."""
-    base = settings.API_GATEWAY_URL.rstrip("/")
-    url = f"{base}{_bot_schedule_gateway_path(platform)}"
-    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    """Оповещает бота напрямую (без JWT). Контекст — user_id в schedules."""
+    base = _bot_service_url(platform)
+    if not base:
+        logger.warning("No service URL for platform %s", platform)
+        return None
+    if not schedules and platform != "url":
+        return None
+    url = f"{base}/schedule"
+    headers = {"Content-Type": "application/json"}
     payload = {"schedules": schedules}
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        resp = await client.post(url, json=payload, headers=headers)
+    try:
+        async with httpx.AsyncClient(timeout=timeout_seconds) as client:
+            resp = await client.post(url, json=payload, headers=headers)
+    except httpx.TimeoutException as e:
+        logger.warning("Notify %s timeout: %s", platform, e)
+        return None
+    except httpx.HTTPError as e:
+        logger.warning("Notify %s HTTP error: %s", platform, e)
+        return None
     if resp.status_code >= 400:
         logger.warning("Notify %s failed: %s %s", platform, resp.status_code, resp.text)
         return None
@@ -267,10 +258,10 @@ async def _notify_bot(
         return None
 
 
-async def run_poll_cycle(token: str) -> bool:
+async def run_poll_cycle() -> bool:
     """Один цикл: запрос core, diff, сохранение, оповещение. Возвращает True если были изменения."""
     global _last_poll_at
-    schedules = await _fetch_schedules(token)
+    schedules = await _fetch_schedules()
     new_h = _payload_hash(schedules)
     try:
         prev = await _load_previous_snapshot()
@@ -286,19 +277,50 @@ async def run_poll_cycle(token: str) -> bool:
         if p in by_platform:
             by_platform[p].append(s)
 
-    # Для остальных платформ оповещаем только при изменении расписания (если NOTIFY_ON_CHANGE_ONLY).
-    # Для url всегда оповещаем и сохраняем посты при каждом цикле — иначе посты перестают собираться.
+    # url первым и отдельно — сбор по schedule_time не ждёт остальных ботов
+    if by_platform["url"]:
+        try:
+            data = await _notify_bot("url", by_platform["url"], timeout_seconds=120.0)
+            if data:
+                await _persist_url_posts(data)
+                await _mark_curl_one_time_done(by_platform["url"], data)
+        except Exception as e:
+            logger.exception("Notify platform url failed: %s", e)
+
     notify_all = not settings.NOTIFY_ON_CHANGE_ONLY or changed
-    for platform in BOT_PLATFORMS:
-        if platform == "url":
-            if by_platform["url"]:
-                data = await _notify_bot(platform, by_platform[platform], token)
-                if data:
-                    await _persist_url_posts(data, token)
-                    await _mark_curl_one_time_done(by_platform["url"], data, token)
-        elif notify_all:
-            await _notify_bot(platform, by_platform[platform], token)
+    if notify_all:
+        other = [p for p in BOT_PLATFORMS if p != "url" and by_platform[p]]
+        results = await asyncio.gather(
+            *[
+                _notify_bot(p, by_platform[p], timeout_seconds=15.0)
+                for p in other
+            ],
+            return_exceptions=True,
+        )
+        for platform, result in zip(other, results):
+            if isinstance(result, Exception):
+                logger.warning("Notify platform %s failed: %s", platform, result)
+
     await _run_smm_jobs()
+    try:
+        async with get_db_connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    INSERT INTO service_cycle_log (
+                        service_name, cycle_type, status, detail, items_processed
+                    ) VALUES (%s, %s, %s, %s, %s)
+                    """,
+                    (
+                        "scheduler",
+                        "poll",
+                        "ok",
+                        f"schedules={len(schedules)} changed={changed}",
+                        len(schedules),
+                    ),
+                )
+    except Exception as e:
+        logger.debug("service_cycle_log skip: %s", e)
     _last_poll_at = datetime.utcnow()
     return changed
 
@@ -323,8 +345,8 @@ async def _run_smm_jobs() -> None:
         logger.warning("SMM jobs run error: %s", e)
 
 
-async def _persist_url_posts(schedule_response: dict[str, Any], token: str) -> None:
-    """Сохраняет результаты url-bot в Core (url_posts)."""
+async def _persist_url_posts(schedule_response: dict[str, Any]) -> None:
+    """Сохраняет результаты url-bot в Core (url_posts) напрямую; user_id в каждом посте."""
     details = schedule_response.get("details") or []
     posts: list[dict[str, Any]] = []
     for d in details:
@@ -347,9 +369,9 @@ async def _persist_url_posts(schedule_response: dict[str, Any], token: str) -> N
             posts.append(post)
     if not posts:
         return
-    base = settings.API_GATEWAY_URL.rstrip("/")
+    base = (settings.CORE_SERVICE_URL or "").rstrip("/")
     url = f"{base}/curl/url-posts"
-    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    headers = {"Content-Type": "application/json"}
     payload = {"posts": posts}
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
@@ -363,7 +385,7 @@ async def _persist_url_posts(schedule_response: dict[str, Any], token: str) -> N
 
 
 async def _mark_curl_one_time_done(
-    url_schedules: list[dict[str, Any]], schedule_response: dict[str, Any], token: str
+    url_schedules: list[dict[str, Any]], schedule_response: dict[str, Any]
 ) -> None:
     """Отмечает одноразовые URL как выполненные в Core (POST /curl/one-time-done)."""
     details = schedule_response.get("details") or []
@@ -385,9 +407,9 @@ async def _mark_curl_one_time_done(
     ]
     if not items:
         return
-    base = settings.API_GATEWAY_URL.rstrip("/")
+    base = (settings.CORE_SERVICE_URL or "").rstrip("/")
     url = f"{base}/curl/one-time-done"
-    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    headers = {"Content-Type": "application/json"}
     payload = {"items": items}
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
@@ -400,31 +422,11 @@ async def _mark_curl_one_time_done(
         logger.exception("One-time-done request error: %s", e)
 
 
-def _has_login_credentials() -> bool:
-    return bool(settings.SCHEDULER_LOGIN and settings.SCHEDULER_PASSWORD)
-
-
 async def poll_loop() -> None:
-    token: str | None = settings.SCHEDULER_JWT
-    if not token and _has_login_credentials():
-        try:
-            token = await _login()
-        except Exception as e:
-            logger.error("Initial login failed: %s", e)
-            return
-
+    """Фоновый цикл без service-login: данные пользователей из Core/БД."""
     while True:
         try:
-            if not token and _has_login_credentials():
-                token = await _login()
-            if token:
-                await run_poll_cycle(token)
-        except RuntimeError as e:
-            if ("Unauthorized" in str(e) or "401" in str(e)) and _has_login_credentials():
-                token = None
-                logger.warning("Will re-login on next cycle")
-            else:
-                logger.exception("Poll cycle error: %s", e)
+            await run_poll_cycle()
         except Exception as e:
             logger.exception("Poll cycle error: %s", e)
 

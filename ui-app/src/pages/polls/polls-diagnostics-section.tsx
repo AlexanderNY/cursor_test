@@ -6,6 +6,7 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { gameService } from '@/services/game-service'
 import type { GameBotDiagnostics, DiagnosticStatus } from '@/types/game'
 import { usePollsContext } from './polls-context'
+import { formatDateTime } from '@/utils/date'
 
 const STATUS_LABELS: Record<DiagnosticStatus, string> = {
   ok: 'OK',
@@ -84,7 +85,7 @@ export function PollsDiagnosticsSection() {
               </span>
               <span className="text-sm text-[var(--text-secondary)]">
                 {diagnostics.bot_name} ·{' '}
-                {new Date(diagnostics.collected_at).toLocaleString('ru-RU')}
+                {formatDateTime(diagnostics.collected_at)}
               </span>
             </div>
 

@@ -36,6 +36,8 @@ export interface InstagramPost {
   to_dzen?: boolean
   to_threads?: boolean
   to_instagram?: boolean
+  target_channels?: string[]
+  target_groups?: string[]
 }
 
 export interface InstagramPostListItem {

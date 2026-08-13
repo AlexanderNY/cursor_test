@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
 import { PageHeader, PageContainer } from '@/components/ui'
 import { TipTapEditor } from '@/components/ui/tiptap-editor'
+import { AiAssistPanel } from '@/components/ai/AiAssistPanel'
 import { createPostService } from '@/services/create-post-service'
 import { coreService } from '@/services/core-service'
 import { smmService } from '@/services/smm-service'
@@ -13,10 +14,13 @@ import { useBrand } from '@/contexts/brand-context'
 import {
   TargetSocialNetworksWidget,
   EMPTY_TARGET_SOCIAL_NETWORKS,
+  EMPTY_SELECTED_BRAND_CHANNELS,
   type TargetSocialNetworks,
+  type SelectedBrandChannels,
 } from '@/components/target-social-networks'
 import type { CpostPostListItem } from '@/types/create-post'
 import type { PostRow } from '@/types/core'
+import { formatDateTime } from '@/utils/date'
 
 const TEXT_MAX_LENGTH = 150000
 const POST_PREVIEW_LENGTH = 80
@@ -27,14 +31,19 @@ function htmlToPlainText(html: string): string {
   return (div.textContent ?? div.innerText ?? '').trim()
 }
 
+function plainTextToHtml(text: string): string {
+  const escaped = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+  const paragraphs = escaped
+    .split(/\n{2,}/)
+    .map((p) => `<p>${p.replace(/\n/g, '<br>')}</p>`)
+  return paragraphs.join('') || '<p></p>'
+}
+
 function formatDate(iso?: string | null): string {
-  if (!iso) return '—'
-  try {
-    const d = new Date(iso)
-    return d.toLocaleString()
-  } catch {
-    return iso
-  }
+  return formatDateTime(iso)
 }
 
 function cellValue(
@@ -84,6 +93,9 @@ export function CreatePostPage() {
 
   const [socialNetworks, setSocialNetworks] = useState<TargetSocialNetworks>({
     ...EMPTY_TARGET_SOCIAL_NETWORKS,
+  })
+  const [selectedChannels, setSelectedChannels] = useState<SelectedBrandChannels>({
+    ...EMPTY_SELECTED_BRAND_CHANNELS,
   })
   const [postTitle, setPostTitle] = useState('')
   const [postContent, setPostContent] = useState('')
@@ -282,7 +294,7 @@ export function CreatePostPage() {
     const v = post[key]
     if (v === null || v === undefined) return <span className="text-[var(--text-muted)]">—</span>
     if (key === 'post_date' || key === 'created_at' || key === 'updated_at') {
-      return <span className="text-[var(--text-secondary)] whitespace-nowrap">{new Date(String(v)).toLocaleString()}</span>
+      return <span className="text-[var(--text-secondary)] whitespace-nowrap">{formatDateTime(String(v))}</span>
     }
     if (key === 'images') {
       const arr = Array.isArray(v) ? v : []
@@ -370,6 +382,8 @@ export function CreatePostPage() {
       to_threads: socialNetworks.threads,
       to_dzen: socialNetworks.dzen,
       to_instagram: socialNetworks.instagram,
+      target_channels: selectedChannels.tg,
+      target_groups: selectedChannels.vk,
     }
 
     try {
@@ -465,6 +479,7 @@ export function CreatePostPage() {
         setViews('')
         setIsAd(false)
         setStatus('collected')
+        setSelectedChannels({ ...EMPTY_SELECTED_BRAND_CHANNELS })
         const list = await createPostService.getPosts()
         setPosts(list)
         setHasLoadedPosts(true)
@@ -689,69 +704,43 @@ export function CreatePostPage() {
                       </span>
                     )}
                   </h4>
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="secondary"
-                      disabled={aiBusy || !htmlToPlainText(postContent)}
-                      onClick={async () => {
-                        setAiBusy(true)
-                        try {
-                          const res = await smmService.aiSummarize(htmlToPlainText(postContent))
-                          setPostContent(res.summary)
-                          setSuccess('Summarized with LLM')
-                        } catch (err) {
-                          setError(err instanceof Error ? err.message : 'Summarize failed')
-                        } finally {
-                          setAiBusy(false)
-                        }
-                      }}
-                    >
-                      Summarize
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="secondary"
-                      disabled={aiBusy || !htmlToPlainText(postContent)}
-                      onClick={async () => {
-                        setAiBusy(true)
-                        try {
-                          const res = await smmService.aiRewrite(htmlToPlainText(postContent))
-                          setPostContent(res.text)
-                          setSuccess('Rewritten with LLM')
-                        } catch (err) {
-                          setError(err instanceof Error ? err.message : 'Rewrite failed')
-                        } finally {
-                          setAiBusy(false)
-                        }
-                      }}
-                    >
-                      Rewrite
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="secondary"
-                      disabled={aiBusy || !htmlToPlainText(postContent)}
-                      onClick={async () => {
-                        setAiBusy(true)
-                        try {
-                          const res = await smmService.aiAdapt(htmlToPlainText(postContent), ['tg', 'vk'])
-                          setAdaptPreview(res.variants)
-                          setSuccess('Network adapt preview ready')
-                        } catch (err) {
-                          setError(err instanceof Error ? err.message : 'Adapt failed')
-                        } finally {
-                          setAiBusy(false)
-                        }
-                      }}
-                    >
-                      Adapt TG/VK
-                    </Button>
-                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    disabled={aiBusy || !htmlToPlainText(postContent)}
+                    onClick={async () => {
+                      setAiBusy(true)
+                      try {
+                        const res = await smmService.aiAdapt(htmlToPlainText(postContent), ['tg', 'vk'])
+                        setAdaptPreview(res.variants)
+                        setSuccess('Network adapt preview ready')
+                      } catch (err) {
+                        setError(err instanceof Error ? err.message : 'Adapt failed')
+                      } finally {
+                        setAiBusy(false)
+                      }
+                    }}
+                  >
+                    Adapt TG/VK
+                  </Button>
                 </div>
+
+                <AiAssistPanel
+                  sourceText={htmlToPlainText(postContent)}
+                  source="post"
+                  sourceId={editingPostId ?? undefined}
+                  allowedActions={['summarize', 'categorize', 'rewrite']}
+                  defaultAction="summarize"
+                  onApply={(text, meta) => {
+                    if (meta.action === 'categorize') {
+                      setSuccess(`Категория: ${text}`)
+                      return
+                    }
+                    setPostContent(plainTextToHtml(text))
+                    setSuccess('AI результат применён к тексту поста')
+                  }}
+                />
 
                 {adaptPreview && (
                   <div className="grid gap-2 sm:grid-cols-2 text-xs">
@@ -1006,7 +995,12 @@ export function CreatePostPage() {
                 </div>
               </div>
 
-              <TargetSocialNetworksWidget value={socialNetworks} onChange={setSocialNetworks} />
+              <TargetSocialNetworksWidget
+                value={socialNetworks}
+                onChange={setSocialNetworks}
+                selectedChannels={selectedChannels}
+                onSelectedChannelsChange={setSelectedChannels}
+              />
 
               <CardFooter className="px-0">
                 <Button type="submit" isLoading={isCreating} className="w-full sm:w-auto">

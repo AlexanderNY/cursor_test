@@ -7,6 +7,7 @@ import type {
   ServicesStatusResponse,
   PostsTablesResponse,
   PostsListResponse,
+  PipelineEventsResponse,
   ProcessorRunResponse,
   PostingDiagnosticsResponse,
   StorageFilesResponse,
@@ -104,6 +105,17 @@ export const coreService = {
     try {
       const response = await apiClient.get<PostsListResponse>('/core/admin/posts', {
         params: { limit, offset, ...(status ? { status } : {}) },
+      })
+      return response.data
+    } catch (error) {
+      throw new Error(getErrorMessage(error))
+    }
+  },
+
+  async getPipelineEvents(limit = 50): Promise<PipelineEventsResponse> {
+    try {
+      const response = await apiClient.get<PipelineEventsResponse>('/core/admin/pipeline-events', {
+        params: { limit },
       })
       return response.data
     } catch (error) {

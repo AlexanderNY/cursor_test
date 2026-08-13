@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useEffect, useMemo, useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import { PageContainer, PageHeader } from '@/components/ui'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -9,11 +9,13 @@ import { useBrand } from '@/contexts/brand-context'
 import { smmService } from '@/services/smm-service'
 import type { AnalyticsOverview, AnalyticsPost, BrandChannel } from '@/types/smm'
 import { getErrorMessage } from '@/services/api-client'
+import { TelegramAnalyticsPanel } from './telegram-analytics'
 
-type Tab = 'overview' | 'channels' | 'competitors'
+type Tab = 'overview' | 'channels' | 'competitors' | 'telegram'
 
 export function SmmAnalyticsPage() {
-  const { selectedBrandId, channels, refreshChannels } = useBrand()
+  const { selectedBrandId, setSelectedBrandId, channels, refreshChannels } = useBrand()
+  const [searchParams] = useSearchParams()
   const [tab, setTab] = useState<Tab>('overview')
   const [period, setPeriod] = useState('7d')
   const [overview, setOverview] = useState<AnalyticsOverview | null>(null)
@@ -29,9 +31,40 @@ export function SmmAnalyticsPage() {
   const [selectedComp, setSelectedComp] = useState<BrandChannel | null>(null)
   const [canCompetitors, setCanCompetitors] = useState(true)
 
-  const competitors = channels.filter((c) => c.role === 'competitor')
+  const focusChannelId = useMemo(() => {
+    const raw = searchParams.get('channel_id')
+    if (!raw) return null
+    const n = Number(raw)
+    return Number.isFinite(n) && n > 0 ? n : null
+  }, [searchParams])
+
+  const focusChannel = useMemo(
+    () => channels.find((c) => c.id === focusChannelId) || null,
+    [channels, focusChannelId],
+  )
 
   useEffect(() => {
+    const brandRaw = searchParams.get('brand_id')
+    if (!brandRaw) return
+    const brandId = Number(brandRaw)
+    if (Number.isFinite(brandId) && brandId > 0 && brandId !== selectedBrandId) {
+      setSelectedBrandId(brandId)
+    }
+  }, [searchParams, selectedBrandId, setSelectedBrandId])
+
+  useEffect(() => {
+    if (focusChannelId) setTab('channels')
+  }, [focusChannelId])
+
+  const competitors = channels.filter((c) => c.role === 'competitor')
+
+  const visibleChannelStats = useMemo(() => {
+    if (!focusChannelId) return channelStats
+    return channelStats.filter((s) => s.channel_id === focusChannelId)
+  }, [channelStats, focusChannelId])
+
+  useEffect(() => {
+    if (tab === 'telegram') return
     void (async () => {
       setError('')
       try {
@@ -50,7 +83,7 @@ export function SmmAnalyticsPage() {
         setError(getErrorMessage(err))
       }
     })()
-  }, [selectedBrandId, period])
+  }, [selectedBrandId, period, tab])
 
   async function handleAddCompetitor() {
     if (!selectedBrandId || !compId.trim()) return
@@ -83,11 +116,24 @@ export function SmmAnalyticsPage() {
     <PageContainer>
       <PageHeader
         title="Analytics"
-        description="Сквозная сводка охватов, ER и конкуренты"
+        description="Сквозная сводка охватов, ER, конкуренты и аналитика по сетям"
       />
       {error && <Alert variant="error">{error}</Alert>}
+      {focusChannel && (
+        <Alert variant="info">
+          Фильтр по каналу: <strong>{focusChannel.title || focusChannel.external_id}</strong>
+          {' · '}
+          <Link to="/analytics" className="underline">
+            сбросить
+          </Link>
+          {' · '}
+          <Link to={`/channels/${focusChannel.id}`} className="underline">
+            настроить поток
+          </Link>
+        </Alert>
+      )}
 
-      <div className="flex gap-2 mb-4">
+      <div className="flex flex-wrap gap-2 mb-4">
         <Button variant={tab === 'overview' ? 'primary' : 'secondary'} onClick={() => setTab('overview')}>
           Overview
         </Button>
@@ -102,15 +148,19 @@ export function SmmAnalyticsPage() {
         >
           Competitors
         </Button>
+        <Button variant={tab === 'telegram' ? 'primary' : 'secondary'} onClick={() => setTab('telegram')}>
+          Telegram
+        </Button>
         {!canCompetitors && (
           <Link to="/pricing" className="text-sm text-primary-400 hover:underline self-center">
             Upgrade for competitors
           </Link>
         )}
-        <Link to="/telegram" className="ml-auto text-sm text-primary-400 hover:underline self-center">
-          TG deep-dive →
-        </Link>
       </div>
+
+      {tab === 'telegram' && (
+        <TelegramAnalyticsPanel chatIdFilter={focusChannel?.external_id || null} />
+      )}
 
       {tab === 'channels' && (
         <Card className="mb-6">
@@ -130,8 +180,13 @@ export function SmmAnalyticsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {channelStats.map((c) => (
-                    <tr key={c.channel_id} className="border-b border-[var(--border-color)]">
+                  {visibleChannelStats.map((c) => (
+                    <tr
+                      key={c.channel_id}
+                      className={`border-b border-[var(--border-color)] ${
+                        focusChannelId === c.channel_id ? 'bg-[var(--bg-tertiary)]' : ''
+                      }`}
+                    >
                       <td className="py-2 pr-2">{c.title || c.external_id}</td>
                       <td className="py-2 pr-2 uppercase">{c.network}</td>
                       <td className="py-2 pr-2">{c.sent}</td>
@@ -141,7 +196,7 @@ export function SmmAnalyticsPage() {
                   ))}
                 </tbody>
               </table>
-              {channelStats.length === 0 && (
+              {visibleChannelStats.length === 0 && (
                 <p className="text-sm text-[var(--text-muted)] py-4">Нет данных за период</p>
               )}
             </div>

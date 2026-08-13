@@ -12,9 +12,12 @@ import { getErrorMessage } from '@/services/api-client'
 import {
   TargetSocialNetworksWidget,
   createDefaultTargets,
+  EMPTY_SELECTED_BRAND_CHANNELS,
   type TargetSocialNetworks,
+  type SelectedBrandChannels,
 } from '@/components/target-social-networks'
 import { useAuth } from '@/contexts/auth-context'
+import { formatDateTime } from '@/utils/date'
 import type { ThreadsConfig, ThreadsPostListItem, TimeInterval, PublishScheduleType } from '@/types/threads'
 import type {
   ThreadsAuthStatus,
@@ -75,6 +78,9 @@ export function ThreadsPage() {
   const [postTargets, setPostTargets] = useState<TargetSocialNetworks>(() =>
     createDefaultTargets('threads')
   )
+  const [selectedChannels, setSelectedChannels] = useState<SelectedBrandChannels>({
+    ...EMPTY_SELECTED_BRAND_CHANNELS,
+  })
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
 
@@ -249,11 +255,15 @@ export function ThreadsPage() {
         setImagePreview(null)
         loadPosts()
       } else {
-        await threadsService.createPost(postText, imageFile || undefined, postTargets)
+        await threadsService.createPost(postText, imageFile || undefined, postTargets, {
+          targetChannels: selectedChannels.tg.length ? selectedChannels.tg : undefined,
+          targetGroups: selectedChannels.vk.length ? selectedChannels.vk : undefined,
+        })
         setSuccess('Post created successfully')
         setPostText('')
         setImageFile(null)
         setImagePreview(null)
+        setSelectedChannels({ ...EMPTY_SELECTED_BRAND_CHANNELS })
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : (editingPostId !== null ? 'Failed to update post' : 'Failed to create post'))
@@ -533,7 +543,7 @@ export function ThreadsPage() {
                 </div>
                 {authStatus?.expires_at && (
                   <div className="text-xs text-[var(--text-muted)] mt-1">
-                    Истекает (UTC): {new Date(authStatus.expires_at).toLocaleString()}
+                    Истекает (UTC): {formatDateTime(authStatus.expires_at)}
                   </div>
                 )}
                 {authStatus?.threads_user_id && (
@@ -716,7 +726,7 @@ export function ThreadsPage() {
                   <p>#{seleniumLastSession.id} — {seleniumLastSession.status}</p>
                   {seleniumLastSession.detail_message && <p className="mt-0.5">{seleniumLastSession.detail_message}</p>}
                   {seleniumLastSession.updated_at && (
-                    <p className="mt-1">{new Date(seleniumLastSession.updated_at).toLocaleString()}</p>
+                    <p className="mt-1">{formatDateTime(seleniumLastSession.updated_at)}</p>
                   )}
                 </div>
               )}
@@ -761,7 +771,12 @@ export function ThreadsPage() {
                 )}
               </div>
               {editingPostId === null && (
-                <TargetSocialNetworksWidget value={postTargets} onChange={setPostTargets} />
+                <TargetSocialNetworksWidget
+                  value={postTargets}
+                  onChange={setPostTargets}
+                  selectedChannels={selectedChannels}
+                  onSelectedChannelsChange={setSelectedChannels}
+                />
               )}
               <CardFooter className="px-0">
                 <Button type="submit" isLoading={isCreatingPost} className="w-full sm:w-auto">
@@ -809,7 +824,7 @@ export function ThreadsPage() {
                       <tr key={post.id ?? index} className="border-b border-[var(--border-color)] last:border-0">
                         <td className="py-2 pr-4 text-[var(--text-primary)]"><div className="max-w-md truncate">{post.post_text}</div></td>
                         <td className="py-2 pr-4"><span className="inline-flex items-center rounded-full bg-[var(--bg-secondary)] px-2 py-0.5 text-xs font-medium">{post.status}</span></td>
-                        <td className="py-2 pr-4 text-[var(--text-secondary)]">{new Date(post.created_at).toLocaleDateString()}</td>
+                        <td className="py-2 pr-4 text-[var(--text-secondary)]">{formatDateTime(post.created_at)}</td>
                         <td className="py-2 pr-4 text-right">
                           <button type="button" onClick={() => post.id != null && handleEditPost(post.id)} disabled={post.id == null} className="p-2 rounded-lg text-[var(--text-secondary)] hover:text-primary-400" title="Edit">✎</button>
                           <button type="button" onClick={() => post.id != null && handleDeletePost(post.id)} disabled={post.id == null || deletingPostId === post.id} className="p-2 rounded-lg text-[var(--text-secondary)] hover:text-red-400" title="Delete">🗑</button>

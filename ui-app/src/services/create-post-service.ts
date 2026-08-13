@@ -54,6 +54,8 @@ interface CpostPostPayload {
   to_threads: boolean
   to_dzen: boolean
   to_instagram: boolean
+  target_channels?: string[]
+  target_groups?: string[]
 }
 
 export const createPostService = {
@@ -126,6 +128,8 @@ export const createPostService = {
       to_threads: post.social_networks.threads ?? false,
       to_dzen: post.social_networks.dzen ?? false,
       to_instagram: post.social_networks.instagram ?? false,
+      target_channels: post.target_channels ?? [],
+      target_groups: post.target_groups ?? [],
     }
     try {
       await apiClient.post('/cpost/post', payload)
@@ -169,6 +173,8 @@ export const createPostService = {
       to_threads: data.to_threads,
       to_dzen: data.to_dzen,
       to_instagram: data.to_instagram,
+      target_channels: data.target_channels,
+      target_groups: data.target_groups,
     })
   },
 

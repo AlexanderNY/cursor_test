@@ -97,6 +97,7 @@ export interface VKontaktePost {
   images?: string[]
   publish_at?: string | null
   target_groups?: string[]
+  target_channels?: string[]
 }
 
 export interface VKontaktePostListItem {

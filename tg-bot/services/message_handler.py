@@ -122,21 +122,38 @@ class MessageHandler:
         }
 
     @staticmethod
+    def chat_ref_id(chat: Any) -> Optional[str]:
+        """Извлекает ID из строки или {id, title}."""
+        if chat is None:
+            return None
+        if isinstance(chat, dict):
+            raw = chat.get("id") or chat.get("external_id") or chat.get("value")
+            if raw is None:
+                return None
+            value = str(raw).strip()
+            return value or None
+        value = str(chat).strip()
+        return value or None
+
+    @staticmethod
     def get_chats_list(chats_to_read: List) -> List:
         if not chats_to_read:
             return []
         result = []
         for chat in chats_to_read:
-            if isinstance(chat, str):
+            raw = MessageHandler.chat_ref_id(chat)
+            if not raw:
+                continue
+            if isinstance(raw, str):
                 try:
-                    if chat.startswith("@"):
-                        result.append(chat)
+                    if raw.startswith("@"):
+                        result.append(raw)
                     else:
-                        result.append(int(chat))
+                        result.append(int(raw))
                 except ValueError:
-                    result.append(chat)
+                    result.append(raw)
             else:
-                result.append(chat)
+                result.append(raw)
         return result
 
     @staticmethod

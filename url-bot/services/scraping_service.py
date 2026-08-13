@@ -1,13 +1,10 @@
-"""Сервис скрапинга: переход по URL, извлечение по XPath, скриншот элемента."""
-
-from __future__ import annotations
-
 import asyncio
 import base64
 import logging
 import os
 import signal
 import threading
+import time
 import uuid
 from datetime import datetime
 from io import BytesIO
@@ -18,6 +15,7 @@ from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
+from selenium.webdriver.remote.webelement import WebElement
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
@@ -65,6 +63,42 @@ def _compress_screenshot(png_bytes: bytes) -> bytes:
     except Exception as e:
         logger.warning("Screenshot compress failed, using original: %s", e)
         return png_bytes
+
+
+def _is_nearly_blank_png(png_bytes: bytes) -> bool:
+    """True, если кадр почти однотонный (серый placeholder до отрисовки JS)."""
+    if not png_bytes:
+        return True
+    min_unique = int(getattr(settings, "SCREENSHOT_BLANK_MIN_UNIQUE_COLORS", 12) or 12)
+    try:
+        img = Image.open(BytesIO(png_bytes)).convert("RGB")
+        w, h = img.size
+        if w < 8 or h < 8:
+            return True
+        sample = img.resize((32, 32), Image.Resampling.BILINEAR)
+        colors = sample.getcolors(maxcolors=32 * 32) or []
+        unique = len(colors)
+        pixels = list(sample.getdata())
+        n = max(1, len(pixels))
+        avg = (
+            sum(p[0] for p in pixels) / n,
+            sum(p[1] for p in pixels) / n,
+            sum(p[2] for p in pixels) / n,
+        )
+        var = sum(sum((p[i] - avg[i]) ** 2 for i in range(3)) for p in pixels) / n
+        is_blank = unique < min_unique and var < 40.0
+        if is_blank:
+            logger.info(
+                "Screenshot looks blank: size=%sx%s unique_colors=%s variance=%.1f",
+                w,
+                h,
+                unique,
+                var,
+            )
+        return is_blank
+    except Exception as e:
+        logger.debug("Blank-detect failed: %s", e)
+        return False
 
 
 def _save_screenshot_to_disk(jpeg_bytes: bytes, user_id: int) -> str | None:
@@ -140,14 +174,17 @@ def _quit_driver(driver: webdriver.Chrome | None) -> None:
 
 
 def _create_driver() -> webdriver.Chrome:
-    """Создаёт headless Chrome/Chromium driver с eager page load."""
+    """Создаёт headless Chrome/Chromium driver."""
     options = Options()
     options.add_argument("--headless=new")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-gpu")
     options.add_argument("--window-size=1920,1080")
-    options.page_load_strategy = "eager"
+    options.add_argument("--force-device-scale-factor=1")
+    options.add_argument("--hide-scrollbars")
+    # normal — дождаться загрузки ресурсов; eager даёт серые placeholder'ы на JS-картах
+    options.page_load_strategy = "normal"
     chrome_bin = os.environ.get("CHROME_BIN")
     if chrome_bin:
         options.binary_location = chrome_bin
@@ -161,6 +198,89 @@ def _create_driver() -> webdriver.Chrome:
     driver.set_script_timeout(settings.PAGE_LOAD_TIMEOUT_SECONDS)
     driver.implicitly_wait(0)
     return driver
+
+
+def _prepare_element_for_screenshot(driver: webdriver.Chrome, element: WebElement) -> None:
+    """Прокрутка в центр и ожидание ненулевого размера."""
+    try:
+        driver.execute_script(
+            "arguments[0].scrollIntoView({block: 'center', inline: 'nearest'});",
+            element,
+        )
+    except Exception as e:
+        logger.debug("scrollIntoView failed: %s", e)
+    try:
+        driver.execute_script(
+            """
+            const el = arguments[0];
+            if (el && el.style) {
+              el.style.visibility = 'visible';
+              el.style.opacity = '1';
+            }
+            """,
+            element,
+        )
+    except Exception:
+        pass
+
+
+def _capture_element_screenshot(
+    driver: webdriver.Chrome,
+    element: WebElement,
+    hard_fired: threading.Event,
+) -> bytes:
+    """Снимает элемент с settle/retry, пока кадр не перестанет быть однотонным."""
+    settle = float(getattr(settings, "SCREENSHOT_SETTLE_SECONDS", 3.0) or 0.0)
+    retries = max(1, int(getattr(settings, "SCREENSHOT_BLANK_MAX_RETRIES", 5) or 5))
+    retry_sleep = float(getattr(settings, "SCREENSHOT_BLANK_RETRY_SECONDS", 2.0) or 2.0)
+
+    if settle > 0:
+        time.sleep(settle)
+
+    last_png = b""
+    for attempt in range(1, retries + 1):
+        if hard_fired.is_set():
+            break
+        _prepare_element_for_screenshot(driver, element)
+        try:
+            size = element.size or {}
+            if int(size.get("width") or 0) < 4 or int(size.get("height") or 0) < 4:
+                logger.info(
+                    "Element size too small on attempt %s: %s — waiting",
+                    attempt,
+                    size,
+                )
+                time.sleep(retry_sleep)
+                continue
+        except Exception:
+            pass
+
+        try:
+            png_bytes = element.screenshot_as_png
+        except Exception as e:
+            logger.warning("element.screenshot_as_png failed attempt=%s: %s", attempt, e)
+            # fallback: viewport screenshot
+            try:
+                png_bytes = driver.get_screenshot_as_png()
+            except Exception as e2:
+                logger.warning("viewport screenshot failed: %s", e2)
+                png_bytes = b""
+
+        last_png = png_bytes or last_png
+        if png_bytes and not _is_nearly_blank_png(png_bytes):
+            if attempt > 1:
+                logger.info("Screenshot became non-blank on attempt %s", attempt)
+            return png_bytes
+
+        logger.info(
+            "Blank/placeholder screenshot attempt %s/%s — retry in %.1fs",
+            attempt,
+            retries,
+            retry_sleep,
+        )
+        time.sleep(retry_sleep)
+
+    return last_png
 
 
 def scrape_url(
@@ -217,14 +337,27 @@ def scrape_url(
             return result
 
         wait = WebDriverWait(driver, settings.ELEMENT_WAIT_TIMEOUT_SECONDS)
-        element = wait.until(EC.presence_of_element_located((By.XPATH, xpath)))
+        # visibility — элемент не только в DOM, но и отрисован/видимый
+        element = wait.until(EC.visibility_of_element_located((By.XPATH, xpath)))
         if hard_fired.is_set():
             result["error"] = "Scrape hard timeout"
             return result
 
         result["text"] = element.text or ""
         if take_screenshot:
-            png_bytes = element.screenshot_as_png
+            png_bytes = _capture_element_screenshot(driver, element, hard_fired)
+            if hard_fired.is_set():
+                result["error"] = "Scrape hard timeout"
+                return result
+            if not png_bytes:
+                result["error"] = "Screenshot capture failed"
+                return result
+            if _is_nearly_blank_png(png_bytes):
+                logger.warning(
+                    "Screenshot still blank after retries for url=%r xpath=%r",
+                    url,
+                    xpath,
+                )
             jpeg_bytes = _compress_screenshot(png_bytes)
             upload_dir = getattr(settings, "UPLOAD_DIR", "") or ""
             if upload_dir and user_id is not None:

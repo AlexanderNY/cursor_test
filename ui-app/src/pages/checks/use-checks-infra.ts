@@ -124,12 +124,20 @@ export function useChecksInfra() {
       if (data.status === 'success') {
         setCollectMessage(`Собрано постов: ${data.count}. ${data.message}`)
         lastPostsTablesLoadedAt.current = null
-        await handleRunPostingDiagnostics()
+        await handleLoadServicesStatus()
+        await handleLoadPostsTables()
+        if (section === 'posting-diagnostics') {
+          await handleRunPostingDiagnostics()
+        }
       } else if (data.status === 'partial') {
         setCollectMessage(`Собрано постов: ${data.count}. ${data.message}`)
         if (data.errors?.length) setCollectError(data.errors.join('; '))
         lastPostsTablesLoadedAt.current = null
-        await handleRunPostingDiagnostics()
+        await handleLoadServicesStatus()
+        await handleLoadPostsTables()
+        if (section === 'posting-diagnostics') {
+          await handleRunPostingDiagnostics()
+        }
       } else {
         setCollectError(data.message || 'Ошибка цикла сбора')
         if (data.errors?.length) setCollectError((prev) => prev + '\n' + data.errors!.join('\n'))
@@ -150,7 +158,11 @@ export function useChecksInfra() {
       if (data.status === 'success') {
         setDistributeMessage(`Распределено постов: ${data.count}. ${data.message}`)
         lastPostsTablesLoadedAt.current = null
-        await handleRunPostingDiagnostics()
+        await handleLoadServicesStatus()
+        await handleLoadPostsTables()
+        if (section === 'posting-diagnostics') {
+          await handleRunPostingDiagnostics()
+        }
       } else {
         setDistributeError(data.message || 'Ошибка цикла распределения')
       }

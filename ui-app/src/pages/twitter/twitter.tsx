@@ -10,9 +10,12 @@ import { twitterService } from '@/services/twitter-service'
 import {
   TargetSocialNetworksWidget,
   createDefaultTargets,
+  EMPTY_SELECTED_BRAND_CHANNELS,
   type TargetSocialNetworks,
+  type SelectedBrandChannels,
 } from '@/components/target-social-networks'
 import type { TwitterProfile, TwitterScheduleType, TwPostRow, TwitterFollowingUser } from '@/types/twitter'
+import { formatDateTime } from '@/utils/date'
 
 function generateId(): string {
   return Math.random().toString(36).substring(2, 9)
@@ -51,6 +54,9 @@ export function TwitterPage() {
   const [postTargets, setPostTargets] = useState<TargetSocialNetworks>(() =>
     createDefaultTargets('tw')
   )
+  const [selectedChannels, setSelectedChannels] = useState<SelectedBrandChannels>({
+    ...EMPTY_SELECTED_BRAND_CHANNELS,
+  })
 
   const [posts, setPosts] = useState<TwPostRow[]>([])
   const [isLoadingPosts, setIsLoadingPosts] = useState(false)
@@ -331,9 +337,12 @@ export function TwitterPage() {
         to_threads: postTargets.threads,
         to_dzen: postTargets.dzen,
         to_instagram: postTargets.instagram,
+        target_channels: selectedChannels.tg,
+        target_groups: selectedChannels.vk,
       })
       setSuccess('Post queued successfully')
       setPostText('')
+      setSelectedChannels({ ...EMPTY_SELECTED_BRAND_CHANNELS })
       setHasLoadedPosts(false)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create post')
@@ -452,7 +461,12 @@ export function TwitterPage() {
                   {postText.length} / 280 characters
                 </p>
               </div>
-              <TargetSocialNetworksWidget value={postTargets} onChange={setPostTargets} />
+              <TargetSocialNetworksWidget
+                value={postTargets}
+                onChange={setPostTargets}
+                selectedChannels={selectedChannels}
+                onSelectedChannelsChange={setSelectedChannels}
+              />
               <CardFooter className="px-0">
                 <Button type="submit" isLoading={isCreatingPost} className="w-full sm:w-auto">
                   <svg
@@ -674,7 +688,7 @@ export function TwitterPage() {
                       {p.status && (
                         <span className="px-2 py-0.5 rounded bg-[var(--bg-tertiary)]">{p.status}</span>
                       )}
-                      {p.created_at && <span>{new Date(p.created_at).toLocaleString()}</span>}
+                      {p.created_at && <span>{formatDateTime(p.created_at)}</span>}
                     </div>
                     {p.url && (
                       <a

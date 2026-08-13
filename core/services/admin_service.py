@@ -1,5 +1,6 @@
 """Сервис для админ-эндпоинтов: статус сервисов и обзор таблиц постов."""
 
+import json
 import os
 import socket
 import httpx
@@ -338,6 +339,207 @@ class AdminService:
 
         except Exception as e:
             result["hints"] = [f"Ошибка при сборе диагностики: {e!s}"]
+        return result
+
+    @staticmethod
+    def _publishing_channels(
+        telegram_chat_id: Any,
+        target_channels: Any,
+    ) -> List[str]:
+        """Список чатов публикации: сохранённые id + fallback на target_channels."""
+
+        def _as_list(raw: Any) -> List[str]:
+            if raw is None:
+                return []
+            if isinstance(raw, list):
+                out: List[str] = []
+                for item in raw:
+                    if isinstance(item, dict):
+                        cid = item.get("id") or item.get("channel") or item.get("chat_id")
+                        if cid is not None and str(cid).strip():
+                            out.append(str(cid).strip())
+                    elif item is not None and str(item).strip():
+                        out.append(str(item).strip())
+                return out
+            if isinstance(raw, str):
+                s = raw.strip()
+                if not s:
+                    return []
+                if s.startswith("["):
+                    try:
+                        parsed = json.loads(s)
+                        return _as_list(parsed)
+                    except Exception:
+                        pass
+                return [p.strip() for p in s.split(",") if p.strip()]
+            return [str(raw).strip()] if str(raw).strip() else []
+
+        stored = _as_list(telegram_chat_id)
+        targets = _as_list(target_channels)
+        # Старые записи: в telegram_chat_id только последний чат — дополняем из target_channels
+        if targets and (not stored or (len(stored) == 1 and len(targets) > 1 and stored[0] in targets)):
+            # сохраняем порядок target_channels
+            return targets
+        return stored or targets
+
+    async def get_pipeline_events(self, limit: int = 50) -> Dict[str, Any]:
+        """Списки срабатываний для вкладки Administration → Posts."""
+        limit = max(1, min(int(limit or 50), 200))
+        result: Dict[str, Any] = {
+            "alerting": [],
+            "publishing": [],
+            "collection": [],
+            "custom_url": [],
+            "services": [],
+            "collected_at": datetime.now(timezone.utc).isoformat(),
+        }
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                # Alerting
+                await cur.execute(
+                    """
+                    SELECT id, user_id, chat_id, event_type, rule_id, text_preview,
+                           metadata, created_at
+                    FROM tg_events
+                    WHERE event_type IN ('alert_sent', 'alert_matched', 'alert_suppressed')
+                    ORDER BY created_at DESC
+                    LIMIT %s
+                    """,
+                    (limit,),
+                )
+                for row in await cur.fetchall():
+                    meta = row[6] or {}
+                    if isinstance(meta, str):
+                        try:
+                            meta = json.loads(meta)
+                        except Exception:
+                            meta = {}
+                    channel = (meta or {}).get("channel") or (meta or {}).get("channel_title")
+                    if not channel and row[2] is not None:
+                        channel = f"source:{row[2]}"
+                    result["alerting"].append(
+                        {
+                            "id": row[0],
+                            "user_id": row[1],
+                            "channel": str(channel) if channel else None,
+                            "event_type": row[3],
+                            "rule_id": row[4],
+                            "summary": (row[5] or "")[:160],
+                            "created_at": row[7].isoformat() if hasattr(row[7], "isoformat") else row[7],
+                        }
+                    )
+
+                # Publishing (TG published posts) — по одной строке на каждый целевой чат
+                await cur.execute(
+                    """
+                    SELECT id, user_id, telegram_chat_id, status, LEFT(COALESCE(post_text, ''), 160),
+                           updated_at, created_at, target_channels
+                    FROM tg_posts
+                    WHERE status = 'published'
+                    ORDER BY COALESCE(updated_at, created_at) DESC
+                    LIMIT %s
+                    """,
+                    (limit,),
+                )
+                for row in await cur.fetchall():
+                    channels = self._publishing_channels(row[2], row[7])
+                    if not channels:
+                        channels = [None]
+                    created = row[5] or row[6]
+                    created_s = (
+                        created.isoformat()
+                        if hasattr(created, "isoformat")
+                        else created
+                    )
+                    for channel in channels:
+                        result["publishing"].append(
+                            {
+                                "id": row[0],
+                                "user_id": row[1],
+                                "channel": str(channel) if channel else None,
+                                "event_type": "published",
+                                "platform": "tg",
+                                "summary": row[4] or "",
+                                "created_at": created_s,
+                            }
+                        )
+
+                # Collection / Parser
+                await cur.execute(
+                    """
+                    SELECT id, user_id, chat_id, event_type, text_preview, metadata, created_at
+                    FROM tg_events
+                    WHERE event_type = 'collected'
+                    ORDER BY created_at DESC
+                    LIMIT %s
+                    """,
+                    (limit,),
+                )
+                for row in await cur.fetchall():
+                    result["collection"].append(
+                        {
+                            "id": row[0],
+                            "user_id": row[1],
+                            "channel": str(row[2]) if row[2] is not None else None,
+                            "event_type": row[3],
+                            "platform": "tg",
+                            "summary": (row[4] or "")[:160],
+                            "created_at": row[6].isoformat() if hasattr(row[6], "isoformat") else row[6],
+                        }
+                    )
+
+                # Custom URL
+                await cur.execute(
+                    """
+                    SELECT id, user_id, url, status, LEFT(COALESCE(post_text, ''), 160), created_at
+                    FROM url_posts
+                    ORDER BY created_at DESC
+                    LIMIT %s
+                    """,
+                    (limit,),
+                )
+                for row in await cur.fetchall():
+                    result["custom_url"].append(
+                        {
+                            "id": row[0],
+                            "user_id": row[1],
+                            "channel": row[2],
+                            "event_type": row[3] or "collected",
+                            "summary": row[4] or "",
+                            "created_at": row[5].isoformat() if hasattr(row[5], "isoformat") else row[5],
+                        }
+                    )
+
+                # Scheduler / collector / processor cycles
+                try:
+                    await cur.execute(
+                        """
+                        SELECT id, service_name, cycle_type, status, detail,
+                               items_processed, created_at
+                        FROM service_cycle_log
+                        ORDER BY created_at DESC
+                        LIMIT %s
+                        """,
+                        (limit,),
+                    )
+                    for row in await cur.fetchall():
+                        result["services"].append(
+                            {
+                                "id": row[0],
+                                "service": row[1],
+                                "cycle_type": row[2],
+                                "status": row[3],
+                                "summary": row[4] or "",
+                                "items_processed": row[5] or 0,
+                                "created_at": row[6].isoformat() if hasattr(row[6], "isoformat") else row[6],
+                            }
+                        )
+                except Exception as e:
+                    result["services"] = []
+                    result["services_error"] = str(e)
+        finally:
+            await release_db_connection(conn)
         return result
 
     async def get_runtime_location(self) -> Dict[str, Any]:

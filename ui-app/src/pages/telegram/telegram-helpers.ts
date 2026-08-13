@@ -1,8 +1,11 @@
 import type {
   TelegramAlertRule,
+  TelegramChatRef,
+  TelegramChatRefInput,
   ConditionsMode,
   SentimentFilter,
 } from '@/types/telegram'
+import { formatDateOnly } from '@/utils/date'
 
 export const AUTH_STATUS_POLL_INTERVAL_MS = 12_000
 export const MAX_ALERT_RULES = 10
@@ -18,6 +21,7 @@ export type ScheduleMinute = (typeof SCHEDULE_MINUTES)[number]
 export interface DynamicField {
   id: string
   value: string
+  label?: string
 }
 
 export interface AlertRuleBlock {
@@ -29,6 +33,7 @@ export interface AlertRuleBlock {
   chatsToRead: DynamicField[]
   saveConditions: DynamicField[]
   channelToPost: string
+  channelToPostTitle: string
   alertText: string
   dedupWindowSec: number
   rateLimitPerHour: string
@@ -38,6 +43,49 @@ export interface AlertRuleBlock {
   stopOnMatch: boolean
 }
 
+export function parseChatRef(input: TelegramChatRefInput | null | undefined): TelegramChatRef | null {
+  if (input == null) return null
+  if (typeof input === 'string') {
+    const id = input.trim()
+    return id ? { id } : null
+  }
+  const id = String(input.id || '').trim()
+  if (!id) return null
+  const title = (input.title || '').trim()
+  return title ? { id, title } : { id }
+}
+
+export function chatRefsFromInputs(items?: TelegramChatRefInput[] | null): TelegramChatRef[] {
+  if (!items?.length) return []
+  const result: TelegramChatRef[] = []
+  for (const item of items) {
+    const ref = parseChatRef(item)
+    if (ref) result.push(ref)
+  }
+  return result
+}
+
+export function dynamicFieldsFromChatRefs(items?: TelegramChatRefInput[] | null): DynamicField[] {
+  const refs = chatRefsFromInputs(items)
+  if (!refs.length) return [{ id: generateId(), value: '', label: '' }]
+  return refs.map((ref) => ({
+    id: generateId(),
+    value: ref.id,
+    label: ref.title || '',
+  }))
+}
+
+export function chatRefsFromDynamicFields(fields: DynamicField[]): TelegramChatRef[] {
+  return fields
+    .map((field) => {
+      const id = field.value.trim()
+      if (!id) return null
+      const title = (field.label || '').trim()
+      return title ? { id, title } : { id }
+    })
+    .filter((item): item is TelegramChatRef => item != null)
+}
+
 export function createEmptyAlertRuleBlock(): AlertRuleBlock {
   return {
     id: generateId(),
@@ -45,9 +93,10 @@ export function createEmptyAlertRuleBlock(): AlertRuleBlock {
     priority: 0,
     conditionsMode: 'any_of',
     categoryFilter: '',
-    chatsToRead: [{ id: generateId(), value: '' }],
+    chatsToRead: [{ id: generateId(), value: '', label: '' }],
     saveConditions: [{ id: generateId(), value: '' }],
     channelToPost: '',
+    channelToPostTitle: '',
     alertText: '',
     dedupWindowSec: 3600,
     rateLimitPerHour: '',
@@ -66,15 +115,13 @@ export function mapAlertRulesFromProfile(rules?: TelegramAlertRule[]): AlertRule
       priority: rule.priority ?? 0,
       conditionsMode: rule.conditions_mode || 'any_of',
       categoryFilter: rule.category_filter || '',
-      chatsToRead: (rule.chats_to_read?.length ? rule.chats_to_read : ['']).map((value) => ({
-        id: generateId(),
-        value,
-      })),
+      chatsToRead: dynamicFieldsFromChatRefs(rule.chats_to_read),
       saveConditions: (rule.save_conditions?.length ? rule.save_conditions : ['']).map((value) => ({
         id: generateId(),
         value,
       })),
       channelToPost: rule.channel_to_post || '',
+      channelToPostTitle: rule.channel_to_post_title || '',
       alertText: rule.alert_text || '',
       dedupWindowSec: rule.dedup_window_sec ?? 3600,
       rateLimitPerHour: rule.rate_limit_per_hour != null ? String(rule.rate_limit_per_hour) : '',
@@ -95,9 +142,10 @@ export function serializeAlertRules(rules: AlertRuleBlock[]): TelegramAlertRule[
       priority: block.priority,
       conditions_mode: block.conditionsMode,
       category_filter: block.categoryFilter.trim() || undefined,
-      chats_to_read: block.chatsToRead.map((field) => field.value.trim()).filter(Boolean),
+      chats_to_read: chatRefsFromDynamicFields(block.chatsToRead),
       save_conditions: block.saveConditions.map((field) => field.value.trim()).filter(Boolean),
       channel_to_post: block.channelToPost.trim() || undefined,
+      channel_to_post_title: block.channelToPostTitle.trim() || undefined,
       alert_text: block.alertText.trim().slice(0, 1000) || undefined,
       dedup_window_sec: block.dedupWindowSec,
       rate_limit_per_hour: block.rateLimitPerHour.trim() ? Number(block.rateLimitPerHour) : undefined,
@@ -115,6 +163,7 @@ export function serializeAlertRules(rules: AlertRuleBlock[]): TelegramAlertRule[
     )
     .slice(0, MAX_ALERT_RULES)
 }
+
 
 export function validateAlertRules(alertEnabled: boolean, rules: AlertRuleBlock[]): string | null {
   for (const block of rules) {
@@ -172,9 +221,7 @@ export function getWeekRange(weekStart: Date): { dateFrom: string; dateTo: strin
 export function formatWeekLabel(weekStart: Date): string {
   const end = new Date(weekStart)
   end.setDate(end.getDate() + 6)
-  const fmt = (d: Date) =>
-    d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
-  return `${fmt(weekStart)} – ${fmt(end)}`
+  return `${formatDateOnly(weekStart)} – ${formatDateOnly(end)}`
 }
 
 export interface AvailableChannel {

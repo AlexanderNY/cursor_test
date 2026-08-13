@@ -4,6 +4,7 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { TableSkeleton } from '@/components/ui/skeleton'
 import { gameService } from '@/services/game-service'
 import type { GameLeaderboardEntry, GameSessionStats, GameMode } from '@/types/game'
+import { formatDateTime } from '@/utils/date'
 
 interface RatingSectionProps {
   modeId: number | null
@@ -26,12 +27,7 @@ function formatPlayerName(
 }
 
 function formatDate(iso?: string | null): string {
-  if (!iso) return '—'
-  try {
-    return new Date(iso).toLocaleString('ru-RU')
-  } catch {
-    return iso
-  }
+  return formatDateTime(iso)
 }
 
 export function RatingSection({

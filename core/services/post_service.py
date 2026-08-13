@@ -126,6 +126,8 @@ class PostService:
         to_threads: bool = False,
         to_dzen: bool = False,
         to_instagram: bool = False,
+        target_channels: Optional[List[str]] = None,
+        target_groups: Optional[List[str]] = None,
     ) -> Dict:
         """Создает пост WordPress в таблице wp_posts.
         
@@ -153,12 +155,14 @@ class PostService:
                         user_id, post_text, title, domain, url, author, avatar,
                         post_date, screenshot, images, image_over_text,
                         comments, reposts, likes, views, is_ad, status,
-                        post_type, to_tg, to_tw, to_wp, to_vk, to_threads, to_dzen, to_instagram
+                        post_type, to_tg, to_tw, to_wp, to_vk, to_threads, to_dzen, to_instagram,
+                        target_channels, target_groups
                     ) VALUES (
                         %s, %s, %s, NULL, NULL, NULL, NULL,
                         NULL, NULL, '[]', NULL,
                         0, 0, 0, 0, FALSE, 'collected',
-                        'wp', %s, %s, %s, %s, %s, %s, %s
+                        'wp', %s, %s, %s, %s, %s, %s, %s,
+                        %s::jsonb, %s::jsonb
                     )
                     RETURNING *
                     """,
@@ -173,6 +177,8 @@ class PostService:
                         to_threads,
                         to_dzen,
                         to_instagram,
+                        json.dumps(target_channels or []),
+                        json.dumps(target_groups or []),
                     )
                 )
                 row = await cur.fetchone()
@@ -195,6 +201,7 @@ class PostService:
         to_instagram: bool = False,
         publish_at: Optional[Any] = None,
         target_channels: Optional[List[str]] = None,
+        target_groups: Optional[List[str]] = None,
         skip_quota: bool = False,
     ) -> Dict:
         """Создает пост Telegram в таблице tg_posts.
@@ -206,6 +213,7 @@ class PostService:
             to_*: цели дублирования в другие сети
             publish_at: отложенная публикация (UTC)
             target_channels: каналы назначения (override профиля)
+            target_groups: VK-группы назначения при кросс-посте
             skip_quota: если True — квота уже проверена вызывающим (SMM jobs)
         
         Returns:
@@ -228,13 +236,13 @@ class PostService:
                         post_date, screenshot, images, image_over_text,
                         comments, reposts, likes, views, is_ad, status,
                         post_type, to_tg, to_tw, to_wp, to_vk, to_threads, to_dzen, to_instagram,
-                        publish_at, target_channels
+                        publish_at, target_channels, target_groups
                     ) VALUES (
                         %s, %s, NULL, NULL, NULL, NULL, NULL,
                         NULL, NULL, %s, NULL,
                         0, 0, 0, 0, FALSE, 'collected',
                         'tg', %s, %s, %s, %s, %s, %s, %s,
-                        %s, %s
+                        %s, %s::jsonb, %s::jsonb
                     )
                     RETURNING *
                     """,
@@ -251,6 +259,7 @@ class PostService:
                         to_instagram,
                         publish_at,
                         json.dumps(target_channels or []),
+                        json.dumps(target_groups or []),
                     )
                 )
                 row = await cur.fetchone()
@@ -271,6 +280,8 @@ class PostService:
         to_dzen: bool = False,
         to_instagram: bool = False,
         status: str = "collected",
+        target_channels: Optional[List[str]] = None,
+        target_groups: Optional[List[str]] = None,
         **kwargs,
     ) -> Dict:
         """Создаёт ручной пост в cpost_posts (далее collector переносит в posts)."""
@@ -288,12 +299,14 @@ class PostService:
                         user_id, post_text, title, domain, url, author, avatar,
                         post_date, screenshot, images, image_over_text,
                         comments, reposts, likes, views, is_ad, status,
-                        post_type, to_tg, to_tw, to_wp, to_vk, to_dzen, to_instagram, to_threads
+                        post_type, to_tg, to_tw, to_wp, to_vk, to_dzen, to_instagram, to_threads,
+                        target_channels, target_groups
                     ) VALUES (
                         %s, %s, %s, %s, %s, %s, %s,
                         %s, %s, %s::jsonb, %s,
                         %s, %s, %s, %s, %s, %s,
-                        %s, %s, %s, %s, %s, %s, %s, %s, %s
+                        %s, %s, %s, %s, %s, %s, %s, %s,
+                        %s::jsonb, %s::jsonb
                     )
                     RETURNING *
                     """,
@@ -323,6 +336,8 @@ class PostService:
                         to_dzen,
                         to_instagram,
                         to_threads,
+                        json.dumps(target_channels or []),
+                        json.dumps(target_groups or []),
                     ),
                 )
                 row = await cur.fetchone()
@@ -341,6 +356,8 @@ class PostService:
         to_threads: bool = False,
         to_dzen: bool = False,
         to_instagram: bool = False,
+        target_channels: Optional[List[str]] = None,
+        target_groups: Optional[List[str]] = None,
     ) -> Dict:
         """Создаёт пост Twitter в tw_posts (далее collector переносит в posts)."""
         limit = self.PLATFORM_LIMITS.get("tw", 280)
@@ -355,10 +372,12 @@ class PostService:
                     """
                     INSERT INTO tw_posts (
                         user_id, post_text, status, post_type,
-                        to_tg, to_tw, to_wp, to_vk, to_threads, to_dzen, to_instagram
+                        to_tg, to_tw, to_wp, to_vk, to_threads, to_dzen, to_instagram,
+                        target_channels, target_groups
                     ) VALUES (
                         %s, %s, 'collected', 'tw',
-                        %s, %s, %s, %s, %s, %s, %s
+                        %s, %s, %s, %s, %s, %s, %s,
+                        %s::jsonb, %s::jsonb
                     )
                     RETURNING *
                     """,
@@ -372,6 +391,8 @@ class PostService:
                         to_threads,
                         to_dzen,
                         to_instagram,
+                        json.dumps(target_channels or []),
+                        json.dumps(target_groups or []),
                     ),
                 )
                 row = await cur.fetchone()
@@ -471,6 +492,8 @@ class PostService:
         to_threads: Optional[bool] = None,
         to_dzen: Optional[bool] = None,
         to_instagram: Optional[bool] = None,
+        target_channels: Optional[List[str]] = None,
+        target_groups: Optional[List[str]] = None,
     ) -> Optional[Dict]:
         """Обновляет cpost_posts и дублирует изменения в posts, если строка уже собрана collector."""
         conn = await get_db_connection()
@@ -547,6 +570,12 @@ class PostService:
                 if to_instagram is not None:
                     updates.append("to_instagram = %s")
                     params.append(to_instagram)
+                if target_channels is not None:
+                    updates.append("target_channels = %s::jsonb")
+                    params.append(json.dumps(target_channels))
+                if target_groups is not None:
+                    updates.append("target_groups = %s::jsonb")
+                    params.append(json.dumps(target_groups))
                 if not updates:
                     return await self.get_cpost_post(user_id, post_id)
                 params.extend([user_id, post_id])
@@ -631,6 +660,12 @@ class PostService:
                 if to_instagram is not None:
                     mirror_updates.append("to_instagram = %s")
                     mirror_params.append(to_instagram)
+                if target_channels is not None:
+                    mirror_updates.append("target_channels = %s::jsonb")
+                    mirror_params.append(json.dumps(target_channels))
+                if target_groups is not None:
+                    mirror_updates.append("target_groups = %s::jsonb")
+                    mirror_params.append(json.dumps(target_groups))
                 if mirror_updates:
                     sync_params = list(mirror_params)
                     sync_params.extend([user_id, "cpost", post_id])
@@ -759,19 +794,69 @@ class PostService:
                 conditions = []
                 params: list = []
                 if user_id is not None:
-                    conditions.append("user_id = %s")
+                    conditions.append("p.user_id = %s")
                     params.append(user_id)
                 if status:
-                    conditions.append("status = %s")
+                    conditions.append("p.status = %s")
                     params.append(status)
                 where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
                 params.extend([limit, offset])
                 await cur.execute(
-                    f"SELECT * FROM posts {where} ORDER BY id DESC LIMIT %s OFFSET %s",
+                    f"""
+                    SELECT p.*,
+                           CASE
+                             WHEN p.source_platform IN ('tg', 'telegram') THEN tg.telegram_chat_id
+                             ELSE NULL
+                           END AS published_channel,
+                           CASE
+                             WHEN p.to_tg THEN 'tg' ELSE NULL
+                           END AS target_hint_tg,
+                           CASE WHEN p.to_tw THEN 'tw' ELSE NULL END AS target_hint_tw,
+                           CASE WHEN p.to_wp THEN 'wp' ELSE NULL END AS target_hint_wp,
+                           CASE WHEN p.to_vk THEN 'vk' ELSE NULL END AS target_hint_vk,
+                           CASE WHEN COALESCE(p.to_threads, FALSE) THEN 'threads' ELSE NULL END AS target_hint_threads,
+                           CASE WHEN COALESCE(p.to_dzen, FALSE) THEN 'dzen' ELSE NULL END AS target_hint_dzen,
+                           CASE WHEN COALESCE(p.to_instagram, FALSE) THEN 'instagram' ELSE NULL END AS target_hint_instagram
+                    FROM posts p
+                    LEFT JOIN tg_posts tg
+                      ON p.source_platform IN ('tg', 'telegram')
+                     AND tg.id = p.source_id
+                    {where}
+                    ORDER BY p.id DESC
+                    LIMIT %s OFFSET %s
+                    """,
                     params,
                 )
                 rows = await cur.fetchall()
-                return [self._row_to_post(row, cur.description) for row in rows]
+                posts = []
+                for row in rows:
+                    post = self._row_to_post(row, cur.description)
+                    channel = post.pop("published_channel", None)
+                    hints = [
+                        post.pop(k, None)
+                        for k in (
+                            "target_hint_tg",
+                            "target_hint_tw",
+                            "target_hint_wp",
+                            "target_hint_vk",
+                            "target_hint_threads",
+                            "target_hint_dzen",
+                            "target_hint_instagram",
+                        )
+                    ]
+                    targets = [h for h in hints if h]
+                    if isinstance(channel, str) and "," in channel:
+                        channel = ", ".join(
+                            part.strip() for part in channel.split(",") if part.strip()
+                        )
+                    if channel:
+                        post["published_channel"] = str(channel)
+                    elif targets:
+                        post["published_channel"] = "→ " + ",".join(targets)
+                    else:
+                        post["published_channel"] = None
+                    posts.append(post)
+                return posts
         finally:
             await release_db_connection(conn)
 
@@ -1277,6 +1362,8 @@ class PostService:
         to_wp: bool = False,
         to_vk: bool = False,
         to_threads: bool = True,
+        target_channels: Optional[List[str]] = None,
+        target_groups: Optional[List[str]] = None,
     ) -> Dict:
         """Создает пост Threads в таблице threads_posts."""
         limit = self.PLATFORM_LIMITS.get("threads", 500)
@@ -1293,12 +1380,14 @@ class PostService:
                         user_id, post_text, title, domain, url, author, avatar,
                         post_date, screenshot, images, image_over_text,
                         comments, reposts, likes, views, is_ad, status,
-                        post_type, to_tg, to_tw, to_wp, to_vk, to_threads
+                        post_type, to_tg, to_tw, to_wp, to_vk, to_threads,
+                        target_channels, target_groups
                     ) VALUES (
                         %s, %s, NULL, NULL, NULL, NULL, NULL,
                         NULL, NULL, %s, NULL,
                         0, 0, 0, 0, FALSE, 'collected',
-                        'threads', %s, %s, %s, %s, %s
+                        'threads', %s, %s, %s, %s, %s,
+                        %s::jsonb, %s::jsonb
                     )
                     RETURNING *
                     """,
@@ -1311,6 +1400,8 @@ class PostService:
                         to_wp,
                         to_vk,
                         to_threads,
+                        json.dumps(target_channels or []),
+                        json.dumps(target_groups or []),
                     ),
                 )
                 row = await cur.fetchone()
@@ -1421,6 +1512,7 @@ class PostService:
         to_instagram: bool = False,
         publish_at: Optional[Any] = None,
         target_groups: Optional[List[str]] = None,
+        target_channels: Optional[List[str]] = None,
         skip_quota: bool = False,
     ) -> Dict:
         """Создаёт пост VKontakte в таблице vk_posts (status=created; collector переносит в posts, затем pipeline до ready для публикации)."""
@@ -1434,6 +1526,7 @@ class PostService:
         images_json = json.dumps(images)
         attachments_json = json.dumps(attachments)
         targets_json = json.dumps(target_groups or [])
+        channels_json = json.dumps(target_channels or [])
         conn = await get_db_connection()
         try:
             if not skip_quota:
@@ -1444,11 +1537,11 @@ class PostService:
                     INSERT INTO vk_posts (
                         user_id, post_text, images, attachments,
                         status, post_type, to_tg, to_tw, to_wp, to_vk, to_threads, to_dzen, to_instagram,
-                        publish_at, target_groups
+                        publish_at, target_groups, target_channels
                     ) VALUES (
                         %s, %s, %s, %s,
                         'created', 'vk', %s, %s, %s, %s, %s, %s, %s,
-                        %s, %s::jsonb
+                        %s, %s::jsonb, %s::jsonb
                     )
                     RETURNING *
                     """,
@@ -1466,6 +1559,7 @@ class PostService:
                         to_instagram,
                         publish_at,
                         targets_json,
+                        channels_json,
                     ),
                 )
                 row = await cur.fetchone()
@@ -1677,6 +1771,8 @@ class PostService:
         to_dzen: bool = True,
         to_threads: bool = False,
         to_instagram: bool = False,
+        target_channels: Optional[List[str]] = None,
+        target_groups: Optional[List[str]] = None,
     ) -> Dict:
         """Создает пост Дзен в таблице dzen_posts."""
         limit = self.PLATFORM_LIMITS.get("dzen", 1500)
@@ -1693,12 +1789,14 @@ class PostService:
                         user_id, post_text, title, domain, url, author, avatar,
                         post_date, screenshot, images, image_over_text, videos,
                         comments, reposts, likes, views, is_ad, status,
-                        post_type, to_tg, to_tw, to_wp, to_vk, to_dzen, to_threads, to_instagram
+                        post_type, to_tg, to_tw, to_wp, to_vk, to_dzen, to_threads, to_instagram,
+                        target_channels, target_groups
                     ) VALUES (
                         %s, %s, %s, NULL, NULL, NULL, NULL,
                         NULL, NULL, %s, NULL, %s,
                         0, 0, 0, 0, FALSE, 'collected',
-                        'dzen', %s, %s, %s, %s, %s, %s, %s
+                        'dzen', %s, %s, %s, %s, %s, %s, %s,
+                        %s::jsonb, %s::jsonb
                     )
                     RETURNING *
                     """,
@@ -1715,6 +1813,8 @@ class PostService:
                         to_dzen,
                         to_threads,
                         to_instagram,
+                        json.dumps(target_channels or []),
+                        json.dumps(target_groups or []),
                     ),
                 )
                 row = await cur.fetchone()
@@ -1834,6 +1934,8 @@ class PostService:
         to_dzen: bool = False,
         to_threads: bool = False,
         to_instagram: bool = True,
+        target_channels: Optional[List[str]] = None,
+        target_groups: Optional[List[str]] = None,
     ) -> Dict:
         """Создает пост Instagram в таблице instagram_posts (status=ready для ручной публикации)."""
         limit = self.PLATFORM_LIMITS.get("instagram", 2200)
@@ -1850,12 +1952,14 @@ class PostService:
                         user_id, post_text, domain, url, author, avatar,
                         post_date, screenshot, images, image_over_text, videos,
                         comments, reposts, likes, views, is_ad, status,
-                        post_type, to_tg, to_tw, to_wp, to_vk, to_dzen, to_threads, to_instagram
+                        post_type, to_tg, to_tw, to_wp, to_vk, to_dzen, to_threads, to_instagram,
+                        target_channels, target_groups
                     ) VALUES (
                         %s, %s, NULL, NULL, NULL, NULL,
                         NULL, NULL, %s, NULL, %s,
                         0, 0, 0, 0, FALSE, 'ready',
-                        'instagram', %s, %s, %s, %s, %s, %s, %s
+                        'instagram', %s, %s, %s, %s, %s, %s, %s,
+                        %s::jsonb, %s::jsonb
                     )
                     RETURNING *
                     """,
@@ -1871,6 +1975,8 @@ class PostService:
                         to_dzen,
                         to_threads,
                         to_instagram,
+                        json.dumps(target_channels or []),
+                        json.dumps(target_groups or []),
                     ),
                 )
                 row = await cur.fetchone()

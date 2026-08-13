@@ -7,20 +7,16 @@ import { Input } from '@/components/ui/input'
 import { Alert } from '@/components/ui/alert'
 import { useBrand } from '@/contexts/brand-context'
 import { smmService } from '@/services/smm-service'
-import { BRAND_PALETTE, type BrandChannel, type ChannelRole } from '@/types/smm'
+import { BRAND_PALETTE, type BrandChannel } from '@/types/smm'
 import { getErrorMessage } from '@/services/api-client'
 
 export function BrandsPage() {
-  const { brands, selectedBrandId, setSelectedBrandId, refreshBrands, refreshChannels } = useBrand()
+  const { brands, selectedBrandId, setSelectedBrandId, refreshBrands } = useBrand()
   const [name, setName] = useState('')
   const [color, setColor] = useState<string>(BRAND_PALETTE[0])
   const [error, setError] = useState('')
   const [isSaving, setIsSaving] = useState(false)
   const [channels, setChannels] = useState<BrandChannel[]>([])
-  const [channelNetwork, setChannelNetwork] = useState<'tg' | 'vk'>('tg')
-  const [channelId, setChannelId] = useState('')
-  const [channelTitle, setChannelTitle] = useState('')
-  const [channelRole, setChannelRole] = useState<ChannelRole>('own')
   const [activeBrandId, setActiveBrandId] = useState<number | null>(null)
 
   useEffect(() => {
@@ -32,7 +28,10 @@ export function BrandsPage() {
       setChannels([])
       return
     }
-    void smmService.listChannels(activeBrandId).then(setChannels).catch(() => setChannels([]))
+    void smmService
+      .listChannels(activeBrandId)
+      .then(setChannels)
+      .catch(() => setChannels([]))
   }, [activeBrandId])
 
   async function handleCreateBrand(e: FormEvent) {
@@ -64,53 +63,18 @@ export function BrandsPage() {
     }
   }
 
-  async function handleAddChannel(e: FormEvent) {
-    e.preventDefault()
-    if (!activeBrandId || !channelId.trim()) return
-    setIsSaving(true)
-    setError('')
-    try {
-      await smmService.addChannel(activeBrandId, {
-        network: channelNetwork,
-        external_id: channelId.trim(),
-        title: channelTitle.trim() || channelId.trim(),
-        role: channelRole,
-        kind: channelNetwork === 'vk' ? 'public' : 'channel',
-      })
-      setChannelId('')
-      setChannelTitle('')
-      const list = await smmService.listChannels(activeBrandId)
-      setChannels(list)
-      await refreshChannels()
-    } catch (err) {
-      setError(getErrorMessage(err))
-    } finally {
-      setIsSaving(false)
-    }
-  }
-
-  async function handleDeleteChannel(channel: BrandChannel) {
-    if (!activeBrandId) return
-    try {
-      await smmService.deleteChannel(activeBrandId, channel.id)
-      setChannels((prev) => prev.filter((c) => c.id !== channel.id))
-      await refreshChannels()
-    } catch (err) {
-      setError(getErrorMessage(err))
-    }
-  }
-
-  const ownCount = channels.filter((c) => c.role === 'own').length
-
   return (
     <PageContainer>
       <PageHeader
         title="Brands"
-        description="Цветовые связки каналов TG/VK. Операционка каналов — /channels"
+        description="Шаг 1: создайте бренд → далее Channels → аналитика"
       />
-      <p className="mb-4 text-sm">
+      <p className="mb-4 text-sm flex flex-wrap gap-3">
         <Link to="/channels" className="text-primary-400 hover:underline">
-          Открыть хаб каналов →
+          Далее: Channels →
+        </Link>
+        <Link to="/analytics" className="text-primary-400 hover:underline">
+          Analytics →
         </Link>
       </p>
       {error && <Alert variant="error">{error}</Alert>}
@@ -149,7 +113,7 @@ export function BrandsPage() {
         <Card>
           <CardHeader>
             <CardTitle>Ваши бренды</CardTitle>
-            <CardDescription>Выберите бренд для работы в Header switcher</CardDescription>
+            <CardDescription>Выберите бренд для Header switcher</CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
             {brands.length === 0 && (
@@ -187,67 +151,36 @@ export function BrandsPage() {
           <CardHeader>
             <CardTitle>Каналы бренда</CardTitle>
             <CardDescription>
-              Own-каналы: {ownCount} / 20 · competitor / source тоже можно добавить
+              Управление каналами, флагами и потоком — в хабе Channels
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <form onSubmit={handleAddChannel} className="grid gap-3 md:grid-cols-5 items-end">
-              <div>
-                <label className="text-sm text-[var(--text-secondary)]">Сеть</label>
-                <select
-                  className="w-full mt-1 rounded-md border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2"
-                  value={channelNetwork}
-                  onChange={(e) => setChannelNetwork(e.target.value as 'tg' | 'vk')}
-                >
-                  <option value="tg">Telegram</option>
-                  <option value="vk">VKontakte</option>
-                </select>
-              </div>
-              <Input
-                label="External ID"
-                value={channelId}
-                onChange={(e) => setChannelId(e.target.value)}
-                placeholder="-100… / 123456"
-              />
-              <Input
-                label="Title"
-                value={channelTitle}
-                onChange={(e) => setChannelTitle(e.target.value)}
-              />
-              <div>
-                <label className="text-sm text-[var(--text-secondary)]">Role</label>
-                <select
-                  className="w-full mt-1 rounded-md border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2"
-                  value={channelRole}
-                  onChange={(e) => setChannelRole(e.target.value as ChannelRole)}
-                >
-                  <option value="own">own</option>
-                  <option value="source">source</option>
-                  <option value="competitor">competitor</option>
-                </select>
-              </div>
-              <Button type="submit" disabled={isSaving}>
-                Add
-              </Button>
-            </form>
-
-            <ul className="space-y-2">
-              {channels.map((c) => (
-                <li
-                  key={c.id}
-                  className="flex items-center justify-between rounded-md border border-[var(--border-color)] px-3 py-2 text-sm"
-                >
-                  <span>
-                    <span className="uppercase text-[var(--text-muted)] mr-2">{c.network}</span>
-                    {c.title || c.external_id}{' '}
-                    <span className="text-[var(--text-muted)]">({c.role})</span>
-                  </span>
-                  <Button variant="ghost" size="sm" onClick={() => handleDeleteChannel(c)}>
-                    Remove
-                  </Button>
-                </li>
-              ))}
-            </ul>
+          <CardContent className="space-y-3">
+            <Link to="/channels">
+              <Button variant="secondary">Открыть Channels →</Button>
+            </Link>
+            {channels.length === 0 ? (
+              <p className="text-sm text-[var(--text-muted)]">Пока нет каналов</p>
+            ) : (
+              <ul className="space-y-2">
+                {channels.map((c) => (
+                  <li
+                    key={c.id}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-[var(--border-color)] px-3 py-2 text-sm"
+                  >
+                    <span>
+                      <span className="uppercase text-[var(--text-muted)] mr-2">{c.network}</span>
+                      {c.title || c.external_id} · {c.role}
+                    </span>
+                    <Link
+                      to={`/channels/${c.id}`}
+                      className="text-xs text-primary-400 hover:underline"
+                    >
+                      Настроить
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
           </CardContent>
         </Card>
       )}

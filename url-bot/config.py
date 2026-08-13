@@ -24,12 +24,20 @@ class Settings(BaseSettings):
     # Сколько ждать свободный слот Selenium; иначе ошибка busy без нового Chrome
     SELENIUM_ACQUIRE_TIMEOUT_SECONDS: float = 60.0
 
-    # Жёсткий потолок одной сессии (Timer → quit/kill); ≥ page load + element wait
-    SCRAPE_HARD_TIMEOUT_SECONDS: int = 60
+    # Жёсткий потолок одной сессии (Timer → quit/kill); ≥ page load + element wait + screenshot retries
+    SCRAPE_HARD_TIMEOUT_SECONDS: int = 90
 
     # Оптимизация скриншота: ресайз и JPEG
     SCREENSHOT_MAX_PIXELS: int = 1920  # макс. сторона (длинная)
     SCREENSHOT_JPEG_QUALITY: int = 85
+
+    # После появления элемента ждём отрисовки JS/canvas (smart-lab map и т.п.)
+    SCREENSHOT_SETTLE_SECONDS: float = 4.0
+    # Повторы, если скрин почти однотонный (серый placeholder)
+    SCREENSHOT_BLANK_MAX_RETRIES: int = 6
+    SCREENSHOT_BLANK_RETRY_SECONDS: float = 2.5
+    # Порог «пустого» кадра: мало уникальных цветов на даунсэмпле 32x32
+    SCREENSHOT_BLANK_MIN_UNIQUE_COLORS: int = 12
 
     # Если задан — сохранять скриншот на диск и возвращать путь вместо base64
     UPLOAD_DIR: str = ""

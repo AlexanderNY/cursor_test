@@ -151,8 +151,10 @@ export function AuthTab({
         {authStatus?.auth_state === 'failed' && (
           <div className="p-4 rounded-lg border border-red-500/30 bg-red-500/5">
             <p className="text-sm text-red-400">
-              Авторизация не удалась. Укажите API ID, API Hash и номер телефона в блоке «Настройки профиля Telegram»
-              выше и сохраните — код будет запрошен автоматически.
+              Авторизация не удалась. Частая причина — блокировка MTProto: задайте
+              TELEGRAM_PROXY_URL (например socks5://host.docker.internal:10808) для tg-bot
+              и перезапустите контейнер. Также проверьте API ID, API Hash и номер телефона
+              выше, сохраните профиль — код будет запрошен автоматически.
             </p>
           </div>
         )}
