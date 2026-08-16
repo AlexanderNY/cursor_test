@@ -8,8 +8,8 @@ export function Card({ className = '', variant = 'default', children, ...props }
   const baseStyles = 'rounded-2xl p-6'
   
   const variantStyles = {
-    default: 'bg-[var(--bg-secondary)] border border-[var(--border-color)] transition-all duration-200 hover:shadow-lg hover:shadow-black/10 hover:-translate-y-px',
-    glass: 'bg-[var(--bg-secondary)]/80 backdrop-blur-xl border border-[var(--border-color)] transition-all duration-200 hover:shadow-lg hover:shadow-black/10 hover:-translate-y-px',
+    default: 'bg-[var(--bg-secondary)] border border-[var(--border-color)]',
+    glass: 'bg-[var(--bg-secondary)]/80 backdrop-blur-xl border border-[var(--border-color)]',
   }
 
   return (

@@ -1,10 +1,11 @@
+import ipaddress
 import time
 from typing import Optional
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 
-from config import RATE_LIMITS_CONFIG
+from config import RATE_LIMITS_CONFIG, settings
 from utils.exceptions import create_error_response
 
 
@@ -12,6 +13,33 @@ from utils.exceptions import create_error_response
 CLEANUP_LEN_THRESHOLD = 500
 CLEANUP_EVERY_N_OPS = 100
 MAX_KEYS = 10_000
+
+
+def _parse_trusted_proxy_networks() -> list:
+    networks: list = []
+    raw = (settings.TRUSTED_PROXY_CIDRS or "").strip()
+    for part in raw.split(","):
+        cidr = part.strip()
+        if not cidr:
+            continue
+        try:
+            networks.append(ipaddress.ip_network(cidr, strict=False))
+        except ValueError:
+            continue
+    return networks
+
+
+_TRUSTED_PROXY_NETWORKS = _parse_trusted_proxy_networks()
+
+
+def _peer_is_trusted(peer_host: Optional[str]) -> bool:
+    if not peer_host:
+        return False
+    try:
+        addr = ipaddress.ip_address(peer_host)
+    except ValueError:
+        return False
+    return any(addr in net for net in _TRUSTED_PROXY_NETWORKS)
 
 
 class RateLimiter:
@@ -182,17 +210,22 @@ rate_limiter = RateLimiter()
 
 
 def extract_client_ip(request: Request) -> str:
-    """Извлекает IP клиента (X-Forwarded-For / X-Real-IP / client.host)."""
-    forwarded_for = request.headers.get("x-forwarded-for")
-    if forwarded_for:
-        return forwarded_for.split(",")[0].strip()
+    """Извлекает IP клиента.
 
-    real_ip = request.headers.get("x-real-ip")
-    if real_ip:
-        return real_ip.strip()
+    X-Forwarded-For / X-Real-IP учитываются только если непосредственный peer
+    входит в TRUSTED_PROXY_CIDRS (иначе spoof обходит rate limit).
+    """
+    peer = request.client.host if request.client else None
+    if _peer_is_trusted(peer):
+        forwarded_for = request.headers.get("x-forwarded-for")
+        if forwarded_for:
+            return forwarded_for.split(",")[0].strip()
+        real_ip = request.headers.get("x-real-ip")
+        if real_ip:
+            return real_ip.strip()
 
-    if request.client:
-        return request.client.host
+    if peer:
+        return peer
 
     return "unknown"
 

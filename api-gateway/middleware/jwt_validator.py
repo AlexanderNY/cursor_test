@@ -91,10 +91,13 @@ class JwtValidator:
             Словарь с данными пользователя из токена
         """
         payload = self.decode_token(token)
+        token_type = payload.get("type")
+        if token_type != "access":
+            raise TokenValidationException("Invalid token type. Access token required.")
         return {
             "user_id": payload.get("user_id"),  # auth service использует user_id
             "role": payload.get("role"),  # роль пользователя
-            "type": payload.get("type"),
+            "type": token_type,
             "exp": payload.get("exp"),
         }
 

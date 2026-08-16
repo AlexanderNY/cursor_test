@@ -1,6 +1,9 @@
 """Роутер для VKontakte профилей и постов."""
 
+import hashlib
+import hmac
 import json
+import time
 import uuid
 from pathlib import Path
 from typing import Any, List, Optional
@@ -24,6 +27,7 @@ router = APIRouter(prefix="/vk", tags=["VKontakte"])
 UPLOADS_VK_DIR = Path("uploads/vk")
 ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
 S3_KEY_PREFIX = "vk/uploads"
+VK_OAUTH_STATE_TTL_SEC = 600
 
 
 def get_user_id_from_header(x_user_id: Optional[str] = Header(None)) -> int:
@@ -35,6 +39,56 @@ def get_user_id_from_header(x_user_id: Optional[str] = Header(None)) -> int:
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid user ID")
 
+
+def _allowed_frontend_origins() -> set[str]:
+    origins: set[str] = set()
+    primary = (settings.FRONTEND_URL or "").strip().rstrip("/")
+    if primary:
+        origins.add(primary)
+    extra = (settings.VK_OAUTH_ALLOWED_FRONTENDS or "").strip()
+    for part in extra.split(","):
+        o = part.strip().rstrip("/")
+        if o:
+            origins.add(o)
+    return origins
+
+
+def _sanitize_frontend_url(candidate: str) -> str:
+    """Разрешает только FRONTEND_URL и VK_OAUTH_ALLOWED_FRONTENDS (anti open-redirect)."""
+    cleaned = (candidate or "").strip().rstrip("/")
+    allowed = _allowed_frontend_origins()
+    if cleaned and cleaned in allowed:
+        return cleaned
+    return (settings.FRONTEND_URL or "").strip().rstrip("/")
+
+
+def _sign_vk_oauth_state(user_id: int) -> str:
+    """Подписанный state: user_id.exp.nonce.sig (HMAC-SHA256 от JWT_SECRET_KEY)."""
+    exp = int(time.time()) + VK_OAUTH_STATE_TTL_SEC
+    nonce = uuid.uuid4().hex[:16]
+    payload = f"{user_id}.{exp}.{nonce}"
+    secret = (settings.JWT_SECRET_KEY or "").encode("utf-8")
+    sig = hmac.new(secret, payload.encode("utf-8"), hashlib.sha256).hexdigest()
+    return f"{payload}.{sig}"
+
+
+def _verify_vk_oauth_state(state: str) -> Optional[int]:
+    if not state or state.count(".") != 3:
+        return None
+    user_part, exp_part, nonce, sig = state.split(".", 3)
+    try:
+        user_id = int(user_part)
+        exp = int(exp_part)
+    except ValueError:
+        return None
+    if exp < int(time.time()):
+        return None
+    payload = f"{user_part}.{exp_part}.{nonce}"
+    secret = (settings.JWT_SECRET_KEY or "").encode("utf-8")
+    expected = hmac.new(secret, payload.encode("utf-8"), hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(expected, sig):
+        return None
+    return user_id
 
 @router.get("/profile")
 async def get_vk_profile(x_user_id: Optional[str] = Header(None)):
@@ -98,6 +152,7 @@ async def _resolve_vk_oauth_config(user_id: int) -> dict:
         app_secret = (getattr(settings, "VK_APP_SECRET", None) or "").strip()
     if not frontend_url:
         frontend_url = (settings.FRONTEND_URL or "").strip().rstrip("/")
+    frontend_url = _sanitize_frontend_url(frontend_url)
     redirect_uri = get_vk_oauth_redirect_uri(public_gateway or None)
     return {
         "app_id": app_id,
@@ -261,7 +316,7 @@ async def vk_list_subscriptions(x_user_id: Optional[str] = Header(None)):
 
 @router.get("/oauth/url")
 async def get_vk_oauth_url(x_user_id: Optional[str] = Header(None)):
-    """Возвращает URL авторизации VK OAuth (state = user_id)."""
+    """Возвращает URL авторизации VK OAuth (state = подписанный nonce)."""
     user_id = get_user_id_from_header(x_user_id)
     oauth_cfg = await _resolve_vk_oauth_config(user_id)
     app_id = oauth_cfg["app_id"]
@@ -282,7 +337,7 @@ async def get_vk_oauth_url(x_user_id: Optional[str] = Header(None)):
         "scope": VK_OAUTH_SCOPES,
         "response_type": "code",
         "v": "5.199",
-        "state": str(user_id),
+        "state": _sign_vk_oauth_state(user_id),
     }
     url = f"https://oauth.vk.com/authorize?{urlencode(params)}"
     return {"url": url}
@@ -296,27 +351,19 @@ async def vk_oauth_callback(
     error_description: Optional[str] = None,
 ):
     """Callback VK OAuth: обмен code на access_token, сохранение user_access_token."""
-    try:
-        user_id = int(state) if state else 0
-    except (ValueError, TypeError):
-        user_id = 0
-    oauth_cfg = await _resolve_vk_oauth_config(user_id) if user_id else {
-        "app_id": (settings.VK_APP_ID or "").strip(),
-        "app_secret": (settings.VK_APP_SECRET or "").strip(),
-        "frontend_url": (settings.FRONTEND_URL or "").strip().rstrip("/"),
-        "redirect_uri": get_vk_oauth_redirect_uri(),
-    }
-    frontend_url = oauth_cfg["frontend_url"] or (settings.FRONTEND_URL or "").rstrip("/")
+    user_id = _verify_vk_oauth_state(state or "") if state else None
+    if user_id is None:
+        safe_frontend = _sanitize_frontend_url(settings.FRONTEND_URL or "")
+        vk_page = f"{safe_frontend}/vkontakte"
+        return RedirectResponse(url=f"{vk_page}?oauth=error&message=invalid_state")
+    oauth_cfg = await _resolve_vk_oauth_config(user_id)
+    frontend_url = oauth_cfg["frontend_url"] or _sanitize_frontend_url(settings.FRONTEND_URL or "")
     vk_page = f"{frontend_url}/vkontakte"
     if error:
         msg = error_description or error
         return RedirectResponse(url=f"{vk_page}?oauth=error&message={msg}")
     if not code or not state:
         return RedirectResponse(url=f"{vk_page}?oauth=error&message=missing_code_or_state")
-    try:
-        user_id = int(state)
-    except (ValueError, TypeError):
-        return RedirectResponse(url=f"{vk_page}?oauth=error&message=invalid_state")
     app_id = oauth_cfg["app_id"]
     app_secret = oauth_cfg["app_secret"]
     redirect_uri = oauth_cfg["redirect_uri"]

@@ -19,13 +19,17 @@ class MessageHandler:
     """Обработчик сообщений Telegram."""
 
     @staticmethod
-    def should_save_message(event: events.NewMessage.Event, save_conditions: List[str]) -> bool:
+    def should_save_message(
+        event: events.NewMessage.Event,
+        save_conditions: List[str],
+        conditions_mode: str = "any_of",
+    ) -> bool:
         if not save_conditions:
             return True
         matched, _ = MessageHandler.evaluate_conditions(
             event,
             save_conditions,
-            conditions_mode="any_of",
+            conditions_mode=conditions_mode or "any_of",
         )
         return matched
 
@@ -46,6 +50,7 @@ class MessageHandler:
             return False, []
 
         raw_text = event.raw_text or event.message.message or ""
+        text_cf = raw_text.casefold()
         matched: List[str] = []
 
         if conditions_mode == "regex":
@@ -56,13 +61,13 @@ class MessageHandler:
 
         if conditions_mode == "all_of":
             for condition in conditions:
-                if not condition or condition not in raw_text:
+                if not condition or condition.casefold() not in text_cf:
                     return False, []
                 matched.append(condition)
             return True, matched
 
         for condition in conditions:
-            if condition and condition in raw_text:
+            if condition and condition.casefold() in text_cf:
                 matched.append(condition)
         return bool(matched), matched
 
@@ -160,13 +165,16 @@ class MessageHandler:
     def chat_id_in_list(chat_id: Optional[int], chats: List) -> bool:
         if chat_id is None:
             return False
+        needle = str(chat_id).strip()
+        needle_stripped = needle.lstrip("-")
         normalized = MessageHandler.get_chats_list(chats)
         for chat in normalized:
+            candidate = str(chat).strip()
+            if candidate == needle or candidate.lstrip("-") == needle_stripped:
+                return True
             try:
                 if int(chat) == int(chat_id):
                     return True
             except (TypeError, ValueError):
                 pass
-            if str(chat) == str(chat_id):
-                return True
         return False

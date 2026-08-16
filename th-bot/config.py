@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     """Конфигурация из переменных окружения."""
 
     DATABASE_URL: str = ""
+    DB_POOL_MINSIZE: int = 2
+    DB_POOL_MAXSIZE: int = 8
 
     LOG_LEVEL: str = "INFO"
 
@@ -32,6 +34,7 @@ class Settings(BaseSettings):
     SELENIUM_HEADLESS: bool = True
     SELENIUM_PAGE_LOAD_TIMEOUT: int = 45
     SELENIUM_IMPLICIT_WAIT: int = 5
+    SELENIUM_MAX_CONCURRENT: int = 2
     META_WEB_LOGIN_URL: str = "https://www.facebook.com/login/"
     INSTAGRAM_WEB_LOGIN_URL: str = "https://www.instagram.com/"
     # Не встраивать base64-скрин в JSON, если PNG слишком велик

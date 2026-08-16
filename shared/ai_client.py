@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -12,7 +13,7 @@ from typing import Any, Literal, Optional
 
 import httpx
 
-from shared.circuit_breaker import CircuitBreaker, get_breaker
+from shared.circuit_breaker import get_breaker
 from shared.retry import retry_async
 
 logger = logging.getLogger(__name__)
@@ -55,6 +56,9 @@ class AIClientConfig:
     timeout_sec: float = field(default_factory=lambda: float(os.getenv("AI_TIMEOUT_SEC", "60")))
     realtime_timeout_sec: float = field(default_factory=lambda: float(os.getenv("AI_REALTIME_TIMEOUT_SEC", "15")))
     max_retries: int = 2
+    max_concurrent: int = field(
+        default_factory=lambda: max(1, int(os.getenv("AI_MAX_CONCURRENT", "1")))
+    )
     settings_url: str = field(
         default_factory=lambda: os.getenv(
             "AI_SETTINGS_URL",
@@ -70,10 +74,37 @@ _circuit = get_breaker("ai")
 _config = AIClientConfig()
 _cached_enabled: Optional[bool] = None
 _cached_enabled_at: float = 0.0
+_http_client: Optional[httpx.AsyncClient] = None
+_http_client_lock = asyncio.Lock()
+_ai_semaphore: Optional[asyncio.Semaphore] = None
+_ai_semaphore_lock = asyncio.Lock()
 
 
 def _env_ai_enabled() -> bool:
     return os.getenv("AI_ENABLED", "true").strip().lower() in ("1", "true", "yes", "on")
+
+
+async def _get_http_client() -> httpx.AsyncClient:
+    global _http_client
+    if _http_client is not None and not _http_client.is_closed:
+        return _http_client
+    async with _http_client_lock:
+        if _http_client is None or _http_client.is_closed:
+            _http_client = httpx.AsyncClient(
+                timeout=httpx.Timeout(_config.timeout_sec),
+                limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
+            )
+        return _http_client
+
+
+async def _get_ai_semaphore() -> asyncio.Semaphore:
+    global _ai_semaphore
+    if _ai_semaphore is not None:
+        return _ai_semaphore
+    async with _ai_semaphore_lock:
+        if _ai_semaphore is None:
+            _ai_semaphore = asyncio.Semaphore(_config.max_concurrent)
+        return _ai_semaphore
 
 
 async def is_enabled() -> bool:
@@ -92,11 +123,11 @@ async def is_enabled() -> bool:
 
     enabled = True
     try:
-        async with httpx.AsyncClient(timeout=2.0) as client:
-            response = await client.get(_config.settings_url)
-            if response.status_code == 200:
-                data = response.json()
-                enabled = bool(data.get("enabled", True))
+        client = await _get_http_client()
+        response = await client.get(_config.settings_url, timeout=2.0)
+        if response.status_code == 200:
+            data = response.json()
+            enabled = bool(data.get("enabled", True))
     except Exception as exc:
         logger.debug("AI settings poll failed, assuming enabled: %s", exc)
         enabled = True
@@ -148,27 +179,29 @@ async def _chat_completion(
     }
 
     async def _once() -> str:
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            response = await client.post(url, json=payload)
-            response.raise_for_status()
-            data = response.json()
-            content = data["choices"][0]["message"]["content"]
-            return str(content).strip()
+        client = await _get_http_client()
+        response = await client.post(url, json=payload, timeout=timeout)
+        response.raise_for_status()
+        data = response.json()
+        content = data["choices"][0]["message"]["content"]
+        return str(content).strip()
 
-    try:
-        result = await retry_async(
-            _once,
-            attempts=_config.max_retries + 1,
-            min_wait_sec=0.5,
-            max_wait_sec=2.0,
-            retry_on=lambda _exc: True,
-            operation_name="ai.chat_completion",
-        )
-        _circuit.record_success()
-        return result
-    except Exception as last_error:
-        _circuit.record_failure()
-        raise RuntimeError(f"AI request failed: {last_error}") from last_error
+    sem = await _get_ai_semaphore()
+    async with sem:
+        try:
+            result = await retry_async(
+                _once,
+                attempts=_config.max_retries + 1,
+                min_wait_sec=0.5,
+                max_wait_sec=2.0,
+                retry_on=lambda _exc: True,
+                operation_name="ai.chat_completion",
+            )
+            _circuit.record_success()
+            return result
+        except Exception as last_error:
+            _circuit.record_failure()
+            raise RuntimeError(f"AI request failed: {last_error}") from last_error
 
 
 async def complete(prompt: str, system: str = "", max_tokens: int = 512) -> str:

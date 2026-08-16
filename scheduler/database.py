@@ -19,8 +19,8 @@ async def init_db() -> None:
     
     _pool = await aiopg.create_pool(
         settings.DATABASE_URL,
-        minsize=1,
-        maxsize=10,
+        minsize=max(1, int(getattr(settings, "DB_POOL_MINSIZE", 2))),
+        maxsize=max(1, int(getattr(settings, "DB_POOL_MAXSIZE", 8))),
         timeout=30
     )
     

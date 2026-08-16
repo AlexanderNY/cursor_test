@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Alert } from '@/components/ui/alert'
+import { DataTable, type DataTableColumn } from '@/components/ui/data-table'
 import { useBrand } from '@/contexts/brand-context'
 import { smmService } from '@/services/smm-service'
 import type { BrandChannel, ChannelRole } from '@/types/smm'
@@ -30,35 +31,28 @@ export function ChannelsPage() {
   const [role, setRole] = useState<ChannelRole>('own')
   const [brandId, setBrandId] = useState<number | null>(null)
   const [saving, setSaving] = useState(false)
-  const [discDraft, setDiscDraft] = useState<Record<number, string>>({})
-  const [titleDraft, setTitleDraft] = useState<Record<number, string>>({})
-  const [savingTitleId, setSavingTitleId] = useState<number | null>(null)
+  const [loadingList, setLoadingList] = useState(false)
   const [filterTitle, setFilterTitle] = useState('')
   const [filterNetwork, setFilterNetwork] = useState<'all' | 'tg' | 'vk'>('all')
   const hasBrands = brands.length > 0
 
   async function load() {
     setError('')
+    setLoadingList(true)
     try {
       const [list, palette] = await Promise.all([
         smmService.listAllChannels(selectedBrandId ?? undefined),
         smmService.getPalette(),
       ])
       setChannels(list)
-      const drafts: Record<number, string> = {}
-      const titles: Record<number, string> = {}
-      for (const c of list) {
-        drafts[c.id] = c.discussion_external_id || ''
-        titles[c.id] = c.title || ''
-      }
-      setDiscDraft(drafts)
-      setTitleDraft(titles)
       setLimits({
         max_own_channels: palette.max_own_channels,
         tariff: (palette as { tariff?: string }).tariff,
       })
     } catch (err) {
       setError(getErrorMessage(err))
+    } finally {
+      setLoadingList(false)
     }
   }
 
@@ -118,50 +112,37 @@ export function ChannelsPage() {
 
   async function toggleFlag(
     ch: ChannelRow,
-    field: 'publish_enabled' | 'collect_enabled' | 'comments_collect_enabled' | 'alert_enabled',
+    field: 'publish_enabled' | 'collect_enabled' | 'alert_enabled',
   ) {
     try {
       if (field === 'alert_enabled' && ch.network !== 'tg') {
         setError('Alerting пока только для Telegram')
         return
       }
+      const next = !ch[field]
+      if (field === 'alert_enabled' && next) {
+        const hasKeywords = (ch.alert_rules || []).some((r) =>
+          (r.save_conditions || []).some((c) => String(c).trim()),
+        )
+        const delivery = ch.alert_delivery || {}
+        const hasTargets =
+          Boolean((delivery.alert_targets || []).length) ||
+          Boolean((delivery.channel_to_post || '').trim())
+        const hasText = Boolean((delivery.alert_text || '').trim())
+        if (!hasKeywords || !hasTargets || !hasText) {
+          setError(
+            'Сначала откройте «Настроить» → Алерты: ключевые слова, куда слать и текст уведомления',
+          )
+          return
+        }
+      }
       await smmService.updateChannel(ch.brand_id, ch.id, {
-        [field]: !ch[field],
+        [field]: next,
       })
       await load()
       await refreshChannels()
     } catch (err) {
       setError(getErrorMessage(err))
-    }
-  }
-
-  async function saveDiscussion(ch: ChannelRow) {
-    const raw = (discDraft[ch.id] ?? '').trim()
-    try {
-      await smmService.updateChannel(ch.brand_id, ch.id, {
-        discussion_external_id: raw || '',
-        comments_collect_enabled: raw ? true : false,
-      })
-      await load()
-      await refreshChannels()
-    } catch (err) {
-      setError(getErrorMessage(err))
-    }
-  }
-
-  async function saveTitle(ch: ChannelRow) {
-    const next = (titleDraft[ch.id] ?? '').trim() || ch.external_id
-    if (next === (ch.title || '')) return
-    setSavingTitleId(ch.id)
-    setError('')
-    try {
-      await smmService.updateChannel(ch.brand_id, ch.id, { title: next })
-      await load()
-      await refreshChannels()
-    } catch (err) {
-      setError(getErrorMessage(err))
-    } finally {
-      setSavingTitleId(null)
     }
   }
 
@@ -175,11 +156,118 @@ export function ChannelsPage() {
     }
   }
 
+  const columns: DataTableColumn<ChannelRow>[] = useMemo(
+    () => [
+      {
+        key: 'network',
+        header: 'Сеть',
+        render: (_v, row) => (
+          <span className="font-semibold uppercase tracking-wide text-[var(--text-primary)]">
+            {row.network === 'vk' ? 'VK' : 'TG'}
+          </span>
+        ),
+      },
+      {
+        key: 'external_id',
+        header: 'ID канала',
+        render: (_v, row) => (
+          <code className="text-xs text-[var(--text-primary)] break-all">{row.external_id}</code>
+        ),
+      },
+      {
+        key: 'title',
+        header: 'Title',
+        render: (_v, row) => (
+          <div className="min-w-[140px]">
+            <div className="text-[var(--text-primary)] font-medium">
+              {row.title || '—'}
+            </div>
+            {row.brand_name && (
+              <div className="text-xs text-[var(--text-muted)] flex items-center gap-1.5 mt-0.5">
+                <span
+                  className="inline-block h-2 w-2 rounded-full shrink-0"
+                  style={{ backgroundColor: row.brand_color || '#64748b' }}
+                />
+                {row.brand_name}
+              </div>
+            )}
+          </div>
+        ),
+      },
+      {
+        key: 'role',
+        header: 'Тип',
+        render: (_v, row) => (
+          <span className="text-xs uppercase tracking-wide text-[var(--text-secondary)]">
+            {row.role}
+          </span>
+        ),
+      },
+      {
+        key: 'publish_enabled',
+        header: 'Publish',
+        render: (_v, row) => (
+          <input
+            type="checkbox"
+            checked={!!row.publish_enabled}
+            disabled={row.role !== 'own'}
+            onChange={() => void toggleFlag(row, 'publish_enabled')}
+            aria-label="publish"
+          />
+        ),
+      },
+      {
+        key: 'collect_enabled',
+        header: 'Collect',
+        render: (_v, row) => (
+          <input
+            type="checkbox"
+            checked={!!row.collect_enabled}
+            onChange={() => void toggleFlag(row, 'collect_enabled')}
+            aria-label="collect"
+          />
+        ),
+      },
+      {
+        key: 'alert_enabled',
+        header: 'Alert',
+        render: (_v, row) => (
+          <input
+            type="checkbox"
+            checked={!!row.alert_enabled}
+            disabled={row.network !== 'tg'}
+            title={row.network !== 'tg' ? 'Alerting пока только для Telegram' : undefined}
+            onChange={() => void toggleFlag(row, 'alert_enabled')}
+            aria-label="alert"
+          />
+        ),
+      },
+      {
+        key: 'actions',
+        header: '',
+        render: (_v, row) => (
+          <div className="flex items-center gap-2 justify-end whitespace-nowrap">
+            <Link to={`/channels/${row.id}`}>
+              <Button size="sm" variant="secondary">
+                Настроить
+              </Button>
+            </Link>
+            <Button size="sm" variant="ghost" onClick={() => void remove(row)}>
+              Remove
+            </Button>
+          </div>
+        ),
+      },
+    ],
+    // toggleFlag/remove close over latest load — intentional recreate on channels change
+    [channels],
+  )
+
   return (
     <PageContainer>
       <PageHeader
         title="Channels"
-        description="Единый хаб каналов · Brand → Channels → поток (условия / обработка / alert) → Analytics"
+        description="Единый хаб каналов · Brand → Channels → поток → Analytics"
       />
       {error && <Alert variant="error">{error}</Alert>}
 
@@ -239,7 +327,72 @@ export function ChannelsPage() {
             </Link>
           </div>
 
-          <div className="flex flex-wrap gap-3 mb-4">
+          <Card className="mb-4">
+            <CardHeader>
+              <CardTitle>Add channel</CardTitle>
+              <CardDescription>Discovery: подписки VK / channels TG в силосах</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form
+                onSubmit={handleAdd}
+                className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6 items-end"
+              >
+                <div>
+                  <label className="text-sm text-[var(--text-secondary)]">Brand</label>
+                  <select
+                    className="w-full mt-1 rounded-md border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-sm"
+                    value={brandId ?? ''}
+                    onChange={(e) => {
+                      const id = e.target.value ? Number(e.target.value) : null
+                      setBrandId(id)
+                      if (id) setSelectedBrandId(id)
+                    }}
+                  >
+                    {brands.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-sm text-[var(--text-secondary)]">Сеть</label>
+                  <select
+                    className="w-full mt-1 rounded-md border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-sm"
+                    value={network}
+                    onChange={(e) => setNetwork(e.target.value as 'tg' | 'vk')}
+                  >
+                    <option value="tg">Telegram</option>
+                    <option value="vk">VKontakte</option>
+                  </select>
+                </div>
+                <Input
+                  label="ID канала"
+                  value={externalId}
+                  onChange={(e) => setExternalId(e.target.value)}
+                  placeholder="-100… / group id"
+                />
+                <Input label="Title" value={title} onChange={(e) => setTitle(e.target.value)} />
+                <div>
+                  <label className="text-sm text-[var(--text-secondary)]">Тип</label>
+                  <select
+                    className="w-full mt-1 rounded-md border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-sm"
+                    value={role}
+                    onChange={(e) => setRole(e.target.value as ChannelRole)}
+                  >
+                    <option value="own">own</option>
+                    <option value="source">source</option>
+                    <option value="competitor">competitor</option>
+                  </select>
+                </div>
+                <Button type="submit" disabled={saving || !brandId}>
+                  Add
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+
+          <div className="flex flex-wrap gap-3 mb-3">
             <div className="min-w-[180px] flex-1">
               <Input
                 label="Filter by title"
@@ -262,202 +415,17 @@ export function ChannelsPage() {
             </div>
           </div>
 
-          <div className="grid gap-6 lg:grid-cols-3">
-            <Card className="lg:col-span-1">
-              <CardHeader>
-                <CardTitle>Add channel</CardTitle>
-                <CardDescription>Discovery: подписки VK / channels TG в силосах</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <form onSubmit={handleAdd} className="space-y-3">
-                  <div>
-                    <label className="text-sm text-[var(--text-secondary)]">Brand</label>
-                    <select
-                      className="w-full mt-1 rounded-md border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2"
-                      value={brandId ?? ''}
-                      onChange={(e) => {
-                        const id = e.target.value ? Number(e.target.value) : null
-                        setBrandId(id)
-                        if (id) setSelectedBrandId(id)
-                      }}
-                    >
-                      {brands.map((b) => (
-                        <option key={b.id} value={b.id}>
-                          {b.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <select
-                    className="w-full rounded-md border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2"
-                    value={network}
-                    onChange={(e) => setNetwork(e.target.value as 'tg' | 'vk')}
-                  >
-                    <option value="tg">Telegram</option>
-                    <option value="vk">VKontakte</option>
-                  </select>
-                  <Input
-                    label="External ID"
-                    value={externalId}
-                    onChange={(e) => setExternalId(e.target.value)}
-                    placeholder="-100… / group id"
-                  />
-                  <Input label="Title" value={title} onChange={(e) => setTitle(e.target.value)} />
-                  <select
-                    className="w-full rounded-md border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2"
-                    value={role}
-                    onChange={(e) => setRole(e.target.value as ChannelRole)}
-                  >
-                    <option value="own">own (publish)</option>
-                    <option value="source">source (collect)</option>
-                    <option value="competitor">competitor (Full)</option>
-                  </select>
-                  <Button type="submit" disabled={saving || !brandId}>
-                    Add
-                  </Button>
-                </form>
-              </CardContent>
-            </Card>
-
-            <Card className="lg:col-span-2">
-              <CardHeader>
-                <CardTitle>All channels</CardTitle>
-                <CardDescription>
-                  publish / collect / alert · «Настроить» — условия, обработка, alerting
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {filtered.length === 0 && (
-                  <p className="text-sm text-[var(--text-muted)]">
-                    {channels.length === 0 ? 'Нет каналов — добавьте слева' : 'Нет совпадений по фильтру'}
-                  </p>
-                )}
-                {filtered.map((c) => (
-                  <div
-                    key={c.id}
-                    className="rounded-lg border border-[var(--border-color)] p-3 space-y-2"
-                  >
-                    <div className="flex flex-wrap items-center gap-3">
-                      <span
-                        className="h-3 w-3 rounded-full shrink-0"
-                        style={{ backgroundColor: c.brand_color || '#64748b' }}
-                      />
-                      <div className="min-w-0 flex-1 space-y-2">
-                        <p className="text-xs text-[var(--text-muted)]">
-                          <span className="uppercase mr-2">{c.network}</span>
-                          {c.brand_name} · {c.role} · {c.external_id}
-                        </p>
-                        <div className="flex flex-wrap items-end gap-2">
-                          <div className="flex-1 min-w-[160px]">
-                            <Input
-                              label="Title"
-                              value={titleDraft[c.id] ?? ''}
-                              onChange={(e) =>
-                                setTitleDraft((prev) => ({ ...prev, [c.id]: e.target.value }))
-                              }
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                  e.preventDefault()
-                                  void saveTitle(c)
-                                }
-                              }}
-                              placeholder={c.external_id}
-                            />
-                          </div>
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            disabled={
-                              savingTitleId === c.id ||
-                              (titleDraft[c.id] ?? '').trim() === (c.title || '')
-                            }
-                            onClick={() => void saveTitle(c)}
-                          >
-                            {savingTitleId === c.id ? 'Saving…' : 'Save title'}
-                          </Button>
-                        </div>
-                      </div>
-                      <label className="flex items-center gap-1 text-xs">
-                        <input
-                          type="checkbox"
-                          checked={!!c.publish_enabled}
-                          onChange={() => void toggleFlag(c, 'publish_enabled')}
-                          disabled={c.role !== 'own'}
-                        />
-                        publish
-                      </label>
-                      <label className="flex items-center gap-1 text-xs">
-                        <input
-                          type="checkbox"
-                          checked={!!c.collect_enabled}
-                          onChange={() => void toggleFlag(c, 'collect_enabled')}
-                        />
-                        collect
-                      </label>
-                      <label
-                        className="flex items-center gap-1 text-xs"
-                        title={c.network !== 'tg' ? 'Alerting пока только для Telegram' : undefined}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={!!c.alert_enabled}
-                          onChange={() => void toggleFlag(c, 'alert_enabled')}
-                          disabled={c.network !== 'tg'}
-                        />
-                        alert
-                      </label>
-                      <Link to={`/channels/${c.id}`}>
-                        <Button size="sm" variant="secondary">
-                          Настроить
-                        </Button>
-                      </Link>
-                      <Link
-                        to={`/analytics?brand_id=${c.brand_id}&channel_id=${c.id}`}
-                        className="text-xs text-primary-400 hover:underline"
-                      >
-                        Analytics
-                      </Link>
-                      <Button size="sm" variant="ghost" onClick={() => void remove(c)}>
-                        Remove
-                      </Button>
-                    </div>
-                    {c.network === 'tg' && c.role === 'own' && (
-                      <div className="flex flex-wrap items-end gap-2 pl-6">
-                        <div className="flex-1 min-w-[180px]">
-                          <Input
-                            label="Discussion chat id"
-                            value={discDraft[c.id] ?? ''}
-                            onChange={(e) =>
-                              setDiscDraft((prev) => ({ ...prev, [c.id]: e.target.value }))
-                            }
-                            placeholder="-100… (группа комментариев)"
-                          />
-                        </div>
-                        <label className="flex items-center gap-1 text-xs pb-2">
-                          <input
-                            type="checkbox"
-                            checked={!!c.comments_collect_enabled}
-                            onChange={() => void toggleFlag(c, 'comments_collect_enabled')}
-                            disabled={
-                              !c.discussion_external_id && !(discDraft[c.id] || '').trim()
-                            }
-                          />
-                          comments
-                        </label>
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          onClick={() => void saveDiscussion(c)}
-                        >
-                          Save discussion
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-          </div>
+          <DataTable
+            columns={columns}
+            data={filtered}
+            keyExtractor={(row) => row.id}
+            isLoading={loadingList}
+            emptyMessage={
+              channels.length === 0
+                ? 'Нет каналов — добавьте выше'
+                : 'Нет совпадений по фильтру'
+            }
+          />
         </>
       )}
     </PageContainer>

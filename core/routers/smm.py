@@ -74,7 +74,9 @@ class ChannelUpdate(BaseModel):
     comments_collect_enabled: Optional[bool] = None
     alert_enabled: Optional[bool] = None
     save_conditions: Optional[List[str]] = None
+    conditions_mode: Optional[Literal["any_of", "all_of"]] = None
     processing: Optional[dict[str, Any]] = None
+    publish_targets: Optional[List[int]] = None
     alert_delivery: Optional[dict[str, Any]] = None
     alert_rules: Optional[List[dict[str, Any]]] = None
 
@@ -307,7 +309,9 @@ async def update_channel(
         comments_collect_enabled=body.comments_collect_enabled,
         alert_enabled=body.alert_enabled,
         save_conditions=body.save_conditions,
+        conditions_mode=body.conditions_mode,
         processing=body.processing,
+        publish_targets=body.publish_targets,
         alert_delivery=body.alert_delivery,
         alert_rules=body.alert_rules,
     )
@@ -556,22 +560,24 @@ async def delete_automation(automation_id: int, x_user_id: Optional[str] = Heade
 @router.get("/analytics/overview")
 async def analytics_overview(
     brand_id: Optional[int] = None,
+    channel_id: Optional[int] = None,
     period: str = "7d",
     x_user_id: Optional[str] = Header(None),
 ):
     user_id = get_user_id(x_user_id)
-    return await smm_service.analytics_overview(user_id, brand_id, period)
+    return await smm_service.analytics_overview(user_id, brand_id, period, channel_id)
 
 
 @router.get("/analytics/posts")
 async def analytics_posts(
     brand_id: Optional[int] = None,
+    channel_id: Optional[int] = None,
     sort: str = "er",
     limit: int = Query(20, ge=1, le=100),
     x_user_id: Optional[str] = Header(None),
 ):
     user_id = get_user_id(x_user_id)
-    return {"posts": await smm_service.analytics_posts(user_id, brand_id, sort, limit)}
+    return {"posts": await smm_service.analytics_posts(user_id, brand_id, sort, limit, channel_id)}
 
 
 @router.get("/analytics/growth")

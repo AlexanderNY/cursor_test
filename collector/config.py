@@ -10,6 +10,8 @@ class Settings(BaseSettings):
 
     # База данных
     DATABASE_URL: str = ""
+    DB_POOL_MINSIZE: int = 2
+    DB_POOL_MAXSIZE: int = 8
 
     # Интервалы выполнения (секунды)
     COLLECT_INTERVAL_SEC: int = 60
@@ -54,6 +56,7 @@ PLATFORM_POST_STATUSES_ORDERED = [
     "created",
     "processing",
     "ready",
+    "publishing",
     "review",
     "published",
     "failed",

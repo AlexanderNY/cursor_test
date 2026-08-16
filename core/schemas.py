@@ -850,20 +850,36 @@ class CurlTargetSocialNetworks(BaseModel):
 
 
 class CurlUrlItem(BaseModel):
-    """Один URL в настройках cURL: url, xpath, время (HH:MM) и целевые сети."""
+    """Один URL в настройках cURL: сбор, обработка и целевые сети."""
+    id: Optional[str] = None
     url: str = ""
     xpath: str = ""
     take_screenshot: bool = False
-    screenshot_format: Optional[str] = None  # "base64" | "file" — формат скриншота при take_screenshot
+    screenshot_format: Optional[str] = None  # "base64" | "file"
     target_social_networks: CurlTargetSocialNetworks = Field(default_factory=CurlTargetSocialNetworks)
+    # Каналы TG (external_id) и группы VK для публикации
+    target_channels: List[str] = Field(default_factory=list)
+    target_groups: List[str] = Field(default_factory=list)
     schedule_time: Optional[str] = None  # HH:MM
-    run_once: bool = False  # выполнить один раз в заданное время, иначе ежедневно
+    run_once: bool = False
+    # Per-URL processing (раньше было глобально на curl_settings)
+    process_before_publish: bool = False
+    process_description: Optional[str] = None
+    remove_emojis: bool = False
+    remove_images: bool = False
+    clean_html: bool = False
+    process_services: Optional[List[str]] = None
+    status_review_after_process: bool = False
+    add_static_html: bool = False
+    static_html_content: Optional[str] = Field(None, max_length=1000)
+    screenshot_only: bool = False
 
 
 class CurlSettingsBase(BaseModel):
-    """Базовая модель настроек cURL скрапинга (urls + обработка)."""
+    """Базовая модель настроек cURL скрапинга (urls + legacy обработка как fallback)."""
     collect_enabled: bool = False
     urls: List[CurlUrlItem] = []
+    # Legacy global processing (fallback / sync from first URL)
     process_before_publish: bool = False
     process_description: Optional[str] = None
     remove_emojis: bool = False
@@ -903,6 +919,8 @@ class UrlPostItem(BaseModel):
     to_tw: bool = False
     to_wp: bool = False
     to_vk: bool = False
+    target_channels: List[str] = Field(default_factory=list)
+    target_groups: List[str] = Field(default_factory=list)
 
 
 class UrlPostsBatchRequest(BaseModel):

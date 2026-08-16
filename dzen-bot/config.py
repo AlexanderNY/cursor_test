@@ -7,6 +7,8 @@ class Settings(BaseSettings):
     """Конфигурация из переменных окружения."""
 
     DATABASE_URL: str = ""
+    DB_POOL_MINSIZE: int = 2
+    DB_POOL_MAXSIZE: int = 8
 
     UPLOADS_DIR: str = "uploads"
     CORE_SERVICE_URL: str = "http://localhost:8002"
@@ -34,6 +36,7 @@ class Settings(BaseSettings):
     SELENIUM_HEADLESS: bool = True
     SELENIUM_PAGE_LOAD_TIMEOUT: int = 60
     SELENIUM_IMPLICIT_WAIT: int = 5
+    SELENIUM_MAX_CONCURRENT: int = 2
 
     # URL и селекторы (Дзен меняет вёрстку — править через env)
     YANDEX_PASSPORT_URL: str = "https://passport.yandex.ru/auth/"

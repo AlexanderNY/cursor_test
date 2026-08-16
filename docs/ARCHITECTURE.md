@@ -126,7 +126,19 @@ flowchart LR
 | minio | 9000 / 9001 | S3 API / Console |
 | ollama | 11434 | Локальные LLM |
 
-Сеть Docker: `monitoring_network` (172.20.0.0/16). Gateway и UI также в `edge_net`.
+Сеть Docker: `monitoring_network` (172.20.0.0/16). Gateway и UI также в `edge_net`.  
+Host-порты ботов/MinIO/Ollama/collector/processor привязаны к **127.0.0.1** (публичный вход — ui-edge).
+
+## 4.1 Replica-safety
+
+| Компонент | Multi-replica |
+|-----------|----------------|
+| Collector collect/distribute | Да (`FOR UPDATE SKIP LOCKED`) |
+| Processor | Да (claim → processing) |
+| Bot publishers (tg/vk/ig/tw/dzen) | Да (claim → `publishing`) |
+| Scheduler poll | Да (`pg_try_advisory_lock`) |
+| Gateway rate limit | Нет (in-memory; scale → Redis, фаза 2) |
+| Ollama / MinIO | Один инстанс по дизайну |
 
 ## 5. Поток запроса UI → API
 
@@ -166,6 +178,7 @@ sequenceDiagram
 - [SERVICES_OVERVIEW.md](SERVICES_OVERVIEW.md) — эндпоинты и БД
 - [POSTS_LIFECYCLE.md](POSTS_LIFECYCLE.md) — статусы постов
 - [INSTALLATION.md](INSTALLATION.md) — установка
+- [SECURITY_HARDENING.md](SECURITY_HARDENING.md) — hardening и ротация секретов
 - [USER_GUIDE.md](USER_GUIDE.md) — инструкция пользователя
 - [../deploy/DEPLOYMENT.md](../deploy/DEPLOYMENT.md) — прод-деплой
 - [../k8s/README.md](../k8s/README.md) — Kubernetes / Minikube

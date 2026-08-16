@@ -1,10 +1,137 @@
 """Сервис для управления профилями пользователей."""
 
 import json
+import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from database import get_db_connection, release_db_connection
+
+
+_CURL_PROCESSING_KEYS = (
+    "process_before_publish",
+    "process_description",
+    "remove_emojis",
+    "remove_images",
+    "clean_html",
+    "process_services",
+    "status_review_after_process",
+    "add_static_html",
+    "static_html_content",
+    "screenshot_only",
+)
+
+
+def _curl_global_processing(settings: Dict[str, Any]) -> Dict[str, Any]:
+    """Глобальные флаги обработки curl_settings (legacy / fallback)."""
+    return {
+        "process_before_publish": bool(settings.get("process_before_publish", False)),
+        "process_description": settings.get("process_description"),
+        "remove_emojis": bool(settings.get("remove_emojis", False)),
+        "remove_images": bool(settings.get("remove_images", False)),
+        "clean_html": bool(settings.get("clean_html", False)),
+        "process_services": list(settings.get("process_services") or [])
+        if isinstance(settings.get("process_services"), list)
+        else [],
+        "status_review_after_process": bool(settings.get("status_review_after_process", False)),
+        "add_static_html": bool(settings.get("add_static_html", False)),
+        "static_html_content": (settings.get("static_html_content") or "")[:1000] or None,
+        "screenshot_only": bool(settings.get("screenshot_only", False)),
+    }
+
+
+def _ensure_curl_url_item(
+    item: Dict[str, Any],
+    global_proc: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Стабильный id + backfill отсутствующих processing-полей из глобальных флагов."""
+    out = dict(item or {})
+    raw_id = out.get("id")
+    if isinstance(raw_id, str):
+        raw_id = raw_id.strip()
+    if not raw_id:
+        out["id"] = str(uuid.uuid4())
+    else:
+        out["id"] = str(raw_id)
+    if "time_interval" in out:
+        out["schedule_time"] = (out["time_interval"] or {}).get("start") or "09:00"
+        del out["time_interval"]
+    out.setdefault("schedule_time", "09:00")
+    out.setdefault("run_once", False)
+    out.setdefault("take_screenshot", False)
+    out.setdefault(
+        "target_social_networks",
+        {"tg": False, "tw": False, "vk": False, "wp": False},
+    )
+    tc = out.get("target_channels")
+    if not isinstance(tc, list):
+        out["target_channels"] = []
+    else:
+        out["target_channels"] = [str(x) for x in tc if x is not None and str(x).strip()]
+    tg = out.get("target_groups")
+    if not isinstance(tg, list):
+        out["target_groups"] = []
+    else:
+        out["target_groups"] = [str(x) for x in tg if x is not None and str(x).strip()]
+    for key in _CURL_PROCESSING_KEYS:
+        if key not in out:
+            out[key] = global_proc.get(key)
+    out["process_before_publish"] = bool(out.get("process_before_publish", False))
+    out["remove_emojis"] = bool(out.get("remove_emojis", False))
+    out["remove_images"] = bool(out.get("remove_images", False))
+    out["clean_html"] = bool(out.get("clean_html", False))
+    out["status_review_after_process"] = bool(out.get("status_review_after_process", False))
+    out["add_static_html"] = bool(out.get("add_static_html", False))
+    out["screenshot_only"] = bool(out.get("screenshot_only", False))
+    ps = out.get("process_services")
+    if isinstance(ps, str):
+        try:
+            ps = json.loads(ps)
+        except (json.JSONDecodeError, TypeError):
+            ps = []
+    out["process_services"] = list(ps or []) if isinstance(ps, list) else []
+    if out.get("static_html_content"):
+        out["static_html_content"] = str(out["static_html_content"])[:1000]
+    elif out.get("static_html_content") == "":
+        out["static_html_content"] = None
+    return out
+
+
+def _normalize_curl_settings_urls(settings: Dict[str, Any]) -> Dict[str, Any]:
+    """Нормализует urls[]: id + per-URL processing; синхронизирует legacy global из первого URL."""
+    global_proc = _curl_global_processing(settings)
+    urls_in = settings.get("urls") or []
+    if not isinstance(urls_in, list):
+        urls_in = []
+    urls_out = [
+        _ensure_curl_url_item(u if isinstance(u, dict) else {}, global_proc) for u in urls_in
+    ]
+    settings["urls"] = urls_out
+    if urls_out:
+        first = urls_out[0]
+        for key in _CURL_PROCESSING_KEYS:
+            settings[key] = first.get(key)
+        settings["process_services"] = list(first.get("process_services") or [])
+        settings["screenshot_only"] = bool(first.get("screenshot_only", False))
+    return settings
+
+
+def _match_curl_url_item(urls: List[Any], post_url: Optional[str]) -> Optional[Dict[str, Any]]:
+    """Находит urls[] item по URL поста (точное совпадение, затем без trailing slash)."""
+    if not post_url or not isinstance(urls, list):
+        return None
+    needle = str(post_url).strip()
+    if not needle:
+        return None
+    candidates = [u for u in urls if isinstance(u, dict)]
+    for u in candidates:
+        if str(u.get("url") or "").strip() == needle:
+            return u
+    needle_norm = needle.rstrip("/")
+    for u in candidates:
+        if str(u.get("url") or "").strip().rstrip("/") == needle_norm:
+            return u
+    return None
 
 
 def _instagram_session_is_non_empty(raw: Any) -> bool:
@@ -1213,7 +1340,7 @@ class ProfileService:
     # ==================== cURL ====================
     
     async def get_curl_settings(self, user_id: int) -> Optional[Dict]:
-        """Получает настройки cURL пользователя."""
+        """Получает настройки cURL пользователя (с id + per-URL processing)."""
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
@@ -1222,16 +1349,51 @@ class ProfileService:
                     (user_id,)
                 )
                 row = await cur.fetchone()
-                if row:
-                    return self._row_to_curl_settings(row, cur.description)
-                return None
+                if not row:
+                    return None
+                settings = self._row_to_curl_settings(row, cur.description)
+                # Одноразовая миграция: сохранить id/processing в JSONB при первом чтении
+                await cur.execute(
+                    """
+                    UPDATE curl_settings SET
+                        urls = %s::jsonb,
+                        process_before_publish = %s,
+                        process_description = %s,
+                        remove_emojis = %s,
+                        remove_images = %s,
+                        clean_html = %s,
+                        process_services = %s::jsonb,
+                        status_review_after_process = %s,
+                        add_static_html = %s,
+                        static_html_content = %s,
+                        screenshot_only = %s,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE user_id = %s
+                    """,
+                    (
+                        json.dumps(settings.get("urls") or [], ensure_ascii=False),
+                        settings.get("process_before_publish", False),
+                        settings.get("process_description"),
+                        settings.get("remove_emojis", False),
+                        settings.get("remove_images", False),
+                        settings.get("clean_html", False),
+                        json.dumps(settings.get("process_services") or []),
+                        settings.get("status_review_after_process", False),
+                        settings.get("add_static_html", False),
+                        (settings.get("static_html_content") or "")[:1000] or None,
+                        settings.get("screenshot_only", False),
+                        user_id,
+                    ),
+                )
+                return settings
         finally:
             await release_db_connection(conn)
     
     async def save_curl_settings(self, user_id: int, data: Dict) -> Dict:
         """Сохраняет или обновляет настройки cURL (urls + обработка)."""
+        data = _normalize_curl_settings_urls(dict(data or {}))
         urls = data.get("urls") or []
-        urls_json = json.dumps(urls)
+        urls_json = json.dumps(urls, ensure_ascii=False)
         first = urls[0] if urls else {}
         tsn = first.get("target_social_networks") or {}
         conn = await get_db_connection()
@@ -1294,7 +1456,7 @@ class ProfileService:
                         json.dumps(data.get("process_services") or []),
                         data.get("status_review_after_process", False),
                         data.get("add_static_html", False),
-                        (data.get("static_html_content") or "")[:1000],
+                        (data.get("static_html_content") or "")[:1000] or None,
                         data.get("screenshot_only", False),
                     )
                 )
@@ -1330,19 +1492,24 @@ class ProfileService:
                 }]
             else:
                 settings["urls"] = []
-        # Normalize urls: ensure schedule_time, run_once, drop legacy time_interval
-        for item in settings.get("urls") or []:
-            if "time_interval" in item:
-                item["schedule_time"] = (item["time_interval"] or {}).get("start") or "09:00"
-                del item["time_interval"]
-            item.setdefault("schedule_time", "09:00")
-            item.setdefault("run_once", False)
-        for key in ("time_intervals", "schedule_type", "url", "xpath", "take_screenshot", "to_tg", "to_tw", "to_vk", "to_wp"):
-            settings.pop(key, None)
         if isinstance(settings.get("process_services"), str):
-            settings["process_services"] = json.loads(settings["process_services"]) if settings["process_services"] else []
-        # Гарантируем булево значение для screenshot_only
+            settings["process_services"] = (
+                json.loads(settings["process_services"]) if settings["process_services"] else []
+            )
         settings["screenshot_only"] = bool(settings.get("screenshot_only", False))
+        settings = _normalize_curl_settings_urls(settings)
+        for key in (
+            "time_intervals",
+            "schedule_type",
+            "url",
+            "xpath",
+            "take_screenshot",
+            "to_tg",
+            "to_tw",
+            "to_vk",
+            "to_wp",
+        ):
+            settings.pop(key, None)
         return settings
 
     async def record_curl_one_time_done_batch(self, items: List[Dict[str, Any]]) -> None:

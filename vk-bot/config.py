@@ -7,6 +7,8 @@ class Settings(BaseSettings):
     """Конфигурация из переменных окружения."""
 
     DATABASE_URL: str = ""
+    DB_POOL_MINSIZE: int = 2
+    DB_POOL_MAXSIZE: int = 8
 
     UPLOADS_DIR: str = "uploads/vk"
 
@@ -38,6 +40,7 @@ class Settings(BaseSettings):
     SELENIUM_HEADLESS: bool = True
     SELENIUM_PAGE_LOAD_TIMEOUT: int = 90
     SELENIUM_IMPLICIT_WAIT: int = 5
+    SELENIUM_MAX_CONCURRENT: int = 2
     VK_SELENIUM_LOGIN_URL: str = "https://vk.com/"
     VK_SELENIUM_GROUPS_URL: str = "https://vk.com/groups"
     VK_SELENIUM_SCROLL_TIMES: int = 4

@@ -125,6 +125,8 @@ async def handle_schedule(request: ScheduleRequest) -> ScheduleResponse:
                 detail["to_wp"] = tsn.get("wp", False)
                 detail["to_tw"] = tsn.get("tw", False)
                 detail["to_vk"] = tsn.get("vk", False)
+                detail["target_channels"] = list(getattr(item, "target_channels", None) or [])
+                detail["target_groups"] = list(getattr(item, "target_groups", None) or [])
             details.append(detail)
             if result.get("error"):
                 errors += 1

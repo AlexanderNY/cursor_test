@@ -7,6 +7,8 @@ class Settings(BaseSettings):
     """Конфигурация из переменных окружения."""
 
     DATABASE_URL: str = ""
+    DB_POOL_MINSIZE: int = 2
+    DB_POOL_MAXSIZE: int = 8
 
     LOG_LEVEL: str = "INFO"
     API_PORT: int = 8015

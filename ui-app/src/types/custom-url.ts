@@ -1,4 +1,6 @@
 export interface URLConfig {
+  /** Stable id (uuid) for Configure deep-link */
+  id?: string
   url: string
   xpath: string
   take_screenshot: boolean
@@ -10,15 +12,15 @@ export interface URLConfig {
     vk?: boolean
     wp?: boolean
   }
+  /** TG channel external_id list */
+  target_channels?: string[]
+  /** VK group external_id list */
+  target_groups?: string[]
   /** Время запуска (HH:MM) */
   schedule_time: string
   /** Выполнить один раз в заданное время (иначе — ежедневно) */
   run_once?: boolean
-}
-
-export interface CustomURLSettings {
-  collect_enabled: boolean
-  urls: URLConfig[]
+  /** Per-URL processing */
   process_before_publish?: boolean
   process_description?: string
   remove_emojis?: boolean
@@ -28,7 +30,22 @@ export interface CustomURLSettings {
   status_review_after_process?: boolean
   add_static_html?: boolean
   static_html_content?: string
-   /** Если true — в базу сохраняется только скриншот без текста */
+  screenshot_only?: boolean
+}
+
+export interface CustomURLSettings {
+  collect_enabled: boolean
+  urls: URLConfig[]
+  /** Legacy global processing (synced from first URL; not edited in UI) */
+  process_before_publish?: boolean
+  process_description?: string
+  remove_emojis?: boolean
+  remove_images?: boolean
+  clean_html?: boolean
+  process_services?: string[]
+  status_review_after_process?: boolean
+  add_static_html?: boolean
+  static_html_content?: string
   screenshot_only?: boolean
 }
 

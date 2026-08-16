@@ -100,34 +100,58 @@ class PostPublisher:
     """Публикация постов из instagram_posts в Instagram."""
 
     async def get_ready_posts(self) -> List[Dict]:
-        """Посты со статусом ready и профиль с publish_enabled и учётными данными."""
+        """Claim ready posts (SKIP LOCKED → publishing) with publish_enabled credentials."""
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
-                await cur.execute(
-                    """
-                    SELECT p.id, p.user_id, p.post_text, p.images,
-                           pr.username, pr.password,
-                           pr.instagrapi_session, pr.instagram_verification_code
-                    FROM instagram_posts p
-                    JOIN instagram_profiles pr ON p.user_id = pr.user_id
-                    WHERE p.status = 'ready'
-                      AND pr.publish_enabled = TRUE
-                      AND pr.username IS NOT NULL
-                      AND pr.username != ''
-                      AND pr.password IS NOT NULL
-                      AND pr.password != ''
-                    ORDER BY p.user_id ASC, p.created_at ASC
-                    """
-                )
-                rows = await cur.fetchall()
-                cols = [c.name for c in cur.description]
-                result = []
-                for row in rows:
-                    rec = dict(zip(cols, row))
-                    rec["instagrapi_session"] = _normalize_session(rec.get("instagrapi_session"))
-                    result.append(rec)
-                return result
+                try:
+                    await cur.execute("BEGIN")
+                    await cur.execute(
+                        """
+                        SELECT p.id, p.user_id, p.post_text, p.images,
+                               pr.username, pr.password,
+                               pr.instagrapi_session, pr.instagram_verification_code
+                        FROM instagram_posts p
+                        JOIN instagram_profiles pr ON p.user_id = pr.user_id
+                        WHERE p.status = 'ready'
+                          AND pr.publish_enabled = TRUE
+                          AND pr.username IS NOT NULL
+                          AND pr.username != ''
+                          AND pr.password IS NOT NULL
+                          AND pr.password != ''
+                        ORDER BY p.user_id ASC, p.created_at ASC
+                        LIMIT 20
+                        FOR UPDATE OF p SKIP LOCKED
+                        """
+                    )
+                    rows = await cur.fetchall()
+                    cols = [c.name for c in cur.description]
+                    if not rows:
+                        await cur.execute("COMMIT")
+                        return []
+                    claimed = [dict(zip(cols, row)) for row in rows]
+                    post_ids = [p["id"] for p in claimed]
+                    ids_ph = ", ".join(["%s"] * len(post_ids))
+                    await cur.execute(
+                        f"""
+                        UPDATE instagram_posts
+                        SET status = 'publishing', updated_at = CURRENT_TIMESTAMP
+                        WHERE id IN ({ids_ph})
+                        """,
+                        post_ids,
+                    )
+                    await cur.execute("COMMIT")
+                    result = []
+                    for rec in claimed:
+                        rec["instagrapi_session"] = _normalize_session(
+                            rec.get("instagrapi_session")
+                        )
+                        rec["status"] = "publishing"
+                        result.append(rec)
+                    return result
+                except Exception:
+                    await cur.execute("ROLLBACK")
+                    raise
         finally:
             await release_db_connection(conn)
 

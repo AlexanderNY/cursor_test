@@ -364,6 +364,8 @@ async def _persist_url_posts(schedule_response: dict[str, Any]) -> None:
             "to_wp": d.get("to_wp", False),
             "to_tw": d.get("to_tw", False),
             "to_vk": d.get("to_vk", False),
+            "target_channels": list(d.get("target_channels") or []),
+            "target_groups": list(d.get("target_groups") or []),
         }
         if post["user_id"] is not None:
             posts.append(post)
@@ -423,11 +425,36 @@ async def _mark_curl_one_time_done(
 
 
 async def poll_loop() -> None:
-    """Фоновый цикл без service-login: данные пользователей из Core/БД."""
+    """Фоновый цикл без service-login: данные пользователей из Core/БД.
+
+    Только один реплика держит pg advisory lock на цикл — безопасно replicas>1.
+    """
+    # Стабильный ключ для scheduler poll (не конфликтует с int4 user ids)
+    lock_key = 87421003
     while True:
+        held = False
         try:
-            await run_poll_cycle()
+            async with get_db_connection() as conn:
+                async with conn.cursor() as cur:
+                    await cur.execute("SELECT pg_try_advisory_lock(%s)", (lock_key,))
+                    row = await cur.fetchone()
+                    held = bool(row and row[0])
+                    if not held:
+                        logger.debug("Scheduler poll skipped — another replica holds advisory lock")
+                    else:
+                        try:
+                            await run_poll_cycle()
+                        finally:
+                            await cur.execute("SELECT pg_advisory_unlock(%s)", (lock_key,))
+                            held = False
         except Exception as e:
             logger.exception("Poll cycle error: %s", e)
+            if held:
+                try:
+                    async with get_db_connection() as conn:
+                        async with conn.cursor() as cur:
+                            await cur.execute("SELECT pg_advisory_unlock(%s)", (lock_key,))
+                except Exception:
+                    logger.exception("Failed to release scheduler advisory lock")
 
         await asyncio.sleep(settings.POLL_INTERVAL_SECONDS)

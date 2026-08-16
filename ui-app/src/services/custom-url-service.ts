@@ -16,9 +16,10 @@ export const customURLService = {
     }
   },
 
-  async saveSettings(settings: CustomURLSettings): Promise<void> {
+  async saveSettings(settings: CustomURLSettings): Promise<CustomURLSettings> {
     try {
-      await apiClient.post('/curl/settings', settings)
+      const response = await apiClient.post<CustomURLSettings>('/curl/settings', settings)
+      return response.data
     } catch (error) {
       throw new Error(getErrorMessage(error))
     }

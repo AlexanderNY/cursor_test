@@ -23,6 +23,8 @@ class Settings(BaseSettings):
     INSTAGRAM_BOT_SERVICE_URL: str = "http://instagram-bot:8011"
 
     DATABASE_URL: str = ""
+    DB_POOL_MINSIZE: int = 2
+    DB_POOL_MAXSIZE: int = 8
 
     POLL_INTERVAL_SECONDS: int = 60
     NOTIFY_ON_CHANGE_ONLY: bool = True

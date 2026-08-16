@@ -44,14 +44,17 @@ def test_regex_mode():
     assert matched is True
 
 
-def test_category_filter():
+def test_case_insensitive_any_of():
     handler = MessageHandler()
-    event = _event("any text")
-    matched, _ = handler.evaluate_conditions(
-        event,
-        ["x"],
-        conditions_mode="any_of",
-        category_filter="finance",
-        message_metadata={"category": "news"},
+    event = _event("Внимание! срочно")
+    matched, conditions = handler.evaluate_conditions(
+        event, ["внимание"], conditions_mode="any_of"
     )
-    assert matched is False
+    assert matched is True
+    assert conditions == ["внимание"]
+
+
+def test_chat_id_in_list_strips_leading_minus():
+    assert MessageHandler.chat_id_in_list(-1002142359467, ["1002142359467"]) is True
+    assert MessageHandler.chat_id_in_list(-1002142359467, ["-1002142359467"]) is True
+    assert MessageHandler.chat_id_in_list(-1002142359467, ["-100999"]) is False

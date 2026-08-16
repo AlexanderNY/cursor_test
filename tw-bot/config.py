@@ -7,6 +7,8 @@ class Settings(BaseSettings):
     """Настройки из переменных окружения."""
 
     DATABASE_URL: str = ""
+    DB_POOL_MINSIZE: int = 2
+    DB_POOL_MAXSIZE: int = 8
 
     LOG_LEVEL: str = "INFO"
     LOG_BOT_ACTIONS: bool = False
@@ -30,6 +32,7 @@ class Settings(BaseSettings):
     SELENIUM_IMPLICIT_WAIT: int = 5
     CHROME_BIN: str = ""
     CHROMEDRIVER_PATH: str = ""
+    SELENIUM_MAX_CONCURRENT: int = 2
     X_SELENIUM_FOLLOWING_MAX_SCROLL: int = 4
 
     # S3 (диагностические скриншоты Selenium)

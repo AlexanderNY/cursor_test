@@ -8,6 +8,7 @@
 |----------|------------|
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Графы архитектуры, порты, пайплайн постов |
 | [docs/INSTALLATION.md](docs/INSTALLATION.md) | Установка и локальный запуск |
+| [docs/SECURITY_HARDENING.md](docs/SECURITY_HARDENING.md) | Секреты, порты, auth, нагрузка |
 | [docs/USER_GUIDE.md](docs/USER_GUIDE.md) | Инструкция для пользователя UI |
 | [docs/SERVICES_OVERVIEW.md](docs/SERVICES_OVERVIEW.md) | API Gateway, эндпоинты, БД |
 | [docs/POSTS_LIFECYCLE.md](docs/POSTS_LIFECYCLE.md) | Статусы `posts` / `*_posts` |
@@ -35,7 +36,8 @@ flowchart LR
 
 ```powershell
 copy .env.example .env
-# заполните DATABASE_URL, JWT_SECRET_KEY, SECRET_KEY, MinIO-пароли
+# DATABASE_URL, JWT/SECRET (openssl rand -hex 32), MinIO,
+# GAME_BOT_TOKEN (BotFather), GAME_ADMIN_API_TOKEN
 
 .\deploy\scripts\create-edge-net.ps1
 docker compose up -d --build

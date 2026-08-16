@@ -14,7 +14,7 @@ from config import settings
 from database import get_db_connection, release_db_connection
 
 from .selenium_diag import capture_selenium_error_to_s3
-from .selenium_driver import create_chrome_driver
+from .selenium_driver import create_chrome_driver, get_selenium_semaphore
 from .selenium_errors import format_selenium_exception
 from .yandex_auth import YandexAuthError
 from .yandex_dzen_flow import yandex_auth_dispatch
@@ -158,7 +158,8 @@ class DzenFeedCollector:
         for prof in profiles:
             uid = prof["user_id"]
             await _set_last_auth_error(uid, None)
-            items, err = await asyncio.to_thread(_collect_links_sync, prof)
+            async with get_selenium_semaphore():
+                items, err = await asyncio.to_thread(_collect_links_sync, prof)
             if err:
                 await _set_last_auth_error(uid, err[:2000])
                 logger.warning("Dzen collect user %s: %s", uid, err)

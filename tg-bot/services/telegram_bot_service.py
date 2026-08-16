@@ -26,6 +26,8 @@ from .brand_channel_flow import (
     list_tg_flow_channels,
     find_channel_for_chat,
     channel_alert_rules_as_profile_rules,
+    resolve_publish_targets,
+    publish_targets_to_profile_fields,
 )
 
 
@@ -245,13 +247,42 @@ class TelegramBotService:
                 channel_collect = bool(brand_ch and brand_ch.get("collect_enabled"))
 
                 if (profile.get("collect_enabled") and profile_collect) or channel_collect:
+                    conditions_mode = "any_of"
                     if channel_collect and brand_ch is not None:
                         save_conditions = brand_ch.get("save_conditions") or []
+                        conditions_mode = brand_ch.get("conditions_mode") or "any_of"
                         collect_profile = dict(profile)
                         processing = brand_ch.get("processing") or {}
                         if isinstance(processing, dict) and processing:
                             collect_profile.update(processing)
-                            if processing.get("process_services") is not None:
+                        target_ids = brand_ch.get("publish_targets") or []
+                        if target_ids and brand_ch.get("brand_id"):
+                            resolved = await resolve_publish_targets(
+                                int(brand_ch["brand_id"]),
+                                [int(x) for x in target_ids],
+                            )
+                            collect_profile.update(
+                                publish_targets_to_profile_fields(resolved)
+                            )
+                        else:
+                            # Brand-channel collect without publish targets:
+                            # do not inherit profile destination channels/services.
+                            collect_profile["target_channels"] = []
+                            collect_profile["process_services"] = []
+                            collect_profile["channel_to_post"] = None
+                            collect_profile["channels_to_post"] = []
+                            review_only = bool(
+                                isinstance(processing, dict)
+                                and processing.get("status_review_after_process")
+                            )
+                            collect_profile["publish_enabled"] = not review_only and bool(
+                                processing.get("process_enabled")
+                            ) if isinstance(processing, dict) else False
+                            if (
+                                isinstance(processing, dict)
+                                and processing.get("process_services")
+                                and not review_only
+                            ):
                                 collect_profile["process_services"] = processing.get(
                                     "process_services"
                                 )
@@ -260,7 +291,7 @@ class TelegramBotService:
                         collect_profile = profile
 
                     should_save = self.message_handler.should_save_message(
-                        event, save_conditions
+                        event, save_conditions, conditions_mode=conditions_mode
                     )
                     if should_save:
                         images = await self.image_handler.download_images(event, user_id)
@@ -299,8 +330,32 @@ class TelegramBotService:
                     )
 
                 if brand_ch and brand_ch.get("alert_enabled"):
-                    channel_rules = channel_alert_rules_as_profile_rules(brand_ch)
-                    if channel_rules:
+                    delivery = brand_ch.get("alert_delivery") or {}
+                    if not isinstance(delivery, dict):
+                        delivery = {}
+                    target_ids: list[int] = []
+                    for raw_id in delivery.get("alert_targets") or []:
+                        try:
+                            target_ids.append(int(raw_id))
+                        except (TypeError, ValueError):
+                            continue
+                    resolved: list = []
+                    if target_ids and brand_ch.get("brand_id"):
+                        resolved = await resolve_publish_targets(
+                            int(brand_ch["brand_id"]),
+                            target_ids,
+                        )
+                    channel_rules = channel_alert_rules_as_profile_rules(
+                        brand_ch, destinations=resolved
+                    )
+                    if not channel_rules:
+                        logger.warning(
+                            "Brand channel %s alert_enabled but no usable rules "
+                            "(need keywords + alert_text + destination); chat=%s skipped",
+                            brand_ch.get("id"),
+                            event.chat_id,
+                        )
+                    else:
                         channel_profile = {
                             "alert_enabled": True,
                             "alert_rules": channel_rules,

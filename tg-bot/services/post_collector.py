@@ -32,7 +32,7 @@ def _log_action(msg: str, *args, **kwargs) -> None:
 
 
 def destination_flags_from_profile(profile: Dict) -> Dict[str, bool]:
-    """Строит to_* флаги из process_services профиля.
+    """Строит to_* флаги из process_services / сетей publish targets.
 
     Если сервисы не выбраны, но задан канал публикации — по умолчанию to_tg.
     """
@@ -62,6 +62,18 @@ def destination_flags_from_profile(profile: Dict) -> Dict[str, bool]:
     if any(flags.values()):
         return flags
 
+    targets = profile.get("target_channels") or []
+    if isinstance(targets, str):
+        try:
+            targets = json.loads(targets)
+        except (json.JSONDecodeError, TypeError):
+            targets = []
+    if isinstance(targets, list) and any(
+        MessageHandler.chat_ref_id(item) for item in targets
+    ):
+        flags["to_tg"] = True
+        return flags
+
     has_channel = bool(
         MessageHandler.chat_ref_id(profile.get("channel_to_post"))
         or any(MessageHandler.chat_ref_id(item) for item in (profile.get("channels_to_post") or []))
@@ -69,6 +81,23 @@ def destination_flags_from_profile(profile: Dict) -> Dict[str, bool]:
     if has_channel or profile.get("publish_enabled"):
         flags["to_tg"] = True
     return flags
+
+
+def _target_channels_from_profile(profile: Dict) -> List[str]:
+    raw = profile.get("target_channels") or []
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            raw = []
+    if not isinstance(raw, list):
+        return []
+    out: List[str] = []
+    for item in raw:
+        chat_id = MessageHandler.chat_ref_id(item)
+        if chat_id:
+            out.append(chat_id)
+    return out
 
 
 class PostCollector:
@@ -107,6 +136,7 @@ class PostCollector:
                     author = author[:255]
 
             dest = destination_flags_from_profile(profile)
+            target_channels = _target_channels_from_profile(profile)
 
             conn = await get_db_connection()
             try:
@@ -117,11 +147,13 @@ class PostCollector:
                             user_id, post_text, post_date, author,
                             images, status, post_type, domain,
                             to_tg, to_tw, to_wp, to_vk, to_threads, to_dzen, to_instagram,
+                            target_channels,
                             created_at, updated_at
                         ) VALUES (
                             %s, %s, %s, %s,
                             %s, 'collected', 'tg', %s,
                             %s, %s, %s, %s, %s, %s, %s,
+                            %s::jsonb,
                             CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
                         )
                         RETURNING *
@@ -140,6 +172,7 @@ class PostCollector:
                             dest["to_threads"],
                             dest["to_dzen"],
                             dest["to_instagram"],
+                            json.dumps(target_channels),
                         ),
                     )
 
@@ -154,13 +187,20 @@ class PostCollector:
                             except (json.JSONDecodeError, TypeError):
                                 post["images"] = []
 
+                        if isinstance(post.get("target_channels"), str):
+                            try:
+                                post["target_channels"] = json.loads(post["target_channels"])
+                            except (json.JSONDecodeError, TypeError):
+                                post["target_channels"] = []
+
                         _log_action(
-                            "Saved post %s to tg_posts for user %s (msg_id=%s chat_id=%s to_tg=%s)",
+                            "Saved post %s to tg_posts for user %s (msg_id=%s chat_id=%s to_tg=%s targets=%s)",
                             post["id"],
                             user_id,
                             message.id,
                             event.chat_id,
                             dest["to_tg"],
+                            target_channels,
                         )
                         return post
 

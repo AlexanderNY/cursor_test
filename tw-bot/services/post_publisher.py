@@ -25,27 +25,51 @@ class PostPublisher:
     """Публикация в X для строк tw_posts (status=ready, to_tw=true)."""
 
     async def _get_ready_posts(self) -> List[Dict[str, Any]]:
+        """Claim ready posts (SKIP LOCKED → publishing) with OAuth refresh token."""
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
-                await cur.execute(
-                    """
-                    SELECT p.id, p.user_id, p.post_text, p.images,
-                           pr.twitter_oauth_access_token, pr.twitter_oauth_refresh_token,
-                           pr.twitter_oauth_expires_at
-                    FROM tw_posts p
-                    INNER JOIN tw_profiles pr ON p.user_id = pr.user_id
-                    WHERE p.status = 'ready'
-                      AND p.to_tw = TRUE
-                      AND pr.twitter_oauth_refresh_token IS NOT NULL
-                      AND pr.twitter_oauth_refresh_token != ''
-                    ORDER BY p.created_at ASC
-                    LIMIT 20
-                    """
-                )
-                rows = await cur.fetchall()
-                cols = [c.name for c in cur.description]
-                return [dict(zip(cols, row)) for row in rows]
+                try:
+                    await cur.execute("BEGIN")
+                    await cur.execute(
+                        """
+                        SELECT p.id, p.user_id, p.post_text, p.images,
+                               pr.twitter_oauth_access_token, pr.twitter_oauth_refresh_token,
+                               pr.twitter_oauth_expires_at
+                        FROM tw_posts p
+                        INNER JOIN tw_profiles pr ON p.user_id = pr.user_id
+                        WHERE p.status = 'ready'
+                          AND p.to_tw = TRUE
+                          AND pr.twitter_oauth_refresh_token IS NOT NULL
+                          AND pr.twitter_oauth_refresh_token != ''
+                        ORDER BY p.created_at ASC
+                        LIMIT 20
+                        FOR UPDATE OF p SKIP LOCKED
+                        """
+                    )
+                    rows = await cur.fetchall()
+                    cols = [c.name for c in cur.description]
+                    if not rows:
+                        await cur.execute("COMMIT")
+                        return []
+                    claimed = [dict(zip(cols, row)) for row in rows]
+                    post_ids = [p["id"] for p in claimed]
+                    ids_ph = ", ".join(["%s"] * len(post_ids))
+                    await cur.execute(
+                        f"""
+                        UPDATE tw_posts
+                        SET status = 'publishing', updated_at = CURRENT_TIMESTAMP
+                        WHERE id IN ({ids_ph})
+                        """,
+                        post_ids,
+                    )
+                    await cur.execute("COMMIT")
+                    for post in claimed:
+                        post["status"] = "publishing"
+                    return claimed
+                except Exception:
+                    await cur.execute("ROLLBACK")
+                    raise
         finally:
             await release_db_connection(conn)
 

@@ -48,6 +48,24 @@ async def _log_cycle(
     except Exception as exc:
         logger.debug("service_cycle_log skip: %s", exc)
 
+def _match_url_config(urls: List[Any], post_url: Optional[str]) -> Optional[Dict[str, Any]]:
+    """Находит curl urls[] item по URL поста."""
+    if not post_url or not isinstance(urls, list):
+        return None
+    needle = str(post_url).strip()
+    if not needle:
+        return None
+    candidates = [u for u in urls if isinstance(u, dict)]
+    for u in candidates:
+        if str(u.get("url") or "").strip() == needle:
+            return u
+    needle_norm = needle.rstrip("/")
+    for u in candidates:
+        if str(u.get("url") or "").strip().rstrip("/") == needle_norm:
+            return u
+    return None
+
+
 _SERVICE_NAME_TO_FLAG = {name: flag for flag, name in PLATFORM_FLAGS.items()}
 _DESTINATION_FLAGS = list(PLATFORM_FLAGS.keys())
 _SOURCE_PLATFORM_TABLE = {
@@ -96,7 +114,7 @@ class ProcessingService:
                 # 1. Выбрать посты со статусом 'collected'
                 await cur.execute(
                     """
-                    SELECT id, user_id, source_platform, source_id, post_text, images,
+                    SELECT id, user_id, source_platform, source_id, post_text, images, url,
                            to_tg, to_tw, to_wp, to_vk, to_threads, to_dzen, to_instagram
                     FROM posts
                     WHERE status = 'collected'
@@ -116,7 +134,7 @@ class ProcessingService:
                     return 0
 
                 col_names = [
-                    "id", "user_id", "source_platform", "source_id", "post_text", "images",
+                    "id", "user_id", "source_platform", "source_id", "post_text", "images", "url",
                     "to_tg", "to_tw", "to_wp", "to_vk", "to_threads", "to_dzen", "to_instagram",
                 ]
 
@@ -182,8 +200,12 @@ class ProcessingService:
 
         logger.debug("Processing post id=%s (user=%s, platform=%s)", post_id, user_id, source_platform)
 
-        # Загрузить настройки обработки из профиля
-        proc_settings = await self._load_processing_settings(user_id, source_platform)
+        # Загрузить настройки обработки из профиля (для url/curl — per-URL)
+        proc_settings = await self._load_processing_settings(
+            user_id,
+            source_platform,
+            post_url=post.get("url"),
+        )
         self._apply_destination_flags(post, proc_settings)
 
         is_process_enabled = proc_settings.get("process_enabled", False)
@@ -240,18 +262,22 @@ class ProcessingService:
         )
 
     async def _load_processing_settings(
-        self, user_id: int, source_platform: Optional[str]
+        self,
+        user_id: int,
+        source_platform: Optional[str],
+        post_url: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Загружает настройки обработки из профиля пользователя.
 
         Маппинг source_platform -> таблица профиля:
         - tg -> tg_profiles (process_enabled)
         - wp -> wp_publish_profile (process_before_publish)
-        - curl/url -> curl_settings (process_before_publish)
+        - curl/url -> curl_settings (per-URL processing из urls[], fallback на global)
 
         Args:
             user_id: ID пользователя.
             source_platform: Платформа-источник поста.
+            post_url: URL поста (для match в curl_settings.urls).
 
         Returns:
             Словарь с настройками обработки. Пустой словарь, если профиль не найден.
@@ -270,6 +296,8 @@ class ProcessingService:
 
         # Собрать список полей для SELECT
         fields = [process_flag, description_field] + PROCESSING_SETTINGS_FIELDS
+        if source_platform in ("url", "curl"):
+            fields = ["urls"] + fields
         if source_platform == "tg":
             fields.extend([
                 "summarize_enabled",
@@ -297,8 +325,20 @@ class ProcessingService:
                         return {}
 
                     result: Dict[str, Any] = {}
+                    url_item: Optional[Dict[str, Any]] = None
                     for i, field in enumerate(fields):
                         value = row[i]
+                        if field == "urls":
+                            if isinstance(value, str):
+                                try:
+                                    value = json.loads(value) if value else []
+                                except (json.JSONDecodeError, TypeError):
+                                    value = []
+                            url_item = _match_url_config(
+                                value if isinstance(value, list) else [],
+                                post_url,
+                            )
+                            continue
                         # Нормализовать имя поля process_enabled
                         if field == process_flag:
                             result["process_enabled"] = bool(value) if value is not None else False
@@ -317,6 +357,21 @@ class ProcessingService:
                                 except (json.JSONDecodeError, TypeError):
                                     value = []
                             result[field] = value
+
+                    if url_item is not None:
+                        if "process_before_publish" in url_item:
+                            result["process_enabled"] = bool(url_item.get("process_before_publish"))
+                        if "process_description" in url_item:
+                            result["processing_description"] = url_item.get("process_description")
+                        for key in PROCESSING_SETTINGS_FIELDS:
+                            if key in url_item:
+                                value = url_item.get(key)
+                                if key == "process_services" and isinstance(value, str):
+                                    try:
+                                        value = json.loads(value)
+                                    except (json.JSONDecodeError, TypeError):
+                                        value = None
+                                result[key] = value
 
                     return result
 

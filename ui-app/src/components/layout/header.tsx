@@ -10,7 +10,7 @@ import { topNavItems } from '@/config/nav'
 const INBOX_COMMENT_POLL_MS = 25_000
 
 export function Header() {
-  const { logout } = useAuth()
+  const { user, logout } = useAuth()
   const { isDarkMode, toggleTheme } = useTheme()
   const { brands, selectedBrandId, setSelectedBrandId, selectedBrand } = useBrand()
   const navigate = useNavigate()
@@ -54,17 +54,30 @@ export function Header() {
   }, [loadNewComments])
 
   return (
-    <header className="h-16 shrink-0 bg-[var(--bg-secondary)] border-b border-[var(--border-color)] flex items-center justify-between gap-4 px-6">
-      <div className="flex items-center gap-4 min-w-0 flex-1">
+    <header className="h-16 shrink-0 bg-[var(--bg-secondary)] border-b border-[var(--border-color)] flex items-center gap-3 px-4 md:px-6">
+      <div className="w-56 lg:w-64 shrink-0 flex items-center gap-2 min-w-0 pr-2 border-r border-[var(--border-color)]">
+        <h1 className="text-base font-bold text-gradient truncate leading-tight">Control Panel</h1>
+        {user && (
+          <span
+            className="hidden xl:inline text-xs text-[var(--text-muted)] truncate max-w-[7rem]"
+            title={`${user.username} · ${user.role ?? ''}`}
+          >
+            {user.username}
+          </span>
+        )}
+      </div>
+
+      <div className="flex items-center gap-3 min-w-0 flex-1">
         {brands.length > 0 && (
           <div className="flex items-center gap-2 shrink-0">
             <span
-              className="h-3 w-3 rounded-full"
+              className="h-2.5 w-2.5 rounded-full shrink-0"
               style={{ backgroundColor: selectedBrand?.color ?? '#64748b' }}
+              aria-hidden
             />
             <select
               aria-label="Brand switcher"
-              className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-tertiary)] px-3 py-1.5 text-sm text-[var(--text-primary)] max-w-[160px]"
+              className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-tertiary)] px-2.5 py-1.5 text-sm text-[var(--text-primary)] max-w-[140px] lg:max-w-[180px] h-8"
               value={selectedBrandId ?? ''}
               onChange={(e) =>
                 setSelectedBrandId(e.target.value ? Number(e.target.value) : null)
@@ -80,7 +93,7 @@ export function Header() {
           </div>
         )}
 
-        <nav className="flex items-center gap-1 min-w-0 overflow-x-auto" aria-label="Основное меню">
+        <nav className="flex items-center gap-0.5 min-w-0 overflow-x-auto" aria-label="Основное меню">
           {topNavItems.map((item) => {
             const isActive =
               location.pathname === item.path ||
@@ -89,21 +102,21 @@ export function Header() {
               <NavLink
                 key={item.path}
                 to={item.path}
-                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm whitespace-nowrap transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/50 ${
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-sm whitespace-nowrap transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/50 ${
                   isActive
                     ? 'bg-[var(--bg-tertiary)] text-primary-400'
                     : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)]'
                 }`}
               >
                 <item.Icon className="h-4 w-4" />
-                <span>{item.label}</span>
+                <span className="hidden sm:inline">{item.label}</span>
               </NavLink>
             )
           })}
         </nav>
       </div>
 
-      <div className="flex items-center gap-2 shrink-0">
+      <div className="flex items-center gap-1.5 shrink-0">
         <button
           type="button"
           onClick={() => navigate('/inbox?mode=comments')}
@@ -140,11 +153,11 @@ export function Header() {
           )}
         </button>
 
-        <Button variant="ghost" size="sm" onClick={logout}>
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <Button variant="ghost" size="sm" onClick={logout} className="h-8">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 sm:mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
           </svg>
-          Logout
+          <span className="hidden sm:inline">Logout</span>
         </Button>
       </div>
     </header>

@@ -116,41 +116,79 @@ class PostPublisher:
         self.client_manager = client_manager
 
     async def get_ready_posts(self) -> List[Dict]:
-        """Получает посты ready с publish_at <= now (или NULL)."""
+        """Claim ready posts (SKIP LOCKED → publishing), then apply Python filters."""
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
-                await cur.execute(
-                    """
-                    SELECT p.id, p.user_id, p.post_text, p.images, p.status,
-                           p.publish_at, p.target_channels, p.url, p.title,
-                           pr.channel_to_post, pr.channels_to_post,
-                           pr.schedule_type, pr.time_intervals, pr.publish_enabled
-                    FROM tg_posts p
-                    JOIN tg_profiles pr ON p.user_id = pr.user_id
-                    WHERE p.status = 'ready'
-                      AND (p.publish_at IS NULL OR p.publish_at <= CURRENT_TIMESTAMP)
-                    ORDER BY COALESCE(p.publish_at, p.created_at) ASC
-                    """
-                )
-                rows = await cur.fetchall()
-                columns = [col.name for col in cur.description]
-                result = []
-                for row in rows:
-                    post = dict(zip(columns, row))
-                    # Если publish_enabled явно False — пропускаем
+                claimed: List[Dict] = []
+                try:
+                    await cur.execute("BEGIN")
+                    await cur.execute(
+                        """
+                        SELECT p.id, p.user_id, p.post_text, p.images, p.status,
+                               p.publish_at, p.target_channels, p.url, p.title,
+                               pr.channel_to_post, pr.channels_to_post,
+                               pr.schedule_type, pr.time_intervals, pr.publish_enabled
+                        FROM tg_posts p
+                        JOIN tg_profiles pr ON p.user_id = pr.user_id
+                        WHERE p.status = 'ready'
+                          AND (p.publish_at IS NULL OR p.publish_at <= CURRENT_TIMESTAMP)
+                        ORDER BY COALESCE(p.publish_at, p.created_at) ASC
+                        LIMIT 50
+                        FOR UPDATE OF p SKIP LOCKED
+                        """
+                    )
+                    rows = await cur.fetchall()
+                    columns = [col.name for col in cur.description]
+                    if not rows:
+                        await cur.execute("COMMIT")
+                    else:
+                        claimed = [dict(zip(columns, row)) for row in rows]
+                        post_ids = [p["id"] for p in claimed]
+                        ids_ph = ", ".join(["%s"] * len(post_ids))
+                        await cur.execute(
+                            f"""
+                            UPDATE tg_posts
+                            SET status = 'publishing', updated_at = CURRENT_TIMESTAMP
+                            WHERE id IN ({ids_ph})
+                            """,
+                            post_ids,
+                        )
+                        await cur.execute("COMMIT")
+                except Exception:
+                    await cur.execute("ROLLBACK")
+                    raise
+
+                result: List[Dict] = []
+                release_ids: List[int] = []
+                for post in claimed:
                     if post.get("publish_enabled") is False:
+                        release_ids.append(post["id"])
                         continue
                     schedule_type = (post.get("schedule_type") or "immediate").strip()
                     if schedule_type == "by_intervals":
                         intervals = _parse_json_list(post.get("time_intervals"))
                         if not _now_in_time_windows(intervals):
+                            release_ids.append(post["id"])
                             continue
                     channels = self._resolve_channels(post)
                     if not channels:
+                        release_ids.append(post["id"])
                         continue
                     post["_channels"] = channels
+                    post["status"] = "publishing"
                     result.append(post)
+
+                if release_ids:
+                    ids_ph = ", ".join(["%s"] * len(release_ids))
+                    await cur.execute(
+                        f"""
+                        UPDATE tg_posts
+                        SET status = 'ready', updated_at = CURRENT_TIMESTAMP
+                        WHERE id IN ({ids_ph})
+                        """,
+                        release_ids,
+                    )
 
                 if len(result) == 0:
                     await cur.execute(

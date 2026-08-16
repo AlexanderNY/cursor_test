@@ -1,4 +1,5 @@
 import { useState, FormEvent, useEffect } from 'react'
+import { Link } from 'react-router-dom'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -9,12 +10,12 @@ import type { URLConfig, CustomURLSettings, UrlPostListItem } from '@/types/cust
 import { formatDateTime } from '@/utils/date'
 
 function generateId(): string {
-  return Math.random().toString(36).substring(2, 9)
+  return crypto.randomUUID?.() || Math.random().toString(36).substring(2, 9)
 }
 
 const DEFAULT_SCHEDULE_TIME = '09:00'
 
-function defaultUrlConfig(): URLConfig & { id: string } {
+function defaultUrlConfig(): URLConfig {
   return {
     id: generateId(),
     url: '',
@@ -22,29 +23,58 @@ function defaultUrlConfig(): URLConfig & { id: string } {
     take_screenshot: false,
     screenshot_format: 'base64',
     target_social_networks: { tg: false, tw: false, vk: false, wp: false },
+    target_channels: [],
+    target_groups: [],
     schedule_time: DEFAULT_SCHEDULE_TIME,
     run_once: false,
+    process_before_publish: false,
+    remove_emojis: false,
+    remove_images: false,
+    clean_html: false,
+    screenshot_only: false,
+    process_services: [],
+    status_review_after_process: false,
+    add_static_html: false,
+  }
+}
+
+function mapUrlFromApi(u: URLConfig): URLConfig {
+  return {
+    id: u.id || generateId(),
+    url: u.url ?? '',
+    xpath: u.xpath ?? '',
+    take_screenshot: u.take_screenshot ?? false,
+    screenshot_format: u.screenshot_format === 'file' ? 'file' : 'base64',
+    target_social_networks: {
+      tg: u.target_social_networks?.tg ?? false,
+      tw: u.target_social_networks?.tw ?? false,
+      vk: u.target_social_networks?.vk ?? false,
+      wp: u.target_social_networks?.wp ?? false,
+    },
+    target_channels: Array.isArray(u.target_channels) ? u.target_channels.map(String) : [],
+    target_groups: Array.isArray(u.target_groups) ? u.target_groups.map(String) : [],
+    schedule_time:
+      u.schedule_time ??
+      (u as { time_interval?: { start?: string } }).time_interval?.start ??
+      DEFAULT_SCHEDULE_TIME,
+    run_once: u.run_once ?? false,
+    process_before_publish: u.process_before_publish ?? false,
+    process_description: u.process_description ?? '',
+    remove_emojis: u.remove_emojis ?? false,
+    remove_images: u.remove_images ?? false,
+    clean_html: u.clean_html ?? false,
+    screenshot_only: u.screenshot_only ?? false,
+    process_services: Array.isArray(u.process_services) ? u.process_services : [],
+    status_review_after_process: u.status_review_after_process ?? false,
+    add_static_html: u.add_static_html ?? false,
+    static_html_content: (u.static_html_content ?? '').slice(0, 1000),
   }
 }
 
 export function CustomURLPage() {
-  const [activeTab, setActiveTab] = useState<'urlSettings' | 'processing' | 'posts'>('urlSettings')
+  const [activeTab, setActiveTab] = useState<'urlSettings' | 'posts'>('urlSettings')
   const [collectEnabled, setCollectEnabled] = useState(false)
-  const [urlConfigs, setUrlConfigs] = useState<Array<URLConfig & { id: string }>>([defaultUrlConfig()])
-
-  const [processBeforePublish, setProcessBeforePublish] = useState(false)
-  const [processDescription, setProcessDescription] = useState('')
-  const [removeEmojis, setRemoveEmojis] = useState(false)
-  const [removeImages, setRemoveImages] = useState(false)
-  const [cleanHtml, setCleanHtml] = useState(false)
-  const [screenshotOnly, setScreenshotOnly] = useState(false)
-  const [processServiceWordpress, setProcessServiceWordpress] = useState(false)
-  const [processServiceTelegram, setProcessServiceTelegram] = useState(false)
-  const [processServiceTwitter, setProcessServiceTwitter] = useState(false)
-  const [processServiceVkontakte, setProcessServiceVkontakte] = useState(false)
-  const [statusReviewAfterProcess, setStatusReviewAfterProcess] = useState(false)
-  const [addStaticHtml, setAddStaticHtml] = useState(false)
-  const [staticHtmlContent, setStaticHtmlContent] = useState('')
+  const [urlConfigs, setUrlConfigs] = useState<URLConfig[]>([defaultUrlConfig()])
 
   const [isLoading, setIsLoading] = useState(false)
   const [isLoadingSettings, setIsLoadingSettings] = useState(true)
@@ -63,40 +93,8 @@ export function CustomURLPage() {
         if (settings) {
           setCollectEnabled(settings.collect_enabled ?? false)
           if (settings.urls && settings.urls.length > 0) {
-            setUrlConfigs(
-              settings.urls.map((u) => ({
-                id: generateId(),
-                url: u.url ?? '',
-                xpath: u.xpath ?? '',
-                take_screenshot: u.take_screenshot ?? false,
-                screenshot_format: (u as { screenshot_format?: string }).screenshot_format === 'file' ? 'file' : 'base64',
-                target_social_networks: {
-                  tg: u.target_social_networks?.tg ?? false,
-                  tw: u.target_social_networks?.tw ?? false,
-                  vk: u.target_social_networks?.vk ?? false,
-                  wp: u.target_social_networks?.wp ?? false,
-                },
-                schedule_time: u.schedule_time ?? (u as { time_interval?: { start?: string } }).time_interval?.start ?? DEFAULT_SCHEDULE_TIME,
-                run_once: (u as { run_once?: boolean }).run_once ?? false,
-              }))
-            )
+            setUrlConfigs(settings.urls.map(mapUrlFromApi))
           }
-          setProcessBeforePublish(settings.process_before_publish ?? false)
-          setProcessDescription(settings.process_description ?? '')
-          setRemoveEmojis(settings.remove_emojis ?? false)
-          setRemoveImages(settings.remove_images ?? false)
-          setCleanHtml(settings.clean_html ?? false)
-          setScreenshotOnly(settings.screenshot_only ?? false)
-          const ps = settings.process_services
-          if (Array.isArray(ps)) {
-            setProcessServiceWordpress(ps.includes('wordpress'))
-            setProcessServiceTelegram(ps.includes('telegram'))
-            setProcessServiceTwitter(ps.includes('twitter'))
-            setProcessServiceVkontakte(ps.includes('vkontakte'))
-          }
-          setStatusReviewAfterProcess(settings.status_review_after_process ?? false)
-          setAddStaticHtml(settings.add_static_html ?? false)
-          setStaticHtmlContent((settings.static_html_content ?? '').slice(0, 1000))
         }
       } catch (err) {
         console.error('Failed to load settings:', err)
@@ -130,25 +128,16 @@ export function CustomURLPage() {
     setUrlConfigs([...urlConfigs, defaultUrlConfig()])
   }
 
-  function removeUrlConfig(id: string) {
-    if (urlConfigs.length > 1) {
-      setUrlConfigs(urlConfigs.filter((c) => c.id !== id))
-    }
+  function removeUrlConfig(id: string | undefined) {
+    if (!id || urlConfigs.length <= 1) return
+    setUrlConfigs(urlConfigs.filter((c) => c.id !== id))
   }
 
-  function updateUrlConfig(id: string, field: keyof URLConfig, value: unknown) {
+  function updateUrlConfig(id: string | undefined, field: keyof URLConfig, value: unknown) {
+    if (!id) return
     setUrlConfigs((prev) =>
       prev.map((config) => {
         if (config.id !== id) return config
-        if (field === 'target_social_networks' && value && typeof value === 'object') {
-          return { ...config, target_social_networks: { ...config.target_social_networks, ...value as object } }
-        }
-        if (field === 'schedule_time') {
-          return { ...config, schedule_time: value as string }
-        }
-        if (field === 'run_once') {
-          return { ...config, run_once: value as boolean }
-        }
         return { ...config, [field]: value }
       })
     )
@@ -160,29 +149,29 @@ export function CustomURLPage() {
       urls: urlConfigs
         .filter((c) => c.url && c.xpath)
         .map((c) => ({
+          id: c.id,
           url: c.url,
           xpath: c.xpath,
           take_screenshot: c.take_screenshot,
           screenshot_format: c.take_screenshot ? (c.screenshot_format ?? 'base64') : undefined,
           target_social_networks: c.target_social_networks,
+          target_channels: c.target_channels ?? [],
+          target_groups: c.target_groups ?? [],
           schedule_time: c.schedule_time || DEFAULT_SCHEDULE_TIME,
           run_once: c.run_once ?? false,
+          process_before_publish: c.process_before_publish ?? false,
+          process_description: c.process_description || undefined,
+          remove_emojis: c.remove_emojis ?? false,
+          remove_images: c.remove_images ?? false,
+          clean_html: c.clean_html ?? false,
+          process_services: c.process_services ?? [],
+          status_review_after_process: c.status_review_after_process ?? false,
+          add_static_html: c.add_static_html ?? false,
+          static_html_content: c.add_static_html
+            ? (c.static_html_content ?? '').slice(0, 1000)
+            : undefined,
+          screenshot_only: c.screenshot_only ?? false,
         })),
-      process_before_publish: processBeforePublish,
-      process_description: processDescription || undefined,
-      remove_emojis: removeEmojis,
-      remove_images: removeImages,
-      clean_html: cleanHtml,
-      process_services: [
-        ...(processServiceWordpress ? ['wordpress'] : []),
-        ...(processServiceTelegram ? ['telegram'] : []),
-        ...(processServiceTwitter ? ['twitter'] : []),
-        ...(processServiceVkontakte ? ['vkontakte'] : []),
-      ],
-      status_review_after_process: statusReviewAfterProcess,
-      add_static_html: addStaticHtml,
-      static_html_content: addStaticHtml ? staticHtmlContent.slice(0, 1000) : undefined,
-      screenshot_only: screenshotOnly,
     }
   }
 
@@ -192,7 +181,10 @@ export function CustomURLPage() {
     setSuccess('')
     setIsLoading(true)
     try {
-      await customURLService.saveSettings(buildFullSettings())
+      const saved = await customURLService.saveSettings(buildFullSettings())
+      if (saved?.urls?.length) {
+        setUrlConfigs(saved.urls.map(mapUrlFromApi))
+      }
       setSuccess('Settings saved successfully')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save settings')
@@ -230,16 +222,6 @@ export function CustomURLPage() {
         <button
           type="button"
           className={`px-6 py-3 text-sm font-medium transition-all relative ${
-            activeTab === 'processing' ? 'text-primary-400' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-          }`}
-          onClick={() => setActiveTab('processing')}
-        >
-          Обработка
-          {activeTab === 'processing' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-500" />}
-        </button>
-        <button
-          type="button"
-          className={`px-6 py-3 text-sm font-medium transition-all relative ${
             activeTab === 'posts' ? 'text-primary-400' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
           }`}
           onClick={() => setActiveTab('posts')}
@@ -254,181 +236,9 @@ export function CustomURLPage() {
           <Card className="animate-slide-up">
             <CardHeader>
               <CardTitle>Custom URL Settings</CardTitle>
-              <CardDescription>Configure URL scraping, time interval per URL, and target social networks</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <label className="flex items-center gap-3 cursor-pointer group">
-                <div className="relative">
-                  <input
-                    type="checkbox"
-                    checked={collectEnabled}
-                    onChange={(e) => setCollectEnabled(e.target.checked)}
-                    className="sr-only peer"
-                  />
-                  <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors" />
-                  <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
-                </div>
-                <span className="text-[var(--text-primary)] group-hover:text-primary-400 transition-colors">
-                  Enable collection
-                </span>
-              </label>
-
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-[var(--text-primary)]">URL Configurations</h3>
-                  <Button type="button" variant="secondary" size="sm" onClick={addUrlConfig}>
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                    </svg>
-                    Add URL
-                  </Button>
-                </div>
-
-                {urlConfigs.map((config, index) => (
-                  <Card key={config.id} className="bg-[var(--bg-secondary)]">
-                    <CardContent className="pt-6 space-y-4">
-                      <div className="flex items-center justify-between mb-4">
-                        <h4 className="text-sm font-medium text-[var(--text-primary)]">URL Configuration {index + 1}</h4>
-                        {urlConfigs.length > 1 && (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => removeUrlConfig(config.id)}
-                            className="px-3 text-red-400 hover:text-red-300"
-                          >
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                            </svg>
-                          </Button>
-                        )}
-                      </div>
-                      <Input
-                        label="URL"
-                        type="url"
-                        value={config.url}
-                        onChange={(e) => updateUrlConfig(config.id, 'url', e.target.value)}
-                        placeholder="https://example.com"
-                      />
-                      <Input
-                        label="XPath"
-                        type="text"
-                        value={config.xpath}
-                        onChange={(e) => updateUrlConfig(config.id, 'xpath', e.target.value)}
-                        placeholder="//div[@class='content']"
-                      />
-                      <div className="space-y-2 min-w-[8rem]">
-                        <label className="text-sm font-medium text-[var(--text-secondary)] block">Время (HH:MM)</label>
-                        <Input
-                          type="time"
-                          value={config.schedule_time ?? ''}
-                          onChange={(e) => updateUrlConfig(config.id, 'schedule_time', e.target.value)}
-                        />
-                      </div>
-                      <label className="flex items-center gap-3 cursor-pointer group">
-                        <div className="relative">
-                          <input
-                            type="checkbox"
-                            checked={config.run_once ?? false}
-                            onChange={(e) => updateUrlConfig(config.id, 'run_once', e.target.checked)}
-                            className="sr-only peer"
-                          />
-                          <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors" />
-                          <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
-                        </div>
-                        <span className="text-[var(--text-primary)] group-hover:text-primary-400 transition-colors">
-                          Выполнить единоразово
-                        </span>
-                      </label>
-                      <label className="flex items-center gap-3 cursor-pointer group">
-                        <div className="relative">
-                          <input
-                            type="checkbox"
-                            checked={config.take_screenshot}
-                            onChange={(e) => updateUrlConfig(config.id, 'take_screenshot', e.target.checked)}
-                            className="sr-only peer"
-                          />
-                          <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors" />
-                          <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
-                        </div>
-                        <span className="text-[var(--text-primary)] group-hover:text-primary-400 transition-colors">
-                          Take screenshot
-                        </span>
-                      </label>
-                      {config.take_screenshot && (
-                        <div className="space-y-2 animate-slide-down">
-                          <label className="text-sm font-medium text-[var(--text-secondary)] block">Формат картинки</label>
-                          <div className="flex gap-4">
-                            <label className="flex items-center gap-2 cursor-pointer">
-                              <input
-                                type="radio"
-                                name={`screenshot-format-${config.id}`}
-                                checked={(config.screenshot_format ?? 'base64') === 'base64'}
-                                onChange={() => updateUrlConfig(config.id, 'screenshot_format', 'base64')}
-                                className="w-4 h-4 text-primary-500"
-                              />
-                              <span className="text-[var(--text-primary)]">base64</span>
-                            </label>
-                            <label className="flex items-center gap-2 cursor-pointer">
-                              <input
-                                type="radio"
-                                name={`screenshot-format-${config.id}`}
-                                checked={config.screenshot_format === 'file'}
-                                onChange={() => updateUrlConfig(config.id, 'screenshot_format', 'file')}
-                                className="w-4 h-4 text-primary-500"
-                              />
-                              <span className="text-[var(--text-primary)]">файл</span>
-                            </label>
-                          </div>
-                        </div>
-                      )}
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium text-[var(--text-secondary)] block">Target Social Networks</label>
-                        <div className="grid grid-cols-2 gap-3">
-                          {(['tg', 'tw', 'vk', 'wp'] as const).map((network) => (
-                            <label key={network} className="flex items-center gap-3 cursor-pointer group">
-                              <div className="relative">
-                                <input
-                                  type="checkbox"
-                                  checked={config.target_social_networks[network] ?? false}
-                                  onChange={(e) => updateUrlConfig(config.id, 'target_social_networks', { [network]: e.target.checked })}
-                                  className="sr-only peer"
-                                />
-                                <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors" />
-                                <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
-                              </div>
-                              <span className="text-[var(--text-primary)] group-hover:text-primary-400 transition-colors uppercase">
-                                {network}
-                              </span>
-                            </label>
-                          ))}
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            </CardContent>
-            <CardFooter>
-              <Button type="submit" isLoading={isLoading} className="w-full">
-                Save Settings
-              </Button>
-            </CardFooter>
-          </Card>
-        </form>
-      )}
-
-      {activeTab === 'processing' && (
-        <form onSubmit={handleSaveSettings}>
-          <Card className="animate-slide-up">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-                Обработка
-              </CardTitle>
-              <CardDescription>Настройки обработки постов перед публикацией</CardDescription>
+              <CardDescription>
+                Список URL для сбора. Обработка и публикация — на странице «Настроить».
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               {isLoadingSettings ? (
@@ -439,137 +249,149 @@ export function CustomURLPage() {
                     <div className="relative">
                       <input
                         type="checkbox"
-                        checked={processBeforePublish}
-                        onChange={(e) => setProcessBeforePublish(e.target.checked)}
+                        checked={collectEnabled}
+                        onChange={(e) => setCollectEnabled(e.target.checked)}
                         className="sr-only peer"
                       />
                       <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors" />
                       <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
                     </div>
                     <span className="text-[var(--text-primary)] group-hover:text-primary-400 transition-colors">
-                      Обрабатывать перед публикацией
+                      Enable collection
                     </span>
                   </label>
 
-                  {processBeforePublish && (
-                    <div className="space-y-2 animate-slide-down">
-                      <label className="text-sm font-medium text-[var(--text-secondary)] block">Описание обработки</label>
-                      <textarea
-                        value={processDescription}
-                        onChange={(e) => setProcessDescription(e.target.value)}
-                        rows={4}
-                        className="w-full px-4 py-3 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-xl text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500 transition-all"
-                        placeholder="Опишите, как должны обрабатываться посты перед публикацией..."
-                      />
-                    </div>
-                  )}
+                  <div className="space-y-4">
+                    <h3 className="text-sm font-semibold text-[var(--text-primary)]">URL Configurations</h3>
 
-                  <label className="flex items-center gap-3 cursor-pointer group">
-                    <div className="relative">
-                      <input type="checkbox" checked={removeEmojis} onChange={(e) => setRemoveEmojis(e.target.checked)} className="sr-only peer" />
-                      <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors" />
-                      <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
-                    </div>
-                    <span className="text-[var(--text-primary)]">Удалить смайлики/эмодзи</span>
-                  </label>
+                    {urlConfigs.map((config, index) => (
+                      <Card key={config.id} className="bg-[var(--bg-secondary)]">
+                        <CardContent className="pt-6 space-y-4">
+                          <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
+                            <h4 className="text-sm font-medium text-[var(--text-primary)]">
+                              URL Configuration {index + 1}
+                            </h4>
+                            <div className="flex items-center gap-2">
+                              {config.id && (
+                                <Link to={`/custom-url/${config.id}`}>
+                                  <Button type="button" size="sm" variant="secondary">
+                                    Настроить
+                                  </Button>
+                                </Link>
+                              )}
+                              {urlConfigs.length > 1 && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => removeUrlConfig(config.id)}
+                                  className="px-3 text-red-400 hover:text-red-300"
+                                >
+                                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                  </svg>
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                          <Input
+                            label="URL"
+                            type="url"
+                            value={config.url}
+                            onChange={(e) => updateUrlConfig(config.id, 'url', e.target.value)}
+                            placeholder="https://example.com"
+                          />
+                          <Input
+                            label="XPath"
+                            type="text"
+                            value={config.xpath}
+                            onChange={(e) => updateUrlConfig(config.id, 'xpath', e.target.value)}
+                            placeholder="//div[@class='content']"
+                          />
+                          <div className="space-y-2 min-w-[8rem]">
+                            <label className="text-sm font-medium text-[var(--text-secondary)] block">Время (HH:MM)</label>
+                            <Input
+                              type="time"
+                              value={config.schedule_time ?? ''}
+                              onChange={(e) => updateUrlConfig(config.id, 'schedule_time', e.target.value)}
+                            />
+                          </div>
+                          <label className="flex items-center gap-3 cursor-pointer group">
+                            <div className="relative">
+                              <input
+                                type="checkbox"
+                                checked={config.run_once ?? false}
+                                onChange={(e) => updateUrlConfig(config.id, 'run_once', e.target.checked)}
+                                className="sr-only peer"
+                              />
+                              <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors" />
+                              <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
+                            </div>
+                            <span className="text-[var(--text-primary)] group-hover:text-primary-400 transition-colors">
+                              Выполнить единоразово
+                            </span>
+                          </label>
+                          <label className="flex items-center gap-3 cursor-pointer group">
+                            <div className="relative">
+                              <input
+                                type="checkbox"
+                                checked={config.take_screenshot}
+                                onChange={(e) => updateUrlConfig(config.id, 'take_screenshot', e.target.checked)}
+                                className="sr-only peer"
+                              />
+                              <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors" />
+                              <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
+                            </div>
+                            <span className="text-[var(--text-primary)] group-hover:text-primary-400 transition-colors">
+                              Take screenshot
+                            </span>
+                          </label>
+                          {config.take_screenshot && (
+                            <div className="space-y-2 animate-slide-down">
+                              <label className="text-sm font-medium text-[var(--text-secondary)] block">Формат картинки</label>
+                              <div className="flex gap-4">
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                  <input
+                                    type="radio"
+                                    name={`screenshot-format-${config.id}`}
+                                    checked={(config.screenshot_format ?? 'base64') === 'base64'}
+                                    onChange={() => updateUrlConfig(config.id, 'screenshot_format', 'base64')}
+                                    className="w-4 h-4 text-primary-500"
+                                  />
+                                  <span className="text-[var(--text-primary)]">base64</span>
+                                </label>
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                  <input
+                                    type="radio"
+                                    name={`screenshot-format-${config.id}`}
+                                    checked={config.screenshot_format === 'file'}
+                                    onChange={() => updateUrlConfig(config.id, 'screenshot_format', 'file')}
+                                    className="w-4 h-4 text-primary-500"
+                                  />
+                                  <span className="text-[var(--text-primary)]">файл</span>
+                                </label>
+                              </div>
+                            </div>
+                          )}
+                        </CardContent>
+                      </Card>
+                    ))}
 
-                  <label className="flex items-center gap-3 cursor-pointer group">
-                    <div className="relative">
-                      <input type="checkbox" checked={removeImages} onChange={(e) => setRemoveImages(e.target.checked)} className="sr-only peer" />
-                      <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors" />
-                      <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
-                    </div>
-                    <span className="text-[var(--text-primary)]">Удалить картинки</span>
-                  </label>
-
-                  <label className="flex items-center gap-3 cursor-pointer group">
-                    <div className="relative">
-                      <input
-                        type="checkbox"
-                        checked={screenshotOnly}
-                        onChange={(e) => setScreenshotOnly(e.target.checked)}
-                        className="sr-only peer"
-                      />
-                      <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors" />
-                      <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
-                    </div>
-                    <span className="text-[var(--text-primary)]">
-                      Сохранять только скриншот (без текста)
-                    </span>
-                  </label>
-
-                  <label className="flex items-center gap-3 cursor-pointer group">
-                    <div className="relative">
-                      <input type="checkbox" checked={cleanHtml} onChange={(e) => setCleanHtml(e.target.checked)} className="sr-only peer" />
-                      <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors" />
-                      <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
-                    </div>
-                    <span className="text-[var(--text-primary)]">Очистить HTML</span>
-                  </label>
-
-                  <div className="space-y-3">
-                    <span className="text-sm font-medium text-[var(--text-secondary)] block">Для каких сервисов подготовить обработку</span>
-                    <div className="flex flex-wrap gap-4">
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input type="checkbox" checked={processServiceWordpress} onChange={(e) => setProcessServiceWordpress(e.target.checked)} className="w-4 h-4 text-primary-500 rounded" />
-                        <span className="text-[var(--text-primary)]">WordPress</span>
-                      </label>
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input type="checkbox" checked={processServiceTelegram} onChange={(e) => setProcessServiceTelegram(e.target.checked)} className="w-4 h-4 text-primary-500 rounded" />
-                        <span className="text-[var(--text-primary)]">Telegram</span>
-                      </label>
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input type="checkbox" checked={processServiceTwitter} onChange={(e) => setProcessServiceTwitter(e.target.checked)} className="w-4 h-4 text-primary-500 rounded" />
-                        <span className="text-[var(--text-primary)]">Twitter</span>
-                      </label>
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input type="checkbox" checked={processServiceVkontakte} onChange={(e) => setProcessServiceVkontakte(e.target.checked)} className="w-4 h-4 text-primary-500 rounded" />
-                        <span className="text-[var(--text-primary)]">VKontakte</span>
-                      </label>
-                    </div>
-                  </div>
-
-                  <label className="flex items-center gap-3 cursor-pointer group">
-                    <div className="relative">
-                      <input type="checkbox" checked={statusReviewAfterProcess} onChange={(e) => setStatusReviewAfterProcess(e.target.checked)} className="sr-only peer" />
-                      <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors" />
-                      <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
-                    </div>
-                    <span className="text-[var(--text-primary)]">Перевести пост в статус review после обработки</span>
-                  </label>
-
-                  <label className="flex items-center gap-3 cursor-pointer group">
-                    <div className="relative">
-                      <input type="checkbox" checked={addStaticHtml} onChange={(e) => setAddStaticHtml(e.target.checked)} className="sr-only peer" />
-                      <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors" />
-                      <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
-                    </div>
-                    <span className="text-[var(--text-primary)]">Добавлять в посты статичный HTML</span>
-                  </label>
-
-                  {addStaticHtml && (
-                    <div className="space-y-2 animate-slide-down">
-                      <label className="text-sm font-medium text-[var(--text-secondary)] block">Статичный HTML (до 1000 символов)</label>
-                      <textarea
-                        value={staticHtmlContent}
-                        onChange={(e) => setStaticHtmlContent(e.target.value.slice(0, 1000))}
-                        rows={4}
-                        maxLength={1000}
-                        className="w-full px-4 py-3 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-xl text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500 transition-all"
-                        placeholder="Введите статичный HTML для добавления в посты..."
-                      />
-                      <p className="text-xs text-[var(--text-muted)]">{staticHtmlContent.length} / 1000</p>
-                    </div>
-                  )}
-
-                  <CardFooter className="px-0">
-                    <Button type="submit" isLoading={isLoading} className="w-full sm:w-auto">
-                      Сохранить настройки обработки
+                    <Button type="button" variant="secondary" size="sm" onClick={addUrlConfig} className="w-full sm:w-auto">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                      Add URL
                     </Button>
-                  </CardFooter>
+                  </div>
                 </>
               )}
             </CardContent>
+            <CardFooter>
+              <Button type="submit" isLoading={isLoading} className="w-full" disabled={isLoadingSettings}>
+                Save Settings
+              </Button>
+            </CardFooter>
           </Card>
         </form>
       )}
@@ -632,21 +454,15 @@ export function CustomURLPage() {
                           </div>
                         </td>
                         <td className="py-2 pr-4 text-[var(--text-primary)]">
-                          <div className="max-w-md truncate" title={post.post_text}>
+                          <div className="max-w-md truncate" title={post.post_text ?? ''}>
                             {post.post_text || '—'}
                           </div>
                         </td>
                         <td className="py-2 pr-4 text-[var(--text-secondary)]">
-                          {Array.isArray(post.images) && post.images.length > 0
-                            ? `${post.images.length}`
-                            : '—'}
+                          {Array.isArray(post.images) ? post.images.length : 0}
                         </td>
-                        <td className="py-2 pr-4">
-                          <span className="inline-flex items-center rounded-full bg-[var(--bg-secondary)] px-2 py-0.5 text-xs font-medium text-[var(--text-secondary)]">
-                            {post.status}
-                          </span>
-                        </td>
-                        <td className="py-2 pr-4 text-[var(--text-secondary)]">
+                        <td className="py-2 pr-4 text-[var(--text-secondary)]">{post.status}</td>
+                        <td className="py-2 pr-4 text-[var(--text-secondary)] whitespace-nowrap">
                           {post.created_at ? formatDateTime(post.created_at) : '—'}
                         </td>
                       </tr>

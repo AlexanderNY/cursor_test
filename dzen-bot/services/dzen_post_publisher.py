@@ -21,7 +21,7 @@ from storage_helper import get_storage
 from shared import async_fs
 
 from .selenium_diag import capture_selenium_error_to_s3
-from .selenium_driver import create_chrome_driver
+from .selenium_driver import create_chrome_driver, get_selenium_semaphore
 from .selenium_errors import format_selenium_exception
 from .yandex_auth import YandexAuthError, ensure_dzen_session
 from .yandex_dzen_flow import yandex_auth_dispatch
@@ -174,36 +174,60 @@ async def _update_post_result(
 
 
 async def _fetch_ready_posts() -> List[Dict[str, Any]]:
+    """Claim ready posts (SKIP LOCKED → publishing) with Yandex credentials."""
     conn = await get_db_connection()
     try:
         async with conn.cursor() as cur:
-            await cur.execute(
-                """
-                SELECT dp.id, dp.user_id, dp.post_text, dp.title, dp.images,
-                       prof.yandex_login, prof.yandex_password
-                FROM dzen_posts dp
-                INNER JOIN dzen_profiles prof ON prof.user_id = dp.user_id
-                WHERE dp.status = 'ready'
-                  AND prof.publish_enabled = TRUE
-                  AND prof.yandex_login IS NOT NULL
-                  AND TRIM(prof.yandex_login) <> ''
-                  AND prof.yandex_password IS NOT NULL
-                  AND TRIM(prof.yandex_password) <> ''
-                ORDER BY dp.created_at ASC
-                LIMIT 5
-                """
-            )
-            rows = await cur.fetchall()
-            cols = [
-                "id",
-                "user_id",
-                "post_text",
-                "title",
-                "images",
-                "yandex_login",
-                "yandex_password",
-            ]
-            return [dict(zip(cols, row)) for row in rows]
+            try:
+                await cur.execute("BEGIN")
+                await cur.execute(
+                    """
+                    SELECT dp.id, dp.user_id, dp.post_text, dp.title, dp.images,
+                           prof.yandex_login, prof.yandex_password
+                    FROM dzen_posts dp
+                    INNER JOIN dzen_profiles prof ON prof.user_id = dp.user_id
+                    WHERE dp.status = 'ready'
+                      AND prof.publish_enabled = TRUE
+                      AND prof.yandex_login IS NOT NULL
+                      AND TRIM(prof.yandex_login) <> ''
+                      AND prof.yandex_password IS NOT NULL
+                      AND TRIM(prof.yandex_password) <> ''
+                    ORDER BY dp.created_at ASC
+                    LIMIT 5
+                    FOR UPDATE OF dp SKIP LOCKED
+                    """
+                )
+                rows = await cur.fetchall()
+                cols = [
+                    "id",
+                    "user_id",
+                    "post_text",
+                    "title",
+                    "images",
+                    "yandex_login",
+                    "yandex_password",
+                ]
+                if not rows:
+                    await cur.execute("COMMIT")
+                    return []
+                claimed = [dict(zip(cols, row)) for row in rows]
+                post_ids = [p["id"] for p in claimed]
+                ids_ph = ", ".join(["%s"] * len(post_ids))
+                await cur.execute(
+                    f"""
+                    UPDATE dzen_posts
+                    SET status = 'publishing', updated_at = CURRENT_TIMESTAMP
+                    WHERE id IN ({ids_ph})
+                    """,
+                    post_ids,
+                )
+                await cur.execute("COMMIT")
+                for post in claimed:
+                    post["status"] = "publishing"
+                return claimed
+            except Exception:
+                await cur.execute("ROLLBACK")
+                raise
     finally:
         await release_db_connection(conn)
 
@@ -337,7 +361,8 @@ class DzenPostPublisher:
                     local_paths.append(lp)
             post["_local_image_paths"] = local_paths
 
-            ok, pub_url, err = await asyncio.to_thread(_publish_sync, post)
+            async with get_selenium_semaphore():
+                ok, pub_url, err = await asyncio.to_thread(_publish_sync, post)
             for tmp in local_paths:
                 await async_fs.unlink_quiet(tmp)
             post.pop("_local_image_paths", None)

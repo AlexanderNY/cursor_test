@@ -39,6 +39,9 @@ class Settings(BaseSettings):
     # JWT настройки
     JWT_SECRET_KEY: str = ""
     JWT_ALGORITHM: str = "HS256"
+
+    # Доверять X-Forwarded-For / X-Real-IP только от этих peer CIDR (через запятую)
+    TRUSTED_PROXY_CIDRS: str = "127.0.0.0/8,::1/128,172.20.0.0/16"
     
     # Rate Limiting по умолчанию
     DEFAULT_RATE_LIMIT_REQUESTS: int = 100

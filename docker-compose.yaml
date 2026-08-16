@@ -36,6 +36,9 @@ services:
       <<: *ai-environment
       DATABASE_URL: ${DATABASE_URL}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      DB_POOL_MINSIZE: ${DB_POOL_MINSIZE:-2}
+      DB_POOL_MAXSIZE: ${DB_POOL_MAXSIZE:-8}
+      AI_MAX_CONCURRENT: ${AI_MAX_CONCURRENT:-1}
       S3_ENDPOINT_URL: http://minio:9000
       S3_PUBLIC_ENDPOINT_URL: ${S3_PUBLIC_ENDPOINT_URL:-http://localhost:9000}
       S3_BUCKET: uploads
@@ -46,6 +49,7 @@ services:
       # Публичный URL API для VK OAuth (через ui-edge: /api → gateway). Локально: http://localhost:8100/api
       VK_PUBLIC_GATEWAY_URL: ${VK_PUBLIC_GATEWAY_URL:-https://www.copyparse.ru/api}
       FRONTEND_URL: ${FRONTEND_URL:-https://www.copyparse.ru}
+      VK_OAUTH_ALLOWED_FRONTENDS: ${VK_OAUTH_ALLOWED_FRONTENDS:-}
       VK_APP_ID: ${VK_APP_ID:-}
       VK_APP_SECRET: ${VK_APP_SECRET:-}
       # VK_OAUTH_REDIRECT_URI не задавать — Core строит {VK_PUBLIC_GATEWAY_URL}/vk/oauth/callback
@@ -94,8 +98,9 @@ services:
       - TW_BOT_SERVICE_URL=http://tw-bot:8011
       - VK_BOT_SERVICE_URL=http://vk-bot:8005
       - TG_GAME_SERVICE_URL=http://tg-game:8015
-      - GAME_ADMIN_API_TOKEN=122
+      - GAME_ADMIN_API_TOKEN=${GAME_ADMIN_API_TOKEN}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - TRUSTED_PROXY_CIDRS=${TRUSTED_PROXY_CIDRS:-127.0.0.0/8,::1/128,172.20.0.0/16}
       - CORS_ORIGINS=http://localhost:5173,http://localhost:8100,http://127.0.0.1:8100,http://192.168.1.66,http://192.168.1.66:8100,http://95.165.87.163,https://95.165.87.163,http://copyparse.ru,https://copyparse.ru,http://www.copyparse.ru,https://www.copyparse.ru
     networks:
       monitoring_network:
@@ -109,11 +114,13 @@ services:
       context: .
       dockerfile: ./scheduler/Dockerfile
     ports:
-      - "8003:8003"
+      - "127.0.0.1:8003:8003"
     environment:
       - API_GATEWAY_URL=http://gateway:8000
       - CORE_SERVICE_URL=http://core:8002
       - DATABASE_URL=${DATABASE_URL}
+      - DB_POOL_MINSIZE=${DB_POOL_MINSIZE:-2}
+      - DB_POOL_MAXSIZE=${DB_POOL_MAXSIZE:-8}
       - POLL_INTERVAL_SECONDS=60
       - NOTIFY_ON_CHANGE_ONLY=true
       - TG_BOT_SERVICE_URL=http://tg-bot:8004
@@ -156,10 +163,12 @@ services:
       context: .
       dockerfile: ./wp-bot/Dockerfile 
     ports:
-      - "8006:8006"
+      - "127.0.0.1:8006:8006"
     environment:
       <<: *ai-environment
       DATABASE_URL: ${DATABASE_URL}
+      DB_POOL_MINSIZE: ${DB_POOL_MINSIZE:-2}
+      DB_POOL_MAXSIZE: ${DB_POOL_MAXSIZE:-8}
       VITE_API_GATEWAY_URL: http://gateway:8000
       VITE_CORE_SERVICE_URL: http://core:8002
     networks:
@@ -171,13 +180,14 @@ services:
       context: .
       dockerfile: ./url-bot/Dockerfile 
     ports:
-      - "8007:8007"
+      - "127.0.0.1:8007:8007"
     environment:
       <<: *ai-environment
       CORE_SERVICE_URL: http://core:8002
       API_GATEWAY_URL: http://gateway:8000
       CHROME_BIN: /usr/bin/chromium
       CHROMEDRIVER_PATH: /usr/bin/chromedriver
+      SELENIUM_MAX_CONCURRENT: ${SELENIUM_MAX_CONCURRENT:-2}
       TZ: ${TZ:-Europe/Moscow}
     networks:
       monitoring_network:
@@ -190,10 +200,12 @@ services:
       context: .
       dockerfile: ./collector/Dockerfile
     ports:
-      - "8009:8009"
+      - "127.0.0.1:8009:8009"
     environment:
       <<: *ai-environment
       DATABASE_URL: ${DATABASE_URL}
+      DB_POOL_MINSIZE: ${DB_POOL_MINSIZE:-2}
+      DB_POOL_MAXSIZE: ${DB_POOL_MAXSIZE:-8}
       COLLECT_INTERVAL_SEC: "60"
       DISTRIBUTE_INTERVAL_SEC: "60"
       COLLECT_BATCH_SIZE: "100"
@@ -208,10 +220,13 @@ services:
       context: .
       dockerfile: ./processor/Dockerfile
     ports:
-      - "8010:8010"
+      - "127.0.0.1:8010:8010"
     environment:
       <<: *ai-environment
       DATABASE_URL: ${DATABASE_URL}
+      DB_POOL_MINSIZE: ${DB_POOL_MINSIZE:-2}
+      DB_POOL_MAXSIZE: ${DB_POOL_MAXSIZE:-8}
+      AI_MAX_CONCURRENT: ${AI_MAX_CONCURRENT:-1}
       PROCESS_INTERVAL_SEC: "30"
       PROCESS_BATCH_SIZE: "50"
       WORDPRESS_MAX_LENGTH: "150000"
@@ -227,7 +242,7 @@ services:
     image: ollama/ollama:latest
     gpus: all
     ports:
-      - "11434:11434"
+      - "127.0.0.1:11434:11434"
     volumes:
       - ollama_data:/root/.ollama
     healthcheck:
@@ -277,10 +292,12 @@ services:
     depends_on:
       - minio
     ports:
-      - "8011:8011"
+      - "127.0.0.1:8011:8011"
     environment:
       <<: *ai-environment
       DATABASE_URL: ${DATABASE_URL}
+      DB_POOL_MINSIZE: ${DB_POOL_MINSIZE:-2}
+      DB_POOL_MAXSIZE: ${DB_POOL_MAXSIZE:-8}
       API_PORT: "8011"
       LOG_LEVEL: INFO
       INSTAGRAM_COLLECT_INTERVAL_SEC: "300"
@@ -292,6 +309,7 @@ services:
       S3_USE_SSL: "false"
       CHROME_BIN: /usr/bin/chromium
       CHROMEDRIVER_PATH: /usr/bin/chromedriver
+      SELENIUM_MAX_CONCURRENT: ${SELENIUM_MAX_CONCURRENT:-2}
       INSTAGRAM_SELENIUM_FALLBACK_ENABLED: "false"
       INSTAGRAM_SELENIUM_FALLBACK_NETWORK_ERRORS_ONLY: "true"
     networks:
@@ -304,14 +322,17 @@ services:
     depends_on:
       - minio
     ports:
-      - "8013:8013"
+      - "127.0.0.1:8013:8013"
     environment:
       <<: *ai-environment
       DATABASE_URL: ${DATABASE_URL}
+      DB_POOL_MINSIZE: ${DB_POOL_MINSIZE:-2}
+      DB_POOL_MAXSIZE: ${DB_POOL_MAXSIZE:-8}
       API_PORT: "8013"
       LOG_LEVEL: INFO
       CHROME_BIN: /usr/bin/chromium
       CHROMEDRIVER_PATH: /usr/bin/chromedriver
+      SELENIUM_MAX_CONCURRENT: ${SELENIUM_MAX_CONCURRENT:-2}
       ENABLE_THREADS_SELENIUM_FALLBACK: "false"
       S3_ENDPOINT_URL: http://minio:9000
       S3_BUCKET: uploads
@@ -329,14 +350,17 @@ services:
     depends_on:
       - minio
     ports:
-      - "8014:8011"
+      - "127.0.0.1:8014:8011"
     environment:
       <<: *ai-environment
       DATABASE_URL: ${DATABASE_URL}
+      DB_POOL_MINSIZE: ${DB_POOL_MINSIZE:-2}
+      DB_POOL_MAXSIZE: ${DB_POOL_MAXSIZE:-8}
       API_PORT: "8011"
       LOG_LEVEL: INFO
       CHROME_BIN: /usr/bin/chromium
       CHROMEDRIVER_PATH: /usr/bin/chromedriver
+      SELENIUM_MAX_CONCURRENT: ${SELENIUM_MAX_CONCURRENT:-2}
       S3_ENDPOINT_URL: http://minio:9000
       S3_BUCKET: uploads
       S3_ACCESS_KEY: ${S3_ACCESS_KEY:-admin}
@@ -355,12 +379,14 @@ services:
       minio:
         condition: service_started
     ports:
-      - "8004:8004"
+      - "127.0.0.1:8004:8004"
     environment:
       <<: *ai-environment
       CORE_SERVICE_URL: http://core:8002
       API_GATEWAY_URL: http://gateway:8000
       DATABASE_URL: ${DATABASE_URL}
+      DB_POOL_MINSIZE: ${DB_POOL_MINSIZE:-2}
+      DB_POOL_MAXSIZE: ${DB_POOL_MAXSIZE:-8}
       S3_ENDPOINT_URL: http://minio:9000
       S3_BUCKET: uploads
       S3_ACCESS_KEY: ${S3_ACCESS_KEY:-admin}
@@ -373,6 +399,7 @@ services:
       TELEGRAM_PROXY_URL: ${TELEGRAM_PROXY_URL:-}
       CHROME_BIN: /usr/bin/chromium
       CHROMEDRIVER_PATH: /usr/bin/chromedriver
+      SELENIUM_MAX_CONCURRENT: ${SELENIUM_MAX_CONCURRENT:-2}
     volumes:
       - tg-bot-sessions:/app/sessions
     extra_hosts:
@@ -388,14 +415,16 @@ services:
     depends_on:
       - minio
     ports:
-      - "8015:8015"
+      - "127.0.0.1:8015:8015"
     environment:
       DATABASE_URL: ${DATABASE_URL}
+      DB_POOL_MINSIZE: ${DB_POOL_MINSIZE:-2}
+      DB_POOL_MAXSIZE: ${DB_POOL_MAXSIZE:-8}
       API_PORT: "8015"
       LOG_LEVEL: INFO
-      GAME_BOT_TOKEN: "6951168264:AAGaXyK4Bi3jiyZHm8yiN4LI6cg2UZ0pPV0"
-      GAME_ADMIN_TELEGRAM_IDS: "426287794"
-      GAME_ADMIN_API_TOKEN: "122"
+      GAME_BOT_TOKEN: ${GAME_BOT_TOKEN}
+      GAME_ADMIN_TELEGRAM_IDS: ${GAME_ADMIN_TELEGRAM_IDS:-}
+      GAME_ADMIN_API_TOKEN: ${GAME_ADMIN_API_TOKEN}
       S3_ENDPOINT_URL: http://minio:9000
       S3_BUCKET: uploads
       S3_ACCESS_KEY: ${S3_ACCESS_KEY:-admin}
@@ -414,12 +443,14 @@ services:
       - minio
     shm_size: "1gb"
     ports:
-      - "8005:8005"
+      - "127.0.0.1:8005:8005"
     environment:
       <<: *ai-environment
       CORE_SERVICE_URL: http://core:8002
       API_GATEWAY_URL: http://gateway:8000
       DATABASE_URL: ${DATABASE_URL}
+      DB_POOL_MINSIZE: ${DB_POOL_MINSIZE:-2}
+      DB_POOL_MAXSIZE: ${DB_POOL_MAXSIZE:-8}
       S3_ENDPOINT_URL: http://minio:9000
       S3_BUCKET: uploads
       S3_ACCESS_KEY: ${S3_ACCESS_KEY:-admin}
@@ -430,6 +461,7 @@ services:
       MAX_CONCURRENT_CLIENTS: "20"
       CHROME_BIN: /usr/bin/chromium
       CHROMEDRIVER_PATH: /usr/bin/chromedriver
+      SELENIUM_MAX_CONCURRENT: ${SELENIUM_MAX_CONCURRENT:-2}
       SELENIUM_HEADLESS: "true"
       SELENIUM_PAGE_LOAD_TIMEOUT: "90"
     volumes:
@@ -443,10 +475,12 @@ services:
       context: .
       dockerfile: ./dzen-bot/Dockerfile     
     ports:
-      - "8012:8012"
+      - "127.0.0.1:8012:8012"
     environment:
       <<: *ai-environment
       DATABASE_URL: ${DATABASE_URL}
+      DB_POOL_MINSIZE: ${DB_POOL_MINSIZE:-2}
+      DB_POOL_MAXSIZE: ${DB_POOL_MAXSIZE:-8}
       API_PORT: "8012"
       LOG_LEVEL: INFO
       S3_ENDPOINT_URL: http://minio:9000
@@ -455,6 +489,9 @@ services:
       S3_SECRET_KEY: ${S3_SECRET_KEY}
       S3_USE_SSL: "false"
       S3_DIAG_PREFIX: dzen/diag
+      SELENIUM_MAX_CONCURRENT: ${SELENIUM_MAX_CONCURRENT:-2}
+      CHROME_BIN: /usr/bin/chromium
+      CHROMEDRIVER_PATH: /usr/bin/chromedriver
     networks:
       monitoring_network:
         ipv4_address: 172.20.10.12
@@ -462,8 +499,8 @@ services:
   minio:
     image: minio/minio
     ports:
-      - "9000:9000"  # api
-      - "9001:9001"  # web UI
+      - "127.0.0.1:9000:9000"  # api
+      - "127.0.0.1:9001:9001"  # web UI
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-admin}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}

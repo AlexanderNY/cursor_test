@@ -2,7 +2,7 @@
 
 from typing import Optional
 
-from fastapi import APIRouter, Request, Depends
+from fastapi import APIRouter, HTTPException, Request, Depends
 from fastapi.responses import Response
 
 from config import settings
@@ -11,6 +11,30 @@ from middleware.jwt_validator import get_current_user
 
 
 router = APIRouter(tags=["Bot Proxy"])
+
+
+def _require_user(current_user: Optional[dict]) -> dict:
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Authorization required")
+    return current_user
+
+
+def _assert_self_or_admin(current_user: Optional[dict], user_id: int) -> None:
+    user = _require_user(current_user)
+    if (user.get("role") or "").lower() == "admin":
+        return
+    try:
+        token_uid = int(user.get("user_id"))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=403, detail="Access denied")
+    if token_uid != int(user_id):
+        raise HTTPException(status_code=403, detail="Access denied for this user_id")
+
+
+def _assert_admin(current_user: Optional[dict]) -> None:
+    user = _require_user(current_user)
+    if (user.get("role") or "").lower() != "admin":
+        raise HTTPException(status_code=403, detail="Admin role required")
 
 
 async def _forward_to_bot(
@@ -51,7 +75,8 @@ async def tg_bot_auth_status(
     request: Request,
     current_user: Optional[dict] = Depends(get_current_user),
 ) -> Response:
-    """GET /tg-bot/auth/status/{user_id} -> tg-bot /tg/auth/status/{user_id}. Требует JWT."""
+    """GET /tg-bot/auth/status/{user_id} -> tg-bot. Только свой user_id или admin."""
+    _assert_self_or_admin(current_user, user_id)
     return await _forward_to_bot(settings.TG_BOT_SERVICE_URL, f"/tg/auth/status/{user_id}", request)
 
 
@@ -61,7 +86,8 @@ async def tg_bot_channels(
     request: Request,
     current_user: Optional[dict] = Depends(get_current_user),
 ) -> Response:
-    """GET /tg-bot/channels/{user_id} -> tg-bot /tg/channels/{user_id}. Требует JWT."""
+    """GET /tg-bot/channels/{user_id} -> tg-bot. Только свой user_id или admin."""
+    _assert_self_or_admin(current_user, user_id)
     return await _forward_to_bot(settings.TG_BOT_SERVICE_URL, f"/tg/channels/{user_id}", request)
 
 
@@ -169,8 +195,12 @@ async def instagram_bot_schedule(
 
 
 @router.post("/url-bot/run")
-async def url_bot_run(request: Request) -> Response:
-    """POST /url-bot/run -> url-bot /run. Тестовый запуск скрапинга по запросу (без JWT)."""
+async def url_bot_run(
+    request: Request,
+    current_user: Optional[dict] = Depends(get_current_user),
+) -> Response:
+    """POST /url-bot/run -> url-bot /run. Тестовый скрапинг — только admin JWT."""
+    _assert_admin(current_user)
     return await _forward_to_bot(settings.URL_BOT_SERVICE_URL, "/run", request)
 
 

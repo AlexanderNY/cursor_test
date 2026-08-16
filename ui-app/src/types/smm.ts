@@ -27,12 +27,15 @@ export interface Brand {
   updated_at?: string | null
 }
 
+export type ConditionsMode = 'any_of' | 'all_of'
+
 export interface ChannelProcessingConfig {
   process_enabled?: boolean
   processing_description?: string | null
   remove_emojis?: boolean
   remove_images?: boolean
   clean_html?: boolean
+  /** @deprecated use BrandChannel.publish_targets */
   process_services?: string[]
   status_review_after_process?: boolean
   add_static_html?: boolean
@@ -48,6 +51,8 @@ export interface ChannelAlertDelivery {
   channel_to_post_title?: string | null
   alert_text?: string | null
   include_ai_summary?: boolean
+  /** Own brand channel ids to send alerts to (like publish_targets). */
+  alert_targets?: number[]
 }
 
 export interface ChannelAlertRule {
@@ -55,7 +60,7 @@ export interface ChannelAlertRule {
   enabled?: boolean
   priority?: number
   save_conditions?: string[]
-  conditions_mode?: 'any_of' | 'all_of'
+  conditions_mode?: ConditionsMode
   category_filter?: string | null
   dedup_window_sec?: number
   rate_limit_per_hour?: number | null
@@ -83,7 +88,9 @@ export interface BrandChannel {
   comments_collect_enabled?: boolean
   alert_enabled?: boolean
   save_conditions?: string[]
+  conditions_mode?: ConditionsMode
   processing?: ChannelProcessingConfig
+  publish_targets?: number[]
   alert_delivery?: ChannelAlertDelivery
   alert_rules?: ChannelAlertRule[]
   brand_name?: string
@@ -145,6 +152,7 @@ export interface AutomationRule {
 export interface AnalyticsOverview {
   period: string
   brand_id?: number | null
+  channel_id?: number | null
   reach: number
   engagement: number
   er: number
@@ -166,6 +174,10 @@ export interface AnalyticsPost {
   er: number
   network: string
   created_at?: string | null
+  published_at?: string | null
+  channel_id?: number | null
+  channel_external_id?: string | null
+  channel_title?: string | null
 }
 
 export interface BestTimeSlot {

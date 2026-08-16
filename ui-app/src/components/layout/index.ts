@@ -1,6 +1,7 @@
 export { Layout } from './layout'
 export { Sidebar } from './sidebar'
 export { Header } from './header'
+export { Footer } from './footer'
+export { BrandContextBar } from './brand-context-bar'
 export { MobileNav } from './mobile-nav'
 export { NotificationToasts } from './notification-toasts'
-

@@ -35,35 +35,35 @@ router = APIRouter(prefix="/admin", tags=["Admin"])
 
 
 @router.get("/services-status", response_model=ServicesStatusResponse)
-async def get_services_status():
+async def get_services_status(admin_user: Dict[str, Any] = Depends(get_admin_user)):
     """Агрегированный статус всех сервисов (healthcheck + collector/processor/scheduler status)."""
     data = await admin_service.get_services_status()
     return data
 
 
 @router.post("/processor/run", response_model=ProcessorRunResponse)
-async def run_processor_cycle():
+async def run_processor_cycle(admin_user: Dict[str, Any] = Depends(get_admin_user)):
     """Принудительный запуск одного цикла обработки на processor."""
     data = await admin_service.run_processor_cycle()
     return ProcessorRunResponse(**data)
 
 
 @router.post("/collect/run", response_model=ProcessorRunResponse)
-async def run_collect_cycle():
+async def run_collect_cycle(admin_user: Dict[str, Any] = Depends(get_admin_user)):
     """Принудительный запуск одного цикла сбора на collector (tg_posts → posts)."""
     data = await admin_service.run_collect_cycle()
     return ProcessorRunResponse(**data)
 
 
 @router.post("/distribute/run", response_model=ProcessorRunResponse)
-async def run_distribute_cycle():
+async def run_distribute_cycle(admin_user: Dict[str, Any] = Depends(get_admin_user)):
     """Принудительный запуск одного цикла распределения на collector (posts ready → tg_posts ready)."""
     data = await admin_service.run_distribute_cycle()
     return ProcessorRunResponse(**data)
 
 
 @router.get("/posts-tables", response_model=PostsTablesResponse)
-async def get_posts_tables():
+async def get_posts_tables(admin_user: Dict[str, Any] = Depends(get_admin_user)):
     """Обзор таблиц постов: метрики из collector и processor."""
     data = await admin_service.get_posts_tables_overview()
     return data
@@ -72,6 +72,7 @@ async def get_posts_tables():
 @router.get("/posts", response_model=PostsListResponse)
 async def get_admin_posts(
     request: Request,
+    admin_user: Dict[str, Any] = Depends(get_admin_user),
     limit: int = Query(500, ge=1, le=2000),
     offset: int = Query(0, ge=0),
     status: Optional[str] = Query(None, description="Фильтр по статусу (например review)"),
@@ -90,7 +91,7 @@ async def get_admin_posts(
 
 
 @router.get("/posting-diagnostics", response_model=PostingDiagnosticsResponse)
-async def get_posting_diagnostics():
+async def get_posting_diagnostics(admin_user: Dict[str, Any] = Depends(get_admin_user)):
     """Цикл диагностики постинга: сводки tg_posts/posts по статусам и подсказки для администратора."""
     data = await admin_service.run_posting_diagnostics()
     return PostingDiagnosticsResponse(**data)
@@ -99,6 +100,7 @@ async def get_posting_diagnostics():
 @router.get("/pipeline-events", response_model=PipelineEventsResponse)
 async def get_pipeline_events(
     limit: int = Query(50, ge=1, le=200),
+    admin_user: Dict[str, Any] = Depends(get_admin_user),
 ):
     """Списки срабатываний alerting/publishing/collection/Custom URL/сервисов."""
     data = await admin_service.get_pipeline_events(limit=limit)

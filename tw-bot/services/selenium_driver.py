@@ -1,6 +1,8 @@
 """Фабрика WebDriver для Chromium (tw-bot, проверка X через Selenium)."""
+import asyncio
 import logging
 import os
+import threading
 from typing import Any, Dict, Optional
 
 from selenium import webdriver
@@ -11,6 +13,20 @@ from webdriver_manager.chrome import ChromeDriverManager
 from config import settings
 
 logger = logging.getLogger(__name__)
+
+_selenium_semaphore: Optional[asyncio.Semaphore] = None
+_semaphore_lock = threading.Lock()
+
+
+def get_selenium_semaphore() -> asyncio.Semaphore:
+    """Limit parallel Chrome (SELENIUM_MAX_CONCURRENT)."""
+    global _selenium_semaphore
+    if _selenium_semaphore is None:
+        with _semaphore_lock:
+            if _selenium_semaphore is None:
+                n = max(1, int(getattr(settings, "SELENIUM_MAX_CONCURRENT", 2) or 2))
+                _selenium_semaphore = asyncio.Semaphore(n)
+    return _selenium_semaphore
 
 
 def create_chrome_driver(proxy: Optional[Dict[str, Any]] = None) -> webdriver.Chrome:

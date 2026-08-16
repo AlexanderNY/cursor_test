@@ -59,6 +59,111 @@ def _parse_json_field(value: Any, default: Any) -> Any:
     return default
 
 
+def _iso_dt(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return str(value)
+
+
+def _channel_id_equal(left: str, right: str) -> bool:
+    a = left.strip()
+    b = right.strip()
+    if not a or not b:
+        return False
+    if a == b:
+        return True
+    if a.lstrip("-") == b.lstrip("-"):
+        return True
+    try:
+        return int(a) == int(b)
+    except (TypeError, ValueError):
+        return False
+
+
+def _iter_channel_tokens(value: Any) -> list[str]:
+    tokens: list[str] = []
+    parsed = _parse_json_field(value, value)
+    if parsed is None:
+        return tokens
+    if isinstance(parsed, list):
+        for item in parsed:
+            tokens.extend(_iter_channel_tokens(item))
+        return tokens
+    if isinstance(parsed, dict):
+        for key in ("external_id", "id", "chat_id"):
+            raw = parsed.get(key)
+            if raw is not None and raw != "":
+                tokens.append(str(raw).strip())
+        return tokens
+    text = str(parsed).strip()
+    if text:
+        tokens.append(text)
+    return tokens
+
+
+def _match_channel(channels: list[dict], network: str, *candidates: Any) -> Optional[dict]:
+    tokens: list[str] = []
+    for cand in candidates:
+        tokens.extend(_iter_channel_tokens(cand))
+    if not tokens:
+        return None
+    for ch in channels:
+        if ch.get("network") != network:
+            continue
+        ext = str(ch.get("external_id") or "").strip()
+        if not ext:
+            continue
+        if any(_channel_id_equal(ext, token) for token in tokens):
+            return ch
+    return None
+
+
+def _external_id_variants(external_id: Any) -> list[str]:
+    ext = str(external_id or "").strip()
+    if not ext:
+        return []
+    variants = [ext]
+    stripped = ext.lstrip("-")
+    if stripped and stripped != ext:
+        variants.append(stripped)
+    try:
+        n = int(ext)
+        variants.extend([str(n), str(abs(n)), str(-abs(n))])
+    except (TypeError, ValueError):
+        pass
+    seen: set[str] = set()
+    out: list[str] = []
+    for v in variants:
+        if v and v not in seen:
+            seen.add(v)
+            out.append(v)
+    return out
+
+
+def _posts_channel_where(network: str, external_id: Any, table_alias: str = "") -> tuple[str, list[Any]]:
+    prefix = f"{table_alias}." if table_alias else ""
+    variants = _external_id_variants(external_id)
+    if not variants:
+        return "FALSE", []
+    parts: list[str] = []
+    params: list[Any] = []
+    target_col = "target_channels" if network == "tg" else "target_groups"
+    chat_col = "telegram_chat_id" if network == "tg" else None
+    for v in variants:
+        parts.append(f"{prefix}domain = %s")
+        params.append(v)
+        if chat_col:
+            parts.append(f"{prefix}{chat_col} = %s")
+            params.append(v)
+        parts.append(f"{prefix}{target_col} ? %s")
+        params.append(v)
+        parts.append(f"{prefix}{target_col} @> %s::jsonb")
+        params.append(json.dumps([v]))
+    return "(" + " OR ".join(parts) + ")", params
+
+
 def _row_channel(r: tuple) -> dict[str, Any]:
     # Supports ops, comments, and channel-flow config columns
     out = {
@@ -78,7 +183,9 @@ def _row_channel(r: tuple) -> dict[str, Any]:
         "comments_collect_enabled": False,
         "alert_enabled": False,
         "save_conditions": [],
+        "conditions_mode": "any_of",
         "processing": {},
+        "publish_targets": [],
         "alert_delivery": {},
         "alert_rules": [],
     }
@@ -106,6 +213,19 @@ def _row_channel(r: tuple) -> dict[str, Any]:
     if len(r) > 18:
         rules = _parse_json_field(r[18], [])
         out["alert_rules"] = rules if isinstance(rules, list) else []
+    if len(r) > 19:
+        mode = r[19] or "any_of"
+        out["conditions_mode"] = mode if mode in ("any_of", "all_of") else "any_of"
+    if len(r) > 20:
+        targets = _parse_json_field(r[20], [])
+        parsed: list[int] = []
+        if isinstance(targets, list):
+            for x in targets:
+                try:
+                    parsed.append(int(x))
+                except (TypeError, ValueError):
+                    continue
+        out["publish_targets"] = parsed
     return out
 
 
@@ -140,7 +260,8 @@ CHANNEL_SELECT = """
 id, brand_id, network, external_id, title, kind, role,
 color_override, created_at, publish_enabled, collect_enabled,
 discussion_external_id, discussion_title, comments_collect_enabled,
-alert_enabled, save_conditions, processing, alert_delivery, alert_rules
+alert_enabled, save_conditions, processing, alert_delivery, alert_rules,
+conditions_mode, publish_targets
 """
 
 CHANNEL_RETURNING = CHANNEL_SELECT
@@ -416,6 +537,7 @@ class SmmService:
                            c.color_override, c.created_at, c.publish_enabled, c.collect_enabled,
                            c.discussion_external_id, c.discussion_title, c.comments_collect_enabled,
                            c.alert_enabled, c.save_conditions, c.processing, c.alert_delivery, c.alert_rules,
+                           c.conditions_mode, c.publish_targets,
                            b.name AS brand_name, b.color AS brand_color
                     FROM smm_brand_channels c
                     JOIN smm_brands b ON b.id = c.brand_id
@@ -426,9 +548,9 @@ class SmmService:
                 row = await cur.fetchone()
                 if not row:
                     return None
-                ch = _row_channel(row[:19])
-                ch["brand_name"] = row[19]
-                ch["brand_color"] = row[20]
+                ch = _row_channel(row[:21])
+                ch["brand_name"] = row[21]
+                ch["brand_color"] = row[22]
                 return ch
         finally:
             await release_db_connection(conn)
@@ -456,11 +578,19 @@ class SmmService:
             "comments_collect_enabled",
             "alert_enabled",
             "save_conditions",
+            "conditions_mode",
             "processing",
+            "publish_targets",
             "alert_delivery",
             "alert_rules",
         }
-        json_fields = {"save_conditions", "processing", "alert_delivery", "alert_rules"}
+        json_fields = {
+            "save_conditions",
+            "processing",
+            "publish_targets",
+            "alert_delivery",
+            "alert_rules",
+        }
         updates = []
         params: list[Any] = []
         for key, val in fields.items():
@@ -469,6 +599,12 @@ class SmmService:
             # allow clearing discussion ids with empty string → NULL
             if key in ("discussion_external_id", "discussion_title") and val == "":
                 val = None
+            if key == "conditions_mode" and val is not None:
+                val = val if val in ("any_of", "all_of") else "any_of"
+            if key == "publish_targets" and val is not None:
+                if not isinstance(val, list):
+                    val = []
+                val = [int(x) for x in val if isinstance(x, (int, float)) or str(x).isdigit()]
             if key in json_fields and val is not None:
                 val = json.dumps(val, ensure_ascii=False)
             if val is not None or key in ("discussion_external_id", "discussion_title"):
@@ -512,6 +648,7 @@ class SmmService:
                            c.color_override, c.created_at, c.publish_enabled, c.collect_enabled,
                            c.discussion_external_id, c.discussion_title, c.comments_collect_enabled,
                            c.alert_enabled, c.save_conditions, c.processing, c.alert_delivery, c.alert_rules,
+                           c.conditions_mode, c.publish_targets,
                            b.name AS brand_name, b.color AS brand_color
                     FROM smm_brand_channels c
                     JOIN smm_brands b ON b.id = c.brand_id
@@ -523,9 +660,9 @@ class SmmService:
                 rows = await cur.fetchall()
                 result = []
                 for r in rows:
-                    ch = _row_channel(r[:19])
-                    ch["brand_name"] = r[19]
-                    ch["brand_color"] = r[20]
+                    ch = _row_channel(r[:21])
+                    ch["brand_name"] = r[21]
+                    ch["brand_color"] = r[22]
                     result.append(ch)
                 return result
         finally:
@@ -1107,32 +1244,71 @@ class SmmService:
         finally:
             await release_db_connection(conn)
 
-    async def analytics_overview(self, user_id: int, brand_id: Optional[int], period: str = "7d") -> dict:
+    async def analytics_overview(
+        self,
+        user_id: int,
+        brand_id: Optional[int],
+        period: str = "7d",
+        channel_id: Optional[int] = None,
+    ) -> dict:
         days = 7 if period == "7d" else (30 if period == "30d" else 7)
         since = datetime.utcnow() - timedelta(days=days)
+        channel = await self.get_channel(user_id, channel_id) if channel_id else None
+        if channel_id and not channel:
+            return {
+                "period": period,
+                "brand_id": brand_id,
+                "channel_id": channel_id,
+                "reach": 0,
+                "engagement": 0,
+                "er": 0.0,
+                "posts": 0,
+                "subscriber_growth": 0,
+                "by_network": {
+                    "tg": {"views": 0, "likes": 0, "comments": 0, "reposts": 0, "posts": 0},
+                    "vk": {"views": 0, "likes": 0, "comments": 0, "reposts": 0, "posts": 0},
+                },
+            }
+        empty_row = (0, 0, 0, 0, 0)
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
-                await cur.execute(
-                    """
-                    SELECT COALESCE(SUM(views),0), COALESCE(SUM(likes),0),
-                           COALESCE(SUM(comments),0), COALESCE(SUM(reposts),0), COUNT(*)
-                    FROM tg_posts
-                    WHERE user_id = %s AND created_at >= %s AND status != 'deleted'
-                    """,
-                    (user_id, since),
-                )
-                tg = await cur.fetchone()
-                await cur.execute(
-                    """
-                    SELECT COALESCE(SUM(views),0), COALESCE(SUM(likes),0),
-                           COALESCE(SUM(comments),0), COALESCE(SUM(reposts),0), COUNT(*)
-                    FROM vk_posts
-                    WHERE user_id = %s AND created_at >= %s AND status != 'deleted'
-                    """,
-                    (user_id, since),
-                )
-                vk = await cur.fetchone()
+                tg = empty_row
+                vk = empty_row
+                if channel is None or channel.get("network") == "tg":
+                    where = "user_id = %s AND created_at >= %s AND status != 'deleted'"
+                    params: list[Any] = [user_id, since]
+                    if channel:
+                        extra, extra_params = _posts_channel_where("tg", channel.get("external_id"))
+                        where = f"{where} AND {extra}"
+                        params.extend(extra_params)
+                    await cur.execute(
+                        f"""
+                        SELECT COALESCE(SUM(views),0), COALESCE(SUM(likes),0),
+                               COALESCE(SUM(comments),0), COALESCE(SUM(reposts),0), COUNT(*)
+                        FROM tg_posts
+                        WHERE {where}
+                        """,
+                        params,
+                    )
+                    tg = await cur.fetchone() or empty_row
+                if channel is None or channel.get("network") == "vk":
+                    where = "user_id = %s AND created_at >= %s AND status != 'deleted'"
+                    params = [user_id, since]
+                    if channel:
+                        extra, extra_params = _posts_channel_where("vk", channel.get("external_id"))
+                        where = f"{where} AND {extra}"
+                        params.extend(extra_params)
+                    await cur.execute(
+                        f"""
+                        SELECT COALESCE(SUM(views),0), COALESCE(SUM(likes),0),
+                               COALESCE(SUM(comments),0), COALESCE(SUM(reposts),0), COUNT(*)
+                        FROM vk_posts
+                        WHERE {where}
+                        """,
+                        params,
+                    )
+                    vk = await cur.fetchone() or empty_row
             tg_views, tg_likes, tg_comments, tg_reposts, tg_count = tg
             vk_views, vk_likes, vk_comments, vk_reposts, vk_count = vk
             total_views = int(tg_views) + int(vk_views)
@@ -1145,6 +1321,7 @@ class SmmService:
             return {
                 "period": period,
                 "brand_id": brand_id,
+                "channel_id": channel["id"] if channel else channel_id,
                 "reach": total_views,
                 "engagement": total_eng,
                 "er": er,
@@ -1171,17 +1348,31 @@ class SmmService:
             await release_db_connection(conn)
 
     async def analytics_posts(
-        self, user_id: int, brand_id: Optional[int], sort: str = "er", limit: int = 20
+        self,
+        user_id: int,
+        brand_id: Optional[int],
+        sort: str = "er",
+        limit: int = 20,
+        channel_id: Optional[int] = None,
     ) -> list[dict]:
+        channels = await self.list_all_channels(user_id, brand_id)
+        if channel_id:
+            channels = [c for c in channels if c.get("id") == channel_id]
+            if not channels:
+                return []
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
-                    SELECT id, post_text, views, likes, comments, reposts, 'tg' AS network, created_at
+                    SELECT id, post_text, views, likes, comments, reposts, 'tg' AS network,
+                           created_at, post_date, publish_at, telegram_chat_id, domain, title,
+                           target_channels
                     FROM tg_posts WHERE user_id = %s AND status != 'deleted'
                     UNION ALL
-                    SELECT id, post_text, views, likes, comments, reposts, 'vk' AS network, created_at
+                    SELECT id, post_text, views, likes, comments, reposts, 'vk' AS network,
+                           created_at, post_date, publish_at, NULL::text, domain, title,
+                           target_groups
                     FROM vk_posts WHERE user_id = %s AND status != 'deleted'
                     """,
                     (user_id, user_id),
@@ -1192,6 +1383,22 @@ class SmmService:
                 views = int(r[2] or 0)
                 eng = int(r[3] or 0) + int(r[4] or 0) + int(r[5] or 0)
                 er = (eng / views * 100) if views else 0.0
+                network = r[6]
+                created_at, post_date, publish_at = r[7], r[8], r[9]
+                chat_ref, domain, title, targets = r[10], r[11], r[12], r[13]
+                published_at = publish_at or post_date or created_at
+                matched = _match_channel(channels, network, chat_ref, domain, targets)
+                if channel_id and (not matched or matched.get("id") != channel_id):
+                    continue
+                fallback_tokens = _iter_channel_tokens(chat_ref) + _iter_channel_tokens(domain)
+                channel_external = (
+                    matched.get("external_id") if matched else (fallback_tokens[0] if fallback_tokens else None)
+                )
+                channel_title = None
+                if matched:
+                    channel_title = matched.get("title") or matched.get("external_id")
+                else:
+                    channel_title = title or domain or channel_external
                 items.append(
                     {
                         "id": r[0],
@@ -1201,8 +1408,12 @@ class SmmService:
                         "comments": int(r[4] or 0),
                         "reposts": int(r[5] or 0),
                         "er": round(er, 2),
-                        "network": r[6],
-                        "created_at": r[7].isoformat() if r[7] else None,
+                        "network": network,
+                        "created_at": _iso_dt(created_at),
+                        "published_at": _iso_dt(published_at),
+                        "channel_id": matched["id"] if matched else None,
+                        "channel_external_id": str(channel_external) if channel_external else None,
+                        "channel_title": channel_title,
                         "brand_id": brand_id,
                     }
                 )

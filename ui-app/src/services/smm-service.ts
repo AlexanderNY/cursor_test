@@ -88,7 +88,9 @@ export const smmService = {
       comments_collect_enabled: boolean
       alert_enabled: boolean
       save_conditions: string[]
+      conditions_mode: BrandChannel['conditions_mode']
       processing: BrandChannel['processing']
+      publish_targets: number[]
       alert_delivery: BrandChannel['alert_delivery']
       alert_rules: BrandChannel['alert_rules']
     }>,
@@ -275,16 +277,32 @@ export const smmService = {
     await apiClient.delete(`/smm/automations/${id}`)
   },
 
-  async analyticsOverview(brandId?: number | null, period = '7d'): Promise<AnalyticsOverview> {
+  async analyticsOverview(
+    brandId?: number | null,
+    period = '7d',
+    channelId?: number | null,
+  ): Promise<AnalyticsOverview> {
     const { data } = await apiClient.get('/smm/analytics/overview', {
-      params: { brand_id: brandId ?? undefined, period },
+      params: {
+        brand_id: brandId ?? undefined,
+        period,
+        channel_id: channelId ?? undefined,
+      },
     })
     return data
   },
 
-  async analyticsPosts(brandId?: number | null, sort = 'er'): Promise<AnalyticsPost[]> {
+  async analyticsPosts(
+    brandId?: number | null,
+    sort = 'er',
+    channelId?: number | null,
+  ): Promise<AnalyticsPost[]> {
     const { data } = await apiClient.get('/smm/analytics/posts', {
-      params: { brand_id: brandId ?? undefined, sort },
+      params: {
+        brand_id: brandId ?? undefined,
+        sort,
+        channel_id: channelId ?? undefined,
+      },
     })
     return data.posts ?? []
   },

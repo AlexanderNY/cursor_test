@@ -21,15 +21,26 @@ copy .env.example .env
 | Переменная | Назначение |
 |------------|------------|
 | `DATABASE_URL` | PostgreSQL, например `dbname=db_bot user=postgres password=... host=host.docker.internal` |
-| `JWT_SECRET_KEY` / `SECRET_KEY` | Одинаковые значения; `openssl rand -hex 32` (без `$`) |
+| `JWT_SECRET_KEY` / `SECRET_KEY` | Одинаковые; `openssl rand -hex 32` (без `$`) |
+| `GAME_BOT_TOKEN` | Токен tg-game от BotFather (обязателен; старый из git отозвать) |
+| `GAME_ADMIN_API_TOKEN` | Сильный токен админ-API игры (`openssl rand -hex 32`) |
 | `S3_ACCESS_KEY` / `S3_SECRET_KEY` | MinIO |
 | `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` | Консоль MinIO |
 | `S3_PUBLIC_ENDPOINT_URL` | URL MinIO для браузера, локально `http://localhost:9000` |
+| `DB_POOL_MAXSIZE` | Пул на сервис (дефолт 8); сумма × число сервисов &lt; Postgres `max_connections` |
+| `TRUSTED_PROXY_CIDRS` | CIDR для доверия `X-Forwarded-For` (дефолт loopback + `172.20.0.0/16`) |
+| `SELENIUM_MAX_CONCURRENT` | Лимит параллельных Chrome (дефолт 2) |
+| `AI_MAX_CONCURRENT` | Параллельные вызовы Ollama (дефолт 1) |
 | `TELEGRAM_PROXY_URL` | Опционально SOCKS5 при блокировке TG |
 | `TZ` | Часовой пояс расписаний, по умолчанию `Europe/Moscow` |
 | `AI_ENABLED` | Жёсткий выключатель Ollama (`true`/`false`) |
+| `VK_OAUTH_ALLOWED_FRONTENDS` | Доп. origins для редиректа после VK OAuth |
 
 В `.env` для Compose символ `$` интерполируется — не используйте bcrypt-хеши как JWT; литеральный `$` пишите как `$$`.
+
+Порты приложений (кроме UI через edge) привязаны к **127.0.0.1**. Публичный вход — только ui-edge :80/:443.
+
+Безопасность: [SECURITY_HARDENING.md](SECURITY_HARDENING.md). При росте нагрузки рассмотрите PgBouncer перед Postgres (сумма пулов сервисов).
 
 Подробнее о конфигах сервисов: [../config.md](../config.md).
 
@@ -123,6 +134,7 @@ docker compose down
 ## Связанные документы
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) — схемы  
+- [SECURITY_HARDENING.md](SECURITY_HARDENING.md) — секреты, порты, auth  
 - [USER_GUIDE.md](USER_GUIDE.md) — работа в UI  
 - [SERVICES_OVERVIEW.md](SERVICES_OVERVIEW.md) — API и БД  
 - [SSL_CERT_RENEWAL.md](SSL_CERT_RENEWAL.md) — сертификаты  

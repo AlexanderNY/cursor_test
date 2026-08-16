@@ -1715,6 +1715,12 @@ EXCEPTION WHEN duplicate_column THEN NULL; END $$;
 DO $$ BEGIN
   ALTER TABLE smm_brand_channels ADD COLUMN alert_rules JSONB DEFAULT '[]'::jsonb;
 EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE smm_brand_channels ADD COLUMN conditions_mode VARCHAR(20) DEFAULT 'any_of';
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE smm_brand_channels ADD COLUMN publish_targets JSONB DEFAULT '[]'::jsonb;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
 CREATE INDEX IF NOT EXISTS idx_smm_channels_tg_external
   ON smm_brand_channels (network, external_id)
   WHERE network = 'tg';

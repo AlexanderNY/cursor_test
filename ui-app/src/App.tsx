@@ -13,6 +13,7 @@ import { VKontaktePage } from '@/pages/vkontakte'
 import { DzenPage } from '@/pages/stubs/dzen'
 import { InstagramPage } from '@/pages/stubs/instagram'
 import { CustomURLPage } from '@/pages/stubs/custom-url'
+import { CustomUrlFlowPage } from '@/pages/stubs/custom-url-flow'
 import { CreatePostPage } from '@/pages/create-post'
 import { AdministrationPage } from '@/pages/administration'
 import { PollsPage, PollsIndexRedirect, PollsContentSection, PollsDiagnosticsSection, PollsRatingPage, PollsOrdersPage } from '@/pages/polls'
@@ -112,6 +113,7 @@ function App() {
         <Route path="dzen" element={<DzenPage />} />
         <Route path="instagram" element={<InstagramPage />} />
         <Route path="custom-url" element={<CustomURLPage />} />
+        <Route path="custom-url/:configId" element={<CustomUrlFlowPage />} />
         <Route path="posts" element={<CreatePostPage />} />
         <Route path="create-post" element={<Navigate to="/posts" replace />} />
         <Route path="team" element={<TeamPage />} />

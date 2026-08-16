@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     # База данных (обязательно через env / .env)
     DATABASE_URL: str = ""
     DB_POOL_MINSIZE: int = 2
-    DB_POOL_MAXSIZE: int = 20
+    DB_POOL_MAXSIZE: int = 8
     
     # API Gateway URL для healthcheck запросов
     API_GATEWAY_URL: str = "http://localhost:8000"
@@ -52,6 +52,8 @@ class Settings(BaseSettings):
     META_APP_SECRET: str = ""
     THREADS_OAUTH_REDIRECT_URI: str = ""
     FRONTEND_URL: str = "http://localhost:5173"
+    # Доп. разрешённые origins для редиректа после VK OAuth (через запятую)
+    VK_OAUTH_ALLOWED_FRONTENDS: str = ""
 
     # VK OAuth (user_access_token для wall/photos на стене группы)
     VK_APP_ID: str = ""

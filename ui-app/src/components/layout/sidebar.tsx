@@ -37,33 +37,30 @@ export function Sidebar() {
   }, [user, loadBadge])
 
   return (
-    <aside className="w-64 h-screen bg-[var(--bg-secondary)] border-r border-[var(--border-color)] flex flex-col">
-      <div className="p-6 border-b border-[var(--border-color)]">
-        <h1 className="text-xl font-bold text-gradient">Control Panel</h1>
-        {user && (
-          <>
-            <p className="text-sm text-[var(--text-muted)] mt-1 truncate">
-              {user.username}
+    <aside className="w-56 lg:w-64 shrink-0 self-stretch bg-[var(--bg-secondary)] border-r border-[var(--border-color)] flex flex-col min-h-0">
+      {user && (
+        <div className="px-4 py-2.5 border-b border-[var(--border-color)] shrink-0">
+          <p className="text-xs text-[var(--text-muted)] truncate">
+            {user.role ?? '—'} ·{' '}
+            <Link
+              to="/profile?tab=billing"
+              className="text-primary-400 hover:text-primary-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/50 rounded"
+            >
+              {user.tariff ?? 'free'}
+            </Link>
+          </p>
+          {user.group_name && (
+            <p
+              className="text-xs text-[var(--text-muted)] mt-0.5 truncate"
+              title={`Группа: ${user.group_name} · ${user.role_in_group ?? ''}`}
+            >
+              Team: {user.group_name}
             </p>
-            <p className="text-xs text-[var(--text-muted)] mt-0.5 truncate">
-              {user.role ?? '—'} ·{' '}
-              <Link
-                to="/profile?tab=billing"
-                className="text-primary-400 hover:text-primary-300 hover:underline focus:outline-none focus:underline focus-visible:ring-2 focus-visible:ring-primary-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-secondary)] rounded"
-              >
-                {user.tariff ?? 'free'}
-              </Link>
-            </p>
-            {user.group_name && (
-              <p className="text-xs text-[var(--text-muted)] mt-0.5 truncate" title={`Группа: ${user.group_name} · ${user.role_in_group ?? ''}`}>
-                Team: {user.group_name} · {user.role_in_group === 'admin' || user.role_in_group === 'manager' ? 'Admin' : user.role_in_group === 'analyst' ? 'Analyst' : 'Editor'}
-              </p>
-            )}
-          </>
-        )}
-      </div>
+          )}
+        </div>
+      )}
 
-      <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
+      <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto min-h-0">
         {navItems.map((item) => (
           <NavLink
             key={item.path}
@@ -81,14 +78,16 @@ export function Sidebar() {
             )}
           </NavLink>
         ))}
-        {(user?.role === 'manager' || user?.role === 'author' || user?.role === 'admin' || user?.role_in_group || user?.group_id) && (
+        {(user?.role === 'manager' ||
+          user?.role === 'author' ||
+          user?.role === 'admin' ||
+          user?.role_in_group ||
+          user?.group_id) && (
           <>
-            <div className="my-4 border-t border-[var(--border-color)]"></div>
+            <div className="my-3 border-t border-[var(--border-color)]" />
             <NavLink
               to={groupNavItem.path}
-              className={({ isActive }) =>
-                `nav-link ${isActive ? 'nav-link-active' : ''}`
-              }
+              className={({ isActive }) => `nav-link ${isActive ? 'nav-link-active' : ''}`}
             >
               <groupNavItem.Icon className={iconClassName} />
               <span>{groupNavItem.label}</span>
@@ -97,14 +96,12 @@ export function Sidebar() {
         )}
         {user?.role === 'admin' && (
           <>
-            <div className="my-4 border-t border-[var(--border-color)]"></div>
+            <div className="my-3 border-t border-[var(--border-color)]" />
             {adminNavItems.map((item) => (
               <NavLink
                 key={item.path}
                 to={item.path}
-                className={({ isActive }) =>
-                  `nav-link ${isActive ? 'nav-link-active' : ''}`
-                }
+                className={({ isActive }) => `nav-link ${isActive ? 'nav-link-active' : ''}`}
               >
                 <item.Icon className={iconClassName} />
                 <span>{item.label}</span>
@@ -113,21 +110,6 @@ export function Sidebar() {
           </>
         )}
       </nav>
-
-      <div className="p-4 border-t border-[var(--border-color)] space-y-3">
-        <Link
-          to="/feedback"
-          className="nav-link w-full justify-center border border-[var(--border-color)]"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" className={iconClassName} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-          </svg>
-          <span>Обратная связь</span>
-        </Link>
-        <p className="text-xs text-[var(--text-muted)] text-center">
-          © 2026 Control Panel
-        </p>
-      </div>
     </aside>
   )
 }
