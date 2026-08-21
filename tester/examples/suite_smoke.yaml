@@ -1,0 +1,116 @@
+# suite_smoke — P0 + ключевые P1/P2 (S00, S01, S02, S10–S12, S20, S27)
+# Требует credentials: password admin (для /checks) или JWT admin.
+# Загрузка в панели тестера: Scenarios → upload этого файла.
+
+name: suite_smoke
+steps:
+  # S00_login
+  - action: login_form
+  - action: wait_url
+    contains: /profile
+    timeout_ms: 30000
+  - action: assert_text
+    selector: body
+    contains: Profile
+  - action: screenshot
+    name: S00_login
+
+  # S01_nav_shell
+  - action: goto
+    path: /brands
+  - action: wait_url
+    contains: /brands
+  - action: assert_text
+    selector: body
+    contains: Brands
+  - action: goto
+    path: /about
+  - action: wait_url
+    contains: /about
+  - action: assert_url
+    contains: /about
+  - action: goto
+    path: /profile
+  - action: wait_url
+    contains: /profile
+  - action: assert_text
+    selector: body
+    contains: Profile
+  - action: screenshot
+    name: S01_nav_shell
+
+  # S02_checks_health (admin)
+  - action: goto
+    path: /checks/services-status
+  - action: wait_url
+    contains: /checks/services-status
+  - action: assert_text
+    selector: body
+    contains: Checks
+  - action: assert_text
+    selector: body
+    contains: Services Status
+  - action: click
+    selector: 'button:has-text("Load Services Status")'
+  - action: wait
+    ms: 5000
+  - action: assert_text
+    selector: body
+    contains: Healthchecks
+  - action: screenshot
+    name: S02_checks_health
+
+  # S10_brands_list
+  - action: goto
+    path: /brands
+  - action: wait_url
+    contains: /brands
+  - action: assert_text
+    selector: body
+    contains: Brands
+  - action: screenshot
+    name: S10_brands
+
+  # S11_channels_list
+  - action: goto
+    path: /channels
+  - action: wait_url
+    contains: /channels
+  - action: assert_text
+    selector: body
+    contains: Channels
+  - action: screenshot
+    name: S11_channels
+
+  # S12_posts_list
+  - action: goto
+    path: /posts
+  - action: wait_url
+    contains: /posts
+  - action: assert_text
+    selector: body
+    contains: Posts
+  - action: screenshot
+    name: S12_posts
+
+  # S20_telegram
+  - action: goto
+    path: /telegram
+  - action: wait_url
+    contains: /telegram
+  - action: assert_text
+    selector: body
+    contains: Telegram Integration
+  - action: screenshot
+    name: S20_telegram
+
+  # S27_custom_url
+  - action: goto
+    path: /custom-url
+  - action: wait_url
+    contains: /custom-url
+  - action: assert_text
+    selector: body
+    contains: Custom URL Integration
+  - action: screenshot
+    name: S27_custom_url

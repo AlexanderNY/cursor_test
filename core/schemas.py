@@ -28,6 +28,7 @@ class HealthcheckItem(BaseModel):
     status: str  # "ok" или "error"
     error: Optional[str] = None
     server_time: Optional[str] = None
+    optional: bool = False
 
 
 class HealthcheckResponse(BaseModel):
@@ -1363,6 +1364,9 @@ class AiSettingsResponse(BaseModel):
     env_enabled: bool = True
     model: str
     service_url: str
+    available: bool = False
+    circuit_open: bool = False
+    status: str = "disabled"
 
 
 class AiSettingsUpdateRequest(BaseModel):

@@ -15,6 +15,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from database import get_db_connection
+from shared.service_cycle_log import write_cycle_log
 from config import (
     settings,
     PROFILE_TABLE_MAP,
@@ -34,19 +35,14 @@ async def _log_cycle(
     detail: str | None = None,
     items_processed: int = 0,
 ) -> None:
-    try:
-        async with get_db_connection() as conn:
-            async with conn.cursor() as cur:
-                await cur.execute(
-                    """
-                    INSERT INTO service_cycle_log (
-                        service_name, cycle_type, status, detail, items_processed
-                    ) VALUES (%s, %s, %s, %s, %s)
-                    """,
-                    ("processor", "process", status, (detail or "")[:2000] or None, int(items_processed or 0)),
-                )
-    except Exception as exc:
-        logger.debug("service_cycle_log skip: %s", exc)
+    await write_cycle_log(
+        get_db_connection,
+        service_name="processor",
+        cycle_type="process",
+        status=status,
+        detail=detail,
+        items_processed=items_processed,
+    )
 
 def _match_url_config(urls: List[Any], post_url: Optional[str]) -> Optional[Dict[str, Any]]:
     """Находит curl urls[] item по URL поста."""
@@ -89,6 +85,7 @@ class ProcessingService:
         self.last_run_at: Optional[datetime] = None
         self.total_processed: int = 0
         self.last_cycle_processed: int = 0
+        self._profile_row_cache: dict[tuple[str, int], tuple[list[str], tuple[Any, ...]]] = {}
 
     async def run_processing_cycle(self) -> int:
         """Выполняет один цикл обработки.
@@ -159,14 +156,14 @@ class ProcessingService:
                 cur.close()
 
         # 3. Обработать каждый пост (вне транзакции блокировки)
-        for row in rows:
-            record = dict(zip(col_names, row))
+        records = [dict(zip(col_names, row)) for row in rows]
+        await self._prefetch_processing_settings(records)
+        for record in records:
             try:
                 await self._process_single_post(record)
                 cycle_count += 1
             except Exception:
                 logger.exception("Error processing post id=%s", record["id"])
-                # Откатить статус на 'collected' для повторной обработки
                 await self._reset_post_status(record["id"], "collected")
 
         self.last_run_at = datetime.utcnow()
@@ -177,7 +174,111 @@ class ProcessingService:
             logger.info("Processing cycle done: %d posts processed", cycle_count)
 
         await _log_cycle(items_processed=cycle_count)
+        self._profile_row_cache.clear()
         return cycle_count
+
+    def _fields_for_platform(self, source_platform: str) -> tuple[Any, ...] | None:
+        if source_platform not in PROFILE_TABLE_MAP:
+            return None
+        mapping = PROFILE_TABLE_MAP[source_platform]
+        fields = [mapping["process_flag"], mapping["process_description_field"]] + PROCESSING_SETTINGS_FIELDS
+        if source_platform in ("url", "curl"):
+            fields = ["urls"] + fields
+        if source_platform == "tg":
+            fields.extend([
+                "summarize_enabled",
+                "summarize_min_length",
+                "classification_enabled",
+                "classification_categories",
+            ])
+        return mapping, fields
+
+    def _row_to_processing_settings(
+        self,
+        source_platform: str,
+        fields: list[str],
+        row_values: tuple[Any, ...],
+        post_url: Optional[str],
+    ) -> Dict[str, Any]:
+        mapping = PROFILE_TABLE_MAP[source_platform]
+        process_flag = mapping["process_flag"]
+        description_field = mapping["process_description_field"]
+        result: Dict[str, Any] = {}
+        url_item: Optional[Dict[str, Any]] = None
+        for i, field in enumerate(fields):
+            value = row_values[i]
+            if field == "urls":
+                if isinstance(value, str):
+                    try:
+                        value = json.loads(value) if value else []
+                    except (json.JSONDecodeError, TypeError):
+                        value = []
+                url_item = _match_url_config(value if isinstance(value, list) else [], post_url)
+                continue
+            if field == process_flag:
+                result["process_enabled"] = bool(value) if value is not None else False
+            elif field == description_field:
+                result["processing_description"] = value
+            else:
+                if field == "process_services" and isinstance(value, str):
+                    try:
+                        value = json.loads(value)
+                    except (json.JSONDecodeError, TypeError):
+                        value = None
+                if field == "classification_categories" and isinstance(value, str):
+                    try:
+                        value = json.loads(value)
+                    except (json.JSONDecodeError, TypeError):
+                        value = []
+                result[field] = value
+
+        if url_item is not None:
+            if "process_before_publish" in url_item:
+                result["process_enabled"] = bool(url_item.get("process_before_publish"))
+            if "process_description" in url_item:
+                result["processing_description"] = url_item.get("process_description")
+            for key in PROCESSING_SETTINGS_FIELDS:
+                if key in url_item:
+                    value = url_item.get(key)
+                    if key == "process_services" and isinstance(value, str):
+                        try:
+                            value = json.loads(value)
+                        except (json.JSONDecodeError, TypeError):
+                            value = None
+                    result[key] = value
+        return result
+
+    async def _prefetch_processing_settings(self, posts: List[Dict[str, Any]]) -> None:
+        """Batch-load profile rows for all posts in the current cycle."""
+        self._profile_row_cache.clear()
+        by_platform: dict[str, set[int]] = {}
+        for post in posts:
+            platform = post.get("source_platform")
+            user_id = post.get("user_id")
+            if not platform or user_id is None or platform not in PROFILE_TABLE_MAP:
+                continue
+            by_platform.setdefault(platform, set()).add(int(user_id))
+
+        for platform, user_ids in by_platform.items():
+            mapping_fields = self._fields_for_platform(platform)
+            if mapping_fields is None:
+                continue
+            mapping, fields = mapping_fields
+            table = mapping["table"]
+            fields_str = ", ".join(fields)
+            ids = list(user_ids)
+            placeholders = ", ".join(["%s"] * len(ids))
+            try:
+                async with get_db_connection() as conn:
+                    async with conn.cursor() as cur:
+                        await cur.execute(
+                            f"SELECT user_id, {fields_str} FROM {table} WHERE user_id IN ({placeholders})",
+                            ids,
+                        )
+                        for row in await cur.fetchall():
+                            self._profile_row_cache[(platform, int(row[0]))] = (fields, tuple(row[1:]))
+            except Exception:
+                logger.exception("Failed to prefetch profiles from %s", table)
 
     async def _process_single_post(self, post: Dict[str, Any]) -> None:
         """Обрабатывает один пост полным pipeline.
@@ -289,22 +390,16 @@ class ProcessingService:
             )
             return {}
 
-        mapping = PROFILE_TABLE_MAP[source_platform]
-        table = mapping["table"]
-        process_flag = mapping["process_flag"]
-        description_field = mapping["process_description_field"]
+        cached = self._profile_row_cache.get((source_platform, user_id))
+        if cached is not None:
+            fields, row_values = cached
+            return self._row_to_processing_settings(source_platform, fields, row_values, post_url)
 
-        # Собрать список полей для SELECT
-        fields = [process_flag, description_field] + PROCESSING_SETTINGS_FIELDS
-        if source_platform in ("url", "curl"):
-            fields = ["urls"] + fields
-        if source_platform == "tg":
-            fields.extend([
-                "summarize_enabled",
-                "summarize_min_length",
-                "classification_enabled",
-                "classification_categories",
-            ])
+        mapping_fields = self._fields_for_platform(source_platform)
+        if mapping_fields is None:
+            return {}
+        mapping, fields = mapping_fields
+        table = mapping["table"]
         fields_str = ", ".join(fields)
 
         try:
@@ -324,56 +419,12 @@ class ProcessingService:
                         )
                         return {}
 
-                    result: Dict[str, Any] = {}
-                    url_item: Optional[Dict[str, Any]] = None
-                    for i, field in enumerate(fields):
-                        value = row[i]
-                        if field == "urls":
-                            if isinstance(value, str):
-                                try:
-                                    value = json.loads(value) if value else []
-                                except (json.JSONDecodeError, TypeError):
-                                    value = []
-                            url_item = _match_url_config(
-                                value if isinstance(value, list) else [],
-                                post_url,
-                            )
-                            continue
-                        # Нормализовать имя поля process_enabled
-                        if field == process_flag:
-                            result["process_enabled"] = bool(value) if value is not None else False
-                        elif field == description_field:
-                            result["processing_description"] = value
-                        else:
-                            # Парсить JSONB-поля
-                            if field == "process_services" and isinstance(value, str):
-                                try:
-                                    value = json.loads(value)
-                                except (json.JSONDecodeError, TypeError):
-                                    value = None
-                            if field == "classification_categories" and isinstance(value, str):
-                                try:
-                                    value = json.loads(value)
-                                except (json.JSONDecodeError, TypeError):
-                                    value = []
-                            result[field] = value
-
-                    if url_item is not None:
-                        if "process_before_publish" in url_item:
-                            result["process_enabled"] = bool(url_item.get("process_before_publish"))
-                        if "process_description" in url_item:
-                            result["processing_description"] = url_item.get("process_description")
-                        for key in PROCESSING_SETTINGS_FIELDS:
-                            if key in url_item:
-                                value = url_item.get(key)
-                                if key == "process_services" and isinstance(value, str):
-                                    try:
-                                        value = json.loads(value)
-                                    except (json.JSONDecodeError, TypeError):
-                                        value = None
-                                result[key] = value
-
-                    return result
+                    return self._row_to_processing_settings(
+                        source_platform,
+                        fields,
+                        tuple(row),
+                        post_url,
+                    )
 
         except Exception:
             logger.exception(
@@ -442,6 +493,10 @@ class ProcessingService:
             if str(root) not in sys.path:
                 sys.path.insert(0, str(root))
             from shared import ai_client
+
+            if not await ai_client.is_ready():
+                logger.debug("AI enrichment skipped: AI not ready")
+                return None
 
             categories = proc_settings.get("classification_categories") or []
             if isinstance(categories, str):

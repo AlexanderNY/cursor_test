@@ -73,11 +73,34 @@ class SystemSettingsService:
 
     async def get_ai_settings(self) -> dict[str, Any]:
         enabled = await self.is_ai_enabled()
+        env_enabled = self.is_env_ai_enabled()
+        available = False
+        circuit_open = False
+        status = "disabled"
+        try:
+            from shared import ai_client
+
+            snapshot = await ai_client.get_status()
+            available = bool(snapshot.get("available"))
+            circuit_open = bool(snapshot.get("circuit_open"))
+            status = str(snapshot.get("status") or status)
+            # get_status уже учитывает env + DB через is_enabled poll;
+            # для admin UI источником правды по DB-флагу остаётся is_ai_enabled().
+            if not env_enabled:
+                status = "disabled"
+            elif not enabled:
+                status = "disabled"
+        except Exception:
+            status = "unavailable" if enabled and env_enabled else "disabled"
+
         return {
             "enabled": enabled,
-            "env_enabled": self.is_env_ai_enabled(),
+            "env_enabled": env_enabled,
             "model": os.getenv("AI_MODEL", "qwen2.5:3b"),
-            "service_url": os.getenv("AI_SERVICE_URL", "http://ollama:11434"),
+            "service_url": os.getenv("AI_SERVICE_URL", "http://ollama:65535"),
+            "available": available,
+            "circuit_open": circuit_open,
+            "status": status,
         }
 
 

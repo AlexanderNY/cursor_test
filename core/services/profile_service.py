@@ -811,69 +811,7 @@ class ProfileService:
             profile["twitter_password"] = "***"
         return profile
     
-    # ==================== WordPress ====================
-    
-    async def get_wp_profile(self, user_id: int) -> Optional[Dict]:
-        """Получает профиль WordPress пользователя."""
-        conn = await get_db_connection()
-        try:
-            async with conn.cursor() as cur:
-                await cur.execute(
-                    "SELECT * FROM wp_profiles WHERE user_id = %s",
-                    (user_id,)
-                )
-                row = await cur.fetchone()
-                if row:
-                    return self._row_to_wp_profile(row, cur.description)
-                return None
-        finally:
-            await release_db_connection(conn)
-    
-    async def save_wp_profile(self, user_id: int, data: Dict) -> Dict:
-        """Сохраняет или обновляет профиль WordPress."""
-        conn = await get_db_connection()
-        try:
-            async with conn.cursor() as cur:
-                await cur.execute(
-                    """
-                    INSERT INTO wp_profiles (
-                        user_id, publish_enabled, collect_enabled, schedule_type,
-                        time_intervals, site_url, username, app_password
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (user_id) DO UPDATE SET
-                        publish_enabled = EXCLUDED.publish_enabled,
-                        collect_enabled = EXCLUDED.collect_enabled,
-                        schedule_type = EXCLUDED.schedule_type,
-                        time_intervals = EXCLUDED.time_intervals,
-                        site_url = EXCLUDED.site_url,
-                        username = EXCLUDED.username,
-                        app_password = EXCLUDED.app_password,
-                        updated_at = CURRENT_TIMESTAMP
-                    RETURNING *
-                    """,
-                    (
-                        user_id,
-                        data.get("publish_enabled", False),
-                        data.get("collect_enabled", False),
-                        data.get("schedule_type", "immediate"),
-                        json.dumps(data.get("time_intervals", [])),
-                        data.get("site_url"),
-                        data.get("username"),
-                        data.get("app_password"),
-                    )
-                )
-                row = await cur.fetchone()
-                return self._row_to_wp_profile(row, cur.description)
-        finally:
-            await release_db_connection(conn)
-    
-    def _row_to_wp_profile(self, row, description) -> Dict:
-        """Преобразует строку БД в словарь профиля WordPress."""
-        columns = [col.name for col in description]
-        profile = dict(zip(columns, row))
-        if isinstance(profile.get("time_intervals"), str):
-            profile["time_intervals"] = json.loads(profile["time_intervals"])
-        return profile
+    # ==================== WordPress (publish / collect profiles) ====================
 
     def _row_to_wp_publish_profile(self, row, description) -> Dict:
         """Преобразует строку БД в словарь профиля публикации WordPress.
@@ -1092,13 +1030,17 @@ class ProfileService:
                     "collect_all_available": collect_all_available,
                     "collect_limit": collect_limit_val,
                 }
+                profile_id = profile.get("id")
+                if profile_id is None:
+                    raise ValueError("wp_collect_profile id missing after upsert")
 
                 await cur.execute("DELETE FROM wp_collect_sites WHERE user_id = %s", (user_id,))
                 if collect_sites:
-                    values_sql = ", ".join(["(%s, %s, %s, %s)"] * len(collect_sites))
+                    values_sql = ", ".join(["(%s, %s, %s, %s, %s)"] * len(collect_sites))
                     params: List[Any] = []
                     for site in collect_sites:
                         params.extend([
+                            profile_id,
                             user_id,
                             site["site_url"],
                             site["schedule_type"],
@@ -1106,7 +1048,9 @@ class ProfileService:
                         ])
                     await cur.execute(
                         f"""
-                        INSERT INTO wp_collect_sites (user_id, site_url, schedule_type, time_intervals)
+                        INSERT INTO wp_collect_sites (
+                            profile_id, user_id, site_url, schedule_type, time_intervals
+                        )
                         VALUES {values_sql}
                         """,
                         params,

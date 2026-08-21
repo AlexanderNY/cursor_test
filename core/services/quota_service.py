@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 from database import get_db_connection, release_db_connection
+from shared.db.post_columns import QUOTA_POST_TABLES
 
 from exceptions import QuotaExceededError
 
@@ -85,18 +86,7 @@ _PLAN_LIMITS: dict[str, dict[str, Any]] = {
 
 _TARIFF_ALIASES = {"basic": "standard", "premium": "full"}
 
-_POST_TABLES = (
-    "posts",
-    "wp_posts",
-    "tg_posts",
-    "tw_posts",
-    "vk_posts",
-    "cpost_posts",
-    "threads_posts",
-    "dzen_posts",
-    "instagram_posts",
-    "url_posts",
-)
+_POST_TABLES = QUOTA_POST_TABLES
 
 
 def normalize_tariff(tariff: Optional[str]) -> str:

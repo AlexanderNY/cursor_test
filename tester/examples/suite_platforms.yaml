@@ -1,0 +1,97 @@
+# suite_platforms — P2 smoke всех платформенных страниц (S20–S27)
+# Требует credentials: password или JWT (достаточно обычного пользователя).
+
+name: suite_platforms
+steps:
+  - action: login_form
+  - action: wait_url
+    contains: /profile
+    timeout_ms: 30000
+
+  # S20_telegram → tg-bot
+  - action: goto
+    path: /telegram
+  - action: wait_url
+    contains: /telegram
+  - action: assert_text
+    selector: body
+    contains: Telegram Integration
+  - action: screenshot
+    name: S20_telegram
+
+  # S21_vkontakte → vk-bot
+  - action: goto
+    path: /vkontakte
+  - action: wait_url
+    contains: /vkontakte
+  - action: assert_text
+    selector: body
+    contains: VKontakte Integration
+  - action: screenshot
+    name: S21_vkontakte
+
+  # S22_instagram → instagram-bot
+  - action: goto
+    path: /instagram
+  - action: wait_url
+    contains: /instagram
+  - action: assert_text
+    selector: body
+    contains: Instagram
+  - action: screenshot
+    name: S22_instagram
+
+  # S23_threads → th-bot
+  - action: goto
+    path: /threads
+  - action: wait_url
+    contains: /threads
+  - action: assert_text
+    selector: body
+    contains: Threads Integration
+  - action: screenshot
+    name: S23_threads
+
+  # S24_wordpress → wp-bot
+  - action: goto
+    path: /wordpress
+  - action: wait_url
+    contains: /wordpress
+  - action: assert_text
+    selector: body
+    contains: WordPress Integration
+  - action: screenshot
+    name: S24_wordpress
+
+  # S25_dzen → dzen-bot
+  - action: goto
+    path: /dzen
+  - action: wait_url
+    contains: /dzen
+  - action: assert_text
+    selector: body
+    contains: Яндекс Дзен
+  - action: screenshot
+    name: S25_dzen
+
+  # S26_twitter → tw-bot
+  - action: goto
+    path: /twitter
+  - action: wait_url
+    contains: /twitter
+  - action: assert_text
+    selector: body
+    contains: Twitter / X Integration
+  - action: screenshot
+    name: S26_twitter
+
+  # S27_custom_url → url-bot
+  - action: goto
+    path: /custom-url
+  - action: wait_url
+    contains: /custom-url
+  - action: assert_text
+    selector: body
+    contains: Custom URL Integration
+  - action: screenshot
+    name: S27_custom_url

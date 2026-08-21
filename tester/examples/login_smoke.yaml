@@ -1,0 +1,13 @@
+name: login_smoke
+# Привяжите credentials с типом password в панели (или укажите credentials_id при создании).
+# Селекторы соответствуют ui-app Sign In (placeholder + password input).
+# После успешного логина PublicOnlyRoute редиректит на /profile.
+steps:
+  - action: login_form
+  - action: wait_url
+    contains: /profile
+    timeout_ms: 30000
+  - action: screenshot
+    name: after_login
+  - action: assert_url
+    contains: /profile

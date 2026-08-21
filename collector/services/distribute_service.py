@@ -7,40 +7,12 @@ from typing import Any
 
 from database import get_db_connection
 from config import settings, TARGET_TABLES, SOURCE_TABLES
+from shared.db.post_columns import POST_BASE_COLUMNS
+from shared.service_cycle_log import write_cycle_log
 
 logger = logging.getLogger(__name__)
 
-
-async def _log_cycle(
-    cycle_type: str,
-    *,
-    status: str = "ok",
-    detail: str | None = None,
-    items_processed: int = 0,
-) -> None:
-    try:
-        async with get_db_connection() as conn:
-            async with conn.cursor() as cur:
-                await cur.execute(
-                    """
-                    INSERT INTO service_cycle_log (
-                        service_name, cycle_type, status, detail, items_processed
-                    ) VALUES (%s, %s, %s, %s, %s)
-                    """,
-                    ("collector", cycle_type, status, (detail or "")[:2000] or None, int(items_processed or 0)),
-                )
-    except Exception as exc:
-        logger.debug("service_cycle_log skip: %s", exc)
-
-# Колонки для вставки в целевую *_posts таблицу (posts.to_dzen, to_instagram и posts.videos — в миграциях)
-_POST_COLUMNS = [
-    "user_id", "domain", "url", "title", "author", "avatar",
-    "post_date", "post_text", "screenshot", "images", "image_over_text",
-    "comments", "reposts", "likes", "views", "is_ad", "status",
-    "post_type", "to_tg", "to_tw", "to_wp", "to_vk", "to_dzen", "to_instagram",
-    "to_threads",
-    "target_channels", "target_groups",
-]
+_POST_COLUMNS = list(POST_BASE_COLUMNS)
 
 # Все флаги to_* для проверки
 _TARGET_FLAGS = list(TARGET_TABLES.keys())
@@ -163,7 +135,12 @@ class DistributeService:
                 if count > 0:
                     logger.info("Distribute cycle done: %d posts", count)
 
-                await _log_cycle("distribute", items_processed=count)
+                await write_cycle_log(
+                    get_db_connection,
+                    service_name="collector",
+                    cycle_type="distribute",
+                    items_processed=count,
+                )
                 return count
 
             except Exception:

@@ -12,17 +12,50 @@ x-ui-public-ports: &ui-public-ports
   - "127.0.0.1:8100:8100/udp"
 
 x-ai-environment: &ai-environment
-  AI_SERVICE_URL: http://ollama:11434
+  AI_SERVICE_URL: http://ollama:65535
   AI_MODEL: qwen2.5:3b
-  AI_TIMEOUT_SEC: "60"
-  AI_REALTIME_TIMEOUT_SEC: "15"
+  # Короткие таймауты: при мёртвом/нестабильном Ollama пайплайн не зависает.
+  AI_TIMEOUT_SEC: "30"
+  AI_REALTIME_TIMEOUT_SEC: "8"
+  AI_MAX_RETRIES: "1"
+  AI_CIRCUIT_FAILURE_THRESHOLD: "2"
+  AI_CIRCUIT_RECOVERY_TIMEOUT_SEC: "30"
+  AI_AVAILABILITY_PROBE_TIMEOUT_SEC: "2"
+  AI_AVAILABILITY_CACHE_FAIL_TTL_SEC: "15"
   # Kill-switch поверх тоггла Checks → AI. По умолчанию true — иначе UI «Включена», а запросы падают.
+  # Ollama поднимается только с профилем: docker compose --profile ai up -d
   AI_ENABLED: "${AI_ENABLED:-true}"
   CORE_SERVICE_URL: http://core:8002
   AI_SETTINGS_URL: http://core:8002/internal/ai-enabled
 
+# Linux Engine does not define host.docker.internal (Docker Desktop does).
+# host-gateway maps that name to the VM/host IP so DATABASE_URL can reach Postgres.
+x-host-docker-internal: &host-docker-internal
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+
+# Hard caps so a full stack cannot balloon Docker Desktop / host RAM.
+# Light API/UI ≈ 512m; workers ≈ 768m; Chromium bots ≈ 1.5g; Ollama ≈ 4g.
+x-mem-light: &mem-light
+  mem_limit: 512m
+  mem_reservation: 128m
+
+x-mem-worker: &mem-worker
+  mem_limit: 768m
+  mem_reservation: 256m
+
+x-mem-selenium: &mem-selenium
+  mem_limit: 1536m
+  mem_reservation: 512m
+  shm_size: 512m
+
+x-mem-ollama: &mem-ollama
+  mem_limit: 4g
+  mem_reservation: 1g
+
 services:
   core:
+    <<: [*host-docker-internal, *mem-worker]
     build:
       context: .
       dockerfile: ./core/Dockerfile
@@ -66,6 +99,7 @@ services:
         ipv4_address: 172.20.10.2
 
   auth:
+    <<: [*host-docker-internal, *mem-light]
     build: 
       context: .
       dockerfile: ./auth/Dockerfile
@@ -84,6 +118,7 @@ services:
         ipv4_address: 172.20.10.1
 
   gateway:
+    <<: *mem-light
     build: 
       context: .
       dockerfile: ./api-gateway/Dockerfile
@@ -110,6 +145,7 @@ services:
           - gateway
 
   scheduler:
+    <<: [*host-docker-internal, *mem-light]
     build: 
       context: .
       dockerfile: ./scheduler/Dockerfile
@@ -137,6 +173,7 @@ services:
         ipv4_address: 172.20.10.3
 
   ui:
+    <<: *mem-light
     build: 
       context: .
       dockerfile: ./ui-app/Dockerfile
@@ -159,6 +196,7 @@ services:
           - ui
 
   wp-bot:
+    <<: [*host-docker-internal, *mem-light]
     build: 
       context: .
       dockerfile: ./wp-bot/Dockerfile 
@@ -176,6 +214,7 @@ services:
         ipv4_address: 172.20.10.6
 
   url-bot:
+    <<: *mem-selenium
     build: 
       context: .
       dockerfile: ./url-bot/Dockerfile 
@@ -187,7 +226,7 @@ services:
       API_GATEWAY_URL: http://gateway:8000
       CHROME_BIN: /usr/bin/chromium
       CHROMEDRIVER_PATH: /usr/bin/chromedriver
-      SELENIUM_MAX_CONCURRENT: ${SELENIUM_MAX_CONCURRENT:-2}
+      SELENIUM_MAX_CONCURRENT: ${SELENIUM_MAX_CONCURRENT:-1}
       TZ: ${TZ:-Europe/Moscow}
     networks:
       monitoring_network:
@@ -196,6 +235,7 @@ services:
 
 
   collector:
+    <<: [*host-docker-internal, *mem-worker]
     build: 
       context: .
       dockerfile: ./collector/Dockerfile
@@ -216,6 +256,7 @@ services:
         ipv4_address: 172.20.10.9
 
   processor:
+    <<: [*host-docker-internal, *mem-worker]
     build: 
       context: .
       dockerfile: ./processor/Dockerfile
@@ -239,10 +280,12 @@ services:
         ipv4_address: 172.20.10.10
 
   ollama:
+    <<: *mem-ollama
+    profiles: ["ai"]
     image: ollama/ollama:latest
     gpus: all
     ports:
-      - "127.0.0.1:11434:11434"
+      - "127.0.0.1:65535:65535"
     volumes:
       - ollama_data:/root/.ollama
     healthcheck:
@@ -256,12 +299,14 @@ services:
         ipv4_address: 172.20.10.20
 
   ollama-init:
+    <<: *mem-light
+    profiles: ["ai"]
     image: ollama/ollama:latest
     depends_on:
       ollama:
         condition: service_healthy
     environment:
-      OLLAMA_HOST: http://ollama:11434
+      OLLAMA_HOST: http://ollama:65535
       OLLAMA_MODEL: qwen2.5:3b
     entrypoint:
       - /bin/sh
@@ -286,6 +331,7 @@ services:
         ipv4_address: 172.20.10.21
 
   instagram-bot:
+    <<: [*host-docker-internal, *mem-selenium]
     build:
       context: .
       dockerfile: ./instagram-bot/Dockerfile
@@ -309,13 +355,14 @@ services:
       S3_USE_SSL: "false"
       CHROME_BIN: /usr/bin/chromium
       CHROMEDRIVER_PATH: /usr/bin/chromedriver
-      SELENIUM_MAX_CONCURRENT: ${SELENIUM_MAX_CONCURRENT:-2}
+      SELENIUM_MAX_CONCURRENT: ${SELENIUM_MAX_CONCURRENT:-1}
       INSTAGRAM_SELENIUM_FALLBACK_ENABLED: "false"
       INSTAGRAM_SELENIUM_FALLBACK_NETWORK_ERRORS_ONLY: "true"
     networks:
       monitoring_network:
         ipv4_address: 172.20.10.11
   th-bot:
+    <<: [*host-docker-internal, *mem-selenium]
     build: 
       context: .
       dockerfile: ./th-bot/Dockerfile
@@ -332,7 +379,7 @@ services:
       LOG_LEVEL: INFO
       CHROME_BIN: /usr/bin/chromium
       CHROMEDRIVER_PATH: /usr/bin/chromedriver
-      SELENIUM_MAX_CONCURRENT: ${SELENIUM_MAX_CONCURRENT:-2}
+      SELENIUM_MAX_CONCURRENT: ${SELENIUM_MAX_CONCURRENT:-1}
       ENABLE_THREADS_SELENIUM_FALLBACK: "false"
       S3_ENDPOINT_URL: http://minio:9000
       S3_BUCKET: uploads
@@ -344,34 +391,35 @@ services:
         ipv4_address: 172.20.10.13
 
   tw-bot:
+    <<: [*host-docker-internal, *mem-selenium]
     build: 
       context: .
       dockerfile: ./tw-bot/Dockerfile 
     depends_on:
       - minio
     ports:
-      - "127.0.0.1:8014:8011"
+      - "127.0.0.1:8014:8014"
     environment:
       <<: *ai-environment
       DATABASE_URL: ${DATABASE_URL}
       DB_POOL_MINSIZE: ${DB_POOL_MINSIZE:-2}
       DB_POOL_MAXSIZE: ${DB_POOL_MAXSIZE:-8}
-      API_PORT: "8011"
+      API_PORT: "8014"
       LOG_LEVEL: INFO
       CHROME_BIN: /usr/bin/chromium
       CHROMEDRIVER_PATH: /usr/bin/chromedriver
-      SELENIUM_MAX_CONCURRENT: ${SELENIUM_MAX_CONCURRENT:-2}
+      SELENIUM_MAX_CONCURRENT: ${SELENIUM_MAX_CONCURRENT:-1}
       S3_ENDPOINT_URL: http://minio:9000
       S3_BUCKET: uploads
       S3_ACCESS_KEY: ${S3_ACCESS_KEY:-admin}
       S3_SECRET_KEY: ${S3_SECRET_KEY}
       S3_USE_SSL: "false"
-    shm_size: "2gb"
     networks:
       monitoring_network:
         ipv4_address: 172.20.10.14
 
   tg-bot:
+    <<: [*host-docker-internal, *mem-selenium]
     build: 
       context: .
       dockerfile: ./tg-bot/Dockerfile
@@ -399,16 +447,15 @@ services:
       TELEGRAM_PROXY_URL: ${TELEGRAM_PROXY_URL:-}
       CHROME_BIN: /usr/bin/chromium
       CHROMEDRIVER_PATH: /usr/bin/chromedriver
-      SELENIUM_MAX_CONCURRENT: ${SELENIUM_MAX_CONCURRENT:-2}
+      SELENIUM_MAX_CONCURRENT: ${SELENIUM_MAX_CONCURRENT:-1}
     volumes:
       - tg-bot-sessions:/app/sessions
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     networks:
       monitoring_network:
         ipv4_address: 172.20.10.4
 
   tg-game:
+    <<: [*host-docker-internal, *mem-light]
     build:
       context: .
       dockerfile: ./tg-game/Dockerfile
@@ -436,12 +483,12 @@ services:
         ipv4_address: 172.20.10.8
 
   vk-bot:
+    <<: [*host-docker-internal, *mem-selenium]
     build: 
       context: .
       dockerfile: ./vk-bot/Dockerfile
     depends_on:
       - minio
-    shm_size: "1gb"
     ports:
       - "127.0.0.1:8005:8005"
     environment:
@@ -461,7 +508,7 @@ services:
       MAX_CONCURRENT_CLIENTS: "20"
       CHROME_BIN: /usr/bin/chromium
       CHROMEDRIVER_PATH: /usr/bin/chromedriver
-      SELENIUM_MAX_CONCURRENT: ${SELENIUM_MAX_CONCURRENT:-2}
+      SELENIUM_MAX_CONCURRENT: ${SELENIUM_MAX_CONCURRENT:-1}
       SELENIUM_HEADLESS: "true"
       SELENIUM_PAGE_LOAD_TIMEOUT: "90"
     volumes:
@@ -471,6 +518,7 @@ services:
         ipv4_address: 172.20.10.5
 
   dzen-bot:
+    <<: [*host-docker-internal, *mem-selenium]
     build: 
       context: .
       dockerfile: ./dzen-bot/Dockerfile     
@@ -489,7 +537,7 @@ services:
       S3_SECRET_KEY: ${S3_SECRET_KEY}
       S3_USE_SSL: "false"
       S3_DIAG_PREFIX: dzen/diag
-      SELENIUM_MAX_CONCURRENT: ${SELENIUM_MAX_CONCURRENT:-2}
+      SELENIUM_MAX_CONCURRENT: ${SELENIUM_MAX_CONCURRENT:-1}
       CHROME_BIN: /usr/bin/chromium
       CHROMEDRIVER_PATH: /usr/bin/chromedriver
     networks:
@@ -497,6 +545,7 @@ services:
         ipv4_address: 172.20.10.12
 
   minio:
+    <<: *mem-light
     image: minio/minio
     ports:
       - "127.0.0.1:9000:9000"  # api

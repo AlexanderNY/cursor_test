@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
 
 import httpx
 
@@ -18,6 +19,23 @@ from shared.circuit_breaker import CircuitBreaker
 class _CacheEntry:
     results: List[Dict]
     expires_at: float
+
+
+# Боты/воркеры и AI могут быть не подняты — error не означает «весь стек мёртв».
+_OPTIONAL_SERVICES: Set[str] = {
+    "tg-bot",
+    "vk-bot",
+    "wp-bot",
+    "url-bot",
+    "tw-bot",
+    "instagram-bot",
+    "th-bot",
+    "dzen-bot",
+    "tg-game",
+    "collector",
+    "processor",
+    "ollama",
+}
 
 
 class HealthcheckService:
@@ -36,6 +54,7 @@ class HealthcheckService:
             "scheduler": settings.SCHEDULER_SERVICE_URL,
             "collector": settings.COLLECTOR_SERVICE_URL,
             "processor": settings.PROCESSOR_SERVICE_URL,
+            "ollama": os.getenv("AI_SERVICE_URL", "http://ollama:65535"),
         }
         self._circuits: Dict[str, CircuitBreaker] = {
             name: CircuitBreaker(
@@ -57,6 +76,10 @@ class HealthcheckService:
             )
         return self._http_client
 
+    @staticmethod
+    def _is_optional(name: str) -> bool:
+        return name in _OPTIONAL_SERVICES
+
     def _core_local_result(self) -> Dict:
         return {
             "service_name": "core",
@@ -65,10 +88,12 @@ class HealthcheckService:
             "server_time": datetime.now(timezone.utc)
             .isoformat()
             .replace("+00:00", "Z"),
+            "optional": False,
         }
 
     async def check_service(self, name: str, url: Optional[str]) -> Dict:
         """Проверяет здоровье одного сервиса."""
+        optional = self._is_optional(name)
         if name == "core" or not url:
             return self._core_local_result()
 
@@ -79,11 +104,14 @@ class HealthcheckService:
                 "status": "error",
                 "error": "Circuit open",
                 "server_time": None,
+                "optional": optional,
             }
 
         try:
             client = self._get_client()
-            response = await client.get(f"{url.rstrip('/')}/health")
+            # Ollama не имеет /health — используем /api/tags.
+            path = "/api/tags" if name == "ollama" else "/health"
+            response = await client.get(f"{url.rstrip('/')}{path}")
             if response.status_code == 200:
                 data = response.json() if response.content else {}
                 server_time = data.get("server_time") if isinstance(data, dict) else None
@@ -93,6 +121,7 @@ class HealthcheckService:
                     "status": "ok",
                     "error": None,
                     "server_time": server_time,
+                    "optional": optional,
                 }
 
             circuit.record_failure()
@@ -101,6 +130,7 @@ class HealthcheckService:
                 "status": "error",
                 "error": f"HTTP {response.status_code}",
                 "server_time": None,
+                "optional": optional,
             }
         except httpx.ConnectError:
             circuit.record_failure()
@@ -109,6 +139,7 @@ class HealthcheckService:
                 "status": "error",
                 "error": "Connection refused",
                 "server_time": None,
+                "optional": optional,
             }
         except httpx.TimeoutException:
             circuit.record_failure()
@@ -117,6 +148,7 @@ class HealthcheckService:
                 "status": "error",
                 "error": "Timeout",
                 "server_time": None,
+                "optional": optional,
             }
         except Exception as e:
             circuit.record_failure()
@@ -125,6 +157,7 @@ class HealthcheckService:
                 "status": "error",
                 "error": str(e),
                 "server_time": None,
+                "optional": optional,
             }
 
     async def _fetch_all_services(self) -> List[Dict]:

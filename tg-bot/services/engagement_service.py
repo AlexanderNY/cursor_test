@@ -40,15 +40,44 @@ class EngagementService:
             await release_db_connection(conn)
 
         updated = 0
+        metrics_by_post: list[tuple[int, int, int, int, int]] = []
         for post_id, user_id, msg_id, chat_id in rows:
             try:
                 metrics = await self._fetch_metrics(user_id, chat_id, int(msg_id))
                 if metrics is None:
                     continue
-                await self._save_metrics(post_id, metrics)
+                metrics_by_post.append(
+                    (
+                        metrics.get("views", 0),
+                        metrics.get("likes", 0),
+                        metrics.get("reposts", 0),
+                        metrics.get("comments", 0),
+                        post_id,
+                    )
+                )
                 updated += 1
             except Exception as e:
                 logger.warning("Engagement refresh failed for post %s: %s", post_id, e)
+
+        if metrics_by_post:
+            conn = await get_db_connection()
+            try:
+                async with conn.cursor() as cur:
+                    await cur.executemany(
+                        """
+                        UPDATE tg_posts
+                        SET views = %s,
+                            likes = %s,
+                            reposts = %s,
+                            comments = %s,
+                            updated_at = CURRENT_TIMESTAMP
+                        WHERE id = %s
+                        """,
+                        metrics_by_post,
+                    )
+            finally:
+                await release_db_connection(conn)
+
         return updated
 
     async def _fetch_metrics(
@@ -87,27 +116,3 @@ class EngagementService:
             "comments": replies,
         }
 
-    async def _save_metrics(self, post_id: int, metrics: Dict[str, int]) -> None:
-        conn = await get_db_connection()
-        try:
-            async with conn.cursor() as cur:
-                await cur.execute(
-                    """
-                    UPDATE tg_posts
-                    SET views = %s,
-                        likes = %s,
-                        reposts = %s,
-                        comments = %s,
-                        updated_at = CURRENT_TIMESTAMP
-                    WHERE id = %s
-                    """,
-                    (
-                        metrics.get("views", 0),
-                        metrics.get("likes", 0),
-                        metrics.get("reposts", 0),
-                        metrics.get("comments", 0),
-                        post_id,
-                    ),
-                )
-        finally:
-            await release_db_connection(conn)

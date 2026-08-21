@@ -1,0 +1,5 @@
+# Convenience wrapper — same as tester/docker-compose.yml
+#   docker compose -f docker-compose.tester.yml --env-file tester/.env up -d --build
+
+include:
+  - path: tester/docker-compose.yml

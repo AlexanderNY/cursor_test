@@ -30,6 +30,7 @@ import { FigmaPreviewPage } from '@/pages/figma-preview'
 import { AboutPage } from '@/pages/about/about'
 import { PricingPage } from '@/pages/pricing/pricing'
 import { FeedbackPage } from '@/pages/feedback'
+import { E2eTesterPage } from '@/pages/tester'
 import { RouteLoader } from '@/components/route-loader'
 
 interface ProtectedRouteProps {
@@ -137,6 +138,7 @@ function App() {
         </Route>
         <Route path="pricing" element={<PricingPage />} />
         <Route path="feedback" element={<FeedbackPage />} />
+        <Route path="e2e-tester" element={<AdminRoute><E2eTesterPage /></AdminRoute>} />
       </Route>
 
       <Route path="figma-preview" element={<FigmaPreviewPage />} />

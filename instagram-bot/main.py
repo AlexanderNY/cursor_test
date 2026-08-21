@@ -259,7 +259,7 @@ async def main():
     global bot_service, _reload_task
     try:
         logger.info("Initializing Instagram Bot...")
-        await init_db([])
+        await init_db()
         logger.info("Database initialized")
 
         bot_service = InstagramBotService()

@@ -22,7 +22,7 @@ async def _count_managers_in_group(group_id: int) -> int:
             await cur.execute(
                 """
                 SELECT COUNT(*) FROM group_members
-                WHERE group_id = %s AND role_in_group IN ('manager', 'admin')
+                WHERE group_id = %s AND role_in_group = 'admin'
                 """,
                 (group_id,),
             )
@@ -31,7 +31,7 @@ async def _count_managers_in_group(group_id: int) -> int:
 
 
 def _is_group_admin(role_in_group: Optional[str]) -> bool:
-    return role_in_group in ("admin", "manager")
+    return role_in_group == "admin"
 
 
 def _normalize_role_in_group(role: str) -> str:
@@ -411,44 +411,50 @@ async def get_all_groups_with_members() -> List[Dict]:
         async with conn.cursor() as cur:
             await cur.execute(
                 """
-                SELECT id, name, description, created_at, created_by_user_id FROM groups ORDER BY name
+                SELECT
+                    g.id,
+                    g.name,
+                    g.description,
+                    g.created_at,
+                    g.created_by_user_id,
+                    gm.user_id,
+                    u.username,
+                    u.email,
+                    u.tariff,
+                    u.role,
+                    gm.role_in_group,
+                    gm.joined_at
+                FROM groups g
+                LEFT JOIN group_members gm ON gm.group_id = g.id
+                LEFT JOIN users u ON u.id = gm.user_id
+                ORDER BY g.name, gm.role_in_group, gm.joined_at
                 """
             )
-            groups_rows = await cur.fetchall()
-    result = []
-    for row in groups_rows:
-        g = {
-            "id": row[0],
-            "name": row[1],
-            "description": row[2],
-            "created_at": row[3],
-            "created_by_user_id": row[4],
-            "members": [],
-        }
-        async with get_db_connection() as conn:
-            async with conn.cursor() as cur:
-                await cur.execute(
-                    """
-                    SELECT gm.user_id, u.username, u.email, u.tariff, u.role, gm.role_in_group, gm.joined_at
-                    FROM group_members gm
-                    JOIN users u ON u.id = gm.user_id
-                    WHERE gm.group_id = %s
-                    ORDER BY gm.role_in_group, gm.joined_at
-                    """,
-                    (row[0],),
-                )
-                members_rows = await cur.fetchall()
-        g["members"] = [
-            {
-                "user_id": r[0],
-                "username": r[1],
-                "email": r[2],
-                "tariff": r[3] or "free",
-                "role": r[4],
-                "role_in_group": r[5],
-                "joined_at": r[6],
+            rows = await cur.fetchall()
+
+    groups_by_id: Dict[int, Dict] = {}
+    for row in rows:
+        group_id = row[0]
+        if group_id not in groups_by_id:
+            groups_by_id[group_id] = {
+                "id": group_id,
+                "name": row[1],
+                "description": row[2],
+                "created_at": row[3],
+                "created_by_user_id": row[4],
+                "members": [],
             }
-            for r in members_rows
-        ]
-        result.append(g)
-    return result
+        if row[5] is not None:
+            groups_by_id[group_id]["members"].append(
+                {
+                    "user_id": row[5],
+                    "username": row[6],
+                    "email": row[7],
+                    "tariff": row[8] or "free",
+                    "role": row[9],
+                    "role_in_group": row[10],
+                    "joined_at": row[11],
+                }
+            )
+
+    return list(groups_by_id.values())

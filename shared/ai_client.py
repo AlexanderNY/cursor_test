@@ -1,4 +1,4 @@
-"""Единый AI-клиент (OpenAI-compatible API) с circuit breaker и runtime-флагом."""
+"""Единый AI-клиент (OpenAI-compatible API) с circuit breaker и degrade при недоступности."""
 
 from __future__ import annotations
 
@@ -43,6 +43,26 @@ ENRICH_SYSTEM = (
 ) + _SAFETY_SUFFIX
 
 
+def _env_int(name: str, default: int) -> int:
+    raw = os.getenv(name)
+    if raw is None or not str(raw).strip():
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        return default
+
+
+def _env_float(name: str, default: float) -> float:
+    raw = os.getenv(name)
+    if raw is None or not str(raw).strip():
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        return default
+
+
 @dataclass
 class SentimentResult:
     sentiment: Literal["positive", "negative", "neutral"]
@@ -51,11 +71,14 @@ class SentimentResult:
 
 @dataclass
 class AIClientConfig:
-    service_url: str = field(default_factory=lambda: os.getenv("AI_SERVICE_URL", "http://ollama:11434"))
+    service_url: str = field(default_factory=lambda: os.getenv("AI_SERVICE_URL", "http://ollama:65535"))
     model: str = field(default_factory=lambda: os.getenv("AI_MODEL", "qwen2.5:3b"))
-    timeout_sec: float = field(default_factory=lambda: float(os.getenv("AI_TIMEOUT_SEC", "60")))
-    realtime_timeout_sec: float = field(default_factory=lambda: float(os.getenv("AI_REALTIME_TIMEOUT_SEC", "15")))
-    max_retries: int = 2
+    timeout_sec: float = field(default_factory=lambda: float(os.getenv("AI_TIMEOUT_SEC", "30")))
+    realtime_timeout_sec: float = field(
+        default_factory=lambda: float(os.getenv("AI_REALTIME_TIMEOUT_SEC", "8"))
+    )
+    # При недоступном Ollama лишние ретраи только удлиняют пайплайн.
+    max_retries: int = field(default_factory=lambda: max(0, _env_int("AI_MAX_RETRIES", 1)))
     max_concurrent: int = field(
         default_factory=lambda: max(1, int(os.getenv("AI_MAX_CONCURRENT", "1")))
     )
@@ -68,12 +91,27 @@ class AIClientConfig:
     settings_cache_ttl_sec: float = field(
         default_factory=lambda: float(os.getenv("AI_SETTINGS_CACHE_TTL_SEC", "5"))
     )
+    availability_probe_timeout_sec: float = field(
+        default_factory=lambda: float(os.getenv("AI_AVAILABILITY_PROBE_TIMEOUT_SEC", "2"))
+    )
+    availability_cache_ok_ttl_sec: float = field(
+        default_factory=lambda: float(os.getenv("AI_AVAILABILITY_CACHE_OK_TTL_SEC", "30"))
+    )
+    availability_cache_fail_ttl_sec: float = field(
+        default_factory=lambda: float(os.getenv("AI_AVAILABILITY_CACHE_FAIL_TTL_SEC", "15"))
+    )
 
 
-_circuit = get_breaker("ai")
+_circuit = get_breaker(
+    "ai",
+    failure_threshold=_env_int("AI_CIRCUIT_FAILURE_THRESHOLD", 2),
+    recovery_timeout_sec=_env_float("AI_CIRCUIT_RECOVERY_TIMEOUT_SEC", 30.0),
+)
 _config = AIClientConfig()
 _cached_enabled: Optional[bool] = None
 _cached_enabled_at: float = 0.0
+_cached_available: Optional[bool] = None
+_cached_available_at: float = 0.0
 _http_client: Optional[httpx.AsyncClient] = None
 _http_client_lock = asyncio.Lock()
 _ai_semaphore: Optional[asyncio.Semaphore] = None
@@ -82,6 +120,18 @@ _ai_semaphore_lock = asyncio.Lock()
 
 def _env_ai_enabled() -> bool:
     return os.getenv("AI_ENABLED", "true").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _is_transient_http(exc: BaseException) -> bool:
+    """Ретраим только transient HTTP/timeout; ConnectError — сразу degrade."""
+    if isinstance(exc, (httpx.ConnectError, httpx.ConnectTimeout)):
+        return False
+    if isinstance(exc, httpx.TimeoutException):
+        return True
+    if isinstance(exc, httpx.HTTPStatusError):
+        code = exc.response.status_code
+        return code >= 500 or code == 429
+    return True
 
 
 async def _get_http_client() -> httpx.AsyncClient:
@@ -128,8 +178,18 @@ async def is_enabled() -> bool:
         if response.status_code == 200:
             data = response.json()
             enabled = bool(data.get("enabled", True))
+            _cached_enabled = enabled
+            _cached_enabled_at = now
+            return enabled
+        # Core отвечает ошибкой — используем stale или env (уже True).
+        if _cached_enabled is not None:
+            logger.debug("AI settings HTTP %s, using stale cache", response.status_code)
+            return _cached_enabled
     except Exception as exc:
-        logger.debug("AI settings poll failed, assuming enabled: %s", exc)
+        if _cached_enabled is not None:
+            logger.debug("AI settings poll failed, using stale cache: %s", exc)
+            return _cached_enabled
+        logger.debug("AI settings poll failed, assuming enabled (availability probe next): %s", exc)
         enabled = True
 
     _cached_enabled = enabled
@@ -137,10 +197,88 @@ async def is_enabled() -> bool:
     return enabled
 
 
+async def probe_available(*, force: bool = False) -> bool:
+    """Лёгкий probe Ollama. Негативный результат кэшируется, чтобы не долбить мёртвый контейнер."""
+    global _cached_available, _cached_available_at
+
+    now = time.monotonic()
+    if not force and _cached_available is not None:
+        ttl = (
+            _config.availability_cache_ok_ttl_sec
+            if _cached_available
+            else _config.availability_cache_fail_ttl_sec
+        )
+        if (now - _cached_available_at) < ttl:
+            return _cached_available
+
+    url = f"{_config.service_url.rstrip('/')}/api/tags"
+    ok = False
+    try:
+        client = await _get_http_client()
+        response = await client.get(url, timeout=_config.availability_probe_timeout_sec)
+        ok = response.status_code < 500
+        if not ok:
+            logger.debug("AI probe HTTP %s", response.status_code)
+    except Exception as exc:
+        logger.debug("AI probe failed: %s", exc)
+        ok = False
+
+    _cached_available = ok
+    _cached_available_at = now
+    return ok
+
+
+async def is_ready() -> bool:
+    """Разрешены флаги + circuit closed + Ollama отвечает на probe."""
+    if not await is_enabled():
+        return False
+    if _circuit.is_open():
+        return False
+    return await probe_available()
+
+
+async def get_status() -> dict[str, Any]:
+    """Сводка для UI/admin: enabled / available / circuit."""
+    env_on = _env_ai_enabled()
+    enabled = await is_enabled() if env_on else False
+    circuit_open = _circuit.is_open()
+    available = False
+    if env_on and enabled and not circuit_open:
+        available = await probe_available()
+    elif env_on and enabled and circuit_open:
+        # При open circuit не дергаем сеть каждый раз — показываем unavailable.
+        available = False
+    ready = bool(enabled and not circuit_open and available)
+    return {
+        "enabled": enabled,
+        "env_enabled": env_on,
+        "available": available,
+        "circuit_open": circuit_open,
+        "ready": ready,
+        "model": _config.model,
+        "service_url": _config.service_url,
+        "status": (
+            "ready"
+            if ready
+            else (
+                "disabled"
+                if not enabled
+                else ("circuit_open" if circuit_open else "unavailable")
+            )
+        ),
+    }
+
+
 def invalidate_enabled_cache() -> None:
     global _cached_enabled, _cached_enabled_at
     _cached_enabled = None
     _cached_enabled_at = 0.0
+
+
+def invalidate_availability_cache() -> None:
+    global _cached_available, _cached_available_at
+    _cached_available = None
+    _cached_available_at = 0.0
 
 
 def _extract_json(text: str) -> dict[str, Any]:
@@ -160,11 +298,17 @@ async def _chat_completion(
     max_tokens: int,
     timeout_sec: Optional[float] = None,
 ) -> str:
+    global _cached_available, _cached_available_at
+
     if not await is_enabled():
         raise RuntimeError("AI is disabled")
 
     if _circuit.is_open():
         raise RuntimeError("AI circuit breaker is open")
+
+    if not await probe_available():
+        _circuit.record_failure()
+        raise RuntimeError("AI service unavailable")
 
     timeout = timeout_sec or _config.timeout_sec
     url = f"{_config.service_url.rstrip('/')}/v1/chat/completions"
@@ -194,13 +338,16 @@ async def _chat_completion(
                 attempts=_config.max_retries + 1,
                 min_wait_sec=0.5,
                 max_wait_sec=2.0,
-                retry_on=lambda _exc: True,
+                retry_on=_is_transient_http,
                 operation_name="ai.chat_completion",
             )
             _circuit.record_success()
+            _cached_available = True
+            _cached_available_at = time.monotonic()
             return result
         except Exception as last_error:
             _circuit.record_failure()
+            invalidate_availability_cache()
             raise RuntimeError(f"AI request failed: {last_error}") from last_error
 
 
@@ -370,3 +517,4 @@ async def enrich(text: str, categories: list[str]) -> dict[str, Any]:
 def reset_circuit_breaker_for_tests() -> None:
     get_breaker("ai").reset()
     invalidate_enabled_cache()
+    invalidate_availability_cache()

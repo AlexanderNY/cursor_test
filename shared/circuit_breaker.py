@@ -116,10 +116,13 @@ class CircuitBreaker:
 _registry: Dict[str, CircuitBreaker] = {}
 
 
-def get_breaker(name: str) -> CircuitBreaker:
-    """Возвращает singleton breaker по имени (vk_api, telegram, ai, …)."""
+def get_breaker(name: str, **kwargs: object) -> CircuitBreaker:
+    """Возвращает singleton breaker по имени (vk_api, telegram, ai, …).
+
+    kwargs передаются только при первом создании (threshold, recovery_timeout_sec).
+    """
     if name not in _registry:
-        _registry[name] = CircuitBreaker(name=name)
+        _registry[name] = CircuitBreaker(name=name, **kwargs)  # type: ignore[arg-type]
     return _registry[name]
 
 

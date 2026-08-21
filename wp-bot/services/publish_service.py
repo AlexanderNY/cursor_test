@@ -77,8 +77,11 @@ class PublishService:
                     try:
                         # Получаем профиль пользователя
                         await cur.execute(
-                            "SELECT * FROM wp_profiles WHERE user_id = %s",
-                            (uid,)
+                            """
+                            SELECT * FROM wp_publish_profile
+                            WHERE user_id = %s AND publish_enabled = TRUE
+                            """,
+                            (uid,),
                         )
                         profile_row = await cur.fetchone()
                         

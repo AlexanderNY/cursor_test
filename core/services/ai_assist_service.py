@@ -249,6 +249,14 @@ async def process(
         if not await ai_client.is_enabled():
             raise AiAssistError("AI is disabled", status_code=503)
 
+        status = await ai_client.get_status()
+        if not status.get("ready"):
+            msg = {
+                "circuit_open": "AI temporarily unavailable (circuit open)",
+                "unavailable": "AI service unavailable (Ollama not running)",
+            }.get(str(status.get("status")), "AI is not ready")
+            raise AiAssistError(msg, status_code=503)
+
         result: dict[str, Any]
         if action == "summarize":
             if note:

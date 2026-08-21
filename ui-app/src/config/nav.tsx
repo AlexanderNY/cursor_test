@@ -60,4 +60,5 @@ export const adminNavItems: NavItem[] = [
   { path: '/administration', label: 'Administration', Icon: SettingsIcon },
   { path: '/polls', label: 'Polls', Icon: PollIcon },
   { path: '/checks', label: 'Checks', Icon: CheckCircleIcon },
+  { path: '/e2e-tester', label: 'E2E Tester', Icon: DocumentTextIcon },
 ]

@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 
 from config import settings
 from database import init_db, close_db
+from models import ALL_TABLES
 from services.vk_bot_service import VkBotService
 from services.vk_selenium_probe import verify_vk_selenium_async
 
@@ -110,7 +111,7 @@ async def main():
     global bot_service, _reload_task
     try:
         logger.info("Initializing VK Bot...")
-        await init_db([])
+        await init_db(ALL_TABLES)
         logger.info("Database initialized")
 
         bot_service = VkBotService()

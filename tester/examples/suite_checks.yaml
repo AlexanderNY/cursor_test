@@ -1,0 +1,127 @@
+# suite_checks — P3 admin / пайплайн (S02, S30–S36; S37 docs)
+# Требует credentials: password или JWT с role=admin.
+
+name: suite_checks
+steps:
+  - action: login_form
+  - action: wait_url
+    contains: /profile
+    timeout_ms: 30000
+
+  # S02_checks_health
+  - action: goto
+    path: /checks/services-status
+  - action: wait_url
+    contains: /checks/services-status
+  - action: assert_text
+    selector: body
+    contains: Services Status
+  - action: click
+    selector: 'button:has-text("Load Services Status")'
+  - action: wait
+    ms: 5000
+  - action: assert_text
+    selector: body
+    contains: Healthchecks
+  - action: screenshot
+    name: S02_checks_health
+
+  # S30_admin_users
+  - action: goto
+    path: /administration
+  - action: wait_url
+    contains: /administration
+  - action: assert_text
+    selector: body
+    contains: Administration
+  - action: screenshot
+    name: S30_administration
+
+  # S31_polls
+  - action: goto
+    path: /polls
+  - action: wait_url
+    contains: /polls
+  - action: assert_text
+    selector: body
+    contains: Polls
+  - action: screenshot
+    name: S31_polls
+
+  # S32_checks_collector
+  - action: goto
+    path: /checks/collector
+  - action: wait_url
+    contains: /checks/collector
+  - action: assert_text
+    selector: body
+    contains: Collector
+  - action: click
+    selector: 'button:has-text("Обновить статус сервисов")'
+  - action: wait
+    ms: 4000
+  - action: screenshot
+    name: S32_collector
+
+  # S33_checks_processor
+  - action: goto
+    path: /checks/processor
+  - action: wait_url
+    contains: /checks/processor
+  - action: assert_text
+    selector: body
+    contains: Processor
+  - action: click
+    selector: 'button:has-text("Обновить статус сервисов")'
+  - action: wait
+    ms: 4000
+  - action: screenshot
+    name: S33_processor
+
+  # S34_checks_scheduler
+  - action: goto
+    path: /checks/scheduler
+  - action: wait_url
+    contains: /checks/scheduler
+  - action: assert_text
+    selector: body
+    contains: Scheduler
+  - action: click
+    selector: 'button:has-text("Обновить статус сервисов")'
+  - action: wait
+    ms: 4000
+  - action: screenshot
+    name: S34_scheduler
+
+  # S35_checks_ai
+  - action: goto
+    path: /checks/ai
+  - action: wait_url
+    contains: /checks/ai
+  - action: assert_text
+    selector: body
+    contains: Нейросеть
+  - action: screenshot
+    name: S35_ai
+
+  # S36_posting_diag
+  - action: goto
+    path: /checks/posting-diagnostics
+  - action: wait_url
+    contains: /checks/posting-diagnostics
+  - action: assert_text
+    selector: body
+    contains: Диагностика постинга
+  - action: screenshot
+    name: S36_posting_diag
+
+  # S37_e2e_docs
+  - action: goto
+    path: /e2e-tester
+  - action: wait_url
+    contains: /e2e-tester
+  - action: assert_text
+    selector: body
+    contains: E2E Tester
+  - action: screenshot
+    name: S37_e2e_docs

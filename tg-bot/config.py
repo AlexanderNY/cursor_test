@@ -49,7 +49,7 @@ class Settings(BaseSettings):
     S3_SECRET_KEY: str = ""
     S3_USE_SSL: bool = False
 
-    AI_SERVICE_URL: str = "http://ollama:11434"
+    AI_SERVICE_URL: str = "http://ollama:65535"
     AI_MODEL: str = "qwen2.5:3b"
     AI_TIMEOUT_SEC: float = 60.0
     AI_REALTIME_TIMEOUT_SEC: float = 15.0

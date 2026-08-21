@@ -40,6 +40,9 @@ class PostEnrichmentService:
             return None
 
         try:
+            if not await ai_client.is_ready():
+                logger.debug("Post enrichment skipped: AI not ready")
+                return None
             enrichment = await ai_client.enrich(text, categories)
             await self._update_post_metadata(post_id, enrichment)
             return enrichment

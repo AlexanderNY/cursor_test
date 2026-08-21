@@ -96,7 +96,7 @@ export function AiCheckSection() {
           <CardTitle>Нейросеть (Ollama)</CardTitle>
           <CardDescription>
             Отключите AI для отладки остального функционала без вызовов модели. Контейнер Ollama
-            может оставаться запущенным — запросы просто не отправляются.
+            опционален (`docker compose --profile ai up -d`): без него стек работает на фолбэках.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -105,7 +105,7 @@ export function AiCheckSection() {
 
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="space-y-1">
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 flex-wrap">
                 <span
                   className={`inline-flex px-3 py-1 rounded-full text-sm font-medium ${
                     isLoadingSettings
@@ -123,12 +123,36 @@ export function AiCheckSection() {
                         ? 'Заблокирована (AI_ENABLED)'
                         : 'Отключена'}
                 </span>
+                {isAiEnabled && (
+                  <span
+                    className={`inline-flex px-3 py-1 rounded-full text-sm font-medium ${
+                      aiSettings?.available
+                        ? 'bg-emerald-500/20 text-emerald-400'
+                        : aiSettings?.circuit_open
+                          ? 'bg-amber-500/20 text-amber-400'
+                          : 'bg-rose-500/20 text-rose-400'
+                    }`}
+                  >
+                    {aiSettings?.available
+                      ? 'Ollama доступна'
+                      : aiSettings?.circuit_open
+                        ? 'Circuit open'
+                        : 'Ollama недоступна'}
+                  </span>
+                )}
                 {aiSettings?.model && (
                   <span className="text-sm text-[var(--text-muted)]">{aiSettings.model}</span>
                 )}
               </div>
               {aiSettings?.service_url && (
                 <p className="text-xs text-[var(--text-muted)] font-mono">{aiSettings.service_url}</p>
+              )}
+              {isAiEnabled && !aiSettings?.available && (
+                <p className="text-xs text-amber-400 max-w-xl">
+                  Модель не отвечает. Поднимите AI-профиль:{' '}
+                  <code className="font-mono">docker compose --profile ai up -d</code>
+                  . Остальные сервисы продолжают работать без AI.
+                </p>
               )}
               {!isEnvEnabled && (
                 <p className="text-xs text-amber-400 max-w-xl">

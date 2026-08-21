@@ -3,6 +3,7 @@ export interface HealthcheckItem {
   status: 'ok' | 'error'
   error?: string
   server_time?: string | null
+  optional?: boolean
 }
 
 export interface HealthcheckResponse {
@@ -326,4 +327,7 @@ export interface AiSettingsResponse {
   env_enabled?: boolean
   model: string
   service_url: string
+  available?: boolean
+  circuit_open?: boolean
+  status?: 'ready' | 'disabled' | 'unavailable' | 'circuit_open' | string
 }

@@ -12,8 +12,7 @@ if str(_root) not in sys.path:
 from fastapi import FastAPI
 import uvicorn
 from database import init_db, close_db
-from tg_profiles_migration import TG_PROFILES_ALERT_MIGRATION
-from tg_telegram_migration import TG_TELEGRAM_ROADMAP_MIGRATION
+from models import ALL_TABLES
 from services.telegram_bot_service import TelegramBotService
 from services.client_manager import TelegramClientManager
 from routers.auth import router as auth_router, set_client_manager
@@ -110,7 +109,7 @@ async def main():
         logger.info("Initializing Telegram Bot...")
         
         logger.info("Initializing database...")
-        await init_db(TG_PROFILES_ALERT_MIGRATION + TG_TELEGRAM_ROADMAP_MIGRATION)
+        await init_db(ALL_TABLES)
         logger.info("Database initialized")
         
         # Создание менеджера клиентов

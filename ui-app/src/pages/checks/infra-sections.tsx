@@ -71,10 +71,23 @@ export function ServicesStatusSection() {
                   <tbody className="divide-y divide-[var(--border-color)]">
                     {(servicesStatus.healthchecks || []).map((h) => (
                       <tr key={h.service_name} className="hover:bg-[var(--bg-tertiary)]">
-                        <td className="py-3 px-4 text-[var(--text-primary)] font-medium">{h.service_name}</td>
+                        <td className="py-3 px-4 text-[var(--text-primary)] font-medium">
+                          {h.service_name}
+                          {h.optional ? (
+                            <span className="ml-2 text-xs font-normal text-[var(--text-muted)]">optional</span>
+                          ) : null}
+                        </td>
                         <td className="py-3 px-4">
-                          <span className={`inline-flex px-3 py-1 rounded-full text-sm font-medium ${h.status === 'ok' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>
-                            {h.status}
+                          <span
+                            className={`inline-flex px-3 py-1 rounded-full text-sm font-medium ${
+                              h.status === 'ok'
+                                ? 'bg-emerald-500/20 text-emerald-400'
+                                : h.optional
+                                  ? 'bg-amber-500/20 text-amber-400'
+                                  : 'bg-red-500/20 text-red-400'
+                            }`}
+                          >
+                            {h.status === 'ok' ? 'ok' : h.optional ? 'down' : 'error'}
                           </span>
                         </td>
                         <td className="py-3 px-4 text-[var(--text-secondary)] text-sm">{h.server_time ? formatDateTime(h.server_time) : '—'}</td>

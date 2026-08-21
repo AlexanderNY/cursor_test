@@ -297,7 +297,20 @@ async def run_ai_check(
 
     started = time.perf_counter()
     try:
+        ai_status = await ai_client.get_status()
+        if not ai_status.get("ready"):
+            detail = {
+                "disabled": "AI is disabled. Enable it on Checks → AI.",
+                "circuit_open": "AI circuit breaker is open after repeated failures. Retry later.",
+                "unavailable": "AI container (Ollama) is unreachable. Start with: docker compose --profile ai up -d",
+            }.get(str(ai_status.get("status")), "AI is not ready")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=detail,
+            )
         reply = await ai_client.complete(body.text.strip())
+    except HTTPException:
+        raise
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,

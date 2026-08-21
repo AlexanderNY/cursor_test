@@ -1,0 +1,57 @@
+# On-demand E2E tester. Requires main stack on edge_net:
+#   docker network create edge_net   # once
+#   docker compose up -d             # main stack
+#   docker compose -f tester/docker-compose.yml --env-file tester/.env up -d --build
+
+services:
+  tester-db:
+    image: postgres:16.6-alpine
+    container_name: tester-db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-tester}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-tester}
+      POSTGRES_DB: ${POSTGRES_DB:-tester}
+    volumes:
+      - tester_pg_data:/var/lib/postgresql/data
+    networks:
+      - tester_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-tester} -d ${POSTGRES_DB:-tester}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  tester:
+    build:
+      context: ..
+      dockerfile: tester/Dockerfile
+    container_name: tester
+    depends_on:
+      tester-db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8300:8300"
+    environment:
+      DATABASE_URL: dbname=${POSTGRES_DB:-tester} user=${POSTGRES_USER:-tester} password=${POSTGRES_PASSWORD:-tester} host=tester-db
+      TESTER_SECRET_KEY: ${TESTER_SECRET_KEY}
+      TARGET_UI_URL: ${TARGET_UI_URL:-http://ui:8100}
+      TARGET_API_URL: ${TARGET_API_URL:-http://gateway:8000}
+      ARTIFACTS_DIR: /data/artifacts
+    volumes:
+      - tester_artifacts:/data/artifacts
+    networks:
+      - tester_net
+      - edge_net
+    restart: unless-stopped
+
+networks:
+  tester_net:
+    driver: bridge
+  edge_net:
+    external: true
+    name: edge_net
+
+volumes:
+  tester_pg_data:
+  tester_artifacts:

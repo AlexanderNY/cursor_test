@@ -90,7 +90,7 @@ async def main():
     global bot_service
     try:
         logger.info("Initializing tw-bot...")
-        await init_db([])
+        await init_db()
         logger.info("Database pool ready")
 
         bot_service = TwBotService()

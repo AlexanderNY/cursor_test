@@ -75,3 +75,35 @@ json
 Резюме: Схема работы системы
 1234567891011121314
 Такая архитектура позволяет легко добавлять новые соцсети: вам нужно будет просто написать новый Адаптер для очереди задач и добавить кнопку на фронтенд, не меняя базовую логику работы платформы.
+
+
+
+
+
+
+
+
+
+
+AI-клиент (shared/ai_client.py)
+Probe Ollama (/api/tags) + кэш «недоступен» на 15 с — без долбления мёртвого контейнера
+Circuit breaker: 2 ошибки → open на 30 с
+ConnectError без ретраев; таймауты короче (30 с / 8 с realtime)
+is_ready() / get_status() для UI и пайплайна
+summarize / rewrite / enrich / sentiment → фолбэк без падения сервиса
+Compose
+Ollama только с профилем: docker compose --profile ai up -d
+Обычный docker compose up -d поднимает стек без AI
+Остальное
+Processor / tg-bot enrichment пропускают AI, если не ready
+Assist / Checks → AI отдают понятный 503, если Ollama нет
+Healthcheck: боты + ollama помечены optional (в UI — amber «down», не красный «error»)
+Тесты: 11 passed.
+
+Запуск без AI:
+
+docker compose up -d
+Когда нужна модель:
+
+
+docker compose --profile ai up -d
