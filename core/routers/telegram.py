@@ -9,6 +9,12 @@ from fastapi.responses import FileResponse, RedirectResponse
 
 from services.profile_service import profile_service
 from services.post_service import post_service
+from services.platform_auth_service import (
+    PlatformAction,
+    PlatformAuthError,
+    platform_auth_service,
+    platform_auth_http_detail,
+)
 from services.tg_analytics_service import tg_analytics_service
 from schemas import TelegramProfileCreate, TgPostTemplateCreate
 from storage_client import get_storage
@@ -143,7 +149,15 @@ async def create_tg_post(
         Созданный пост
     """
     user_id = get_user_id_from_header(x_user_id)
-    
+
+    if to_tg:
+        try:
+            await platform_auth_service.require_platform(
+                user_id, "tg", PlatformAction.PUBLISH_TEXT
+            )
+        except PlatformAuthError as exc:
+            raise HTTPException(status_code=403, detail=platform_auth_http_detail(exc))
+
     try:
         images = []
         if image:
@@ -295,6 +309,12 @@ async def approve_tg_post(
 ):
     """Approve review post → ready (+ optional publish_at)."""
     user_id = get_user_id_from_header(x_user_id)
+    try:
+        await platform_auth_service.require_platform(
+            user_id, "tg", PlatformAction.PUBLISH_TEXT
+        )
+    except PlatformAuthError as exc:
+        raise HTTPException(status_code=403, detail=platform_auth_http_detail(exc))
     post = await post_service.approve_tg_post(user_id, post_id, publish_at=publish_at or None)
     if not post:
         raise HTTPException(status_code=404, detail="Post not found")

@@ -6,6 +6,7 @@ from typing import Dict, Optional
 from database import get_db_connection, release_db_connection
 from .client_manager import TelegramClientManager
 from .post_publisher import PostPublisher
+from .channel_counter import record_post_metric_snapshot
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +18,7 @@ class EngagementService:
         self.client_manager = client_manager
         self._parser = PostPublisher(client_manager)
 
-    async def refresh_engagement(self, limit: int = 50) -> int:
+    async def refresh_engagement(self, limit: int = 100) -> int:
         """Обновляет метрики для последних published постов. Возвращает число обновлений."""
         conn = await get_db_connection()
         try:
@@ -75,8 +76,29 @@ class EngagementService:
                         """,
                         metrics_by_post,
                     )
+                    for views, likes, reposts, comments, post_id in metrics_by_post:
+                        await cur.execute(
+                            """
+                            UPDATE posts
+                            SET views = %s, likes = %s, reposts = %s, comments = %s,
+                                updated_at = CURRENT_TIMESTAMP
+                            WHERE source_platform = 'tg' AND source_id = %s
+                            """,
+                            (views, likes, reposts, comments, post_id),
+                        )
             finally:
                 await release_db_connection(conn)
+            for views, likes, reposts, comments, post_id in metrics_by_post:
+                row_user = next((r[1] for r in rows if r[0] == post_id), None)
+                if row_user:
+                    await record_post_metric_snapshot(
+                        row_user,
+                        post_id,
+                        views=views,
+                        likes=likes,
+                        comments=comments,
+                        reposts=reposts,
+                    )
 
         return updated
 

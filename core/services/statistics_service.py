@@ -4,6 +4,9 @@ from typing import List, Dict, Optional
 
 from database import get_db_connection, release_db_connection
 
+_PROCESSING_STATUSES = ("processing", "ready", "review", "publishing")
+_PROCESSING_SQL = ", ".join(f"'{s}'" for s in _PROCESSING_STATUSES)
+
 
 class StatisticsService:
     """Сервис для получения статистики по постам."""
@@ -21,7 +24,7 @@ class StatisticsService:
             async with conn.cursor() as cur:
                 platform_cases = ", ".join(
                     f"COUNT(*) FILTER (WHERE {field} = TRUE AND status = 'collected') AS {field}_collected,"
-                    f" COUNT(*) FILTER (WHERE {field} = TRUE AND status = 'processed') AS {field}_processed,"
+                    f" COUNT(*) FILTER (WHERE {field} = TRUE AND status IN ({_PROCESSING_SQL})) AS {field}_processed,"
                     f" COUNT(*) FILTER (WHERE {field} = TRUE AND status = 'published') AS {field}_published"
                     for field, _ in self._PLATFORM_FIELDS
                 )
@@ -30,7 +33,7 @@ class StatisticsService:
                     SELECT
                         {platform_cases},
                         COUNT(*) FILTER (WHERE status = 'collected') AS total_collected,
-                        COUNT(*) FILTER (WHERE status = 'processed') AS total_processed,
+                        COUNT(*) FILTER (WHERE status IN ({_PROCESSING_SQL})) AS total_processed,
                         COUNT(*) FILTER (WHERE status = 'published') AS total_published
                     FROM posts
                     """
@@ -77,7 +80,7 @@ class StatisticsService:
                             user_id,
                             COUNT(*) AS total_posts,
                             COUNT(*) FILTER (WHERE status = 'collected') AS collected_posts,
-                            COUNT(*) FILTER (WHERE status = 'processed') AS processed_posts,
+                            COUNT(*) FILTER (WHERE status IN ({_PROCESSING_SQL})) AS processed_posts,
                             COUNT(*) FILTER (WHERE status = 'published') AS published_posts
                         FROM posts
                         WHERE user_id IN ({placeholders})
@@ -88,12 +91,12 @@ class StatisticsService:
                     )
                 else:
                     await cur.execute(
-                        """
+                        f"""
                         SELECT
                             user_id,
                             COUNT(*) AS total_posts,
                             COUNT(*) FILTER (WHERE status = 'collected') AS collected_posts,
-                            COUNT(*) FILTER (WHERE status = 'processed') AS processed_posts,
+                            COUNT(*) FILTER (WHERE status IN ({_PROCESSING_SQL})) AS processed_posts,
                             COUNT(*) FILTER (WHERE status = 'published') AS published_posts
                         FROM posts
                         GROUP BY user_id

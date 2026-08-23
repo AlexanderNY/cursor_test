@@ -57,8 +57,18 @@ VK_POSTS_INDEXES = build_post_indexes(
     with_user_domain=True,
 )
 
+VK_POSTS_PUBLISHED_MIGRATION = """
+DO $$ BEGIN
+  ALTER TABLE vk_posts ADD COLUMN published_vk_post_id INTEGER;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE vk_posts ADD COLUMN published_owner_id BIGINT;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+"""
+
 ALL_TABLES: list[str] = [
     VK_PROFILES_TABLE,
     VK_POSTS_TABLE,
     VK_POSTS_INDEXES,
+    VK_POSTS_PUBLISHED_MIGRATION,
 ]

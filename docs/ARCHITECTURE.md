@@ -77,8 +77,9 @@ flowchart LR
 | Юнит | Compose | Роль |
 |------|---------|------|
 | copyparse (монорепо) | `docker-compose.yaml` | UI, gateway, auth, core, scheduler, collector, processor, боты, MinIO, Ollama |
-| ui-9to18 | `ui-9to18/docker-compose.yml` | Статический сайт на nginx :8200 |
+| ui-9to18 | `deploy/ui-9to18/docker-compose.yml` | Статический сайт на nginx :8200 |
 | ui-edge | `deploy/ui-edge/docker-compose.yml` | Публичный reverse-proxy :80/:443 |
+| e2e-tester | `deploy/e2e-tester/docker-compose.yml` | On-demand E2E, 127.0.0.1:8300 |
 
 Подробности: [../deploy/DEPLOYMENT.md](../deploy/DEPLOYMENT.md).
 

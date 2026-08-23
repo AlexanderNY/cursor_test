@@ -6,12 +6,55 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Alert } from '@/components/ui/alert'
 import { DataTable, type DataTableColumn } from '@/components/ui/data-table'
+import { CheckCircleIcon, XCircleIcon } from '@/components/icons'
 import { useBrand } from '@/contexts/brand-context'
 import { smmService } from '@/services/smm-service'
-import type { BrandChannel, ChannelRole } from '@/types/smm'
+import type { BrandChannel, ChannelRole, PlatformStatusResponse } from '@/types/smm'
+import { authStatusLabel, publishAllowed } from '@/hooks/use-platform-readiness'
 import { getErrorMessage } from '@/services/api-client'
 
 type ChannelRow = BrandChannel & { brand_name?: string; brand_color?: string }
+
+function FlagStatusIcon({
+  on,
+  label,
+  title,
+  na = false,
+}: {
+  on: boolean
+  label: string
+  title?: string
+  na?: boolean
+}) {
+  if (na) {
+    return (
+      <span
+        className="inline-flex items-center justify-center text-[var(--text-muted)]"
+        title={title || `${label}: недоступно`}
+        aria-label={`${label}: n/a`}
+      >
+        <span className="text-xs font-medium tracking-wide">—</span>
+      </span>
+    )
+  }
+  return on ? (
+    <span
+      className="inline-flex text-emerald-400"
+      title={title || `${label}: включено`}
+      aria-label={`${label}: on`}
+    >
+      <CheckCircleIcon size={20} />
+    </span>
+  ) : (
+    <span
+      className="inline-flex text-[var(--text-muted)] opacity-60"
+      title={title || `${label}: выключено`}
+      aria-label={`${label}: off`}
+    >
+      <XCircleIcon size={20} />
+    </span>
+  )
+}
 
 export function ChannelsPage() {
   const {
@@ -34,17 +77,20 @@ export function ChannelsPage() {
   const [loadingList, setLoadingList] = useState(false)
   const [filterTitle, setFilterTitle] = useState('')
   const [filterNetwork, setFilterNetwork] = useState<'all' | 'tg' | 'vk'>('all')
+  const [platformStatus, setPlatformStatus] = useState<PlatformStatusResponse | null>(null)
   const hasBrands = brands.length > 0
 
   async function load() {
     setError('')
     setLoadingList(true)
     try {
-      const [list, palette] = await Promise.all([
+      const [list, palette, platforms] = await Promise.all([
         smmService.listAllChannels(selectedBrandId ?? undefined),
         smmService.getPalette(),
+        smmService.platformStatus().catch(() => null),
       ])
       setChannels(list)
+      setPlatformStatus(platforms)
       setLimits({
         max_own_channels: palette.max_own_channels,
         tariff: (palette as { tariff?: string }).tariff,
@@ -75,6 +121,10 @@ export function ChannelsPage() {
 
   const ownCount = channels.filter((c) => c.role === 'own').length
   const hasCollectOrAlert = channels.some((c) => c.collect_enabled || c.alert_enabled)
+  const tgOwnPending = channels.filter(
+    (c) => c.network === 'tg' && c.role === 'own' && c.auth_status !== 'connected',
+  )
+  const tgConnected = Boolean(platformStatus?.tg?.connected)
 
   const filtered = useMemo(() => {
     const q = filterTitle.trim().toLowerCase()
@@ -88,9 +138,16 @@ export function ChannelsPage() {
 
   async function handleAdd(e: FormEvent) {
     e.preventDefault()
-    if (!brandId || !externalId.trim()) return
-    setSaving(true)
     setError('')
+    if (!brandId) {
+      setError('Выберите бренд')
+      return
+    }
+    if (!externalId.trim()) {
+      setError('Укажите ID канала')
+      return
+    }
+    setSaving(true)
     try {
       await smmService.addChannel(brandId, {
         network,
@@ -110,35 +167,10 @@ export function ChannelsPage() {
     }
   }
 
-  async function toggleFlag(
-    ch: ChannelRow,
-    field: 'publish_enabled' | 'collect_enabled' | 'alert_enabled',
-  ) {
+  async function recheckAuth(ch: ChannelRow) {
     try {
-      if (field === 'alert_enabled' && ch.network !== 'tg') {
-        setError('Alerting пока только для Telegram')
-        return
-      }
-      const next = !ch[field]
-      if (field === 'alert_enabled' && next) {
-        const hasKeywords = (ch.alert_rules || []).some((r) =>
-          (r.save_conditions || []).some((c) => String(c).trim()),
-        )
-        const delivery = ch.alert_delivery || {}
-        const hasTargets =
-          Boolean((delivery.alert_targets || []).length) ||
-          Boolean((delivery.channel_to_post || '').trim())
-        const hasText = Boolean((delivery.alert_text || '').trim())
-        if (!hasKeywords || !hasTargets || !hasText) {
-          setError(
-            'Сначала откройте «Настроить» → Алерты: ключевые слова, куда слать и текст уведомления',
-          )
-          return
-        }
-      }
-      await smmService.updateChannel(ch.brand_id, ch.id, {
-        [field]: next,
-      })
+      setError('')
+      await smmService.recheckChannelAuth(ch.id)
       await load()
       await refreshChannels()
     } catch (err) {
@@ -204,15 +236,49 @@ export function ChannelsPage() {
         ),
       },
       {
+        key: 'auth_status',
+        header: 'Auth',
+        render: (_v, row) => (
+          <div className="flex flex-col gap-1 min-w-[5rem]">
+            <span
+              className={`text-xs font-medium ${
+                row.auth_status === 'connected' || row.auth_status === 'not_required'
+                  ? 'text-emerald-400'
+                  : 'text-amber-400'
+              }`}
+              title={row.auth_error || undefined}
+            >
+              {authStatusLabel(row.auth_status)}
+            </span>
+            {row.role !== 'competitor' && (
+              <button
+                type="button"
+                className="text-xs text-primary-400 hover:underline text-left"
+                onClick={() => void recheckAuth(row)}
+              >
+                Recheck
+              </button>
+            )}
+          </div>
+        ),
+      },
+      {
         key: 'publish_enabled',
         header: 'Publish',
         render: (_v, row) => (
-          <input
-            type="checkbox"
-            checked={!!row.publish_enabled}
-            disabled={row.role !== 'own'}
-            onChange={() => void toggleFlag(row, 'publish_enabled')}
-            aria-label="publish"
+          <FlagStatusIcon
+            on={!!row.publish_enabled}
+            label="Publish"
+            na={row.role !== 'own'}
+            title={
+              row.role !== 'own'
+                ? 'Publish только для own'
+                : row.publish_enabled
+                  ? publishAllowed(row)
+                    ? 'Publish включён в настройках канала'
+                    : 'Publish включён, но ownership не подтверждён — Recheck'
+                  : 'Publish выключен — включите в «Настроить» → Публикация'
+            }
           />
         ),
       },
@@ -220,11 +286,14 @@ export function ChannelsPage() {
         key: 'collect_enabled',
         header: 'Collect',
         render: (_v, row) => (
-          <input
-            type="checkbox"
-            checked={!!row.collect_enabled}
-            onChange={() => void toggleFlag(row, 'collect_enabled')}
-            aria-label="collect"
+          <FlagStatusIcon
+            on={!!row.collect_enabled}
+            label="Collect"
+            title={
+              row.collect_enabled
+                ? 'Collect включён в настройках канала'
+                : 'Collect выключен — включите в «Настроить» → Сбор'
+            }
           />
         ),
       },
@@ -232,13 +301,17 @@ export function ChannelsPage() {
         key: 'alert_enabled',
         header: 'Alert',
         render: (_v, row) => (
-          <input
-            type="checkbox"
-            checked={!!row.alert_enabled}
-            disabled={row.network !== 'tg'}
-            title={row.network !== 'tg' ? 'Alerting пока только для Telegram' : undefined}
-            onChange={() => void toggleFlag(row, 'alert_enabled')}
-            aria-label="alert"
+          <FlagStatusIcon
+            on={!!row.alert_enabled}
+            label="Alert"
+            na={row.network !== 'tg'}
+            title={
+              row.network !== 'tg'
+                ? 'Alerting пока только для Telegram'
+                : row.alert_enabled
+                  ? 'Alert включён в настройках канала'
+                  : 'Alert выключен — включите в «Настроить» → Алерты'
+            }
           />
         ),
       },
@@ -259,7 +332,6 @@ export function ChannelsPage() {
         ),
       },
     ],
-    // toggleFlag/remove close over latest load — intentional recreate on channels change
     [channels],
   )
 
@@ -269,7 +341,41 @@ export function ChannelsPage() {
         title="Channels"
         description="Единый хаб каналов · Brand → Channels → поток → Analytics"
       />
-      {error && <Alert variant="error">{error}</Alert>}
+      {error && (
+        <div className="mb-4" role="alert">
+          <Alert variant="error">{error}</Alert>
+        </div>
+      )}
+      {!error && !tgConnected && hasBrands && (
+        <Alert variant="info" className="mb-4">
+          Для Collect/Publish по Telegram сначала авторизуйтесь:{' '}
+          <Link to="/telegram" className="underline font-medium">
+            Telegram → Auth
+          </Link>
+          . После кода вернитесь сюда и нажмите Recheck у канала.
+        </Alert>
+      )}
+      {!error && tgConnected && tgOwnPending.length > 0 && (
+        <Alert variant="info" className="mb-4">
+          Telegram подключён. Подтвердите собственность: в таблице нажмите{' '}
+          <strong>Recheck</strong> у канала
+          {tgOwnPending.length === 1
+            ? ` «${tgOwnPending[0].title || tgOwnPending[0].external_id}»`
+            : ` (${tgOwnPending.length} шт.)`}
+          , затем откройте <strong>Настроить</strong> и включите Publish. Collect можно
+          настроить уже сейчас.
+        </Alert>
+      )}
+      {!error && tgConnected && tgOwnPending.length === 0 && channels.some((c) => c.network === 'tg' && c.role === 'own') && (
+        <Alert variant="success" className="mb-4">
+          TG-каналы подтверждены. Флаги Publish / Collect / Alert задаются в{' '}
+          <strong>Настроить</strong>. Далее —{' '}
+          <Link to="/posts" className="underline">
+            Posts
+          </Link>
+          .
+        </Alert>
+      )}
 
       {isLoadingBrands && !hasBrands ? (
         <p className="text-sm text-[var(--text-muted)]">Загрузка брендов…</p>
@@ -299,7 +405,7 @@ export function ChannelsPage() {
                 Channels {channels.length ? '✓' : '· добавьте канал'}
               </span>
               <span className={hasCollectOrAlert ? 'text-emerald-400' : 'text-[var(--text-muted)]'}>
-                Collect/Alert {hasCollectOrAlert ? '✓' : '· включите флаг'}
+                Collect/Alert {hasCollectOrAlert ? '✓' : '· Настроить → Сбор/Алерты'}
               </span>
               <Link to="/analytics" className="text-primary-400 hover:underline ml-auto">
                 Analytics →
@@ -386,7 +492,7 @@ export function ChannelsPage() {
                   </select>
                 </div>
                 <Button type="submit" disabled={saving || !brandId}>
-                  Add
+                  {saving ? 'Adding…' : 'Add'}
                 </Button>
               </form>
             </CardContent>

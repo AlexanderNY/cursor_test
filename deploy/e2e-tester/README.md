@@ -19,24 +19,22 @@ docker compose up -d
 ## Запуск тестера
 
 ```bash
-cp tester/.env.example tester/.env
+cp deploy/e2e-tester/.env.example deploy/e2e-tester/.env
 # Сгенерируйте Fernet-ключ:
 python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 # Впишите в TESTER_SECRET_KEY=
 
-docker compose -f tester/docker-compose.yml --env-file tester/.env up -d --build
+docker compose -f deploy/e2e-tester/docker-compose.yml --env-file deploy/e2e-tester/.env up -d --build
 # или:
-docker compose -f docker-compose.tester.yml --env-file tester/.env up -d --build
+docker compose -f docker-compose.tester.yml --env-file deploy/e2e-tester/.env up -d --build
 ```
 
-Панель: [http://127.0.0.1:8300](http://127.0.0.1:8300)
-
-В основном UI (роль admin): страница **/e2e-tester** с этой же инструкцией.
+Панель: [http://127.0.0.1:8300](http://127.0.0.1:8300) — вкладка **Справка** с полной инструкцией.
 
 Остановка:
 
 ```bash
-docker compose -f tester/docker-compose.yml --env-file tester/.env down
+docker compose -f deploy/e2e-tester/docker-compose.yml --env-file deploy/e2e-tester/.env down
 ```
 
 Тома `tester_pg_data` / `tester_artifacts` сохраняются до `down -v`.
@@ -44,7 +42,7 @@ docker compose -f tester/docker-compose.yml --env-file tester/.env down
 ## Использование
 
 1. **Credentials** — логин/пароль пользователя продукта или JWT (`access_token` / `refresh_token`). Секреты шифруются Fernet и не отдаются в API-списках.
-2. **Scenarios** — YAML/JSON шаги или `.py` Playwright-скрипт. Примеры: `tester/examples/`.
+2. **Scenarios** — YAML/JSON шаги или `.py` Playwright-скрипт. Примеры: `deploy/e2e-tester/examples/`.
 3. **Runs** — Start → live-логи → скриншоты при ошибках.
 
 ### Готовые наборы (каталог UI E2E)
@@ -53,7 +51,7 @@ docker compose -f tester/docker-compose.yml --env-file tester/.env down
 |------|-----|-------|----------|
 | `suite_smoke.yaml` | S00, S01, S02, S10–S12, S20, S27 | admin | login, nav, Checks health, Brands/Channels/Posts, Telegram, Custom URL |
 | `suite_platforms.yaml` | S20–S27 | любой пользователь | TG, VK, IG, Threads, WP, Dzen, Twitter, Custom URL |
-| `suite_checks.yaml` | S02, S30–S37 | admin | Administration, Polls, Collector/Processor/Scheduler/AI, posting diag, docs |
+| `suite_checks.yaml` | S02, S30–S36 | admin | Administration, Polls, Collector/Processor/Scheduler/AI, posting diag |
 
 Также: `login_smoke.yaml` / `login_smoke.py` — минимальный логин.
 

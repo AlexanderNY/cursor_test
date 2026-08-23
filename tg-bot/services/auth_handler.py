@@ -110,6 +110,8 @@ class AuthHandler:
                     )
                     
                     _log_action("User %s successfully authorized", user_id)
+                    from .platform_recheck import notify_platform_recheck
+                    await notify_platform_recheck(user_id)
                     return {
                         "success": True,
                         "message": "Authorization successful"
@@ -210,6 +212,8 @@ class AuthHandler:
                     )
                     
                     _log_action("User %s successfully authorized with 2FA", user_id)
+                    from .platform_recheck import notify_platform_recheck
+                    await notify_platform_recheck(user_id)
                     return {
                         "success": True,
                         "message": "Authorization successful"

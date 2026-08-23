@@ -1,4 +1,5 @@
 import { FormEvent } from 'react'
+import { Link } from 'react-router-dom'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -160,8 +161,53 @@ export function AuthTab({
         )}
 
         {authStatus?.auth_state === 'authorized' && (
-          <div className="p-4 rounded-lg border border-green-500/30 bg-green-500/5">
-            <p className="text-sm text-green-400">Аккаунт Telegram успешно авторизован. Бот готов к работе.</p>
+          <div className="p-4 rounded-lg border border-green-500/30 bg-green-500/5 space-y-3">
+            <p className="text-sm text-green-400 font-medium">
+              Telegram подключён. Что дальше:
+            </p>
+            <ol className="list-decimal list-inside text-sm text-[var(--text-secondary)] space-y-2">
+              <li>
+                Откройте{' '}
+                <Link to="/channels" className="text-primary-400 hover:underline">
+                  Channels
+                </Link>
+                {' '}— добавьте или выберите свой TG-канал.
+              </li>
+              <li>
+                В колонке Auth нажмите{' '}
+                <strong className="text-[var(--text-primary)]">Recheck</strong>
+                {' '}— подтверждение собственности для публикации.
+              </li>
+              <li>
+                Включите флаги Collect / Publish / Alert или откройте{' '}
+                <strong className="text-[var(--text-primary)]">Настроить</strong>
+                {' '}для условий потока.
+              </li>
+              <li>
+                Создайте пост в{' '}
+                <Link to="/posts" className="text-primary-400 hover:underline">
+                  Posts
+                </Link>
+                {' '}или смотрите входящие в{' '}
+                <Link to="/inbox" className="text-primary-400 hover:underline">
+                  Inbox
+                </Link>
+                .
+              </li>
+            </ol>
+            <div className="flex flex-wrap gap-2 pt-1">
+              <Link to="/channels">
+                <Button size="sm">Перейти в Channels →</Button>
+              </Link>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={onCheckChannels}
+                isLoading={isCheckingChannels}
+              >
+                Показать доступные каналы TG
+              </Button>
+            </div>
           </div>
         )}
 

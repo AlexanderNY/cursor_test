@@ -10,7 +10,8 @@ from pydantic import BaseModel, Field
 
 from services.smm_service import BRAND_PALETTE, smm_service
 from services.quota_service import get_user_tariff, get_plan_limits, plan_feature, ensure_ai_calls_quota
-from exceptions import QuotaExceededError
+from exceptions import QuotaExceededError, ChannelAccessError
+from services.platform_auth_service import PlatformAuthError, platform_auth_service, platform_auth_http_detail
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +37,10 @@ def _http_quota(exc: QuotaExceededError) -> HTTPException:
             "used": exc.used,
         },
     )
+
+
+def _http_platform_auth(exc: PlatformAuthError) -> HTTPException:
+    return HTTPException(status_code=403, detail=platform_auth_http_detail(exc))
 
 
 # ---------- Schemas ----------
@@ -218,6 +223,10 @@ async def create_brand(body: BrandCreate, x_user_id: Optional[str] = Header(None
         return await smm_service.create_brand(user_id, body.name, body.color, body.group_id)
     except QuotaExceededError as exc:
         raise _http_quota(exc)
+    except PlatformAuthError as exc:
+        raise _http_platform_auth(exc)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
 
 
 @router.get("/brands/{brand_id}")
@@ -272,8 +281,10 @@ async def add_channel(brand_id: int, body: ChannelCreate, x_user_id: Optional[st
         )
     except QuotaExceededError as exc:
         raise _http_quota(exc)
+    except PlatformAuthError as exc:
+        raise _http_platform_auth(exc)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        raise HTTPException(status_code=422, detail=str(exc))
 
 
 @router.get("/channels/{channel_id}")
@@ -381,8 +392,10 @@ async def reply_item(item_id: int, body: InboxReply, x_user_id: Optional[str] = 
         item = await smm_service.reply_inbox(user_id, item_id, body.text)
     except QuotaExceededError as exc:
         raise _http_quota(exc)
+    except PlatformAuthError as exc:
+        raise _http_platform_auth(exc)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        raise HTTPException(status_code=422, detail=str(exc))
     if not item:
         raise HTTPException(status_code=404, detail="Inbox item not found")
     return item
@@ -413,8 +426,10 @@ async def redirect_inbox_item(
         )
     except QuotaExceededError as exc:
         raise _http_quota(exc)
+    except PlatformAuthError as exc:
+        raise _http_platform_auth(exc)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        raise HTTPException(status_code=422, detail=str(exc))
 
 
 # ---------- Jobs ----------
@@ -436,6 +451,10 @@ async def create_job(body: JobCreate, x_user_id: Optional[str] = Header(None)):
         )
     except QuotaExceededError as exc:
         raise _http_quota(exc)
+    except PlatformAuthError as exc:
+        raise _http_platform_auth(exc)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
 
 
 @router.post("/jobs/{job_id}/approve")
@@ -445,6 +464,10 @@ async def approve_job(job_id: int, x_user_id: Optional[str] = Header(None)):
         job = await smm_service.approve_job(user_id, job_id)
     except QuotaExceededError as exc:
         raise _http_quota(exc)
+    except PlatformAuthError as exc:
+        raise _http_platform_auth(exc)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     return job
@@ -524,8 +547,10 @@ async def create_automation(body: AutomationCreate, x_user_id: Optional[str] = H
         )
     except QuotaExceededError as exc:
         raise _http_quota(exc)
+    except PlatformAuthError as exc:
+        raise _http_platform_auth(exc)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        raise HTTPException(status_code=422, detail=str(exc))
 
 
 @router.patch("/automations/{automation_id}")
@@ -616,6 +641,20 @@ async def channel_stats(
     }
 
 
+@router.get("/analytics/messages")
+async def analytics_messages(
+    brand_id: Optional[int] = None,
+    period: str = "7d",
+    channel_id: Optional[int] = None,
+    limit: int = Query(50, ge=1, le=200),
+    x_user_id: Optional[str] = Header(None),
+):
+    user_id = get_user_id(x_user_id)
+    return await smm_service.analytics_messages(
+        user_id, brand_id, period, channel_id, limit
+    )
+
+
 # ---------- Competitors ----------
 
 @router.post("/competitors")
@@ -633,8 +672,10 @@ async def add_competitor(body: CompetitorCreate, x_user_id: Optional[str] = Head
         )
     except QuotaExceededError as exc:
         raise _http_quota(exc)
+    except PlatformAuthError as exc:
+        raise _http_platform_auth(exc)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        raise HTTPException(status_code=422, detail=str(exc))
 
 
 @router.get("/competitors/{channel_id}/posts")
@@ -664,6 +705,10 @@ async def ai_process(body: AiProcessRequest, x_user_id: Optional[str] = Header(N
         await ensure_ai_calls_quota(user_id)
     except QuotaExceededError as exc:
         raise _http_quota(exc)
+    except PlatformAuthError as exc:
+        raise _http_platform_auth(exc)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
 
     from services.ai_assist_service import AiAssistError, process as ai_process_action
 
@@ -689,6 +734,10 @@ async def ai_summarize(body: AiSummarizeRequest, x_user_id: Optional[str] = Head
         await ensure_ai_calls_quota(user_id)
     except QuotaExceededError as exc:
         raise _http_quota(exc)
+    except PlatformAuthError as exc:
+        raise _http_platform_auth(exc)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
     try:
         from shared.ai_client import summarize  # type: ignore
 
@@ -711,6 +760,10 @@ async def ai_rewrite(body: AiRewriteRequest, x_user_id: Optional[str] = Header(N
         await ensure_ai_calls_quota(user_id)
     except QuotaExceededError as exc:
         raise _http_quota(exc)
+    except PlatformAuthError as exc:
+        raise _http_platform_auth(exc)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
     try:
         from shared.ai_client import rewrite  # type: ignore
 
@@ -730,6 +783,10 @@ async def ai_adapt(body: AiAdaptRequest, x_user_id: Optional[str] = Header(None)
         await ensure_ai_calls_quota(user_id)
     except QuotaExceededError as exc:
         raise _http_quota(exc)
+    except PlatformAuthError as exc:
+        raise _http_platform_auth(exc)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
     targets = body.targets or ["tg", "vk"]
     variants: dict[str, str] = {}
     try:
@@ -749,3 +806,47 @@ async def ai_adapt(body: AiAdaptRequest, x_user_id: Optional[str] = Header(None)
                 variants[net] = plain
         return {"variants": variants, "fallback": True}
     return {"variants": variants}
+
+
+@router.get("/platform-status")
+async def platform_status(x_user_id: Optional[str] = Header(None)):
+    user_id = get_user_id(x_user_id)
+    return await platform_auth_service.get_all_platform_status(user_id)
+
+
+@router.get("/channels/{channel_id}/auth")
+async def get_channel_auth(channel_id: int, x_user_id: Optional[str] = Header(None)):
+    user_id = get_user_id(x_user_id)
+    ch = await smm_service.get_channel(user_id, channel_id)
+    if not ch:
+        raise HTTPException(status_code=404, detail="Channel not found")
+    return {
+        "channel_id": ch["id"],
+        "auth_status": ch.get("auth_status"),
+        "auth_error": ch.get("auth_error"),
+        "auth_checked_at": ch.get("auth_checked_at"),
+        "auth_capabilities": ch.get("auth_capabilities") or {},
+    }
+
+
+@router.post("/channels/{channel_id}/auth/recheck")
+async def recheck_channel_auth(channel_id: int, x_user_id: Optional[str] = Header(None)):
+    user_id = get_user_id(x_user_id)
+    try:
+        return await platform_auth_service.recheck_channel_auth(user_id, channel_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except ChannelAccessError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+
+@router.get("/onboarding/state")
+async def onboarding_state(x_user_id: Optional[str] = Header(None)):
+    user_id = get_user_id(x_user_id)
+    return await platform_auth_service.get_onboarding_state(user_id)
+
+
+@router.post("/onboarding/skip")
+async def onboarding_skip(x_user_id: Optional[str] = Header(None)):
+    user_id = get_user_id(x_user_id)
+    return await platform_auth_service.set_onboarding_skipped(user_id, True)

@@ -7,7 +7,7 @@
 services:
   ui-9to18:
     build:
-      context: ./ui-9to18
+      context: ./deploy/ui-9to18
       dockerfile: Dockerfile
       target: production
     container_name: ui-9to18

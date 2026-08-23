@@ -7,6 +7,8 @@ from config import settings
 from shared.circuit_breaker import get_breaker
 from .post_collector import PostCollector
 from .post_publisher import PostPublisher
+from .engagement_service import VkEngagementService
+from .subscriber_service import VkSubscriberService
 
 
 logger = logging.getLogger(__name__)
@@ -25,9 +27,13 @@ class VkBotService:
     def __init__(self) -> None:
         self._post_collector = PostCollector()
         self._post_publisher = PostPublisher()
+        self._engagement_service = VkEngagementService()
+        self._subscriber_service = VkSubscriberService()
         self._running = False
         self._collect_task: asyncio.Task | None = None
         self._publisher_task: asyncio.Task | None = None
+        self._engagement_task: asyncio.Task | None = None
+        self._subscriber_task: asyncio.Task | None = None
 
     async def start(self) -> None:
         if self._running:
@@ -37,6 +43,8 @@ class VkBotService:
         self._running = True
         self._collect_task = asyncio.create_task(self._collect_loop())
         self._publisher_task = asyncio.create_task(self._publisher_loop())
+        self._engagement_task = asyncio.create_task(self._engagement_loop())
+        self._subscriber_task = asyncio.create_task(self._subscriber_loop())
         logger.info("VkBotService started")
 
     async def _collect_loop(self) -> None:
@@ -75,6 +83,34 @@ class VkBotService:
             except Exception as e:
                 logger.error("Publisher loop error: %s", e, exc_info=True)
 
+    async def _engagement_loop(self) -> None:
+        interval = max(300, getattr(settings, "ENGAGEMENT_INTERVAL_SEC", 900))
+        while self._running:
+            try:
+                await asyncio.sleep(interval)
+                if not self._running:
+                    break
+                updated = await self._engagement_service.refresh_engagement(limit=100)
+                _log_action("Engagement loop: updated %d vk posts", updated)
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error("Engagement loop error: %s", e, exc_info=True)
+
+    async def _subscriber_loop(self) -> None:
+        interval = max(3600, getattr(settings, "SUBSCRIBER_INTERVAL_SEC", 86400))
+        while self._running:
+            try:
+                await asyncio.sleep(interval)
+                if not self._running:
+                    break
+                updated = await self._subscriber_service.sync_subscribers()
+                _log_action("Subscriber loop: updated %d vk channels", updated)
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error("Subscriber loop error: %s", e, exc_info=True)
+
     def is_running(self) -> bool:
         return self._running
 
@@ -93,6 +129,18 @@ class VkBotService:
             self._publisher_task.cancel()
             try:
                 await self._publisher_task
+            except asyncio.CancelledError:
+                pass
+        if self._engagement_task:
+            self._engagement_task.cancel()
+            try:
+                await self._engagement_task
+            except asyncio.CancelledError:
+                pass
+        if self._subscriber_task:
+            self._subscriber_task.cancel()
+            try:
+                await self._subscriber_task
             except asyncio.CancelledError:
                 pass
         logger.info("VkBotService stopped")

@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>E2E Tester</title>
+  <link rel="stylesheet" href="/assets/style.css" />
+</head>
+<body>
+  <header class="top">
+    <div>
+      <h1>E2E Tester</h1>
+      <p class="muted" id="health-line">Loading…</p>
+      <p class="muted intro">
+        On-demand сервис браузерных E2E против уже запущенного основного стека.
+        Своя Postgres — только сценарии, креды и отчёты; Chromium ходит на ui:8100 через edge_net.
+      </p>
+    </div>
+  </header>
+
+  <nav class="tabs">
+    <button type="button" class="tab active" data-tab="credentials">Credentials</button>
+    <button type="button" class="tab" data-tab="scenarios">Scenarios</button>
+    <button type="button" class="tab" data-tab="runs">Runs</button>
+    <button type="button" class="tab" data-tab="guide">Справка</button>
+  </nav>
+
+  <main>
+    <section id="tab-credentials" class="panel active">
+      <h2>Credentials</h2>
+      <form id="cred-form" class="card form-grid">
+        <label>Name <input name="name" required placeholder="admin_user" /></label>
+        <label>Type
+          <select name="cred_type" id="cred-type">
+            <option value="password">password</option>
+            <option value="jwt">jwt</option>
+          </select>
+        </label>
+        <div id="cred-password-fields" class="form-grid full">
+          <label>Username <input name="username" autocomplete="username" /></label>
+          <label>Password <input name="password" type="password" autocomplete="current-password" /></label>
+        </div>
+        <div id="cred-jwt-fields" class="form-grid full hidden">
+          <label class="full">Access token <textarea name="access_token" rows="2"></textarea></label>
+          <label class="full">Refresh token <textarea name="refresh_token" rows="2"></textarea></label>
+        </div>
+        <label class="full">Meta <input name="meta" placeholder="optional note" /></label>
+        <button type="submit">Save credential</button>
+      </form>
+      <div id="cred-list" class="list"></div>
+    </section>
+
+    <section id="tab-scenarios" class="panel">
+      <h2>Scenarios</h2>
+      <form id="scenario-form" class="card form-grid">
+        <label>Name <input name="name" required placeholder="login_smoke" /></label>
+        <label>Format
+          <select name="format">
+            <option value="yaml">yaml</option>
+            <option value="json">json</option>
+            <option value="playwright_py">playwright_py</option>
+          </select>
+        </label>
+        <label>Default credentials
+          <select name="credentials_id" id="scenario-cred-select">
+            <option value="">— none —</option>
+          </select>
+        </label>
+        <label class="full">Source
+          <textarea name="source" id="scenario-source" rows="14" required placeholder="name: login_smoke&#10;steps:&#10;  - action: login_form"></textarea>
+        </label>
+        <label>Or upload file <input type="file" id="scenario-file" accept=".yaml,.yml,.json,.py,text/*" /></label>
+        <button type="submit">Save scenario</button>
+      </form>
+      <div id="scenario-list" class="list"></div>
+    </section>
+
+    <section id="tab-runs" class="panel">
+      <h2>Runs</h2>
+      <form id="run-form" class="card form-grid">
+        <label>Scenario
+          <select name="scenario_id" id="run-scenario-select" required></select>
+        </label>
+        <label>Credentials override
+          <select name="credentials_id" id="run-cred-select">
+            <option value="">— scenario default —</option>
+          </select>
+        </label>
+        <button type="submit">Start run</button>
+      </form>
+      <div class="split">
+        <div>
+          <h3>History</h3>
+          <div id="run-list" class="list"></div>
+        </div>
+        <div>
+          <h3>Selected run <span id="run-status" class="badge"></span></h3>
+          <pre id="run-logs" class="logs"></pre>
+          <div id="run-artifacts" class="artifacts"></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-guide" class="panel">
+      <nav class="guide-toc">
+        <a href="#requirements">Требования</a>
+        <a href="#start">Запуск</a>
+        <a href="#suites">Наборы сценариев</a>
+        <a href="#usage">Использование</a>
+        <a href="#yaml">YAML actions</a>
+        <a href="#playwright">Playwright .py</a>
+        <a href="#notes">Важно</a>
+      </nav>
+
+      <article id="requirements" class="card guide-section">
+        <h2>Требования</h2>
+        <p class="muted">Перед запуском тестера</p>
+        <ol>
+          <li>Сеть <code>edge_net</code> существует.</li>
+          <li>Основной <code>docker compose</code> поднят (<code>ui</code> и <code>gateway</code> на <code>edge_net</code>).</li>
+        </ol>
+        <pre class="code-block"># один раз
+docker network create edge_net
+
+# основной стек (из корня репозитория)
+docker compose up -d</pre>
+      </article>
+
+      <article id="start" class="card guide-section">
+        <h2>Запуск тестера</h2>
+        <p class="muted">Панель: <a href="http://127.0.0.1:8300" target="_blank" rel="noopener">http://127.0.0.1:8300</a></p>
+        <pre class="code-block">cp deploy/e2e-tester/.env.example deploy/e2e-tester/.env
+# Сгенерируйте Fernet-ключ:
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+# Впишите в TESTER_SECRET_KEY=
+
+docker compose -f deploy/e2e-tester/docker-compose.yml --env-file deploy/e2e-tester/.env up -d --build
+# или:
+docker compose -f docker-compose.tester.yml --env-file deploy/e2e-tester/.env up -d --build</pre>
+        <p>Остановка:</p>
+        <pre class="code-block">docker compose -f deploy/e2e-tester/docker-compose.yml --env-file deploy/e2e-tester/.env down</pre>
+        <p>Тома <code>tester_pg_data</code> / <code>tester_artifacts</code> сохраняются до <code>down -v</code>.</p>
+      </article>
+
+      <article id="suites" class="card guide-section">
+        <h2>Наборы сценариев</h2>
+        <p class="muted">Готовые YAML в <code>deploy/e2e-tester/examples/</code> — загрузите в панель с нужными credentials</p>
+        <div class="table-wrap">
+          <table class="guide-table">
+            <thead>
+              <tr>
+                <th>Файл</th>
+                <th>ID</th>
+                <th>Креды</th>
+                <th>Покрытие</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>suite_smoke.yaml</code></td>
+                <td>S00, S01, S02, S10–S12, S20, S27</td>
+                <td>admin (password или JWT)</td>
+                <td>login, nav, Checks health, Brands/Channels/Posts, Telegram, Custom URL</td>
+              </tr>
+              <tr>
+                <td><code>suite_platforms.yaml</code></td>
+                <td>S20–S27</td>
+                <td>любой пользователь</td>
+                <td>TG, VK, IG, Threads, WP, Dzen, Twitter, Custom URL</td>
+              </tr>
+              <tr>
+                <td><code>suite_checks.yaml</code></td>
+                <td>S02, S30–S36</td>
+                <td>admin</td>
+                <td>Administration, Polls, Collector/Processor/Scheduler/AI, posting diag</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Read-only smoke: без реальной публикации. Наборы <code>suite_smoke</code> и <code>suite_checks</code> требуют роль admin для страниц Checks / Administration.</p>
+      </article>
+
+      <article id="usage" class="card guide-section">
+        <h2>Использование</h2>
+        <p class="muted">Credentials → Scenarios → Runs</p>
+        <ol>
+          <li><strong>Credentials</strong> — логин/пароль пользователя продукта или JWT (<code>access_token</code> / <code>refresh_token</code>). Секреты шифруются Fernet и не отдаются в API-списках.</li>
+          <li><strong>Scenarios</strong> — YAML/JSON шаги или <code>.py</code> Playwright-скрипт. Примеры: <code>deploy/e2e-tester/examples/</code>.</li>
+          <li><strong>Runs</strong> — Start → live-логи → скриншоты при ошибках.</li>
+        </ol>
+        <p>JWT: перед сценарием токены кладутся в <code>localStorage</code> (<code>access_token</code> / <code>refresh_token</code>), как в ui-app.</p>
+        <p>Password: шаг <code>login_form</code> или ручные <code>fill</code> / <code>click</code>.</p>
+      </article>
+
+      <article id="yaml" class="card guide-section">
+        <h2>YAML actions</h2>
+        <div class="table-wrap">
+          <table class="guide-table">
+            <thead>
+              <tr>
+                <th>action</th>
+                <th>поля</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td><code>goto</code></td><td>path или url</td></tr>
+              <tr><td><code>fill</code></td><td>selector, value или value_from (credentials.username / password / access_token / refresh_token)</td></tr>
+              <tr><td><code>click</code></td><td>selector</td></tr>
+              <tr><td><code>wait</code></td><td>ms</td></tr>
+              <tr><td><code>wait_url</code></td><td>contains, опционально timeout_ms</td></tr>
+              <tr><td><code>assert_text</code></td><td>selector, contains</td></tr>
+              <tr><td><code>assert_url</code></td><td>contains</td></tr>
+              <tr><td><code>screenshot</code></td><td>name</td></tr>
+              <tr><td><code>login_form</code></td><td>password-креды и форма /sign-in</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </article>
+
+      <article id="playwright" class="card guide-section">
+        <h2>Playwright .py</h2>
+        <p class="muted">Запрещены импорты os, subprocess, socket, httpx и т.п., а также eval / exec / open.</p>
+        <p>Скрипт должен объявить:</p>
+        <pre class="code-block">async def run(page, base_url, credentials, log):
+    ...</pre>
+      </article>
+
+      <article id="notes" class="card guide-section">
+        <h2>Важно</h2>
+        <ul>
+          <li>Тесты мутируют данные staging/prod-like окружения. Используйте отдельные учётки и cleanup-шаги.</li>
+          <li>Порт панели только на <code>127.0.0.1:8300</code>.</li>
+          <li>Health: <code>GET /api/health</code> на панели тестера.</li>
+        </ul>
+      </article>
+    </section>
+  </main>
+
+  <div id="toast" class="toast hidden"></div>
+  <script src="/assets/app.js"></script>
+</body>
+</html>

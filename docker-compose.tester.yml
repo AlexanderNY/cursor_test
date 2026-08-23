@@ -1,5 +1,5 @@
-# Convenience wrapper — same as tester/docker-compose.yml
-#   docker compose -f docker-compose.tester.yml --env-file tester/.env up -d --build
+# Convenience wrapper — same as deploy/e2e-tester/docker-compose.yml
+#   docker compose -f docker-compose.tester.yml --env-file deploy/e2e-tester/.env up -d --build
 
 include:
-  - path: tester/docker-compose.yml
+  - path: deploy/e2e-tester/docker-compose.yml

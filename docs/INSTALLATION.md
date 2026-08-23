@@ -98,7 +98,7 @@ docker compose -f docker-compose.yaml -f docker-compose.dev.yaml up -d --build
 .\deploy\scripts\create-edge-net.ps1
 # положить TLS в deploy/ui-edge/certs/{copyparse,9to18}/
 docker compose up -d --build
-docker compose -f ui-9to18/docker-compose.yml up -d --build
+docker compose -f deploy/ui-9to18/docker-compose.yml up -d --build
 docker compose -f deploy/ui-edge/docker-compose.yml up -d
 ```
 

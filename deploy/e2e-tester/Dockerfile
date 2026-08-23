@@ -24,13 +24,13 @@ RUN apt-get update \
         libcairo2 \
     && rm -rf /var/lib/apt/lists/*
 
-COPY tester/requirements.txt /app/requirements.txt
+COPY requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r /app/requirements.txt \
     && playwright install chromium
 
-COPY tester/app /app/app
-COPY tester/web /app/web
-COPY tester/examples /app/examples
+COPY app /app/app
+COPY web /app/web
+COPY examples /app/examples
 
 ENV ARTIFACTS_DIR=/data/artifacts
 ENV PYTHONUNBUFFERED=1

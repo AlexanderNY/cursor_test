@@ -1,4 +1,4 @@
-# suite_checks — P3 admin / пайплайн (S02, S30–S36; S37 docs)
+# suite_checks — P3 admin / пайплайн (S02, S30–S36)
 # Требует credentials: password или JWT с role=admin.
 
 name: suite_checks
@@ -114,14 +114,3 @@ steps:
     contains: Диагностика постинга
   - action: screenshot
     name: S36_posting_diag
-
-  # S37_e2e_docs
-  - action: goto
-    path: /e2e-tester
-  - action: wait_url
-    contains: /e2e-tester
-  - action: assert_text
-    selector: body
-    contains: E2E Tester
-  - action: screenshot
-    name: S37_e2e_docs

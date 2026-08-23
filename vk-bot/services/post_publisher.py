@@ -17,6 +17,7 @@ from shared import async_fs
 from config import settings
 from storage_helper import get_storage
 from .vk_client import VkClient
+from .channel_counter import bump_channel_counter
 
 
 logger = logging.getLogger(__name__)
@@ -411,6 +412,8 @@ class PostPublisher:
             return False
 
         published_any = False
+        last_vk_post_id: Optional[int] = None
+        last_owner_id: Optional[int] = None
         for owner_id in owner_ids:
             wall_client = self._vk_client_for_wall_post(
                 token, user_access_token, owner_id, post_id
@@ -436,6 +439,8 @@ class PostPublisher:
             )
             if new_post_id is not None:
                 published_any = True
+                last_vk_post_id = int(new_post_id)
+                last_owner_id = owner_id
                 _log_action(
                     "Published vk post %s to owner_id=%s for user %s",
                     post_id,
@@ -444,8 +449,42 @@ class PostPublisher:
                 )
             await asyncio.sleep(1)
         if published_any:
-            await self._update_post_status(post_id, "published")
+            await self._update_post_published(post_id, last_vk_post_id, last_owner_id)
+            ext_id = str(last_owner_id) if last_owner_id is not None else None
+            if ext_id:
+                await bump_channel_counter(
+                    user_id,
+                    network="vk",
+                    external_id=ext_id,
+                    sent=1,
+                    direction="published",
+                    platform="vk",
+                    post_id=post_id,
+                )
         return published_any
+
+    async def _update_post_published(
+        self,
+        post_id: int,
+        published_vk_post_id: Optional[int],
+        published_owner_id: Optional[int],
+    ) -> None:
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    UPDATE vk_posts
+                    SET status = 'published',
+                        published_vk_post_id = %s,
+                        published_owner_id = %s,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = %s
+                    """,
+                    (published_vk_post_id, published_owner_id, post_id),
+                )
+        finally:
+            await release_db_connection(conn)
 
     async def _update_post_status(self, post_id: int, status: str) -> None:
         conn = await get_db_connection()

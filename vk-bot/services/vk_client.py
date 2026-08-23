@@ -59,6 +59,19 @@ def _wall_get_sync(access_token: str, owner_id: int, count: int = 20) -> Dict[st
     return vk.wall.get(owner_id=owner_id, count=count, filter="owner")
 
 
+def _wall_get_by_id_sync(access_token: str, owner_id: int, post_id: int) -> List[Dict[str, Any]]:
+    vk_session = vk_api.VkApi(token=access_token)
+    vk = vk_session.get_api()
+    posts = f"{owner_id}_{post_id}"
+    return vk.wall.getById(posts=posts)
+
+
+def _groups_get_by_id_sync(access_token: str, group_ids: List[str]) -> List[Dict[str, Any]]:
+    vk_session = vk_api.VkApi(token=access_token)
+    vk = vk_session.get_api()
+    return vk.groups.getById(group_ids=",".join(group_ids), fields="members_count")
+
+
 def _wall_post_sync(
     access_token: str,
     owner_id: int,
@@ -168,6 +181,56 @@ class VkClient:
             return result.get("items") or []
         except Exception as e:
             logger.error("wall.get owner_id=%s error: %s", owner_id, e, exc_info=True)
+            if _is_platform_failure(e):
+                breaker.record_failure()
+            return []
+
+    async def wall_get_by_id(self, owner_id: int, post_id: int) -> List[Dict[str, Any]]:
+        breaker = _vk_breaker()
+        if not breaker.allow_request():
+            return []
+
+        async def _call() -> List[Dict[str, Any]]:
+            return await asyncio.to_thread(
+                _wall_get_by_id_sync, self._access_token, owner_id, post_id
+            )
+
+        try:
+            result = await retry_async(
+                _call,
+                retry_on=_is_retryable_vk_error,
+                operation_name=f"wall.getById owner_id={owner_id} post_id={post_id}",
+            )
+            breaker.record_success()
+            return result or []
+        except Exception as e:
+            logger.error("wall.getById owner_id=%s post_id=%s error: %s", owner_id, post_id, e)
+            if _is_platform_failure(e):
+                breaker.record_failure()
+            return []
+
+    async def groups_get_by_id(self, group_ids: List[str]) -> List[Dict[str, Any]]:
+        if not group_ids:
+            return []
+        breaker = _vk_breaker()
+        if not breaker.allow_request():
+            return []
+
+        async def _call() -> List[Dict[str, Any]]:
+            return await asyncio.to_thread(
+                _groups_get_by_id_sync, self._access_token, group_ids
+            )
+
+        try:
+            result = await retry_async(
+                _call,
+                retry_on=_is_retryable_vk_error,
+                operation_name=f"groups.getById ids={','.join(group_ids[:3])}",
+            )
+            breaker.record_success()
+            return result or []
+        except Exception as e:
+            logger.error("groups.getById error: %s", e, exc_info=True)
             if _is_platform_failure(e):
                 breaker.record_failure()
             return []

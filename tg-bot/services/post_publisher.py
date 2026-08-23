@@ -15,6 +15,7 @@ from shared.circuit_breaker import get_breaker
 from shared.retry import retry_async
 from shared import async_fs
 from .client_manager import TelegramClientManager
+from .channel_counter import bump_channel_counter
 from telethon.errors import FloodWaitError, RPCError
 
 
@@ -480,6 +481,17 @@ class PostPublisher:
 
             message_id = getattr(last_message, "id", None) if last_message else None
             await self._update_post_published(post_id, message_id, chat_ids_joined)
+            for channel_raw in published_channels:
+                await bump_channel_counter(
+                    user_id,
+                    network="tg",
+                    external_id=str(channel_raw),
+                    sent=1,
+                    direction="published",
+                    platform="tg",
+                    post_id=post_id,
+                    metadata={"text_preview": (text or "")[:120]},
+                )
             breaker.record_success()
             return True
 

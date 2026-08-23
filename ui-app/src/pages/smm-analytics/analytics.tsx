@@ -12,7 +12,7 @@ import { getErrorMessage } from '@/services/api-client'
 import { formatDateTime } from '@/utils/date'
 import { TelegramAnalyticsPanel } from './telegram-analytics'
 
-type Tab = 'overview' | 'channels' | 'competitors' | 'telegram'
+type Tab = 'overview' | 'channels' | 'messages' | 'competitors' | 'telegram'
 
 export function SmmAnalyticsPage() {
   const { selectedBrandId, setSelectedBrandId, channels, refreshChannels } = useBrand()
@@ -22,8 +22,23 @@ export function SmmAnalyticsPage() {
   const [overview, setOverview] = useState<AnalyticsOverview | null>(null)
   const [posts, setPosts] = useState<AnalyticsPost[]>([])
   const [channelStats, setChannelStats] = useState<
-    { channel_id: number; network: string; external_id: string; title?: string; sent: number; received: number; failed: number; role?: string }[]
+    {
+      channel_id: number
+      network: string
+      external_id: string
+      title?: string
+      sent: number
+      received: number
+      failed: number
+      alerts_sent?: number
+      conversion_pct?: number
+      role?: string
+    }[]
   >([])
+  const [messageEvents, setMessageEvents] = useState<
+    { id: string; direction: string; network: string; created_at?: string; channel_title?: string; text?: string }[]
+  >([])
+  const [growthPoints, setGrowthPoints] = useState<{ date: string; subscribers: number }[]>([])
   const [error, setError] = useState('')
   const [compNetwork, setCompNetwork] = useState<'tg' | 'vk'>('tg')
   const [compId, setCompId] = useState('')
@@ -92,14 +107,21 @@ export function SmmAnalyticsPage() {
         const plan = await smmService.getPlan().catch(() => null)
         const feats = (plan?.limits?.features || {}) as Record<string, boolean>
         setCanCompetitors(Boolean(feats.competitors))
-        const [ov, list, stats] = await Promise.all([
+        const [ov, list, stats, messagesData, growth] = await Promise.all([
           smmService.analyticsOverview(selectedBrandId, period, focusChannelId),
           smmService.analyticsPosts(selectedBrandId, 'er', focusChannelId),
           smmService.channelStats(selectedBrandId, period).catch(() => ({ channels: [] })),
+          smmService.analyticsMessages(selectedBrandId, period, focusChannelId).catch(() => ({
+            posts: [],
+            events: [],
+          })),
+          smmService.analyticsGrowth(selectedBrandId).catch(() => ({ points: [], subscriber_growth: 0 })),
         ])
         setOverview(ov)
         setPosts(list)
         setChannelStats(stats.channels ?? [])
+        setMessageEvents(messagesData.events ?? [])
+        setGrowthPoints(growth.points ?? [])
       } catch (err) {
         setError(getErrorMessage(err))
       }
@@ -159,7 +181,10 @@ export function SmmAnalyticsPage() {
           Overview
         </Button>
         <Button variant={tab === 'channels' ? 'primary' : 'secondary'} onClick={() => setTab('channels')}>
-          Channels
+          Operations
+        </Button>
+        <Button variant={tab === 'messages' ? 'primary' : 'secondary'} onClick={() => setTab('messages')}>
+          Messages
         </Button>
         <Button
           variant={tab === 'competitors' ? 'primary' : 'secondary'}
@@ -179,7 +204,7 @@ export function SmmAnalyticsPage() {
         )}
       </div>
 
-      {(tab === 'overview' || tab === 'channels') && (
+      {(tab === 'overview' || tab === 'channels' || tab === 'messages') && (
         <div className="flex flex-wrap items-center gap-2 mb-4">
           <select
             className="rounded-md border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-sm"
@@ -212,7 +237,7 @@ export function SmmAnalyticsPage() {
       {tab === 'channels' && (
         <Card className="mb-6">
           <CardHeader>
-            <CardTitle>Send / receive by channel</CardTitle>
+            <CardTitle>Operations by channel</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto">
@@ -221,9 +246,11 @@ export function SmmAnalyticsPage() {
                   <tr className="text-left text-[var(--text-muted)] border-b border-[var(--border-color)]">
                     <th className="py-2 pr-2">Channel</th>
                     <th className="py-2 pr-2">Net</th>
-                    <th className="py-2 pr-2">Sent</th>
                     <th className="py-2 pr-2">Received</th>
-                    <th className="py-2">Failed</th>
+                    <th className="py-2 pr-2">Sent</th>
+                    <th className="py-2 pr-2">Alerts</th>
+                    <th className="py-2 pr-2">Failed</th>
+                    <th className="py-2">Conv. %</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -239,9 +266,21 @@ export function SmmAnalyticsPage() {
                     >
                       <td className="py-2 pr-2">{c.title || c.external_id}</td>
                       <td className="py-2 pr-2 uppercase">{c.network}</td>
-                      <td className="py-2 pr-2">{c.sent}</td>
                       <td className="py-2 pr-2">{c.received}</td>
-                      <td className="py-2">{c.failed}</td>
+                      <td className="py-2 pr-2">{c.sent}</td>
+                      <td className="py-2 pr-2">{c.alerts_sent ?? 0}</td>
+                      <td className="py-2 pr-2">{c.failed}</td>
+                      <td className="py-2">
+                        <span>{c.conversion_pct ?? 0}%</span>
+                        {' · '}
+                        <Link
+                          to={`/analytics?channel_id=${c.channel_id}${selectedBrandId ? `&brand_id=${selectedBrandId}` : ''}`}
+                          className="text-primary-400 hover:underline text-xs"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          details
+                        </Link>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -254,14 +293,90 @@ export function SmmAnalyticsPage() {
         </Card>
       )}
 
+      {tab === 'messages' && (
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle>Messages & events</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div>
+              <h4 className="text-sm font-medium mb-2">Recent events</h4>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-[var(--text-muted)] border-b border-[var(--border-color)]">
+                      <th className="py-2 pr-2">When</th>
+                      <th className="py-2 pr-2">Type</th>
+                      <th className="py-2 pr-2">Net</th>
+                      <th className="py-2 pr-2">Channel</th>
+                      <th className="py-2">Preview</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {messageEvents.map((ev) => (
+                      <tr key={ev.id} className="border-b border-[var(--border-color)]">
+                        <td className="py-2 pr-2 whitespace-nowrap">
+                          {ev.created_at ? formatDateTime(ev.created_at) : '—'}
+                        </td>
+                        <td className="py-2 pr-2">{ev.direction}</td>
+                        <td className="py-2 pr-2 uppercase">{ev.network}</td>
+                        <td className="py-2 pr-2">{ev.channel_title || '—'}</td>
+                        <td className="py-2 text-[var(--text-muted)]">{ev.text || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {messageEvents.length === 0 && (
+                  <p className="text-sm text-[var(--text-muted)] py-4">Нет событий за период</p>
+                )}
+              </div>
+            </div>
+            <div>
+              <h4 className="text-sm font-medium mb-2">Posts (engagement)</h4>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-[var(--text-muted)] border-b border-[var(--border-color)]">
+                      <th className="py-2 pr-2">Net</th>
+                      <th className="py-2 pr-2">Channel</th>
+                      <th className="py-2 pr-2">Published</th>
+                      <th className="py-2 pr-2">Views</th>
+                      <th className="py-2 pr-2">Likes</th>
+                      <th className="py-2 pr-2">Post</th>
+                      <th className="py-2">ER</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {posts.map((p) => (
+                      <tr key={`${p.network}-${p.id}`} className="border-b border-[var(--border-color)]">
+                        <td className="py-2 pr-2 uppercase">{p.network}</td>
+                        <td className="py-2 pr-2">{p.channel_title || p.channel_external_id || '—'}</td>
+                        <td className="py-2 pr-2 whitespace-nowrap">
+                          {p.published_at ? formatDateTime(p.published_at) : '—'}
+                        </td>
+                        <td className="py-2 pr-2">{p.views}</td>
+                        <td className="py-2 pr-2">{p.likes}</td>
+                        <td className="py-2 pr-2 max-w-xs truncate">{p.text}</td>
+                        <td className="py-2">{p.er}%</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {tab === 'overview' && (
         <>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-6">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5 mb-6">
             {[
               ['Reach', overview?.reach],
               ['Engagement', overview?.engagement],
               ['ER %', overview?.er],
               ['Posts', overview?.posts],
+              ['Subscribers Δ', overview?.subscriber_growth],
             ].map(([label, value]) => (
               <Card key={String(label)}>
                 <CardContent className="p-4">
@@ -271,6 +386,33 @@ export function SmmAnalyticsPage() {
               </Card>
             ))}
           </div>
+          {growthPoints.length > 0 && (
+            <Card className="mb-6">
+              <CardHeader>
+                <CardTitle>Subscriber growth</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-[var(--text-muted)] border-b border-[var(--border-color)]">
+                        <th className="py-2 pr-2">Date</th>
+                        <th className="py-2">Subscribers</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {growthPoints.map((p) => (
+                        <tr key={p.date} className="border-b border-[var(--border-color)]">
+                          <td className="py-2 pr-2">{p.date}</td>
+                          <td className="py-2">{p.subscribers}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          )}
           <Card>
             <CardHeader>
               <CardTitle>Best posts</CardTitle>

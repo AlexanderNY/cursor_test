@@ -15,6 +15,12 @@ from fastapi.responses import FileResponse, Response, RedirectResponse
 
 from services.profile_service import profile_service
 from services.post_service import post_service
+from services.platform_auth_service import (
+    PlatformAction,
+    PlatformAuthError,
+    platform_auth_service,
+    platform_auth_http_detail,
+)
 from schemas import VKontakteProfileCreate, VKontaktePost
 from storage_client import get_storage
 from pydantic import BaseModel
@@ -396,6 +402,10 @@ async def vk_oauth_callback(
         user_access_token=access_token,
         vk_user_id=vk_user_id,
     )
+    try:
+        await platform_auth_service.recheck_user_platform_channels(user_id)
+    except Exception:
+        pass
     return RedirectResponse(url=f"{vk_page}?oauth=success")
 
 
@@ -535,7 +545,18 @@ async def create_vk_post(
         Созданный пост
     """
     user_id = get_user_id_from_header(x_user_id)
-    
+
+    if data.to_vk:
+        action = (
+            PlatformAction.PUBLISH_MEDIA
+            if data.images
+            else PlatformAction.PUBLISH_TEXT
+        )
+        try:
+            await platform_auth_service.require_platform(user_id, "vk", action)
+        except PlatformAuthError as exc:
+            raise HTTPException(status_code=403, detail=platform_auth_http_detail(exc))
+
     try:
         post = await post_service.create_vk_post_record(
             user_id=user_id,

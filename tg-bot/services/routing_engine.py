@@ -15,6 +15,7 @@ from database import get_db_connection, release_db_connection
 from services.event_logger import EventLogger, compute_text_hash
 from services.message_handler import MessageHandler
 from services.alert_service import AlertService, get_active_rules
+from services.channel_counter import bump_channel_counter
 
 logger = logging.getLogger(__name__)
 
@@ -150,6 +151,20 @@ class RoutingEngine:
                     },
                 )
                 sent_count += 1
+                brand_channel_id = rule.get("_brand_channel_id")
+                if brand_channel_id:
+                    await bump_channel_counter(
+                        user_id,
+                        channel_id=int(brand_channel_id),
+                        alerts_sent=1,
+                        direction="alert",
+                        platform="tg",
+                        external_msg_id=str(event.message.id) if event.message else None,
+                        metadata={
+                            "text_preview": (message_text or "")[:120],
+                            "destination": (rule.get("channel_to_post") or "").strip(),
+                        },
+                    )
 
             if rule.get("stop_on_match"):
                 break

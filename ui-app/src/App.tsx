@@ -24,13 +24,14 @@ import { ChannelsPage } from '@/pages/channels/channels'
 import { ChannelFlowPage } from '@/pages/channels/channel-flow'
 import { InboxPage } from '@/pages/inbox/inbox'
 import { CalendarPage } from '@/pages/calendar/calendar'
+import { PlatformSetupPage } from '@/pages/onboarding/platform-setup'
+import { PlatformSetupGuard } from '@/hooks/use-platform-readiness'
 import { SmmAnalyticsPage } from '@/pages/smm-analytics/analytics'
 import { AutomationsPage } from '@/pages/automations/automations'
 import { FigmaPreviewPage } from '@/pages/figma-preview'
 import { AboutPage } from '@/pages/about/about'
 import { PricingPage } from '@/pages/pricing/pricing'
 import { FeedbackPage } from '@/pages/feedback'
-import { E2eTesterPage } from '@/pages/tester'
 import { RouteLoader } from '@/components/route-loader'
 
 interface ProtectedRouteProps {
@@ -104,6 +105,7 @@ function App() {
         <Route path="channels/:channelId" element={<ChannelFlowPage />} />
         <Route path="inbox" element={<InboxPage />} />
         <Route path="calendar" element={<CalendarPage />} />
+        <Route path="onboarding" element={<PlatformSetupPage />} />
         <Route path="analytics" element={<SmmAnalyticsPage />} />
         <Route path="automations" element={<AutomationsPage />} />
         <Route path="telegram" element={<TelegramPage />} />
@@ -115,7 +117,7 @@ function App() {
         <Route path="instagram" element={<InstagramPage />} />
         <Route path="custom-url" element={<CustomURLPage />} />
         <Route path="custom-url/:configId" element={<CustomUrlFlowPage />} />
-        <Route path="posts" element={<CreatePostPage />} />
+        <Route path="posts" element={<PlatformSetupGuard><CreatePostPage /></PlatformSetupGuard>} />
         <Route path="create-post" element={<Navigate to="/posts" replace />} />
         <Route path="team" element={<TeamPage />} />
         <Route path="group" element={<Navigate to="/team" replace />} />
@@ -138,7 +140,6 @@ function App() {
         </Route>
         <Route path="pricing" element={<PricingPage />} />
         <Route path="feedback" element={<FeedbackPage />} />
-        <Route path="e2e-tester" element={<AdminRoute><E2eTesterPage /></AdminRoute>} />
       </Route>
 
       <Route path="figma-preview" element={<FigmaPreviewPage />} />

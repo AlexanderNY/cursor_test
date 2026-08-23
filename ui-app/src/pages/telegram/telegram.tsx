@@ -661,8 +661,22 @@ export function TelegramPage() {
       const res = await telegramService.submitAuthCode(user.id, authCode.trim())
       if (res.success) {
         setAuthCode('')
-        setSuccess('Code accepted. Authorization complete.')
+        setSuccess(
+          'Telegram авторизован. Дальше: Channels → Recheck у канала → включите Publish / Collect.',
+        )
         await loadAuthStatus()
+        try {
+          const { smmService } = await import('@/services/smm-service')
+          // Refresh channel ownership after TG session is live
+          const list = await smmService.listAllChannels()
+          await Promise.allSettled(
+            list
+              .filter((c) => c.network === 'tg' && c.role === 'own')
+              .map((c) => smmService.recheckChannelAuth(c.id)),
+          )
+        } catch {
+          /* non-blocking */
+        }
       } else {
         setError(res.error || res.message || 'Invalid code')
       }
@@ -682,8 +696,21 @@ export function TelegramPage() {
       const res = await telegramService.submitAuthPassword(user.id, authPassword.trim())
       if (res.success) {
         setAuthPassword('')
-        setSuccess('2FA accepted. Authorization complete.')
+        setSuccess(
+          'Telegram авторизован (2FA). Дальше: Channels → Recheck у канала → включите Publish / Collect.',
+        )
         await loadAuthStatus()
+        try {
+          const { smmService } = await import('@/services/smm-service')
+          const list = await smmService.listAllChannels()
+          await Promise.allSettled(
+            list
+              .filter((c) => c.network === 'tg' && c.role === 'own')
+              .map((c) => smmService.recheckChannelAuth(c.id)),
+          )
+        } catch {
+          /* non-blocking */
+        }
       } else {
         setError(res.error || res.message || 'Invalid password')
       }

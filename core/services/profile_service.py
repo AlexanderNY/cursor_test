@@ -234,8 +234,20 @@ class ProfileService:
                         digest_channel = EXCLUDED.digest_channel,
                         classification_enabled = EXCLUDED.classification_enabled,
                         classification_categories = EXCLUDED.classification_categories,
-                        auth_state = 'authorized',
-                        auth_phone_code_hash = NULL,
+                        auth_state = CASE
+                            WHEN tg_profiles.api_id IS DISTINCT FROM EXCLUDED.api_id
+                              OR tg_profiles.api_hash IS DISTINCT FROM EXCLUDED.api_hash
+                              OR tg_profiles.auth_phone_number IS DISTINCT FROM EXCLUDED.auth_phone_number
+                            THEN 'pending_code'
+                            ELSE tg_profiles.auth_state
+                        END,
+                        auth_phone_code_hash = CASE
+                            WHEN tg_profiles.api_id IS DISTINCT FROM EXCLUDED.api_id
+                              OR tg_profiles.api_hash IS DISTINCT FROM EXCLUDED.api_hash
+                              OR tg_profiles.auth_phone_number IS DISTINCT FROM EXCLUDED.auth_phone_number
+                            THEN NULL
+                            ELSE tg_profiles.auth_phone_code_hash
+                        END,
                         updated_at = CURRENT_TIMESTAMP
                     RETURNING *
                     """,

@@ -12,7 +12,9 @@
 | [docs/USER_GUIDE.md](docs/USER_GUIDE.md) | Инструкция для пользователя UI |
 | [docs/SERVICES_OVERVIEW.md](docs/SERVICES_OVERVIEW.md) | API Gateway, эндпоинты, БД |
 | [docs/POSTS_LIFECYCLE.md](docs/POSTS_LIFECYCLE.md) | Статусы `posts` / `*_posts` |
+| [docs/PERSONAL_BRAND.md](docs/PERSONAL_BRAND.md) | Личный бренд: учебный сезон TG (Python/React/Minikube), без блога на copyparse.ru |
 | [deploy/DEPLOYMENT.md](deploy/DEPLOYMENT.md) | Прод: ui-edge, copyparse, 9to18 |
+| [deploy/README.md](deploy/README.md) | Standalone compose-юниты вне основного UI |
 | [k8s/README.md](k8s/README.md) | Kubernetes / Minikube |
 | [config.md](config.md) | Переменные окружения сервисов |
 
@@ -54,13 +56,16 @@ docker compose -f docker-compose.yaml -f docker-compose.dev.yaml up -d
 
 Подробно: [docs/INSTALLATION.md](docs/INSTALLATION.md).
 
-## Три деплой-юнита
+## Три деплой-юнита вне основного стека
+
+См. [deploy/README.md](deploy/README.md). Кратко:
 
 | Юнит | Compose | Порты |
 |------|---------|-------|
 | copyparse (монорепо) | `docker-compose.yaml` | UI 8100, API 8000, боты, MinIO, Ollama |
-| ui-9to18 | `ui-9to18/docker-compose.yml` | :8200 |
+| ui-9to18 | `deploy/ui-9to18/docker-compose.yml` | :8200 (edge_net) |
 | ui-edge | `deploy/ui-edge/docker-compose.yml` | :80 / :443 |
+| e2e-tester (опционально) | `deploy/e2e-tester/docker-compose.yml` | 127.0.0.1:8300 |
 
 Сеть `edge_net` создаётся скриптом `deploy/scripts/create-edge-net.ps1` (или `.sh`).
 

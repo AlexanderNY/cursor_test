@@ -177,6 +177,8 @@ export const smmService = {
       sent: number
       received: number
       failed: number
+      alerts_sent?: number
+      conversion_pct?: number
       role?: string
     }[]
     period: string
@@ -307,6 +309,45 @@ export const smmService = {
     return data.posts ?? []
   },
 
+  async analyticsMessages(
+    brandId?: number | null,
+    period = '7d',
+    channelId?: number | null,
+    limit = 50,
+  ): Promise<{
+    posts: AnalyticsPost[]
+    events: {
+      id: string
+      direction: string
+      network: string
+      post_id?: number
+      created_at?: string
+      channel_title?: string
+      text?: string
+      status?: string
+    }[]
+  }> {
+    const { data } = await apiClient.get('/smm/analytics/messages', {
+      params: {
+        brand_id: brandId ?? undefined,
+        period,
+        channel_id: channelId ?? undefined,
+        limit,
+      },
+    })
+    return data
+  },
+
+  async analyticsGrowth(brandId?: number | null): Promise<{
+    points: { date: string; subscribers: number }[]
+    subscriber_growth: number
+  }> {
+    const { data } = await apiClient.get('/smm/analytics/growth', {
+      params: { brand_id: brandId ?? undefined },
+    })
+    return data
+  },
+
   async bestTimes(brandId?: number | null, channelId?: number | null): Promise<{
     slots: BestTimeSlot[]
   }> {
@@ -369,6 +410,26 @@ export const smmService = {
     source_id?: number
   }): Promise<AiProcessResponse> {
     const { data } = await apiClient.post('/smm/ai/process', payload)
+    return data
+  },
+
+  async platformStatus(): Promise<import('@/types/smm').PlatformStatusResponse> {
+    const { data } = await apiClient.get('/smm/platform-status')
+    return data
+  },
+
+  async recheckChannelAuth(channelId: number): Promise<BrandChannel> {
+    const { data } = await apiClient.post(`/smm/channels/${channelId}/auth/recheck`)
+    return data
+  },
+
+  async onboardingState(): Promise<import('@/types/smm').OnboardingState> {
+    const { data } = await apiClient.get('/smm/onboarding/state')
+    return data
+  },
+
+  async skipOnboarding(): Promise<import('@/types/smm').OnboardingState> {
+    const { data } = await apiClient.post('/smm/onboarding/skip')
     return data
   },
 }

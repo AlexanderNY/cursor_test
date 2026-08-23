@@ -302,6 +302,26 @@ async def run_poll_cycle() -> bool:
                 logger.warning("Notify platform %s failed: %s", platform, result)
 
     await _run_smm_jobs()
+    await _sync_competitor_snapshots()
+    await _recheck_stale_channel_auth()
+
+
+async def _recheck_stale_channel_auth() -> None:
+    base = (settings.CORE_SERVICE_URL or "").rstrip("/")
+    if not base:
+        return
+    url = f"{base}/internal/smm/channels/auth/recheck-stale"
+    try:
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            resp = await client.post(url, params={"max_age_hours": 24})
+        if resp.status_code >= 400:
+            logger.warning("Channel auth recheck failed: %s %s", resp.status_code, resp.text)
+        else:
+            data = resp.json()
+            if data.get("channels_updated"):
+                logger.info("Channel auth rechecked: %s", data.get("channels_updated"))
+    except Exception as e:
+        logger.warning("Channel auth recheck error: %s", e)
     try:
         async with get_db_connection() as conn:
             async with conn.cursor() as cur:
@@ -343,6 +363,24 @@ async def _run_smm_jobs() -> None:
             logger.info("SMM jobs processed: %s", data.get("processed"))
     except Exception as e:
         logger.warning("SMM jobs run error: %s", e)
+
+
+async def _sync_competitor_snapshots() -> None:
+    base = (settings.CORE_SERVICE_URL or "").rstrip("/")
+    if not base:
+        return
+    url = f"{base}/internal/smm/competitors/sync"
+    try:
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            resp = await client.post(url)
+        if resp.status_code >= 400:
+            logger.warning("Competitor sync failed: %s %s", resp.status_code, resp.text)
+        else:
+            data = resp.json()
+            if data.get("inserted"):
+                logger.info("Competitor snapshots inserted: %s", data.get("inserted"))
+    except Exception as e:
+        logger.warning("Competitor sync error: %s", e)
 
 
 async def _persist_url_posts(schedule_response: dict[str, Any]) -> None:

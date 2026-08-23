@@ -20,6 +20,7 @@ import {
 } from '@/components/target-social-networks'
 import type { CpostPostListItem } from '@/types/create-post'
 import type { PostRow } from '@/types/core'
+import type { PlatformStatusResponse } from '@/types/smm'
 import { formatDateTime } from '@/utils/date'
 
 const TEXT_MAX_LENGTH = 150000
@@ -118,6 +119,7 @@ export function CreatePostPage() {
   const [aiBusy, setAiBusy] = useState(false)
   const [csvResult, setCsvResult] = useState('')
   const [adaptPreview, setAdaptPreview] = useState<Record<string, string> | null>(null)
+  const [platformStatus, setPlatformStatus] = useState<PlatformStatusResponse | null>(null)
   const [requireApproval, setRequireApproval] = useState(false)
   const [planFeatures, setPlanFeatures] = useState<Record<string, boolean>>({})
 
@@ -140,6 +142,10 @@ export function CreatePostPage() {
     void smmService.getPlan().then((p) => {
       setPlanFeatures((p.limits?.features || {}) as Record<string, boolean>)
     }).catch(() => undefined)
+  }, [])
+
+  useEffect(() => {
+    void smmService.platformStatus().then(setPlatformStatus).catch(() => setPlatformStatus(null))
   }, [])
 
   useEffect(() => {
@@ -335,6 +341,23 @@ export function CreatePostPage() {
 
     if (!Object.values(socialNetworks).some(Boolean)) {
       setError('Please select at least one social network')
+      setIsCreating(false)
+      return
+    }
+
+    if (socialNetworks.tg && !platformStatus?.tg?.can_publish_text) {
+      setError('Connect Telegram before publishing (Profile → Telegram)')
+      setIsCreating(false)
+      return
+    }
+    if (socialNetworks.vk && !platformStatus?.vk?.can_publish_text) {
+      setError('Connect VK before publishing (Profile → VKontakte)')
+      setIsCreating(false)
+      return
+    }
+    const hasImages = imagesText.split('\n').some((s) => s.trim())
+    if (socialNetworks.vk && hasImages && !platformStatus?.vk?.can_publish_media) {
+      setError('VK posts with media require user OAuth token')
       setIsCreating(false)
       return
     }
@@ -587,6 +610,15 @@ export function CreatePostPage() {
       </div>
 
       {/* Tab: Create Post */}
+      {platformStatus && activeTab === 'create' && (!platformStatus.tg.connected || !platformStatus.vk.connected) && (
+        <Alert variant="info" className="mb-4">
+          Platform auth: TG {platformStatus.tg.connected ? '✓' : '—'}{' '}
+          <Link to="/telegram" className="underline">connect</Link>
+          {' · '}
+          VK {platformStatus.vk.connected ? '✓' : '—'}{' '}
+          <Link to="/vkontakte" className="underline">connect</Link>
+        </Alert>
+      )}
       {activeTab === 'create' && (
         <Card className="animate-slide-up">
           <CardHeader>

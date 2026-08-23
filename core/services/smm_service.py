@@ -226,6 +226,15 @@ def _row_channel(r: tuple) -> dict[str, Any]:
                 except (TypeError, ValueError):
                     continue
         out["publish_targets"] = parsed
+    if len(r) > 21:
+        out["auth_status"] = r[21] or "unknown"
+    if len(r) > 22:
+        out["auth_checked_at"] = r[22].isoformat() if r[22] else None
+    if len(r) > 23:
+        out["auth_error"] = r[23]
+    if len(r) > 24:
+        caps = _parse_json_field(r[24], {})
+        out["auth_capabilities"] = caps if isinstance(caps, dict) else {}
     return out
 
 
@@ -261,10 +270,12 @@ id, brand_id, network, external_id, title, kind, role,
 color_override, created_at, publish_enabled, collect_enabled,
 discussion_external_id, discussion_title, comments_collect_enabled,
 alert_enabled, save_conditions, processing, alert_delivery, alert_rules,
-conditions_mode, publish_targets
+conditions_mode, publish_targets,
+auth_status, auth_checked_at, auth_error, auth_capabilities
 """
 
 CHANNEL_RETURNING = CHANNEL_SELECT
+CHANNEL_FIELD_COUNT = 25
 
 INBOX_SELECT = """
 id, user_id, brand_id, network, channel_id, thread_id,
@@ -499,29 +510,85 @@ class SmmService:
             await ensure_smm_limit(user_id, "max_own_channels", count, units=1)
         if role == "competitor":
             await ensure_smm_feature(user_id, "competitors")
+
+        ext = str(external_id or "").strip()
+        if not ext:
+            raise ValueError("Укажите ID канала")
+
+        # Friendly duplicate check before INSERT (UNIQUE brand_id, network, external_id)
+        existing = await self.list_channels(user_id, brand_id)
+        for ch in existing:
+            if ch.get("network") != network:
+                continue
+            other = str(ch.get("external_id") or "").strip()
+            same = other == ext or other.lstrip("-") == ext.lstrip("-")
+            if not same:
+                try:
+                    same = int(other) == int(ext)
+                except (TypeError, ValueError):
+                    same = False
+            if same:
+                raise ValueError(
+                    f"Канал уже добавлен: «{ch.get('title') or other}» "
+                    f"({network}/{other}, роль {ch.get('role')}). "
+                    f"Откройте его в списке или удалите перед повторным добавлением."
+                )
+
+        from services.platform_auth_service import platform_auth_service
+
+        # Soft probe: channels can always be created; ownership required only for publish.
+        auth_probe: dict[str, Any] = {
+            "auth_status": "unknown",
+            "auth_error": None,
+            "auth_capabilities": {},
+            "auth_checked_at": datetime.utcnow(),
+        }
+        if role == "competitor":
+            auth_probe["auth_status"] = "not_required"
+        else:
+            auth_probe = await platform_auth_service.probe_channel_access(
+                user_id, network, ext, role, strict=False
+            )
+
+        is_owned = auth_probe.get("auth_status") == "connected"
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
-                await cur.execute(
-                    f"""
-                    INSERT INTO smm_brand_channels
-                        (brand_id, network, external_id, title, kind, role, color_override,
-                         publish_enabled, collect_enabled)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    RETURNING {CHANNEL_RETURNING}
-                    """,
-                    (
-                        brand_id,
-                        network,
-                        str(external_id).strip(),
-                        title,
-                        kind,
-                        role,
-                        color_override,
-                        role == "own",
-                        role in ("source", "own"),
-                    ),
-                )
+                try:
+                    await cur.execute(
+                        f"""
+                        INSERT INTO smm_brand_channels
+                            (brand_id, network, external_id, title, kind, role, color_override,
+                             publish_enabled, collect_enabled,
+                             auth_status, auth_error, auth_checked_at, auth_capabilities)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+                        RETURNING {CHANNEL_RETURNING}
+                        """,
+                        (
+                            brand_id,
+                            network,
+                            ext,
+                            title,
+                            kind,
+                            role,
+                            color_override,
+                            role == "own" and is_owned,
+                            role in ("source", "own"),
+                            auth_probe.get("auth_status", "unknown"),
+                            auth_probe.get("auth_error"),
+                            auth_probe.get("auth_checked_at") or datetime.utcnow(),
+                            json.dumps(
+                                auth_probe.get("auth_capabilities") or {}, ensure_ascii=False
+                            ),
+                        ),
+                    )
+                except Exception as exc:
+                    msg = str(exc).lower()
+                    if "unique" in msg or "duplicate" in msg:
+                        raise ValueError(
+                            f"Канал {network}/{ext} уже есть у этого бренда"
+                        ) from exc
+                    raise
                 row = await cur.fetchone()
                 return _row_channel(row)
         finally:
@@ -538,6 +605,7 @@ class SmmService:
                            c.discussion_external_id, c.discussion_title, c.comments_collect_enabled,
                            c.alert_enabled, c.save_conditions, c.processing, c.alert_delivery, c.alert_rules,
                            c.conditions_mode, c.publish_targets,
+                           c.auth_status, c.auth_checked_at, c.auth_error, c.auth_capabilities,
                            b.name AS brand_name, b.color AS brand_color
                     FROM smm_brand_channels c
                     JOIN smm_brands b ON b.id = c.brand_id
@@ -548,9 +616,9 @@ class SmmService:
                 row = await cur.fetchone()
                 if not row:
                     return None
-                ch = _row_channel(row[:21])
-                ch["brand_name"] = row[21]
-                ch["brand_color"] = row[22]
+                ch = _row_channel(row[:CHANNEL_FIELD_COUNT])
+                ch["brand_name"] = row[CHANNEL_FIELD_COUNT]
+                ch["brand_color"] = row[CHANNEL_FIELD_COUNT + 1]
                 return ch
         finally:
             await release_db_connection(conn)
@@ -565,6 +633,14 @@ class SmmService:
         brand = await self.get_brand(user_id, brand_id)
         if not brand:
             return None
+        existing = await self.get_channel(user_id, channel_id)
+        if not existing:
+            return None
+
+        from services.platform_auth_service import platform_auth_service
+
+        await platform_auth_service.validate_channel_update(user_id, existing, fields)
+
         allowed = {
             "title",
             "kind",
@@ -610,6 +686,11 @@ class SmmService:
             if val is not None or key in ("discussion_external_id", "discussion_title"):
                 updates.append(f"{key} = %s")
                 params.append(val)
+        if "external_id" in fields or "role" in fields:
+            updates.append("auth_status = %s")
+            params.append("unknown")
+            updates.append("auth_checked_at = NULL")
+            updates.append("auth_error = NULL")
         if not updates:
             channels = await self.list_channels(user_id, brand_id)
             return next((c for c in channels if c["id"] == channel_id), None)
@@ -626,7 +707,35 @@ class SmmService:
                     params,
                 )
                 row = await cur.fetchone()
-                return _row_channel(row) if row else None
+                ch = _row_channel(row) if row else None
+                if ch and ("external_id" in fields or "role" in fields):
+                    from services.platform_auth_service import platform_auth_service
+
+                    probe = await platform_auth_service.probe_channel_access(
+                        user_id,
+                        ch["network"],
+                        ch["external_id"],
+                        ch.get("role") or "own",
+                        strict=False,
+                    )
+                    await platform_auth_service.persist_channel_auth(channel_id, probe)
+                    # Ownership lost → force publish off
+                    if (
+                        ch.get("role") == "own"
+                        and probe.get("auth_status") != "connected"
+                        and ch.get("publish_enabled")
+                    ):
+                        await cur.execute(
+                            """
+                            UPDATE smm_brand_channels
+                            SET publish_enabled = FALSE
+                            WHERE id = %s
+                            """,
+                            (channel_id,),
+                        )
+                    refreshed = await self.get_channel(user_id, channel_id)
+                    return refreshed or ch
+                return ch
         finally:
             await release_db_connection(conn)
 
@@ -649,6 +758,7 @@ class SmmService:
                            c.discussion_external_id, c.discussion_title, c.comments_collect_enabled,
                            c.alert_enabled, c.save_conditions, c.processing, c.alert_delivery, c.alert_rules,
                            c.conditions_mode, c.publish_targets,
+                           c.auth_status, c.auth_checked_at, c.auth_error, c.auth_capabilities,
                            b.name AS brand_name, b.color AS brand_color
                     FROM smm_brand_channels c
                     JOIN smm_brands b ON b.id = c.brand_id
@@ -660,9 +770,9 @@ class SmmService:
                 rows = await cur.fetchall()
                 result = []
                 for r in rows:
-                    ch = _row_channel(r[:21])
-                    ch["brand_name"] = r[21]
-                    ch["brand_color"] = r[22]
+                    ch = _row_channel(r[:CHANNEL_FIELD_COUNT])
+                    ch["brand_name"] = r[CHANNEL_FIELD_COUNT]
+                    ch["brand_color"] = r[CHANNEL_FIELD_COUNT + 1]
                     result.append(ch)
                 return result
         finally:
@@ -969,6 +1079,12 @@ class SmmService:
         if len(targets) > 1 and not plan_feature(tariff, "multi_channel_send", True):
             raise QuotaExceededError(
                 resource="feature:multi_channel_send", limit=1, used=len(targets)
+            )
+        from services.platform_auth_service import PlatformAction, platform_auth_service
+
+        if targets and status in ("ready", "scheduled", "publishing"):
+            await platform_auth_service.require_targets_auth(
+                user_id, targets, has_media=bool(media)
             )
         pub_at = None
         if publish_at:
@@ -1326,7 +1442,9 @@ class SmmService:
                 "engagement": total_eng,
                 "er": er,
                 "posts": total_posts,
-                "subscriber_growth": 0,
+                "subscriber_growth": (
+                    await self.analytics_growth(user_id, brand_id)
+                ).get("subscriber_growth", 0),
                 "by_network": {
                     "tg": {
                         "views": int(tg_views),
@@ -1424,11 +1542,183 @@ class SmmService:
             await release_db_connection(conn)
 
     async def analytics_growth(self, user_id: int, brand_id: Optional[int]) -> dict:
-        return {
-            "brand_id": brand_id,
-            "points": [],
-            "message": "Subscriber growth tracking will populate as collectors ingest metrics",
-        }
+        channels = await self.list_all_channels(user_id, brand_id)
+        if not channels:
+            return {"brand_id": brand_id, "points": [], "subscriber_growth": 0}
+        channel_ids = [c["id"] for c in channels]
+        since = datetime.utcnow() - timedelta(days=30)
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT channel_id, subscribers, captured_at
+                    FROM smm_channel_metric_snapshots
+                    WHERE channel_id = ANY(%s) AND captured_at >= %s
+                    ORDER BY captured_at ASC
+                    """,
+                    (channel_ids, since),
+                )
+                rows = await cur.fetchall()
+        finally:
+            await release_db_connection(conn)
+        by_day: dict[str, int] = {}
+        for ch_id, subs, captured_at in rows:
+            day_key = captured_at.date().isoformat() if captured_at else ""
+            if day_key:
+                by_day[day_key] = by_day.get(day_key, 0) + int(subs or 0)
+        points = [{"date": d, "subscribers": v} for d, v in sorted(by_day.items())]
+        growth = 0
+        if len(points) >= 2:
+            growth = points[-1]["subscribers"] - points[0]["subscribers"]
+        return {"brand_id": brand_id, "points": points, "subscriber_growth": growth}
+
+    async def analytics_messages(
+        self,
+        user_id: int,
+        brand_id: Optional[int],
+        period: str = "7d",
+        channel_id: Optional[int] = None,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        """Operational + engagement message list for Analytics tab."""
+        days = 7 if period == "7d" else (30 if period == "30d" else 7)
+        since = datetime.utcnow() - timedelta(days=days)
+        posts = await self.analytics_posts(
+            user_id, brand_id, sort="views", limit=limit, channel_id=channel_id
+        )
+        for p in posts:
+            p["status"] = "published"
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                where = "e.user_id = %s AND e.created_at >= %s"
+                params: list[Any] = [user_id, since]
+                if channel_id:
+                    where += " AND e.channel_id = %s"
+                    params.append(channel_id)
+                elif brand_id:
+                    await cur.execute(
+                        "SELECT id FROM smm_brand_channels WHERE brand_id = %s",
+                        (brand_id,),
+                    )
+                    ids = [r[0] for r in await cur.fetchall()]
+                    if not ids:
+                        return {"posts": posts, "events": []}
+                    where += " AND e.channel_id = ANY(%s)"
+                    params.append(ids)
+                await cur.execute(
+                    f"""
+                    SELECT e.direction, e.platform, e.post_id, e.external_msg_id,
+                           e.created_at, e.metadata, c.title, c.external_id
+                    FROM smm_message_events e
+                    LEFT JOIN smm_brand_channels c ON c.id = e.channel_id
+                    WHERE {where}
+                    ORDER BY e.created_at DESC
+                    LIMIT %s
+                    """,
+                    (*params, limit),
+                )
+                event_rows = await cur.fetchall()
+        finally:
+            await release_db_connection(conn)
+        events = []
+        for i, r in enumerate(event_rows):
+            meta = r[5]
+            if isinstance(meta, str):
+                try:
+                    meta = json.loads(meta)
+                except (json.JSONDecodeError, TypeError):
+                    meta = {}
+            events.append(
+                {
+                    "id": f"evt-{i}",
+                    "direction": r[0],
+                    "network": r[1],
+                    "post_id": r[2],
+                    "external_msg_id": r[3],
+                    "created_at": _iso_dt(r[4]),
+                    "channel_title": r[6] or r[7],
+                    "text": meta.get("text_preview") if isinstance(meta, dict) else None,
+                    "status": r[0],
+                }
+            )
+        return {"posts": posts, "events": events}
+
+    async def sync_competitor_snapshots(self, user_id: Optional[int] = None) -> dict:
+        """Import recent competitor/source posts from platform tables into snapshots."""
+        conn = await get_db_connection()
+        inserted = 0
+        try:
+            async with conn.cursor() as cur:
+                if user_id is not None:
+                    await cur.execute(
+                        """
+                        SELECT c.id, c.network, c.external_id, b.user_id
+                        FROM smm_brand_channels c
+                        JOIN smm_brands b ON b.id = c.brand_id
+                        WHERE b.user_id = %s AND c.role IN ('competitor', 'source')
+                        """,
+                        (user_id,),
+                    )
+                else:
+                    await cur.execute(
+                        """
+                        SELECT c.id, c.network, c.external_id, b.user_id
+                        FROM smm_brand_channels c
+                        JOIN smm_brands b ON b.id = c.brand_id
+                        WHERE c.role IN ('competitor', 'source')
+                        """
+                    )
+                channels = await cur.fetchall()
+                for ch_id, network, external_id, uid in channels:
+                    ext = str(external_id).strip()
+                    if network == "vk":
+                        await cur.execute(
+                            """
+                            SELECT vk_source_id, post_text, views, likes, comments, reposts, post_date
+                            FROM vk_posts
+                            WHERE user_id = %s AND domain = %s
+                            ORDER BY post_date DESC NULLS LAST
+                            LIMIT 20
+                            """,
+                            (uid, ext.lstrip("-")),
+                        )
+                    else:
+                        await cur.execute(
+                            """
+                            SELECT id, post_text, views, likes, comments, reposts, post_date
+                            FROM tg_posts
+                            WHERE user_id = %s AND domain = %s
+                            ORDER BY post_date DESC NULLS LAST
+                            LIMIT 20
+                            """,
+                            (uid, ext),
+                        )
+                    for row in await cur.fetchall():
+                        ext_post_id = str(row[0])
+                        await cur.execute(
+                            """
+                            SELECT 1 FROM smm_competitor_snapshots
+                            WHERE channel_id = %s AND external_post_id = %s
+                            LIMIT 1
+                            """,
+                            (ch_id, ext_post_id),
+                        )
+                        if await cur.fetchone():
+                            continue
+                        await cur.execute(
+                            """
+                            INSERT INTO smm_competitor_snapshots
+                                (channel_id, external_post_id, post_text, views, likes, comments, reposts, posted_at)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                            """,
+                            (ch_id, ext_post_id, row[1], row[2], row[3], row[4], row[5], row[6]),
+                        )
+                        inserted += 1
+            return {"inserted": inserted, "channels": len(channels)}
+        finally:
+            await release_db_connection(conn)
 
     async def best_times(
         self,
@@ -1569,7 +1859,8 @@ class SmmService:
                 for ch in channels:
                     await cur.execute(
                         """
-                        SELECT COALESCE(SUM(sent),0), COALESCE(SUM(received),0), COALESCE(SUM(failed),0)
+                        SELECT COALESCE(SUM(sent),0), COALESCE(SUM(received),0),
+                               COALESCE(SUM(failed),0), COALESCE(SUM(alerts_sent),0)
                         FROM smm_channel_counters
                         WHERE user_id = %s AND channel_id = %s AND day >= %s
                         """,
@@ -1579,6 +1870,7 @@ class SmmService:
                     sent = int(row[0] or 0) if row else 0
                     received = int(row[1] or 0) if row else 0
                     failed = int(row[2] or 0) if row else 0
+                    alerts_sent = int(row[3] or 0) if row else 0
                     # Fallback: count inbox received for channel
                     if received == 0:
                         await cur.execute(
@@ -1602,6 +1894,10 @@ class SmmService:
                             "sent": sent,
                             "received": received,
                             "failed": failed,
+                            "alerts_sent": alerts_sent,
+                            "conversion_pct": round(
+                                (sent / received * 100) if received else 0.0, 1
+                            ),
                         }
                     )
                 return result
@@ -1609,7 +1905,14 @@ class SmmService:
             await release_db_connection(conn)
 
     async def bump_channel_counter(
-        self, user_id: int, channel_id: int, *, sent: int = 0, received: int = 0, failed: int = 0
+        self,
+        user_id: int,
+        channel_id: int,
+        *,
+        sent: int = 0,
+        received: int = 0,
+        failed: int = 0,
+        alerts_sent: int = 0,
     ) -> None:
         day = datetime.utcnow().date()
         conn = await get_db_connection()
@@ -1617,14 +1920,168 @@ class SmmService:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
-                    INSERT INTO smm_channel_counters (user_id, channel_id, day, sent, received, failed)
-                    VALUES (%s, %s, %s, %s, %s, %s)
+                    INSERT INTO smm_channel_counters
+                        (user_id, channel_id, day, sent, received, failed, alerts_sent)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (channel_id, day) DO UPDATE SET
                         sent = smm_channel_counters.sent + EXCLUDED.sent,
                         received = smm_channel_counters.received + EXCLUDED.received,
-                        failed = smm_channel_counters.failed + EXCLUDED.failed
+                        failed = smm_channel_counters.failed + EXCLUDED.failed,
+                        alerts_sent = smm_channel_counters.alerts_sent + EXCLUDED.alerts_sent
                     """,
-                    (user_id, channel_id, day, sent, received, failed),
+                    (user_id, channel_id, day, sent, received, failed, alerts_sent),
+                )
+        finally:
+            await release_db_connection(conn)
+
+    async def resolve_channel_by_external_id(
+        self,
+        user_id: int,
+        network: str,
+        external_id: str,
+    ) -> Optional[dict]:
+        """Match BrandChannel by network + external_id (Telegram/VK id formats)."""
+        needle = str(external_id).strip()
+        if not needle:
+            return None
+        needle_stripped = needle.lstrip("-")
+        channels = await self.list_all_channels(user_id)
+        for c in channels:
+            if c.get("network") != network:
+                continue
+            ext = str(c.get("external_id") or "").strip()
+            if not ext:
+                continue
+            if ext == needle or ext.lstrip("-") == needle_stripped:
+                return c
+            try:
+                if int(ext) == int(needle):
+                    return c
+            except (TypeError, ValueError):
+                pass
+        return None
+
+    async def record_message_event(
+        self,
+        user_id: int,
+        channel_id: Optional[int],
+        direction: str,
+        platform: str,
+        *,
+        post_id: Optional[int] = None,
+        external_msg_id: Optional[str] = None,
+        metadata: Optional[dict] = None,
+    ) -> None:
+        if direction not in ("collected", "published", "alert", "failed"):
+            return
+        if platform not in ("tg", "vk"):
+            return
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    INSERT INTO smm_message_events
+                        (user_id, channel_id, direction, platform, post_id, external_msg_id, metadata)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb)
+                    """,
+                    (
+                        user_id,
+                        channel_id,
+                        direction,
+                        platform,
+                        post_id,
+                        external_msg_id,
+                        json.dumps(metadata or {}, ensure_ascii=False),
+                    ),
+                )
+        finally:
+            await release_db_connection(conn)
+
+    async def bump_channel_from_collector(
+        self,
+        user_id: int,
+        *,
+        channel_id: Optional[int] = None,
+        network: Optional[str] = None,
+        external_id: Optional[str] = None,
+        sent: int = 0,
+        received: int = 0,
+        failed: int = 0,
+        alerts_sent: int = 0,
+        direction: Optional[str] = None,
+        platform: Optional[str] = None,
+        post_id: Optional[int] = None,
+        external_msg_id: Optional[str] = None,
+        metadata: Optional[dict] = None,
+    ) -> bool:
+        """Resolve channel and bump counters; optionally record message event."""
+        ch_id = channel_id
+        if not ch_id and network and external_id:
+            ch = await self.resolve_channel_by_external_id(user_id, network, external_id)
+            ch_id = ch["id"] if ch else None
+        if not ch_id:
+            return False
+        if sent or received or failed or alerts_sent:
+            await self.bump_channel_counter(
+                user_id,
+                ch_id,
+                sent=sent,
+                received=received,
+                failed=failed,
+                alerts_sent=alerts_sent,
+            )
+        if direction and platform:
+            await self.record_message_event(
+                user_id,
+                ch_id,
+                direction,
+                platform,
+                post_id=post_id,
+                external_msg_id=external_msg_id,
+                metadata=metadata,
+            )
+        return True
+
+    async def record_post_metric_snapshot(
+        self,
+        user_id: int,
+        platform: str,
+        post_id: int,
+        *,
+        views: int = 0,
+        likes: int = 0,
+        comments: int = 0,
+        reposts: int = 0,
+    ) -> None:
+        if platform not in ("tg", "vk"):
+            return
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    INSERT INTO smm_post_metric_snapshots
+                        (user_id, platform, post_id, views, likes, comments, reposts)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (user_id, platform, post_id, views, likes, comments, reposts),
+                )
+        finally:
+            await release_db_connection(conn)
+
+    async def record_channel_subscriber_snapshot(
+        self, channel_id: int, subscribers: int
+    ) -> None:
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    INSERT INTO smm_channel_metric_snapshots (channel_id, subscribers)
+                    VALUES (%s, %s)
+                    """,
+                    (channel_id, max(0, int(subscribers))),
                 )
         finally:
             await release_db_connection(conn)
@@ -1665,6 +2122,8 @@ class SmmService:
         )
 
         channels = await self.list_all_channels(user_id)
+        from services.platform_auth_service import PlatformAction, PlatformAuthError, platform_auth_service
+
         await self.update_job(user_id, job_id, status="publishing")
         ok = 0
         fail = 0
@@ -1672,6 +2131,17 @@ class SmmService:
             network = t.get("network")
             external_id = str(t.get("external_id") or "")
             key = f"{network}:{external_id}"
+            action = (
+                PlatformAction.PUBLISH_MEDIA
+                if media and network == "vk"
+                else PlatformAction.PUBLISH_TEXT
+            )
+            try:
+                await platform_auth_service.require_platform(user_id, str(network), action)
+            except PlatformAuthError as auth_exc:
+                per_target[key] = {"status": "failed", "error": auth_exc.message}
+                fail += 1
+                continue
             ch = next(
                 (
                     c

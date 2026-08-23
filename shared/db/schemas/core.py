@@ -306,6 +306,64 @@ CREATE TABLE IF NOT EXISTS smm_ai_usage (
 );
 """
 
+SMM_ANALYTICS_MIGRATION = """
+DO $$ BEGIN
+  ALTER TABLE smm_channel_counters ADD COLUMN alerts_sent INTEGER DEFAULT 0;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+CREATE TABLE IF NOT EXISTS smm_message_events (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    channel_id INTEGER REFERENCES smm_brand_channels(id) ON DELETE SET NULL,
+    direction VARCHAR(20) NOT NULL
+        CHECK (direction IN ('collected', 'published', 'alert', 'failed')),
+    platform VARCHAR(10) NOT NULL CHECK (platform IN ('tg', 'vk')),
+    post_id INTEGER,
+    external_msg_id VARCHAR(128),
+    metadata JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_smm_message_events_channel_created
+    ON smm_message_events(channel_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_smm_message_events_user_created
+    ON smm_message_events(user_id, created_at);
+CREATE TABLE IF NOT EXISTS smm_post_metric_snapshots (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    platform VARCHAR(10) NOT NULL CHECK (platform IN ('tg', 'vk')),
+    post_id INTEGER NOT NULL,
+    views INTEGER DEFAULT 0,
+    likes INTEGER DEFAULT 0,
+    comments INTEGER DEFAULT 0,
+    reposts INTEGER DEFAULT 0,
+    captured_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_smm_post_metric_snapshots_post
+    ON smm_post_metric_snapshots(platform, post_id, captured_at);
+CREATE TABLE IF NOT EXISTS smm_channel_metric_snapshots (
+    id SERIAL PRIMARY KEY,
+    channel_id INTEGER NOT NULL REFERENCES smm_brand_channels(id) ON DELETE CASCADE,
+    subscribers INTEGER DEFAULT 0,
+    captured_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_smm_channel_metric_channel
+    ON smm_channel_metric_snapshots(channel_id, captured_at);
+"""
+
+SMM_CHANNEL_AUTH_MIGRATION = """
+DO $$ BEGIN
+  ALTER TABLE smm_brand_channels ADD COLUMN auth_status VARCHAR(20) DEFAULT 'unknown';
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE smm_brand_channels ADD COLUMN auth_checked_at TIMESTAMPTZ;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE smm_brand_channels ADD COLUMN auth_error TEXT;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE smm_brand_channels ADD COLUMN auth_capabilities JSONB DEFAULT '{}'::jsonb;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+"""
+
 ALL_TABLES: list[str] = [
     POSTS_TABLE,
     POSTS_INDEXES,
@@ -329,4 +387,6 @@ ALL_TABLES: list[str] = [
     SMM_INDEXES,
     SMM_CHANNEL_COUNTERS_TABLE,
     SMM_AI_USAGE_TABLE,
+    SMM_ANALYTICS_MIGRATION,
+    SMM_CHANNEL_AUTH_MIGRATION,
 ]

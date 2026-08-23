@@ -61,7 +61,7 @@ docker compose exec ui-edge nginx -t
 
 HTTP и HTTPS. Сертификаты: `certs/9to18/fullchain.pem`, `privkey.pem`.
 
-Приложение: отдельный стек [`ui-9to18/`](../../ui-9to18/).
+Приложение: отдельный стек [`deploy/ui-9to18/`](../ui-9to18/).
 
 ## copyparse.ru
 

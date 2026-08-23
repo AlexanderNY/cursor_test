@@ -1,7 +1,8 @@
 # Деплой: ui-edge, 9to18, copyparse
 
 Локальная установка и `.env`: [../docs/INSTALLATION.md](../docs/INSTALLATION.md).  
-Архитектура: [../docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md).
+Архитектура: [../docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md).  
+Standalone-юниты (вне основного UI): [README.md](README.md).
 
 Три независимых деплой-юнита на одной VM с общей Docker-сетью `edge_net`.
 
@@ -64,7 +65,7 @@ Internet :80/:443
 docker compose up -d
 
 # 2) сайт 9to18
-docker compose -f ui-9to18/docker-compose.yml up -d
+docker compose -f deploy/ui-9to18/docker-compose.yml up -d
 
 # 3) edge (публичные 80/443)
 docker compose -f deploy/ui-edge/docker-compose.yml up -d

@@ -95,6 +95,39 @@ export interface BrandChannel {
   alert_rules?: ChannelAlertRule[]
   brand_name?: string
   brand_color?: string
+  auth_status?: 'connected' | 'missing' | 'pending' | 'invalid' | 'unknown' | 'not_required'
+  auth_checked_at?: string | null
+  auth_error?: string | null
+  auth_capabilities?: Record<string, boolean>
+}
+
+export interface PlatformNetworkStatus {
+  connected: boolean
+  state?: string
+  message?: string
+  can_collect?: boolean
+  can_publish_text?: boolean
+  can_publish_media?: boolean
+  can_alert?: boolean
+  setup_url?: string
+}
+
+export interface PlatformStatusResponse {
+  tg: PlatformNetworkStatus
+  vk: PlatformNetworkStatus
+}
+
+export interface OnboardingState {
+  step: number
+  total_steps: number
+  tg_ready: boolean
+  vk_ready: boolean
+  has_brand: boolean
+  has_own_channel: boolean
+  has_connected_own_channel: boolean
+  skipped: boolean
+  completed: boolean
+  platforms?: PlatformStatusResponse
 }
 
 export interface InboxItem {

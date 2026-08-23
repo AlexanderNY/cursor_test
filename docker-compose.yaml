@@ -577,7 +577,7 @@ networks:
     ipam:
       config:
         - subnet: 172.20.0.0/16
-  # Shared with deploy/ui-edge and ui-9to18. Create once: deploy/scripts/create-edge-net.ps1
+  # Shared with deploy/ui-edge and deploy/ui-9to18. Create once: deploy/scripts/create-edge-net.ps1
   edge_net:
     external: true
     name: edge_net

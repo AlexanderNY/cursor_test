@@ -1,0 +1,52 @@
+A81E7E5CA3CE4840
+https://cursor.com/dashboard
+alexandernepluev@gmail.com
+cuLehyjqgbplsvkfltytw!2
+
+
+Alex_admin
+pulchrum@yandex.ru
+1qaz!QAZ
+
+
+Настройки профиля Telegram
+API ID
+15723016
+API Hash
+fd10c198eaa94bc4fe3f82415eb46ee6
+Логин в Telegram
+pulchrum
+Номер телефона для авторизации
+ 
+Получите API credentials на my.telegram.org. Номер телефона нужен для первой авторизации в Telegram.
+
+
+Сеть	ID канала	Title	Тип	Publish	Collect	Alert	
+TG	-1002142359467	
+По ту сторону
+Тест функционала
+competitor				
+Настроить
+Remove
+TG	-1001677806302	
+ЗМ-ФБТ-11
+Тест функционала
+own				
+Настроить
+Remove
+TG	-1002026625379	
+Кибер Тороп
+Тест функционала
+own				
+Настроить
+Remove
+TG	-1001411610346	
+Профита нет. А если найду?
+Тест функционала
+source				
+Настроить
+Remove
+TG	-1002009872429	
+Экономический ежедневник
+Тест функционала
+source				

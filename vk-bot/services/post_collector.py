@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional
 from database import get_db_connection, release_db_connection
 from config import settings
 from .vk_client import VkClient
+from .channel_counter import bump_channel_counter
 
 
 logger = logging.getLogger(__name__)
@@ -186,6 +187,7 @@ class PostCollector:
                         %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                         'collected', 'vk', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
                     )
+                    RETURNING id
                     """,
                     (
                         user_id,
@@ -201,12 +203,25 @@ class PostCollector:
                         views,
                     ),
                 )
+                row = await cur.fetchone()
+                post_row_id = int(row[0]) if row else None
                 _log_action(
                     "Saved vk post user_id=%s domain=%s vk_source_id=%s",
                     user_id,
                     domain,
                     vk_source_id,
                 )
+                if post_row_id:
+                    await bump_channel_counter(
+                        user_id,
+                        network="vk",
+                        external_id=domain,
+                        received=1,
+                        direction="collected",
+                        platform="vk",
+                        post_id=post_row_id,
+                        metadata={"text_preview": (post_text or "")[:120]},
+                    )
                 return True
         except Exception as e:
             logger.error("Error saving vk post: %s", e, exc_info=True)

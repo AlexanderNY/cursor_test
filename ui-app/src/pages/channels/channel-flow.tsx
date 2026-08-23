@@ -13,6 +13,7 @@ import type {
   ChannelProcessingConfig,
   ConditionsMode,
 } from '@/types/smm'
+import { publishAllowed, authStatusLabel } from '@/hooks/use-platform-readiness'
 import { getErrorMessage } from '@/services/api-client'
 
 type FlowTab = 'collect' | 'processing' | 'publish' | 'alerting'
@@ -70,6 +71,9 @@ export function ChannelFlowPage() {
   const [conditionsMode, setConditionsMode] = useState<ConditionsMode>('any_of')
   const [processing, setProcessing] = useState<ChannelProcessingConfig>({})
   const [publishTargets, setPublishTargets] = useState<number[]>([])
+  const [collectEnabled, setCollectEnabled] = useState(false)
+  const [publishEnabled, setPublishEnabled] = useState(false)
+  const [alertEnabled, setAlertEnabled] = useState(false)
   const [delivery, setDelivery] = useState<ChannelAlertDelivery>({})
   const [alertTargets, setAlertTargets] = useState<number[]>([])
   const [rules, setRules] = useState<ChannelAlertRule[]>([])
@@ -90,6 +94,9 @@ export function ChannelFlowPage() {
         setConditionsMode(ch.conditions_mode === 'all_of' ? 'all_of' : 'any_of')
         setProcessing(ch.processing || {})
         setPublishTargets(ch.publish_targets || [])
+        setCollectEnabled(Boolean(ch.collect_enabled))
+        setPublishEnabled(Boolean(ch.publish_enabled))
+        setAlertEnabled(Boolean(ch.alert_enabled))
         const nextDelivery = ch.alert_delivery || {}
         setDelivery(nextDelivery)
         setRules(ch.alert_rules?.length ? ch.alert_rules : [emptyRule()])
@@ -157,8 +164,10 @@ export function ChannelFlowPage() {
       const updated = await smmService.updateChannel(channel.brand_id, channel.id, {
         save_conditions,
         conditions_mode: conditionsMode,
+        collect_enabled: collectEnabled,
       })
       setChannel(updated)
+      setCollectEnabled(Boolean(updated.collect_enabled))
       setConditions(updated.save_conditions || [])
       setConditionsMode(updated.conditions_mode === 'all_of' ? 'all_of' : 'any_of')
       setSuccess('Условия сбора сохранены')
@@ -199,9 +208,11 @@ export function ChannelFlowPage() {
     try {
       const updated = await smmService.updateChannel(channel.brand_id, channel.id, {
         publish_targets: publishTargets,
+        publish_enabled: publishEnabled && publishTargets.length > 0,
       })
       setChannel(updated)
       setPublishTargets(updated.publish_targets || [])
+      setPublishEnabled(Boolean(updated.publish_enabled))
       setSuccess('Целевые каналы публикации сохранены')
     } catch (err) {
       setError(getErrorMessage(err))
@@ -253,9 +264,10 @@ export function ChannelFlowPage() {
           include_ai_summary: Boolean(delivery.include_ai_summary),
         },
         alert_rules: cleanedRules,
-        alert_enabled: true,
+        alert_enabled: alertEnabled,
       })
       setChannel(updated)
+      setAlertEnabled(Boolean(updated.alert_enabled))
       setRules(updated.alert_rules?.length ? updated.alert_rules : [emptyRule()])
       const nextDelivery = updated.alert_delivery || {}
       setDelivery(nextDelivery)
@@ -321,6 +333,18 @@ export function ChannelFlowPage() {
       </div>
       {error && <Alert variant="error">{error}</Alert>}
       {success && <Alert variant="success">{success}</Alert>}
+      {channel.role === 'own' && !publishAllowed(channel) && (
+        <Alert variant="warning">
+          Публикация недоступна: собственность канала не подтверждена (
+          {authStatusLabel(channel.auth_status)}
+          {channel.auth_error ? ` — ${channel.auth_error}` : ''}). Канал можно настроить для
+          сбора/алертов. Для Publish подключите{' '}
+          <Link to={channel.network === 'vk' ? '/vkontakte' : '/telegram'} className="underline">
+            {channel.network === 'vk' ? 'VK' : 'Telegram'}
+          </Link>{' '}
+          и нажмите Recheck на Channels.
+        </Alert>
+      )}
 
       <div className="flex gap-2 mb-4 flex-wrap">
         {(
@@ -352,7 +376,15 @@ export function ChannelFlowPage() {
             </CardDescription>
           </CardHeader>
           <form onSubmit={saveCollect}>
-            <CardContent>
+            <CardContent className="space-y-4">
+              <label className="flex items-center gap-2 text-sm font-medium">
+                <input
+                  type="checkbox"
+                  checked={collectEnabled}
+                  onChange={(e) => setCollectEnabled(e.target.checked)}
+                />
+                Сбор включён (Collect)
+              </label>
               <ConditionsEditor
                 conditions={conditions}
                 mode={conditionsMode}
@@ -456,6 +488,20 @@ export function ChannelFlowPage() {
           </CardHeader>
           <form onSubmit={savePublish}>
             <CardContent className="space-y-3">
+              <label className="flex items-center gap-2 text-sm font-medium">
+                <input
+                  type="checkbox"
+                  checked={publishEnabled}
+                  disabled={channel.role !== 'own' || !publishAllowed(channel)}
+                  onChange={(e) => setPublishEnabled(e.target.checked)}
+                />
+                Публикация включена (Publish)
+                {channel.role === 'own' && !publishAllowed(channel) && (
+                  <span className="text-xs text-amber-400 font-normal">
+                    — сначала Recheck ownership в Channels
+                  </span>
+                )}
+              </label>
               {ownPublishCandidates.length === 0 ? (
                 <p className="text-sm text-[var(--text-muted)]">
                   Нет own-каналов бренда для выбора. Добавьте каналы с ролью own в хабе Channels.
@@ -520,6 +566,16 @@ export function ChannelFlowPage() {
                   Алерты для {channel.network.toUpperCase()} пока недоступны
                 </Alert>
               )}
+
+              <label className="flex items-center gap-2 text-sm font-medium">
+                <input
+                  type="checkbox"
+                  checked={alertEnabled}
+                  disabled={!isTg}
+                  onChange={(e) => setAlertEnabled(e.target.checked)}
+                />
+                Алерты включены (Alert)
+              </label>
 
               <div className="space-y-3">
                 <h4 className="text-sm font-medium">Куда отправлять</h4>

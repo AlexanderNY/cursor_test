@@ -1,7 +1,7 @@
 # ui-9to18
 
 Автономный фронтенд для **9to18.ru** (Vite + React, игра Bowl на Pyodide).
-Без связи с `ui-app` и backend API.
+Не входит в основной `ui-app` и backend API CopyParse.
 
 За edge-прокси `ui-edge` слушает порт **8200** внутри сети `edge_net`.
 
@@ -16,7 +16,7 @@
 ## Локальная разработка
 
 ```powershell
-cd ui-9to18
+cd deploy/ui-9to18
 npm install
 npm run dev
 ```
@@ -27,21 +27,27 @@ Pyodide WASM копируется в `public/pyodide/` при `npm run dev` / `n
 
 ## Docker (production static)
 
-Требуется сеть `edge_net` (см. [deploy/DEPLOYMENT.md](../deploy/DEPLOYMENT.md)):
+Требуется сеть `edge_net` (см. [deploy/DEPLOYMENT.md](../DEPLOYMENT.md)):
 
 ```powershell
-..\deploy\scripts\create-edge-net.ps1
-docker compose -f ui-9to18/docker-compose.yml up -d --build
+..\scripts\create-edge-net.ps1
+docker compose -f deploy/ui-9to18/docker-compose.yml up -d --build
 ```
 
 Dev-режим (Vite):
 
 ```powershell
-docker compose -f ui-9to18/docker-compose.yml -f ui-9to18/docker-compose.dev.yml up -d --build
+docker compose -f deploy/ui-9to18/docker-compose.yml -f deploy/ui-9to18/docker-compose.dev.yml up -d --build
+```
+
+Из каталога `deploy/ui-9to18`:
+
+```powershell
+docker compose up -d --build
 ```
 
 ## Вынос в отдельный репозиторий
 
-Каталог `ui-9to18/` самодостаточен: скопируйте его как корень нового repo. Dockerfile уже использует context `.`.
+Каталог `deploy/ui-9to18/` самодостаточен: скопируйте его как корень нового repo. Dockerfile уже использует context `.`.
 
-Маршрутизация домена и TLS остаются в [`deploy/ui-edge`](../deploy/ui-edge/).
+Маршрутизация домена и TLS — в [`deploy/ui-edge`](../ui-edge/).

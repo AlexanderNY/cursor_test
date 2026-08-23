@@ -14,6 +14,7 @@ from .message_handler import MessageHandler
 from .post_collector import PostCollector
 from .post_publisher import PostPublisher
 from .engagement_service import EngagementService
+from .subscriber_service import SubscriberService
 from .image_handler import ImageHandler
 from .alert_service import AlertService
 from .routing_engine import RoutingEngine, ensure_rule_ids
@@ -22,6 +23,7 @@ from .post_enrichment import PostEnrichmentService
 from .summary_aggregator import SummaryAggregator
 from .discussion_bindings import list_discussion_bindings
 from .inbox_ingest import push_inbox_ingest
+from .channel_counter import bump_channel_counter
 from .brand_channel_flow import (
     list_tg_flow_channels,
     find_channel_for_chat,
@@ -50,6 +52,7 @@ class TelegramBotService:
         self.post_collector = PostCollector()
         self.post_publisher: PostPublisher = None
         self.engagement_service: EngagementService = None
+        self.subscriber_service: SubscriberService = None
         self.image_handler = ImageHandler()
         self.alert_service = AlertService(self.message_handler)
         self.event_logger = EventLogger()
@@ -65,6 +68,7 @@ class TelegramBotService:
         self._maintenance_task = None
         self._digest_task = None
         self._engagement_task = None
+        self._subscriber_task = None
         self._discussion_refresh_task = None
         self._discussion_map: Dict[str, List[dict]] = {}
         self._brand_channels: List[dict] = []
@@ -100,11 +104,13 @@ class TelegramBotService:
 
         self.post_publisher = PostPublisher(self.client_manager)
         self.engagement_service = EngagementService(self.client_manager)
+        self.subscriber_service = SubscriberService(self.client_manager)
         self._running = True
         self._publisher_task = asyncio.create_task(self._publisher_loop())
         self._maintenance_task = asyncio.create_task(self._maintenance_loop())
         self._digest_task = asyncio.create_task(self._digest_loop())
         self._engagement_task = asyncio.create_task(self._engagement_loop())
+        self._subscriber_task = asyncio.create_task(self._subscriber_loop())
         self._discussion_refresh_task = asyncio.create_task(self._discussion_refresh_loop())
 
         logger.info("Telegram Bot Service started successfully")
@@ -214,12 +220,27 @@ class TelegramBotService:
                 if not self._running:
                     break
                 if self.engagement_service:
-                    updated = await self.engagement_service.refresh_engagement(limit=50)
+                    updated = await self.engagement_service.refresh_engagement(limit=100)
                     _log_action("Engagement loop: updated %d posts", updated)
             except asyncio.CancelledError:
                 break
             except Exception as e:
                 logger.error("Error in engagement loop: %s", e, exc_info=True)
+
+    async def _subscriber_loop(self) -> None:
+        interval = max(3600, getattr(settings, "SUBSCRIBER_INTERVAL_SEC", 86400))
+        while self._running:
+            try:
+                await asyncio.sleep(interval)
+                if not self._running:
+                    break
+                if self.subscriber_service:
+                    updated = await self.subscriber_service.sync_subscribers()
+                    _log_action("Subscriber loop: updated %d channels", updated)
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error("Error in subscriber loop: %s", e, exc_info=True)
 
     def _register_unified_handler(
         self,
@@ -319,6 +340,19 @@ class TelegramBotService:
                             if enrichment:
                                 message_metadata = enrichment
                             _log_action("Saved post %s for user %s", post.get("id"), user_id)
+                            if brand_ch and brand_ch.get("id"):
+                                await bump_channel_counter(
+                                    user_id,
+                                    channel_id=int(brand_ch["id"]),
+                                    received=1,
+                                    direction="collected",
+                                    platform="tg",
+                                    post_id=post.get("id"),
+                                    external_msg_id=str(event.message.id),
+                                    metadata={
+                                        "text_preview": (post.get("post_text") or "")[:120],
+                                    },
+                                )
 
                 if profile.get("alert_enabled"):
                     await self.routing_engine.process(
@@ -429,6 +463,7 @@ class TelegramBotService:
             self._maintenance_task,
             self._digest_task,
             self._engagement_task,
+            self._subscriber_task,
             self._discussion_refresh_task,
         ):
             if task:
@@ -442,6 +477,7 @@ class TelegramBotService:
         self._maintenance_task = None
         self._digest_task = None
         self._engagement_task = None
+        self._subscriber_task = None
         self._discussion_refresh_task = None
 
         if self.client_manager:

@@ -16,3 +16,7 @@ class QuotaExceededError(Exception):
         self.limit = limit
         self.used = used
         super().__init__(message or f"Quota exceeded for {resource}: {used}/{limit}")
+
+
+class ChannelAccessError(ValueError):
+    """Strict own-channel probe failed."""
