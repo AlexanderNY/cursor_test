@@ -68,15 +68,17 @@ export function ChannelsPage() {
   const [channels, setChannels] = useState<ChannelRow[]>([])
   const [error, setError] = useState('')
   const [limits, setLimits] = useState<{ max_own_channels?: number; tariff?: string }>({})
-  const [network, setNetwork] = useState<'tg' | 'vk'>('tg')
+  const [network, setNetwork] = useState<'tg' | 'vk' | 'url'>('tg')
   const [externalId, setExternalId] = useState('')
   const [title, setTitle] = useState('')
+  const [sourceUrl, setSourceUrl] = useState('')
   const [role, setRole] = useState<ChannelRole>('own')
   const [brandId, setBrandId] = useState<number | null>(null)
   const [saving, setSaving] = useState(false)
   const [loadingList, setLoadingList] = useState(false)
   const [filterTitle, setFilterTitle] = useState('')
-  const [filterNetwork, setFilterNetwork] = useState<'all' | 'tg' | 'vk'>('all')
+  const [filterNetwork, setFilterNetwork] = useState<'all' | 'tg' | 'vk' | 'url'>('all')
+  const [copiedKey, setCopiedKey] = useState<string | null>(null)
   const [platformStatus, setPlatformStatus] = useState<PlatformStatusResponse | null>(null)
   const hasBrands = brands.length > 0
 
@@ -143,21 +145,30 @@ export function ChannelsPage() {
       setError('Выберите бренд')
       return
     }
-    if (!externalId.trim()) {
+    if (network !== 'url' && !externalId.trim()) {
       setError('Укажите ID канала')
+      return
+    }
+    if (network === 'url' && !sourceUrl.trim()) {
+      setError('Укажите URL страницы для сбора')
       return
     }
     setSaving(true)
     try {
       await smmService.addChannel(brandId, {
         network,
-        external_id: externalId.trim(),
-        title: title.trim() || externalId.trim(),
-        role,
-        kind: network === 'vk' ? 'public' : 'channel',
+        external_id: network === 'url' ? undefined : externalId.trim(),
+        title:
+          network === 'url'
+            ? title.trim() || undefined
+            : title.trim() || externalId.trim(),
+        url: network === 'url' ? sourceUrl.trim() : undefined,
+        role: network === 'url' ? 'source' : role,
+        kind: network === 'vk' || network === 'url' ? 'public' : 'channel',
       })
       setExternalId('')
       setTitle('')
+      setSourceUrl('')
       await load()
       await refreshChannels()
     } catch (err) {
@@ -165,6 +176,67 @@ export function ChannelsPage() {
     } finally {
       setSaving(false)
     }
+  }
+
+  async function copyText(text: string, key: string) {
+    const value = text.trim()
+    if (!value) return
+    try {
+      await navigator.clipboard.writeText(value)
+      setCopiedKey(key)
+      window.setTimeout(() => setCopiedKey((prev) => (prev === key ? null : prev)), 1500)
+    } catch {
+      setError('Не удалось скопировать в буфер обмена')
+    }
+  }
+
+  function downloadChannelsCsv() {
+    const escapeCell = (value: unknown): string => {
+      const s = value == null ? '' : String(value)
+      if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`
+      return s
+    }
+    const headers = [
+      'id',
+      'network',
+      'external_id',
+      'url',
+      'title',
+      'brand_id',
+      'brand_name',
+      'role',
+      'kind',
+      'auth_status',
+      'publish_enabled',
+      'collect_enabled',
+      'alert_enabled',
+    ]
+    const rows = filtered.map((row) => [
+      row.id,
+      row.network,
+      row.external_id,
+      row.network === 'url' ? row.url_config?.url || '' : '',
+      row.title || '',
+      row.brand_id,
+      row.brand_name || '',
+      row.role,
+      row.kind,
+      row.auth_status || '',
+      row.publish_enabled ? '1' : '0',
+      row.collect_enabled ? '1' : '0',
+      row.alert_enabled ? '1' : '0',
+    ])
+    const lines = [headers.join(','), ...rows.map((r) => r.map(escapeCell).join(','))]
+    const blob = new Blob([`\uFEFF${lines.join('\n')}`], {
+      type: 'text/csv;charset=utf-8',
+    })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')
+    a.href = url
+    a.download = `channels-${stamp}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
   }
 
   async function recheckAuth(ch: ChannelRow) {
@@ -195,16 +267,37 @@ export function ChannelsPage() {
         header: 'Сеть',
         render: (_v, row) => (
           <span className="font-semibold uppercase tracking-wide text-[var(--text-primary)]">
-            {row.network === 'vk' ? 'VK' : 'TG'}
+            {row.network === 'vk' ? 'VK' : row.network === 'url' ? 'URL' : 'TG'}
           </span>
         ),
       },
       {
         key: 'external_id',
-        header: 'ID канала',
-        render: (_v, row) => (
-          <code className="text-xs text-[var(--text-primary)] break-all">{row.external_id}</code>
-        ),
+        header: 'ID / URL',
+        render: (_v, row) => {
+          const display =
+            row.network === 'url'
+              ? row.url_config?.url || row.title || row.external_id
+              : row.external_id
+          const copyValue =
+            row.network === 'url'
+              ? row.url_config?.url || row.title || row.external_id
+              : row.external_id
+          const key = `row-${row.id}`
+          return (
+            <div className="flex items-start gap-1.5 max-w-[220px]">
+              <code className="text-xs text-[var(--text-primary)] break-all flex-1">{display}</code>
+              <button
+                type="button"
+                className="shrink-0 text-xs text-primary-400 hover:underline"
+                title="Скопировать"
+                onClick={() => void copyText(String(copyValue || ''), key)}
+              >
+                {copiedKey === key ? '✓' : 'Copy'}
+              </button>
+            </div>
+          )
+        },
       },
       {
         key: 'title',
@@ -250,7 +343,7 @@ export function ChannelsPage() {
             >
               {authStatusLabel(row.auth_status)}
             </span>
-            {row.role !== 'competitor' && (
+            {row.role !== 'competitor' && row.network !== 'url' && (
               <button
                 type="button"
                 className="text-xs text-primary-400 hover:underline text-left"
@@ -307,7 +400,9 @@ export function ChannelsPage() {
             na={row.network !== 'tg'}
             title={
               row.network !== 'tg'
-                ? 'Alerting пока только для Telegram'
+                ? row.network === 'url'
+                  ? 'Алерты недоступны для URL-источников'
+                  : 'Alerting пока только для Telegram'
                 : row.alert_enabled
                   ? 'Alert включён в настройках канала'
                   : 'Alert выключен — включите в «Настроить» → Алерты'
@@ -332,7 +427,7 @@ export function ChannelsPage() {
         ),
       },
     ],
-    [channels],
+    [channels, copiedKey],
   )
 
   return (
@@ -428,6 +523,9 @@ export function ChannelsPage() {
             <Link to="/vkontakte" className="text-primary-400 hover:underline">
               VK auth →
             </Link>
+            <Link to="/custom-url" className="text-primary-400 hover:underline">
+              Custom URL / posts →
+            </Link>
             <Link to="/inbox" className="text-primary-400 hover:underline">
               Inbox →
             </Link>
@@ -466,24 +564,75 @@ export function ChannelsPage() {
                   <select
                     className="w-full mt-1 rounded-md border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-sm"
                     value={network}
-                    onChange={(e) => setNetwork(e.target.value as 'tg' | 'vk')}
+                    onChange={(e) => {
+                      const next = e.target.value as 'tg' | 'vk' | 'url'
+                      setNetwork(next)
+                      if (next === 'url') setRole('source')
+                    }}
                   >
                     <option value="tg">Telegram</option>
                     <option value="vk">VKontakte</option>
+                    <option value="url">URL source</option>
                   </select>
                 </div>
+                {network !== 'url' ? (
+                  <div>
+                    <label className="text-sm text-[var(--text-secondary)]">ID канала</label>
+                    <div className="mt-1 flex gap-2">
+                      <input
+                        value={externalId}
+                        onChange={(e) => setExternalId(e.target.value)}
+                        placeholder="-100… / group id"
+                        className="flex-1 rounded-md border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-sm text-[var(--text-primary)]"
+                      />
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        disabled={!externalId.trim()}
+                        onClick={() => void copyText(externalId, 'form-id')}
+                        title="Скопировать ID"
+                      >
+                        {copiedKey === 'form-id' ? 'Скопировано' : 'Copy'}
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <label className="text-sm text-[var(--text-secondary)]">URL страницы</label>
+                    <div className="mt-1 flex gap-2">
+                      <input
+                        type="url"
+                        value={sourceUrl}
+                        onChange={(e) => setSourceUrl(e.target.value)}
+                        placeholder="https://example.com/news"
+                        className="flex-1 rounded-md border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-sm text-[var(--text-primary)]"
+                      />
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        disabled={!sourceUrl.trim()}
+                        onClick={() => void copyText(sourceUrl, 'form-url')}
+                        title="Скопировать URL"
+                      >
+                        {copiedKey === 'form-url' ? 'Скопировано' : 'Copy'}
+                      </Button>
+                    </div>
+                  </div>
+                )}
                 <Input
-                  label="ID канала"
-                  value={externalId}
-                  onChange={(e) => setExternalId(e.target.value)}
-                  placeholder="-100… / group id"
+                  label={network === 'url' ? 'Название (опционально)' : 'Title'}
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder={network === 'url' ? 'Smart-Lab map' : undefined}
                 />
-                <Input label="Title" value={title} onChange={(e) => setTitle(e.target.value)} />
                 <div>
                   <label className="text-sm text-[var(--text-secondary)]">Тип</label>
                   <select
                     className="w-full mt-1 rounded-md border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-sm"
-                    value={role}
+                    value={network === 'url' ? 'source' : role}
+                    disabled={network === 'url'}
                     onChange={(e) => setRole(e.target.value as ChannelRole)}
                   >
                     <option value="own">own</option>
@@ -498,7 +647,7 @@ export function ChannelsPage() {
             </CardContent>
           </Card>
 
-          <div className="flex flex-wrap gap-3 mb-3">
+          <div className="flex flex-wrap gap-3 mb-3 items-end">
             <div className="min-w-[180px] flex-1">
               <Input
                 label="Filter by title"
@@ -512,13 +661,24 @@ export function ChannelsPage() {
               <select
                 className="block mt-1 rounded-md border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-sm"
                 value={filterNetwork}
-                onChange={(e) => setFilterNetwork(e.target.value as 'all' | 'tg' | 'vk')}
+                onChange={(e) => setFilterNetwork(e.target.value as 'all' | 'tg' | 'vk' | 'url')}
               >
                 <option value="all">All</option>
                 <option value="tg">Telegram</option>
                 <option value="vk">VKontakte</option>
+                <option value="url">URL</option>
               </select>
             </div>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              disabled={filtered.length === 0}
+              onClick={downloadChannelsCsv}
+              title="Скачать текущую таблицу (с учётом фильтра) в CSV"
+            >
+              Download CSV
+            </Button>
           </div>
 
           <DataTable

@@ -93,6 +93,7 @@ export const smmService = {
       publish_targets: number[]
       alert_delivery: BrandChannel['alert_delivery']
       alert_rules: BrandChannel['alert_rules']
+      url_config: BrandChannel['url_config']
     }>,
   ): Promise<BrandChannel> {
     const { data } = await apiClient.patch(`/smm/brands/${brandId}/channels/${channelId}`, payload)
@@ -107,12 +108,14 @@ export const smmService = {
   async addChannel(
     brandId: number,
     payload: {
-      network: 'tg' | 'vk'
-      external_id: string
+      network: 'tg' | 'vk' | 'url'
+      external_id?: string
       title?: string
       kind?: string
       role?: string
       color_override?: string
+      /** Initial page URL when network === 'url' */
+      url?: string
     },
   ): Promise<BrandChannel> {
     const { data } = await apiClient.post(`/smm/brands/${brandId}/channels`, payload)

@@ -96,8 +96,8 @@ class SystemSettingsService:
         return {
             "enabled": enabled,
             "env_enabled": env_enabled,
-            "model": os.getenv("AI_MODEL", "qwen2.5:3b"),
-            "service_url": os.getenv("AI_SERVICE_URL", "http://ollama:65535"),
+            "model": os.getenv("AI_MODEL", "qwen2.5:1.5b"),
+            "service_url": os.getenv("AI_SERVICE_URL", "http://ollama:11434"),
             "available": available,
             "circuit_open": circuit_open,
             "status": status,

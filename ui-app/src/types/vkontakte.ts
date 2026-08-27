@@ -107,9 +107,18 @@ export interface VKontaktePostListItem {
   status: string
   created_at: string
   updated_at: string
+  publish_at?: string | null
   domain?: string
   author?: string
 }
+
+export type VKontakteTab =
+  | 'create'
+  | 'posts'
+  | 'calendar'
+  | 'profile'
+  | 'processing'
+  | 'auth'
 
 export interface VKontakteAttachmentItem {
   type?: string

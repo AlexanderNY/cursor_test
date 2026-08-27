@@ -54,7 +54,7 @@ class HealthcheckService:
             "scheduler": settings.SCHEDULER_SERVICE_URL,
             "collector": settings.COLLECTOR_SERVICE_URL,
             "processor": settings.PROCESSOR_SERVICE_URL,
-            "ollama": os.getenv("AI_SERVICE_URL", "http://ollama:65535"),
+            "ollama": os.getenv("AI_SERVICE_URL", "http://ollama:11434"),
         }
         self._circuits: Dict[str, CircuitBreaker] = {
             name: CircuitBreaker(

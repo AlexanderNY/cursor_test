@@ -42,7 +42,9 @@ copy .env.example .env
 # GAME_BOT_TOKEN (BotFather), GAME_ADMIN_API_TOKEN
 
 .\deploy\scripts\create-edge-net.ps1
-docker compose up -d --build
+docker compose up -d --build                    # полный стек (все сервисы)
+# docker compose up -d --no-deps --build --force-recreate
+# python deploy/scripts/compose_up_sequential.py   # поочерёдно, меньше пик RAM
 ```
 
 - UI: http://127.0.0.1:8100  

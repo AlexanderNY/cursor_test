@@ -240,7 +240,7 @@ async def process(
     }
 
     task_id = await _insert_task(user_id, action, payload)
-    model = os.getenv("AI_MODEL", "qwen2.5:3b")
+    model = os.getenv("AI_MODEL", "qwen2.5:1.5b")
     started = time.perf_counter()
 
     try:

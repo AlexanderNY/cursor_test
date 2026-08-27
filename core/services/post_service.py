@@ -1571,21 +1571,32 @@ class PostService:
         self,
         user_id: int,
         limit: int = 50,
-        offset: int = 0
+        offset: int = 0,
+        date_from: Optional[str] = None,
+        date_to: Optional[str] = None,
     ) -> List[Dict]:
         """Получает посты VKontakte пользователя из таблицы vk_posts."""
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
+                conditions = ["user_id = %s", "(status IS NULL OR status != 'deleted')"]
+                params: List[Any] = [user_id]
+                if date_from:
+                    conditions.append("COALESCE(publish_at, created_at) >= %s::timestamptz")
+                    params.append(date_from)
+                if date_to:
+                    conditions.append("COALESCE(publish_at, created_at) <= %s::timestamptz")
+                    params.append(date_to)
+                params.extend([limit, offset])
                 await cur.execute(
-                    """
+                    f"""
                     SELECT *
                     FROM vk_posts
-                    WHERE user_id = %s AND (status IS NULL OR status != 'deleted')
-                    ORDER BY created_at DESC
+                    WHERE {" AND ".join(conditions)}
+                    ORDER BY COALESCE(publish_at, created_at) DESC
                     LIMIT %s OFFSET %s
                     """,
-                    (user_id, limit, offset)
+                    params,
                 )
                 rows = await cur.fetchall()
                 return [self._row_to_post(row, cur.description) for row in rows]
@@ -1616,6 +1627,8 @@ class PostService:
         images: Optional[List] = None,
         attachments: Optional[List] = None,
         status: Optional[str] = None,
+        publish_at: Optional[Any] = None,
+        clear_publish_at: bool = False,
     ) -> Optional[Dict]:
         """Обновляет пост VKontakte."""
         conn = await get_db_connection()
@@ -1638,6 +1651,11 @@ class PostService:
                 if status is not None:
                     updates.append("status = %s")
                     params.append(status)
+                if clear_publish_at:
+                    updates.append("publish_at = NULL")
+                elif publish_at is not None:
+                    updates.append("publish_at = %s")
+                    params.append(publish_at)
                 if not updates:
                     return await self.get_vk_post(user_id, post_id)
                 params.extend([user_id, post_id])

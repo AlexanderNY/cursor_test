@@ -336,7 +336,7 @@ CREATE TABLE IF NOT EXISTS smm_brands (
 CREATE TABLE IF NOT EXISTS smm_brand_channels (
     id SERIAL PRIMARY KEY,
     brand_id INTEGER NOT NULL REFERENCES smm_brands(id) ON DELETE CASCADE,
-    network VARCHAR(10) NOT NULL CHECK (network IN ('tg', 'vk')),
+    network VARCHAR(10) NOT NULL CHECK (network IN ('tg', 'vk', 'url')),
     external_id VARCHAR(128) NOT NULL,
     title VARCHAR(255),
     kind VARCHAR(20) NOT NULL DEFAULT 'channel'

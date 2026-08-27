@@ -11,7 +11,14 @@
 |-----|----------|
 | `/` | Главная — сетка разделов |
 | `/game/bowl` | Bowl 2D — игра на Pyodide |
+| `/game/learn` | Learn — оглавление (рубрики + сезон S01) |
+| `/game/learn/admin` | Learn — админка: список записей |
+| `/game/learn/admin/new` | Learn — создать запись |
+| `/game/learn/admin/:slug` | Learn — редактировать запись (HTML-редактор) |
+| `/game/learn/:slug` | Learn — выпуск (теория / лаба / шпаргалка) |
 | `/game/:slug` | Страница раздела (заглушка) |
+
+Записи Learn после первого открытия сидятся из S01 в `localStorage` браузера; админка правит их локально (без бэкенда).
 
 ## Локальная разработка
 
@@ -33,6 +40,8 @@ Pyodide WASM копируется в `public/pyodide/` при `npm run dev` / `n
 ..\scripts\create-edge-net.ps1
 docker compose -f deploy/ui-9to18/docker-compose.yml up -d --build
 ```
+
+Локально: http://127.0.0.1:8200 (порт привязан только к localhost).
 
 Dev-режим (Vite):
 

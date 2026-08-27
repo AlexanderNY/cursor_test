@@ -15,6 +15,13 @@ export const sections: Section[] = [
     emoji: '🎳',
   },
   {
+    slug: 'learn',
+    title: 'Learn',
+    subtitle: 'Теория, лабы, шпаргалки',
+    accent: '#2dd4bf',
+    emoji: '📚',
+  },
+  {
     slug: 'quiz',
     title: 'Quiz',
     subtitle: 'Викторины и опросы',

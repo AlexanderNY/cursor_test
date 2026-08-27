@@ -524,10 +524,18 @@ async def get_vk_posts(
     x_user_id: Optional[str] = Header(None),
     limit: int = 50,
     offset: int = 0,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
 ):
     """Возвращает список постов VKontakte пользователя из таблицы vk_posts."""
     user_id = get_user_id_from_header(x_user_id)
-    posts = await post_service.get_vk_posts(user_id=user_id, limit=limit, offset=offset)
+    posts = await post_service.get_vk_posts(
+        user_id=user_id,
+        limit=limit,
+        offset=offset,
+        date_from=date_from,
+        date_to=date_to,
+    )
     return posts
 
 
@@ -584,6 +592,8 @@ class VKontaktePostUpdate(BaseModel):
     images: Optional[list] = None
     attachments: Optional[list] = None
     status: Optional[str] = None
+    publish_at: Optional[str] = None
+    clear_publish_at: bool = False
 
 
 @router.get("/post/{post_id}")
@@ -605,7 +615,7 @@ async def update_vk_post(
     data: VKontaktePostUpdate,
     x_user_id: Optional[str] = Header(None),
 ):
-    """Обновляет пост VKontakte (текст и/или статус)."""
+    """Обновляет пост VKontakte (текст, статус и/или publish_at)."""
     user_id = get_user_id_from_header(x_user_id)
     try:
         post = await post_service.update_vk_post(
@@ -615,6 +625,8 @@ async def update_vk_post(
             images=data.images,
             attachments=data.attachments,
             status=data.status,
+            publish_at=None if data.clear_publish_at else data.publish_at,
+            clear_publish_at=data.clear_publish_at,
         )
         if not post:
             raise HTTPException(status_code=404, detail="Post not found")

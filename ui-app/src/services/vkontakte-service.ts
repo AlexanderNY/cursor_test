@@ -32,9 +32,19 @@ export const vkontakteService = {
     await apiClient.post('/vk/post', post)
   },
 
-  async getPosts(limit = 50, offset = 0): Promise<VKontaktePostListItem[]> {
+  async getPosts(options?: {
+    limit?: number
+    offset?: number
+    dateFrom?: string
+    dateTo?: string
+  }): Promise<VKontaktePostListItem[]> {
     const response = await apiClient.get<VKontaktePostListItem[]>('/vk/posts', {
-      params: { limit, offset },
+      params: {
+        limit: options?.limit ?? 50,
+        offset: options?.offset ?? 0,
+        date_from: options?.dateFrom,
+        date_to: options?.dateTo,
+      },
     })
     return response.data
   },
@@ -46,7 +56,14 @@ export const vkontakteService = {
 
   async updatePost(
     id: number,
-    data: { text?: string; images?: string[]; attachments?: unknown[]; status?: string }
+    data: {
+      text?: string
+      images?: string[]
+      attachments?: unknown[]
+      status?: string
+      publish_at?: string
+      clear_publish_at?: boolean
+    }
   ): Promise<VKontaktePostFull> {
     const response = await apiClient.put<VKontaktePostFull>(`/vk/post/${id}`, data)
     return response.data

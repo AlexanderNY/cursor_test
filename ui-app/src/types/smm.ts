@@ -1,4 +1,4 @@
-export type BrandNetwork = 'tg' | 'vk'
+export type BrandNetwork = 'tg' | 'vk' | 'url'
 export type ChannelKind = 'channel' | 'group' | 'public'
 export type ChannelRole = 'own' | 'competitor' | 'source'
 export type InboxType = 'dm' | 'comment' | 'reaction'
@@ -71,6 +71,34 @@ export interface ChannelAlertRule {
   stop_on_match?: boolean
 }
 
+export interface UrlChannelConfig {
+  id?: string
+  url?: string
+  xpath?: string
+  take_screenshot?: boolean
+  screenshot_format?: 'base64' | 'file' | string
+  schedule_time?: string
+  run_once?: boolean
+  target_social_networks?: {
+    tg?: boolean
+    tw?: boolean
+    vk?: boolean
+    wp?: boolean
+  }
+  target_channels?: string[]
+  target_groups?: string[]
+  process_before_publish?: boolean
+  process_description?: string | null
+  remove_emojis?: boolean
+  remove_images?: boolean
+  clean_html?: boolean
+  process_services?: string[]
+  status_review_after_process?: boolean
+  add_static_html?: boolean
+  static_html_content?: string | null
+  screenshot_only?: boolean
+}
+
 export interface BrandChannel {
   id: number
   brand_id: number
@@ -93,6 +121,8 @@ export interface BrandChannel {
   publish_targets?: number[]
   alert_delivery?: ChannelAlertDelivery
   alert_rules?: ChannelAlertRule[]
+  /** Present when network === 'url' — scrape settings from curl_settings */
+  url_config?: UrlChannelConfig | null
   brand_name?: string
   brand_color?: string
   auth_status?: 'connected' | 'missing' | 'pending' | 'invalid' | 'unknown' | 'not_required'

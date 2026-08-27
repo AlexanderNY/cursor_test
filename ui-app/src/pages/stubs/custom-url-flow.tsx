@@ -216,6 +216,15 @@ export function CustomUrlFlowPage() {
         <Button type="button" variant="ghost" size="sm" onClick={() => navigate('/custom-url')}>
           ← Назад к списку
         </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="ml-2"
+          onClick={() => navigate('/channels')}
+        >
+          Channels
+        </Button>
       </div>
       <PageHeader
         title="Настройка Custom URL"

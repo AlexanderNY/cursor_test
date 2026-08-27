@@ -58,12 +58,14 @@ class BrandUpdate(BaseModel):
 
 
 class ChannelCreate(BaseModel):
-    network: Literal["tg", "vk"]
-    external_id: str = Field(..., min_length=1, max_length=128)
+    network: Literal["tg", "vk", "url"]
+    external_id: Optional[str] = Field(None, max_length=128)
     title: Optional[str] = None
     kind: Literal["channel", "group", "public"] = "channel"
     role: Literal["own", "competitor", "source"] = "own"
     color_override: Optional[str] = None
+    """Initial page URL for network=url (pre-fills curl_settings / Сбор)."""
+    url: Optional[str] = Field(None, max_length=2048)
 
 
 class ChannelUpdate(BaseModel):
@@ -84,6 +86,8 @@ class ChannelUpdate(BaseModel):
     publish_targets: Optional[List[int]] = None
     alert_delivery: Optional[dict[str, Any]] = None
     alert_rules: Optional[List[dict[str, Any]]] = None
+    # Per-URL scrape/processing settings synced into curl_settings.urls[]
+    url_config: Optional[dict[str, Any]] = None
 
 
 class InboxEdit(BaseModel):
@@ -273,11 +277,12 @@ async def add_channel(brand_id: int, body: ChannelCreate, x_user_id: Optional[st
             user_id,
             brand_id,
             network=body.network,
-            external_id=body.external_id,
+            external_id=body.external_id or "",
             title=body.title,
             kind=body.kind,
             role=body.role,
             color_override=body.color_override,
+            initial_url=body.url,
         )
     except QuotaExceededError as exc:
         raise _http_quota(exc)
@@ -325,6 +330,7 @@ async def update_channel(
         publish_targets=body.publish_targets,
         alert_delivery=body.alert_delivery,
         alert_rules=body.alert_rules,
+        url_config=body.url_config,
     )
     if not ch:
         raise HTTPException(status_code=404, detail="Channel not found")

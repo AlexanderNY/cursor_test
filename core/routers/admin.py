@@ -318,7 +318,7 @@ async def run_ai_check(
         ) from exc
 
     latency_ms = (time.perf_counter() - started) * 1000
-    model = os.getenv("AI_MODEL", "qwen2.5:3b")
+    model = os.getenv("AI_MODEL", "qwen2.5:1.5b")
     return AiCheckResponse(reply=reply, model=model, latency_ms=round(latency_ms, 1))
 
 

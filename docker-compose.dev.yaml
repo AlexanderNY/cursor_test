@@ -11,8 +11,8 @@ services:
       dockerfile: Dockerfile
       target: production
     container_name: ui-9to18
-    expose:
-      - "8200"
+    ports:
+      - "${BIND_HOST:-127.0.0.1}:8200:8200/tcp"
     networks:
       edge_net:
         aliases:

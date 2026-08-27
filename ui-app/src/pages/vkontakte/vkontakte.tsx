@@ -1,60 +1,55 @@
 import { useState, FormEvent, useEffect, useCallback } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
 import { PageHeader, PageContainer } from '@/components/ui'
 import {
-  TargetSocialNetworksWidget,
   createDefaultTargets,
   EMPTY_SELECTED_BRAND_CHANNELS,
   type TargetSocialNetworks,
   type SelectedBrandChannels,
 } from '@/components/target-social-networks'
-import { TipTapEditor } from '@/components/ui/tiptap-editor'
 import { apiClient } from '@/services/api-client'
 import { vkontakteService } from '@/services/vkontakte-service'
 import { useAuth } from '@/contexts/auth-context'
-import { formatDateTime } from '@/utils/date'
 import type {
   VKontakteProfile,
   VKontaktePostListItem,
   ScheduleType,
   VKAuthStatus,
   VKSubscriptionItem,
+  VKontakteTab,
 } from '@/types/vkontakte'
+import {
+  VK_MAX_LENGTH,
+  AUTH_STATUS_POLL_INTERVAL_MS,
+  generateId,
+  htmlToPlainText,
+  imagePreviewUrl,
+  getWeekStart,
+  getWeekRange,
+  type DynamicField,
+} from './vkontakte-helpers'
+import { CreatePostTab } from './create-post-tab'
+import { PostsTab } from './posts-tab'
+import { CalendarTab } from './calendar-tab'
+import { ProfileSettingsTab } from './profile-settings-tab'
+import { ProcessingTab } from './processing-tab'
+import { AuthTab } from './auth-tab'
 
-function htmlToPlainText(html: string): string {
-  const div = document.createElement('div')
-  div.innerHTML = html
-  return (div.textContent ?? div.innerText ?? '').trim()
-}
-
-function imagePreviewUrl(url: string): string {
-  if (url.startsWith('http')) return url
-  const base = apiClient.defaults.baseURL ?? '/api'
-  const origin = typeof window !== 'undefined' ? window.location.origin : ''
-  return `${origin}${base}${url.startsWith('/') ? '' : '/'}${url}`
-}
-
-function generateId(): string {
-  return Math.random().toString(36).substring(2, 9)
-}
-
-interface DynamicField {
-  id: string
-  value: string
-}
-
-const VK_MAX_LENGTH = 15985
-const AUTH_STATUS_POLL_INTERVAL_MS = 15_000
+const TAB_ORDER: { id: VKontakteTab; label: string; accent?: boolean }[] = [
+  { id: 'create', label: 'Create Post' },
+  { id: 'posts', label: 'Posts' },
+  { id: 'calendar', label: 'Calendar' },
+  { id: 'profile', label: 'Profile Settings' },
+  { id: 'processing', label: 'Обработка' },
+  { id: 'auth', label: 'Авторизация', accent: true },
+]
 
 export function VKontaktePage() {
   const { user } = useAuth()
   const [searchParams, setSearchParams] = useSearchParams()
-  const [activeTab, setActiveTab] = useState<'create' | 'posts' | 'profile' | 'processing' | 'auth'>(() =>
-    searchParams.get('auth') === '1' ? 'auth' : 'create'
+  const [activeTab, setActiveTab] = useState<VKontakteTab>(() =>
+    searchParams.get('auth') === '1' ? 'auth' : 'create',
   )
   const [authStatus, setAuthStatus] = useState<VKAuthStatus | null>(null)
   const [subscriptions, setSubscriptions] = useState<VKSubscriptionItem[]>([])
@@ -66,7 +61,6 @@ export function VKontaktePage() {
   const [vkSeleniumPassword, setVkSeleniumPassword] = useState('')
   const [loadingSeleniumVerify, setLoadingSeleniumVerify] = useState(false)
 
-  // Profile state
   const [publishEnabled, setPublishEnabled] = useState(false)
   const [collectEnabled, setCollectEnabled] = useState(false)
   const [scheduleType, setScheduleType] = useState<ScheduleType>('immediate')
@@ -100,24 +94,24 @@ export function VKontaktePage() {
   const [addStaticHtml, setAddStaticHtml] = useState(false)
   const [staticHtmlContent, setStaticHtmlContent] = useState('')
 
-  // Create post state (editor content is HTML; we send plain text to API)
   const [postContent, setPostContent] = useState('')
   const [postImages, setPostImages] = useState<string[]>([])
   const [publishAt, setPublishAt] = useState('')
   const [targetGroupsText, setTargetGroupsText] = useState('')
-  const [postTargets, setPostTargets] = useState<TargetSocialNetworks>(() =>
-    createDefaultTargets('vk')
-  )
+  const [postTargets, setPostTargets] = useState<TargetSocialNetworks>(() => createDefaultTargets('vk'))
   const [selectedChannels, setSelectedChannels] = useState<SelectedBrandChannels>({
     ...EMPTY_SELECTED_BRAND_CHANNELS,
   })
   const [editingPostId, setEditingPostId] = useState<number | null>(null)
 
-  // Posts list
   const [posts, setPosts] = useState<VKontaktePostListItem[]>([])
   const [isLoadingPosts, setIsLoadingPosts] = useState(false)
   const [hasLoadedPosts, setHasLoadedPosts] = useState(false)
   const [deletingPostId, setDeletingPostId] = useState<number | null>(null)
+
+  const [calendarWeekStart, setCalendarWeekStart] = useState(() => getWeekStart(new Date()))
+  const [calendarPosts, setCalendarPosts] = useState<VKontaktePostListItem[]>([])
+  const [isLoadingCalendar, setIsLoadingCalendar] = useState(false)
 
   const [isLoadingProfile, setIsLoadingProfile] = useState(true)
   const [isSavingProfile, setIsSavingProfile] = useState(false)
@@ -142,7 +136,7 @@ export function VKontaktePage() {
               id: generateId(),
               start: interval.start ?? '',
               end: interval.end ?? '',
-            }))
+            })),
           )
         }
         setOwnerId(profile.owner_id ?? '')
@@ -210,11 +204,11 @@ export function VKontaktePage() {
   useEffect(() => {
     if (searchParams.get('oauth') === 'success' || searchParams.get('oauth') === 'error') {
       if (user?.id) void loadAuthStatus()
-      const message =
+      const oauthMessage =
         searchParams.get('message') ||
         (searchParams.get('oauth') === 'success' ? 'Connected successfully' : 'Connection failed')
-      setSuccess(searchParams.get('oauth') === 'success' ? message : '')
-      setError(searchParams.get('oauth') === 'error' ? message : '')
+      setSuccess(searchParams.get('oauth') === 'success' ? oauthMessage : '')
+      setError(searchParams.get('oauth') === 'error' ? oauthMessage : '')
       searchParams.delete('oauth')
       searchParams.delete('message')
       setSearchParams(searchParams, { replace: true })
@@ -234,6 +228,12 @@ export function VKontaktePage() {
     }
   }, [activeTab, hasLoadedPosts])
 
+  useEffect(() => {
+    if (activeTab === 'calendar') {
+      loadCalendarPosts(calendarWeekStart)
+    }
+  }, [activeTab, calendarWeekStart])
+
   async function loadPosts() {
     setIsLoadingPosts(true)
     setError('')
@@ -246,6 +246,26 @@ export function VKontaktePage() {
     } finally {
       setIsLoadingPosts(false)
     }
+  }
+
+  async function loadCalendarPosts(weekStart: Date) {
+    setIsLoadingCalendar(true)
+    const { dateFrom, dateTo } = getWeekRange(weekStart)
+    try {
+      const data = await vkontakteService.getPosts({ dateFrom, dateTo, limit: 200 })
+      setCalendarPosts(data)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load calendar posts')
+    } finally {
+      setIsLoadingCalendar(false)
+    }
+  }
+
+  function switchToCreateTab() {
+    setEditingPostId(null)
+    setPostContent('')
+    setPostImages([])
+    setActiveTab('create')
   }
 
   async function handleCreatePost(e: FormEvent) {
@@ -328,10 +348,38 @@ export function VKontaktePage() {
       await vkontakteService.deletePost(id)
       setSuccess('Post deleted')
       if (hasLoadedPosts) loadPosts()
+      if (activeTab === 'calendar') loadCalendarPosts(calendarWeekStart)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete post')
     } finally {
       setDeletingPostId(null)
+    }
+  }
+
+  async function handleReschedule(postId: number, newIsoDatetime: string) {
+    setError('')
+    try {
+      await vkontakteService.updatePost(postId, { publish_at: newIsoDatetime })
+      setSuccess('Post rescheduled')
+      if (activeTab === 'calendar') loadCalendarPosts(calendarWeekStart)
+      if (hasLoadedPosts) loadPosts()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to reschedule post')
+    }
+  }
+
+  async function handleUploadImages(files: FileList) {
+    setError('')
+    setUploadingImage(true)
+    try {
+      for (let i = 0; i < files.length; i++) {
+        const url = await vkontakteService.uploadImage(files[i])
+        setPostImages((prev) => [...prev, url])
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Ошибка загрузки')
+    } finally {
+      setUploadingImage(false)
     }
   }
 
@@ -343,7 +391,7 @@ export function VKontaktePage() {
     const groupsToReadPayload = groupsToRead
       .map((f) => f.value.trim())
       .filter(Boolean)
-      .map((v) => (v.startsWith('-') ? parseInt(v, 10) : parseInt(v, 10)))
+      .map((v) => parseInt(v, 10))
       .filter((n) => !Number.isNaN(n))
     return {
       publish_enabled: publishEnabled,
@@ -397,17 +445,7 @@ export function VKontaktePage() {
 
   async function handleSaveProcessing(e: FormEvent) {
     e.preventDefault()
-    setError('')
-    setSuccess('')
-    setIsSavingProfile(true)
-    try {
-      await vkontakteService.saveProfile(buildProfilePayload())
-      setSuccess('Processing settings saved successfully')
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save processing settings')
-    } finally {
-      setIsSavingProfile(false)
-    }
+    await persistFullVkProfile('Processing settings saved successfully')
   }
 
   async function handleSaveProfile(e: FormEvent) {
@@ -422,7 +460,11 @@ export function VKontaktePage() {
     try {
       const res = await vkontakteService.getSubscriptions()
       setSubscriptions(res.subscriptions ?? [])
-      setSubscriptionsSource(res.source === 'user_oauth' ? 'Пользовательский OAuth (users.getSubscriptions)' : 'Токен сообщества (groups.getById)')
+      setSubscriptionsSource(
+        res.source === 'user_oauth'
+          ? 'Пользовательский OAuth (users.getSubscriptions)'
+          : 'Токен сообщества (groups.getById)',
+      )
       setSubscriptionsHint(res.message ?? null)
       setSuccess(res.count > 0 ? `Загружено записей: ${res.count}` : 'Запрос выполнен, список пуст.')
     } catch (err) {
@@ -447,7 +489,7 @@ export function VKontaktePage() {
         setError(
           res.diagnostic_s3_key
             ? `${base} Диагностический скриншот сохранён в S3: ${res.diagnostic_s3_key}`
-            : base
+            : base,
         )
         return
       }
@@ -457,7 +499,7 @@ export function VKontaktePage() {
       setSuccess(
         res.subscriptions && res.subscriptions.length > 0
           ? `Selenium: загружено записей: ${res.subscriptions.length}`
-          : 'Selenium: запрос выполнен, список пуст.'
+          : 'Selenium: запрос выполнен, список пуст.',
       )
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Ошибка vk-bot (Selenium)')
@@ -466,49 +508,21 @@ export function VKontaktePage() {
     }
   }
 
-  function addGroupToRead() {
-    setGroupsToRead((prev) => [...prev, { id: generateId(), value: '' }])
-  }
-  function removeGroupToRead(id: string) {
-    if (groupsToRead.length > 1) setGroupsToRead((prev) => prev.filter((f) => f.id !== id))
-  }
-  function updateGroupToRead(id: string, value: string) {
-    setGroupsToRead((prev) => prev.map((f) => (f.id === id ? { ...f, value } : f)))
-  }
-
-  function addTimeInterval() {
-    if (timeIntervals.length < 5) {
-      setTimeIntervals((prev) => [...prev, { id: generateId(), start: '', end: '' }])
-    }
-  }
-  function removeTimeInterval(id: string) {
-    if (timeIntervals.length > 1) {
-      setTimeIntervals((prev) => prev.filter((i) => i.id !== id))
-    }
-  }
-  function updateTimeInterval(id: string, field: 'start' | 'end', value: string) {
-    setTimeIntervals((prev) =>
-      prev.map((i) => (i.id === id ? { ...i, [field]: value } : i))
-    )
-  }
-
-  async function handleConnectVk() {
-    setError('')
-    try {
-      const { url } = await vkontakteService.getAuthUrl()
-      window.location.href = url
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to get OAuth URL')
-    }
+  function resolveImagePreview(url: string): string {
+    const base = apiClient.defaults.baseURL ?? '/api'
+    const origin = typeof window !== 'undefined' ? window.location.origin : ''
+    return imagePreviewUrl(url, base, origin)
   }
 
   const showAuthBlock = authStatus != null && !authStatus.connected
-
   const vkOAuthRedirectUri = `${vkPublicGatewayUrl.replace(/\/$/, '')}/vk/oauth/callback`
 
   return (
     <PageContainer maxWidth="wide">
-      <PageHeader title="VKontakte Integration" description="Configure your VKontakte account settings and post management" />
+      <PageHeader
+        title="VKontakte Integration"
+        description="Configure your VKontakte account settings and post management"
+      />
       <p className="mb-4 text-sm">
         <Link to="/channels" className="text-primary-400 hover:underline">
           Управлять каналами → /channels
@@ -526,754 +540,200 @@ export function VKontaktePage() {
         </Alert>
       )}
 
-      {/* Tabs */}
-      <div className="flex border-b border-[var(--border-color)]">
-        {(
-          [
-            { key: 'create' as const, label: 'Create Post' },
-            { key: 'posts' as const, label: 'Posts' },
-            { key: 'profile' as const, label: 'Profile Settings' },
-            { key: 'processing' as const, label: 'Обработка' },
-          ] as const
-        ).map(({ key, label }) => (
-          <button
-            type="button"
-            key={key}
-            className={`px-6 py-3 text-sm font-medium transition-all relative ${
-              activeTab === key ? 'text-primary-400' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-            }`}
-            onClick={() => {
-              if (key === 'create') {
-                setEditingPostId(null)
-                setPostContent('')
-              }
-              setActiveTab(key)
-            }}
-          >
-            {label}
-            {activeTab === key && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-500" />}
-          </button>
-        ))}
-        <button
-          type="button"
-          className={`px-6 py-3 text-sm font-medium transition-all relative flex items-center gap-1.5 ${
-            activeTab === 'auth'
+      <div className="flex border-b border-[var(--border-color)] overflow-x-auto">
+        {TAB_ORDER.map((tab) => {
+          const isActive = activeTab === tab.id
+          const isAuth = tab.id === 'auth'
+          const textClass = isAuth
+            ? isActive || showAuthBlock
               ? 'text-amber-400'
-              : showAuthBlock
-                ? 'text-amber-400 animate-pulse'
-                : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-          }`}
-          onClick={() => setActiveTab('auth')}
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-          </svg>
-          Авторизация
-          {showAuthBlock && <span className="inline-block w-2 h-2 bg-amber-400 rounded-full" />}
-          {activeTab === 'auth' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-amber-500" />}
-        </button>
+              : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+            : isActive
+              ? 'text-primary-400'
+              : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              className={`px-6 py-3 text-sm font-medium transition-all relative whitespace-nowrap flex items-center gap-1.5 ${textClass} ${isAuth && showAuthBlock && !isActive ? 'animate-pulse' : ''}`}
+              onClick={() => (tab.id === 'create' ? switchToCreateTab() : setActiveTab(tab.id))}
+            >
+              {isAuth && (
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+              )}
+              {tab.label}
+              {isAuth && showAuthBlock && <span className="inline-block w-2 h-2 bg-amber-400 rounded-full" />}
+              {isActive && (
+                <div className={`absolute bottom-0 left-0 right-0 h-0.5 ${isAuth ? 'bg-amber-500' : 'bg-primary-500'}`} />
+              )}
+            </button>
+          )
+        })}
       </div>
 
-      {activeTab === 'auth' && (
-        <Card className="animate-slide-up border-amber-500/30">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-amber-400">VK авторизация</CardTitle>
-            <CardDescription className="space-y-2">
-              <span className="block">
-                {authStatus?.message ??
-                  'Пользовательский OAuth нужен для загрузки фото на стену сообщества (photos.getWallUploadServer). Токен сообщества (ниже) — для публикации от имени группы и сбора стены.'}
-              </span>
-              <span className="block text-xs text-[var(--text-muted)]">
-                Запрашиваемые scope в Core: <code className="text-[var(--text-secondary)]">wall</code>,{' '}
-                <code className="text-[var(--text-secondary)]">photos</code>,{' '}
-                <code className="text-[var(--text-secondary)]">groups</code>,{' '}
-                <code className="text-[var(--text-secondary)]">offline</code> (классический OAuth VK, не VK ID PKCE).
-              </span>
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="space-y-3 p-4 rounded-lg border border-[var(--border-color)] bg-[var(--bg-secondary)]">
-              <h3 className="text-sm font-semibold text-[var(--text-primary)]">Приложение VK (OAuth)</h3>
-              <p className="text-xs text-[var(--text-muted)]">
-                Параметры из <code className="text-[var(--text-secondary)]">.env</code> перенесены сюда. Укажите данные
-                приложения с{' '}
-                <a href="https://dev.vk.com" target="_blank" rel="noopener noreferrer" className="text-primary-400 hover:underline">
-                  dev.vk.com
-                </a>
-                . Redirect URI в кабинете VK должен совпадать с вычисленным ниже.
-              </p>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Input
-                  label="VK App ID (VK_APP_ID)"
-                  value={vkAppId}
-                  onChange={(e) => setVkAppId(e.target.value)}
-                  placeholder="12345678"
-                />
-                <Input
-                  label="VK App Secret (VK_APP_SECRET)"
-                  type="password"
-                  value={vkAppSecret === '***' ? '' : vkAppSecret}
-                  onChange={(e) => setVkAppSecret(e.target.value)}
-                  placeholder={vkAppSecret === '***' ? 'Секрет сохранён (скрыт)' : 'Защищённый ключ приложения'}
-                />
-                <Input
-                  label="URL интерфейса (FRONTEND_URL)"
-                  value={vkFrontendUrl}
-                  onChange={(e) => setVkFrontendUrl(e.target.value)}
-                  placeholder="http://localhost:8100"
-                />
-                <Input
-                  label="Публичный URL gateway (VK_PUBLIC_GATEWAY_URL)"
-                  value={vkPublicGatewayUrl}
-                  onChange={(e) => setVkPublicGatewayUrl(e.target.value)}
-                  placeholder="http://localhost:8000"
-                />
-              </div>
-              <p className="text-xs text-[var(--text-muted)]">
-                Redirect URI для VK:{' '}
-                <code className="text-[var(--text-secondary)] break-all">{vkOAuthRedirectUri}</code>
-              </p>
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={() => void persistFullVkProfile('Настройки OAuth VK сохранены')}
-                isLoading={isSavingProfile}
-              >
-                Сохранить настройки OAuth
-              </Button>
-            </div>
-
-            <div className="flex items-center gap-3 p-3 rounded-lg bg-[var(--bg-tertiary)]">
-              <div
-                className={`w-3 h-3 rounded-full ${
-                  authStatus?.connected ? 'bg-green-400' : 'bg-amber-400 animate-pulse'
-                }`}
-              />
-              <span className="text-sm text-[var(--text-secondary)]">
-                {authStatus?.connected ? 'Подключено' : 'Не подключено'}
-                {authStatus?.vk_user_id != null && authStatus.connected && (
-                  <span className="ml-2 text-[var(--text-muted)]">(VK id: {authStatus.vk_user_id})</span>
-                )}
-              </span>
-              <Button variant="ghost" size="sm" onClick={() => void loadAuthStatus()} className="ml-auto">
-                Обновить
-              </Button>
-            </div>
-            {!authStatus?.connected && (
-              <div className="p-4 rounded-lg border border-amber-500/30 bg-amber-500/5">
-                <p className="text-sm text-[var(--text-muted)] mb-4">
-                  Сначала сохраните блок «Приложение VK» выше, затем нажмите кнопку и войдите в VK. После успешного входа
-                  токен сохранится в профиле (user_access_token).
-                </p>
-                <Button onClick={() => void handleConnectVk()}>Подключить VK</Button>
-              </div>
-            )}
-            {authStatus?.connected && (
-              <div className="p-4 rounded-lg border border-green-500/30 bg-green-500/5">
-                <p className="text-sm text-green-400">Пользовательский токен VK сохранён. Публикация с фото на стену группы доступна.</p>
-              </div>
-            )}
-
-            <div className="space-y-3 pt-2 border-t border-[var(--border-color)]">
-              <h3 className="text-sm font-semibold text-[var(--text-primary)]">Токен сообщества (Access token)</h3>
-              <p className="text-xs text-[var(--text-muted)]">
-                Обычно это <strong className="text-[var(--text-secondary)]">токен сообщества</strong> для публикации от имени группы и сбора стены (
-                <code className="text-[var(--text-muted)]">wall</code>, при необходимости{' '}
-                <code className="text-[var(--text-muted)]">groups</code>). Для фото на стене группы дополнительно нужен пользовательский OAuth (блок выше). Подробнее: docs VK_BOT_POSTING.
-              </p>
-              <input
-                type="password"
-                value={accessToken === '***' ? '' : accessToken}
-                onChange={(e) => setAccessToken(e.target.value)}
-                placeholder={accessToken === '***' ? 'Токен сохранён (скрыт)' : 'Оставьте пустым, чтобы не менять'}
-                className="w-full px-4 py-3 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-xl text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500 transition-all"
-              />
-              {accessToken === '***' && (
-                <p className="text-xs text-[var(--text-muted)]">Токен сохранён и скрыт. Введите новый токен, чтобы заменить.</p>
-              )}
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => void persistFullVkProfile('Токен и настройки VK сохранены')}
-                isLoading={isSavingProfile}
-              >
-                Сохранить токен и настройки
-              </Button>
-            </div>
-
-            <div className="space-y-3 pt-2 border-t border-[var(--border-color)]">
-              <h3 className="text-sm font-semibold text-[var(--text-primary)]">Проверка авторизации</h3>
-              <p className="text-xs text-[var(--text-muted)]">
-                С OAuth: запрашивается список подписок на сообщества (VK API{' '}
-                <code className="text-[var(--text-muted)]">users.getSubscriptions</code>). Только токен сообщества: по группам из «Group to post» и сбора (
-                <code className="text-[var(--text-muted)]">groups.getById</code>).
-              </p>
-              <Button type="button" onClick={() => void loadSubscriptions()} isLoading={loadingSubscriptions}>
-                Запросить список подписок
-              </Button>
-              {subscriptionsSource && (
-                <p className="text-xs text-[var(--text-secondary)]">
-                  Источник: {subscriptionsSource}
-                </p>
-              )}
-              {subscriptionsHint && (
-                <p className="text-xs text-amber-400/90">{subscriptionsHint}</p>
-              )}
-              {subscriptions.length > 0 && (
-                <ul className="mt-2 space-y-2 max-h-72 overflow-y-auto rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)] p-3">
-                  {subscriptions.map((s, i) => (
-                    <li
-                      key={`${s.id ?? 'x'}-${i}`}
-                      className="flex flex-wrap gap-x-3 gap-y-1 text-sm text-[var(--text-primary)] border-b border-[var(--border-color)] border-opacity-50 pb-2 last:border-0 last:pb-0"
-                    >
-                      {s.screen_name && (
-                        <span className="font-mono text-primary-400">{s.screen_name}</span>
-                      )}
-                      {s.name && <span className="text-[var(--text-secondary)]">{s.name}</span>}
-                      {s.id != null && (
-                        <span className="text-[var(--text-muted)] text-xs">id: {s.id}</span>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              )}
-
-              <div className="pt-3 border-t border-[var(--border-color)] border-dashed">
-                <button
-                  type="button"
-                  className="text-sm text-amber-400/90 hover:text-amber-300 underline-offset-2 hover:underline"
-                  onClick={() => setVkSeleniumOpen((v) => !v)}
-                >
-                  {vkSeleniumOpen ? 'Скрыть' : 'Резервный вход'} (Selenium, логин/пароль)
-                </button>
-                {vkSeleniumOpen && (
-                  <div className="mt-3 space-y-3 rounded-lg border border-amber-500/25 bg-[var(--bg-tertiary)]/50 p-4">
-                    <p className="text-xs text-[var(--text-muted)]">
-                      Если OAuth или API недоступны: вход через headless-браузер (vk-bot). Пароль не сохраняется в браузере и
-                      передаётся только по HTTPS; на сервере не хранится после ответа. Возможны капча и 2FA — тогда
-                      используйте обычный OAuth. Результат — веб-список сообществ, не API-токен.
-                    </p>
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <Input
-                        label="Телефон или email VK"
-                        type="text"
-                        autoComplete="username"
-                        value={vkSeleniumLogin}
-                        onChange={(e) => setVkSeleniumLogin(e.target.value)}
-                        placeholder="Логин"
-                      />
-                      <Input
-                        label="Пароль"
-                        type="password"
-                        autoComplete="current-password"
-                        value={vkSeleniumPassword}
-                        onChange={(e) => setVkSeleniumPassword(e.target.value)}
-                        placeholder="Одноразово для проверки"
-                      />
-                    </div>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      onClick={() => void verifySeleniumFallback()}
-                      isLoading={loadingSeleniumVerify}
-                      disabled={!vkSeleniumLogin.trim() || !vkSeleniumPassword}
-                    >
-                      Проверить через Selenium (до ~4 мин)
-                    </Button>
-                  </div>
-                )}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Create Post */}
       {activeTab === 'create' && (
-        <Card className="animate-slide-up">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              {editingPostId !== null ? 'Edit VKontakte Post' : 'Create VKontakte Post'}
-            </CardTitle>
-            <CardDescription>Create or edit a post (max {VK_MAX_LENGTH} characters)</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleCreatePost} className="space-y-6">
-              <div>
-                <label className="text-sm font-medium text-[var(--text-secondary)] block mb-2">
-                  Post text (HTML)
-                </label>
-                <TipTapEditor
-                  content={postContent}
-                  onChange={setPostContent}
-                  placeholder="Enter your post text (HTML supported)"
-                  toolbarButtons={[
-                    'bold',
-                    'italic',
-                    'underline',
-                    'strike',
-                    'heading',
-                    'bulletList',
-                    'orderedList',
-                    'blockquote',
-                    'code',
-                    'codeBlock',
-                    'horizontalRule',
-                    'undo',
-                    'redo',
-                  ]}
-                />
-                <p className="text-xs text-[var(--text-muted)] mt-2">
-                  Plain text length: {htmlToPlainText(postContent).length} / {VK_MAX_LENGTH} characters
-                </p>
-              </div>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <label className="text-sm font-medium text-[var(--text-secondary)] block mb-2">
-                    Publish at (optional)
-                  </label>
-                  <input
-                    type="datetime-local"
-                    value={publishAt}
-                    onChange={(e) => setPublishAt(e.target.value)}
-                    className="w-full px-4 py-3 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-xl text-[var(--text-primary)]"
-                  />
-                  <p className="text-xs text-[var(--text-muted)] mt-1">
-                    Общий календарь: <Link to="/calendar?network=vk" className="text-primary-400 hover:underline">/calendar</Link>
-                  </p>
-                </div>
-                <Input
-                  label="Target groups (optional, comma/newline)"
-                  value={targetGroupsText}
-                  onChange={(e) => setTargetGroupsText(e.target.value)}
-                  placeholder="123456, clubname"
-                />
-              </div>
-
-              <div>
-                <label className="text-sm font-medium text-[var(--text-secondary)] block mb-2">
-                  Изображения
-                </label>
-                <p className="text-xs text-[var(--text-muted)] mb-2">
-                  Загрузите фото с компьютера (JPG, PNG, GIF, WebP). Они будут прикреплены к посту.
-                </p>
-                <p className="text-xs text-amber-400/90 mb-2 rounded-lg border border-amber-500/25 bg-amber-500/5 px-3 py-2">
-                  Публикация <strong>с картинками на стену сообщества</strong> в VK требует пользовательский OAuth (
-                  <strong>Авторизация</strong>). Только текст без вложений часто достаточно публиковать с токеном сообщества (вкладка <strong>Авторизация</strong>).
-                </p>
-                {postImages.some(Boolean) && (
-                  <ul className="space-y-2 mb-3">
-                    {postImages.map((url, index) =>
-                      !url ? null : (
-                        <li
-                          key={`${url}-${index}`}
-                          className="flex items-center gap-3 p-3 rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)]"
-                        >
-                          <img
-                            src={imagePreviewUrl(url)}
-                            alt=""
-                            className="h-14 w-14 shrink-0 object-cover rounded-lg border border-[var(--border-color)] bg-[var(--bg-tertiary)]"
-                            onError={(e) => {
-                              const el = e.target as HTMLImageElement
-                              el.src = ''
-                              el.style.display = 'none'
-                            }}
-                          />
-                          <a
-                            href={imagePreviewUrl(url)}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex-1 min-w-0 text-sm text-primary-400 hover:underline truncate"
-                            title={url}
-                          >
-                            {url}
-                          </a>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setPostImages((prev) => prev.filter((_, i) => i !== index))}
-                            className="shrink-0 text-red-400 hover:text-red-300 hover:bg-red-500/10"
-                            title="Удалить фото"
-                          >
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                            </svg>
-                            Удалить
-                          </Button>
-                        </li>
-                      )
-                    )}
-                  </ul>
-                )}
-                <div className="border-2 border-dashed border-[var(--border-color)] rounded-xl p-6 text-center">
-                  <input
-                    type="file"
-                    accept="image/jpeg,image/png,image/gif,image/webp"
-                    multiple
-                    className="hidden"
-                    id="vk-image-upload"
-                    disabled={uploadingImage}
-                    onChange={async (e) => {
-                      const files = e.target.files
-                      if (!files?.length) return
-                      setError('')
-                      setUploadingImage(true)
-                      try {
-                        for (let i = 0; i < files.length; i++) {
-                          const url = await vkontakteService.uploadImage(files[i])
-                          setPostImages((prev) => [...prev, url])
-                        }
-                      } catch (err) {
-                        setError(err instanceof Error ? err.message : 'Ошибка загрузки')
-                      } finally {
-                        setUploadingImage(false)
-                        e.target.value = ''
-                      }
-                    }}
-                  />
-                  <label htmlFor="vk-image-upload" className="cursor-pointer">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mx-auto text-[var(--text-muted)] mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                    <p className="text-sm text-[var(--text-secondary)]">
-                      {uploadingImage ? 'Загрузка…' : 'Нажмите или перетащите файлы сюда'}
-                    </p>
-                  </label>
-                </div>
-              </div>
-
-              {!editingPostId && (
-                <TargetSocialNetworksWidget
-                  value={postTargets}
-                  onChange={setPostTargets}
-                  selectedChannels={selectedChannels}
-                  onSelectedChannelsChange={setSelectedChannels}
-                />
-              )}
-              <CardFooter className="px-0">
-                <Button type="submit" isLoading={isCreatingPost} className="w-full sm:w-auto">
-                  {editingPostId !== null ? 'Update Post' : 'Create Post'}
-                </Button>
-              </CardFooter>
-            </form>
-          </CardContent>
-        </Card>
+        <CreatePostTab
+          postContent={postContent}
+          onPostContentChange={setPostContent}
+          postImages={postImages}
+          onRemoveImage={(index) => setPostImages((prev) => prev.filter((_, i) => i !== index))}
+          onUploadImages={handleUploadImages}
+          uploadingImage={uploadingImage}
+          imagePreviewUrl={resolveImagePreview}
+          editingPostId={editingPostId}
+          publishAt={publishAt}
+          onPublishAtChange={setPublishAt}
+          targetGroupsText={targetGroupsText}
+          onTargetGroupsTextChange={setTargetGroupsText}
+          postTargets={postTargets}
+          onPostTargetsChange={setPostTargets}
+          selectedChannels={selectedChannels}
+          onSelectedChannelsChange={setSelectedChannels}
+          isCreatingPost={isCreatingPost}
+          onSubmit={handleCreatePost}
+        />
       )}
 
-      {/* Posts */}
       {activeTab === 'posts' && (
-        <Card className="animate-slide-up">
-          <CardHeader className="flex flex-row items-center justify-between gap-2">
-            <div>
-              <CardTitle>Posts</CardTitle>
-              <CardDescription>Collected and manual VKontakte posts</CardDescription>
-            </div>
-            <Button type="button" variant="secondary" size="sm" onClick={loadPosts} disabled={isLoadingPosts}>
-              Refresh
-            </Button>
-          </CardHeader>
-          <CardContent>
-            {isLoadingPosts && posts.length === 0 && (
-              <div className="text-center py-8 text-[var(--text-muted)]">Loading posts...</div>
-            )}
-            {!isLoadingPosts && posts.length === 0 && hasLoadedPosts && (
-              <div className="text-center py-8 text-[var(--text-muted)]">No posts found.</div>
-            )}
-            {!isLoadingPosts && posts.length > 0 && (
-              <div className="overflow-x-auto">
-                <table className="min-w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-[var(--border-color)] text-left text-[var(--text-secondary)]">
-                      <th className="py-2 pr-4 font-medium">Text</th>
-                      <th className="py-2 pr-4 font-medium">Status</th>
-                      <th className="py-2 pr-4 font-medium">Created</th>
-                      <th className="py-2 pr-4 font-medium w-24 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {posts.map((post, index) => (
-                      <tr key={post.id ?? index} className="border-b border-[var(--border-color)] last:border-0">
-                        <td className="py-2 pr-4 text-[var(--text-primary)] max-w-md truncate">{post.post_text}</td>
-                        <td className="py-2 pr-4">
-                          <span className="inline-flex items-center rounded-full bg-[var(--bg-secondary)] px-2 py-0.5 text-xs font-medium text-[var(--text-secondary)]">
-                            {post.status}
-                          </span>
-                        </td>
-                        <td className="py-2 pr-4 text-[var(--text-secondary)]">
-                          {formatDateTime(post.created_at)}
-                        </td>
-                        <td className="py-2 pr-4 text-right">
-                          <div className="flex items-center justify-end gap-1">
-                            <button
-                              type="button"
-                              onClick={() => post.id != null && handleEditPost(post.id)}
-                              disabled={post.id == null}
-                              className="p-2 rounded-lg text-[var(--text-secondary)] hover:text-primary-400 hover:bg-[var(--bg-secondary)] transition-colors disabled:opacity-50"
-                              title="Edit"
-                            >
-                              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                              </svg>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => post.id != null && handleDeletePost(post.id)}
-                              disabled={post.id == null || deletingPostId === post.id}
-                              className="p-2 rounded-lg text-[var(--text-secondary)] hover:text-red-400 hover:bg-[var(--bg-secondary)] transition-colors disabled:opacity-50"
-                              title="Delete"
-                            >
-                              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                              </svg>
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        <PostsTab
+          posts={posts}
+          isLoadingPosts={isLoadingPosts}
+          hasLoadedPosts={hasLoadedPosts}
+          deletingPostId={deletingPostId}
+          onRefresh={loadPosts}
+          onEdit={handleEditPost}
+          onDelete={handleDeletePost}
+        />
       )}
 
-      {/* Profile Settings (Publishing + Collection) */}
+      {activeTab === 'calendar' && (
+        <CalendarTab
+          posts={calendarPosts}
+          weekStart={calendarWeekStart}
+          isLoading={isLoadingCalendar}
+          onWeekChange={setCalendarWeekStart}
+          onReschedule={handleReschedule}
+        />
+      )}
+
       {activeTab === 'profile' && (
-        <Card className="animate-slide-up">
-          <CardHeader>
-            <CardTitle>Profile Settings</CardTitle>
-            <CardDescription>Publishing, connection and collection settings</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {isLoadingProfile ? (
-              <div className="text-center py-8 text-[var(--text-muted)]">Loading profile...</div>
-            ) : (
-              <form onSubmit={handleSaveProfile} className="space-y-8">
-                <div className="space-y-4">
-                  <h3 className="text-sm font-semibold text-[var(--text-primary)]">Publishing</h3>
-                  <label className="flex items-center gap-3 cursor-pointer group">
-                    <div className="relative">
-                      <input type="checkbox" checked={publishEnabled} onChange={(e) => setPublishEnabled(e.target.checked)} className="sr-only peer" />
-                      <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors" />
-                      <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
-                    </div>
-                    <span className="text-[var(--text-primary)]">Enable publishing</span>
-                  </label>
-                  <label className="flex items-center gap-3 cursor-pointer group">
-                    <div className="relative">
-                      <input type="checkbox" checked={fromGroup} onChange={(e) => setFromGroup(e.target.checked)} className="sr-only peer" />
-                      <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors" />
-                      <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
-                    </div>
-                    <span className="text-[var(--text-primary)]">From group</span>
-                  </label>
-                  <Input label="Group to post (ID or short name)" value={groupToPost} onChange={(e) => setGroupToPost(e.target.value)} placeholder="e.g. 123456 or club123456" />
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-[var(--text-secondary)] block">Publish schedule</label>
-                    <div className="space-y-3">
-                      <label className="flex items-center gap-3 cursor-pointer">
-                        <input type="radio" name="schedule" checked={scheduleType === 'immediate'} onChange={() => setScheduleType('immediate')} className="w-4 h-4 text-primary-500" />
-                        <span className="text-[var(--text-primary)]">Immediate</span>
-                      </label>
-                      <label className="flex items-center gap-3 cursor-pointer">
-                        <input type="radio" name="schedule" checked={scheduleType === 'intervals'} onChange={() => setScheduleType('intervals')} className="w-4 h-4 text-primary-500" />
-                        <span className="text-[var(--text-primary)]">By time intervals</span>
-                      </label>
-                    </div>
-                    {scheduleType === 'intervals' && (
-                      <div className="space-y-3 mt-4">
-                        {timeIntervals.map((interval, idx) => (
-                          <div key={interval.id} className="flex gap-3 items-end">
-                            <Input label={`Interval ${idx + 1} start`} type="time" value={interval.start} onChange={(e) => updateTimeInterval(interval.id, 'start', e.target.value)} className="flex-1" />
-                            <Input label="End" type="time" value={interval.end} onChange={(e) => updateTimeInterval(interval.id, 'end', e.target.value)} className="flex-1" />
-                            {timeIntervals.length > 1 && (
-                              <Button type="button" variant="ghost" size="sm" onClick={() => removeTimeInterval(interval.id)} className="text-red-400 hover:text-red-300">
-                                Remove
-                              </Button>
-                            )}
-                          </div>
-                        ))}
-                        {timeIntervals.length < 5 && (
-                          <Button type="button" variant="secondary" size="sm" onClick={addTimeInterval}>
-                            Add interval
-                          </Button>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <div className="space-y-4 pt-4 border-t border-[var(--border-color)]">
-                  <h3 className="text-sm font-semibold text-[var(--text-primary)]">Collection (Parser)</h3>
-                  <label className="flex items-center gap-3 cursor-pointer group">
-                    <div className="relative">
-                      <input type="checkbox" checked={collectEnabled} onChange={(e) => setCollectEnabled(e.target.checked)} className="sr-only peer" />
-                      <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors" />
-                      <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
-                    </div>
-                    <span className="text-[var(--text-primary)]">Enable collection</span>
-                  </label>
-                  {collectEnabled && (
-                    <div className="space-y-4 animate-slide-down">
-                      <p className="text-sm text-[var(--text-muted)]">
-                        Токен сообщества задаётся на вкладке <strong className="text-amber-400/90">Авторизация</strong>. Здесь укажите, с каких групп читать стену.
-                      </p>
-                      <div className="p-4 bg-[var(--bg-secondary)] rounded-xl space-y-4 border border-[var(--border-color)]">
-                        <h4 className="text-sm font-semibold text-[var(--text-primary)]">Groups to read (wall.get)</h4>
-                        <p className="text-xs text-[var(--text-muted)]">Enter VK group IDs (e.g. 123456 or -123456). One per field.</p>
-                        {groupsToRead.map((field) => (
-                          <div key={field.id} className="flex gap-3">
-                            <Input
-                              placeholder="e.g. 123456"
-                              value={field.value}
-                              onChange={(e) => updateGroupToRead(field.id, e.target.value)}
-                              className="flex-1"
-                            />
-                            {groupsToRead.length > 1 && (
-                              <Button type="button" variant="ghost" size="sm" onClick={() => removeGroupToRead(field.id)} className="px-3 text-red-400 hover:text-red-300">
-                                Remove
-                              </Button>
-                            )}
-                          </div>
-                        ))}
-                        <Button type="button" variant="secondary" size="sm" onClick={addGroupToRead}>
-                          Add group
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <CardFooter className="px-0">
-                  <Button type="submit" isLoading={isSavingProfile}>Save Profile Settings</Button>
-                </CardFooter>
-              </form>
-            )}
-          </CardContent>
-        </Card>
+        <ProfileSettingsTab
+          isLoadingProfile={isLoadingProfile}
+          isSavingProfile={isSavingProfile}
+          publishEnabled={publishEnabled}
+          onPublishEnabledChange={setPublishEnabled}
+          fromGroup={fromGroup}
+          onFromGroupChange={setFromGroup}
+          groupToPost={groupToPost}
+          onGroupToPostChange={setGroupToPost}
+          scheduleType={scheduleType}
+          onScheduleTypeChange={setScheduleType}
+          timeIntervals={timeIntervals}
+          onAddTimeInterval={() => {
+            if (timeIntervals.length < 5) {
+              setTimeIntervals((prev) => [...prev, { id: generateId(), start: '', end: '' }])
+            }
+          }}
+          onRemoveTimeInterval={(id) => {
+            if (timeIntervals.length > 1) {
+              setTimeIntervals((prev) => prev.filter((i) => i.id !== id))
+            }
+          }}
+          onUpdateTimeInterval={(id, field, value) => {
+            setTimeIntervals((prev) => prev.map((i) => (i.id === id ? { ...i, [field]: value } : i)))
+          }}
+          collectEnabled={collectEnabled}
+          onCollectEnabledChange={setCollectEnabled}
+          groupsToRead={groupsToRead}
+          onAddGroupToRead={() => setGroupsToRead((prev) => [...prev, { id: generateId(), value: '' }])}
+          onRemoveGroupToRead={(id) => {
+            if (groupsToRead.length > 1) setGroupsToRead((prev) => prev.filter((f) => f.id !== id))
+          }}
+          onUpdateGroupToRead={(id, value) => {
+            setGroupsToRead((prev) => prev.map((f) => (f.id === id ? { ...f, value } : f)))
+          }}
+          onSubmit={handleSaveProfile}
+        />
       )}
 
-      {/* Обработка */}
       {activeTab === 'processing' && (
-        <Card className="animate-slide-up">
-          <CardHeader>
-            <CardTitle>Обработка</CardTitle>
-            <CardDescription>Настройки обработки постов перед публикацией</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {isLoadingProfile ? (
-              <div className="text-center py-8 text-[var(--text-muted)]">Loading profile...</div>
-            ) : (
-              <form onSubmit={handleSaveProcessing} className="space-y-6">
-                <label className="flex items-center gap-3 cursor-pointer group">
-                  <div className="relative">
-                    <input type="checkbox" checked={processEnabled} onChange={(e) => setProcessEnabled(e.target.checked)} className="sr-only peer" />
-                    <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors" />
-                    <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
-                  </div>
-                  <span className="text-[var(--text-primary)]">Обрабатывать перед публикацией</span>
-                </label>
-                {processEnabled && (
-                  <div>
-                    <label className="text-sm font-medium text-[var(--text-secondary)] block mb-2">Описание обработки</label>
-                    <textarea
-                      value={processingDescription}
-                      onChange={(e) => setProcessingDescription(e.target.value)}
-                      rows={4}
-                      className="w-full px-4 py-3 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-xl text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-primary-500/50"
-                      placeholder="Опишите, как должны обрабатываться посты..."
-                    />
-                  </div>
-                )}
-                <label className="flex items-center gap-3 cursor-pointer group">
-                  <div className="relative">
-                    <input type="checkbox" checked={removeEmojis} onChange={(e) => setRemoveEmojis(e.target.checked)} className="sr-only peer" />
-                    <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors" />
-                    <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
-                  </div>
-                  <span className="text-[var(--text-primary)]">Удалить смайлики/эмодзи</span>
-                </label>
-                <label className="flex items-center gap-3 cursor-pointer group">
-                  <div className="relative">
-                    <input type="checkbox" checked={removeImages} onChange={(e) => setRemoveImages(e.target.checked)} className="sr-only peer" />
-                    <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors" />
-                    <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
-                  </div>
-                  <span className="text-[var(--text-primary)]">Удалить картинки</span>
-                </label>
-                <label className="flex items-center gap-3 cursor-pointer group">
-                  <div className="relative">
-                    <input type="checkbox" checked={cleanHtml} onChange={(e) => setCleanHtml(e.target.checked)} className="sr-only peer" />
-                    <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors" />
-                    <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
-                  </div>
-                  <span className="text-[var(--text-primary)]">Очистить HTML</span>
-                </label>
-                <div className="space-y-3">
-                  <span className="text-sm font-medium text-[var(--text-secondary)] block">Для каких сервисов подготовить обработку</span>
-                  <div className="flex flex-wrap gap-4">
-                    {(['wordpress', 'telegram', 'twitter', 'vkontakte'] as const).map((name) => (
-                      <label key={name} className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={
-                            name === 'wordpress' ? processServiceWordpress : name === 'telegram' ? processServiceTelegram : name === 'twitter' ? processServiceTwitter : processServiceVkontakte
-                          }
-                          onChange={(e) => {
-                            if (name === 'wordpress') setProcessServiceWordpress(e.target.checked)
-                            else if (name === 'telegram') setProcessServiceTelegram(e.target.checked)
-                            else if (name === 'twitter') setProcessServiceTwitter(e.target.checked)
-                            else setProcessServiceVkontakte(e.target.checked)
-                          }}
-                          className="w-4 h-4 text-primary-500 rounded"
-                        />
-                        <span className="text-[var(--text-primary)]">{name === 'vkontakte' ? 'VKontakte' : name.charAt(0).toUpperCase() + name.slice(1)}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-                <label className="flex items-center gap-3 cursor-pointer group">
-                  <div className="relative">
-                    <input type="checkbox" checked={statusReviewAfterProcess} onChange={(e) => setStatusReviewAfterProcess(e.target.checked)} className="sr-only peer" />
-                    <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors" />
-                    <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
-                  </div>
-                  <span className="text-[var(--text-primary)]">Перевести пост в статус review после обработки</span>
-                </label>
-                <label className="flex items-center gap-3 cursor-pointer group">
-                  <div className="relative">
-                    <input type="checkbox" checked={addStaticHtml} onChange={(e) => setAddStaticHtml(e.target.checked)} className="sr-only peer" />
-                    <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors" />
-                    <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
-                  </div>
-                  <span className="text-[var(--text-primary)]">Добавлять в посты статичный HTML</span>
-                </label>
-                {addStaticHtml && (
-                  <div>
-                    <label className="text-sm font-medium text-[var(--text-secondary)] block mb-2">Статичный HTML (до 1000 символов)</label>
-                    <textarea
-                      value={staticHtmlContent}
-                      onChange={(e) => setStaticHtmlContent(e.target.value.slice(0, 1000))}
-                      rows={4}
-                      maxLength={1000}
-                      className="w-full px-4 py-3 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-xl text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-primary-500/50"
-                    />
-                    <p className="text-xs text-[var(--text-muted)]">{staticHtmlContent.length} / 1000</p>
-                  </div>
-                )}
-                <CardFooter className="px-0">
-                  <Button type="submit" isLoading={isSavingProfile}>Сохранить настройки обработки</Button>
-                </CardFooter>
-              </form>
-            )}
-          </CardContent>
-        </Card>
+        <ProcessingTab
+          isLoadingProfile={isLoadingProfile}
+          isSavingProfile={isSavingProfile}
+          processEnabled={processEnabled}
+          onProcessEnabledChange={setProcessEnabled}
+          processingDescription={processingDescription}
+          onProcessingDescriptionChange={setProcessingDescription}
+          removeEmojis={removeEmojis}
+          onRemoveEmojisChange={setRemoveEmojis}
+          removeImages={removeImages}
+          onRemoveImagesChange={setRemoveImages}
+          cleanHtml={cleanHtml}
+          onCleanHtmlChange={setCleanHtml}
+          processServiceWordpress={processServiceWordpress}
+          onProcessServiceWordpressChange={setProcessServiceWordpress}
+          processServiceTelegram={processServiceTelegram}
+          onProcessServiceTelegramChange={setProcessServiceTelegram}
+          processServiceTwitter={processServiceTwitter}
+          onProcessServiceTwitterChange={setProcessServiceTwitter}
+          processServiceVkontakte={processServiceVkontakte}
+          onProcessServiceVkontakteChange={setProcessServiceVkontakte}
+          statusReviewAfterProcess={statusReviewAfterProcess}
+          onStatusReviewAfterProcessChange={setStatusReviewAfterProcess}
+          addStaticHtml={addStaticHtml}
+          onAddStaticHtmlChange={setAddStaticHtml}
+          staticHtmlContent={staticHtmlContent}
+          onStaticHtmlContentChange={setStaticHtmlContent}
+          onSubmit={handleSaveProcessing}
+        />
       )}
 
+      {activeTab === 'auth' && (
+        <AuthTab
+          authStatus={authStatus}
+          vkAppId={vkAppId}
+          onVkAppIdChange={setVkAppId}
+          vkAppSecret={vkAppSecret}
+          onVkAppSecretChange={setVkAppSecret}
+          vkFrontendUrl={vkFrontendUrl}
+          onVkFrontendUrlChange={setVkFrontendUrl}
+          vkPublicGatewayUrl={vkPublicGatewayUrl}
+          onVkPublicGatewayUrlChange={setVkPublicGatewayUrl}
+          vkOAuthRedirectUri={vkOAuthRedirectUri}
+          accessToken={accessToken}
+          onAccessTokenChange={setAccessToken}
+          isSavingProfile={isSavingProfile}
+          onSaveOAuthSettings={() => void persistFullVkProfile('Настройки OAuth VK сохранены')}
+          onSaveTokenSettings={() => void persistFullVkProfile('Токен и настройки VK сохранены')}
+          onRefreshAuthStatus={() => void loadAuthStatus()}
+          onConnectVk={() => {
+            setError('')
+            void vkontakteService
+              .getAuthUrl()
+              .then(({ url }) => {
+                window.location.href = url
+              })
+              .catch((err) => {
+                setError(err instanceof Error ? err.message : 'Failed to get OAuth URL')
+              })
+          }}
+          loadingSubscriptions={loadingSubscriptions}
+          onLoadSubscriptions={() => void loadSubscriptions()}
+          subscriptions={subscriptions}
+          subscriptionsSource={subscriptionsSource}
+          subscriptionsHint={subscriptionsHint}
+          vkSeleniumOpen={vkSeleniumOpen}
+          onToggleSelenium={() => setVkSeleniumOpen((v) => !v)}
+          vkSeleniumLogin={vkSeleniumLogin}
+          onVkSeleniumLoginChange={setVkSeleniumLogin}
+          vkSeleniumPassword={vkSeleniumPassword}
+          onVkSeleniumPasswordChange={setVkSeleniumPassword}
+          loadingSeleniumVerify={loadingSeleniumVerify}
+          onVerifySelenium={() => void verifySeleniumFallback()}
+        />
+      )}
     </PageContainer>
   )
 }

@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { PageContainer, PageHeader } from '@/components/ui'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Alert } from '@/components/ui/alert'
 import { ConditionsEditor } from '@/components/conditions-editor'
 import { smmService } from '@/services/smm-service'
@@ -12,11 +13,31 @@ import type {
   ChannelAlertRule,
   ChannelProcessingConfig,
   ConditionsMode,
+  UrlChannelConfig,
 } from '@/types/smm'
 import { publishAllowed, authStatusLabel } from '@/hooks/use-platform-readiness'
 import { getErrorMessage } from '@/services/api-client'
 
 type FlowTab = 'collect' | 'processing' | 'publish' | 'alerting'
+
+const DEFAULT_URL_CONFIG: UrlChannelConfig = {
+  url: '',
+  xpath: '',
+  schedule_time: '09:00',
+  run_once: false,
+  take_screenshot: false,
+  screenshot_format: 'base64',
+  process_before_publish: false,
+  process_description: '',
+  remove_emojis: false,
+  remove_images: false,
+  clean_html: false,
+  process_services: [],
+  status_review_after_process: false,
+  add_static_html: false,
+  static_html_content: '',
+  screenshot_only: false,
+}
 
 function newRuleId(): string {
   return crypto.randomUUID?.() || `rule-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
@@ -77,6 +98,7 @@ export function ChannelFlowPage() {
   const [delivery, setDelivery] = useState<ChannelAlertDelivery>({})
   const [alertTargets, setAlertTargets] = useState<number[]>([])
   const [rules, setRules] = useState<ChannelAlertRule[]>([])
+  const [urlConfig, setUrlConfig] = useState<UrlChannelConfig>({ ...DEFAULT_URL_CONFIG })
 
   useEffect(() => {
     if (!Number.isFinite(channelId) || channelId <= 0) {
@@ -97,6 +119,15 @@ export function ChannelFlowPage() {
         setCollectEnabled(Boolean(ch.collect_enabled))
         setPublishEnabled(Boolean(ch.publish_enabled))
         setAlertEnabled(Boolean(ch.alert_enabled))
+        const cfg = { ...DEFAULT_URL_CONFIG, ...(ch.url_config || {}) }
+        if (
+          ch.network === 'url' &&
+          !(cfg.url || '').trim() &&
+          (ch.title || '').trim().toLowerCase().startsWith('http')
+        ) {
+          cfg.url = String(ch.title).trim()
+        }
+        setUrlConfig(cfg)
         const nextDelivery = ch.alert_delivery || {}
         setDelivery(nextDelivery)
         setRules(ch.alert_rules?.length ? ch.alert_rules : [emptyRule()])
@@ -126,6 +157,12 @@ export function ChannelFlowPage() {
     })()
   }, [channelId])
 
+  useEffect(() => {
+    if (channel?.network === 'url' && tab === 'alerting') {
+      setTab('collect')
+    }
+  }, [channel?.network, tab])
+
   const analyticsHref = useMemo(() => {
     if (!channel) return '/analytics'
     const q = new URLSearchParams({
@@ -138,7 +175,11 @@ export function ChannelFlowPage() {
   const ownPublishCandidates = useMemo(() => {
     if (!channel) return []
     return brandChannels.filter(
-      (c) => c.role === 'own' && c.id !== channel.id && Boolean(c.external_id),
+      (c) =>
+        c.role === 'own' &&
+        (c.network === 'tg' || c.network === 'vk') &&
+        c.id !== channel.id &&
+        Boolean(c.external_id),
     )
   }, [brandChannels, channel])
 
@@ -160,17 +201,34 @@ export function ChannelFlowPage() {
     setError('')
     setSuccess('')
     try {
-      const save_conditions = normalizeConditions(conditions)
-      const updated = await smmService.updateChannel(channel.brand_id, channel.id, {
-        save_conditions,
-        conditions_mode: conditionsMode,
-        collect_enabled: collectEnabled,
-      })
-      setChannel(updated)
-      setCollectEnabled(Boolean(updated.collect_enabled))
-      setConditions(updated.save_conditions || [])
-      setConditionsMode(updated.conditions_mode === 'all_of' ? 'all_of' : 'any_of')
-      setSuccess('Условия сбора сохранены')
+      if (channel.network === 'url') {
+        const updated = await smmService.updateChannel(channel.brand_id, channel.id, {
+          collect_enabled: collectEnabled,
+          title: channel.title || undefined,
+          url_config: {
+            ...urlConfig,
+            url: (urlConfig.url || '').trim(),
+            xpath: (urlConfig.xpath || '').trim(),
+            schedule_time: urlConfig.schedule_time || '09:00',
+          },
+        })
+        setChannel(updated)
+        setCollectEnabled(Boolean(updated.collect_enabled))
+        setUrlConfig({ ...DEFAULT_URL_CONFIG, ...(updated.url_config || {}) })
+        setSuccess('Настройки сбора URL сохранены')
+      } else {
+        const save_conditions = normalizeConditions(conditions)
+        const updated = await smmService.updateChannel(channel.brand_id, channel.id, {
+          save_conditions,
+          conditions_mode: conditionsMode,
+          collect_enabled: collectEnabled,
+        })
+        setChannel(updated)
+        setCollectEnabled(Boolean(updated.collect_enabled))
+        setConditions(updated.save_conditions || [])
+        setConditionsMode(updated.conditions_mode === 'all_of' ? 'all_of' : 'any_of')
+        setSuccess('Условия сбора сохранены')
+      }
     } catch (err) {
       setError(getErrorMessage(err))
     } finally {
@@ -185,13 +243,34 @@ export function ChannelFlowPage() {
     setError('')
     setSuccess('')
     try {
-      const { process_services: _drop, ...rest } = processing
-      const updated = await smmService.updateChannel(channel.brand_id, channel.id, {
-        processing: rest,
-      })
-      setChannel(updated)
-      setProcessing(updated.processing || {})
-      setSuccess('Обработка сохранена')
+      if (channel.network === 'url') {
+        const updated = await smmService.updateChannel(channel.brand_id, channel.id, {
+          url_config: {
+            ...urlConfig,
+            process_before_publish: Boolean(urlConfig.process_before_publish),
+            process_description: urlConfig.process_description || '',
+            remove_emojis: Boolean(urlConfig.remove_emojis),
+            remove_images: Boolean(urlConfig.remove_images),
+            clean_html: Boolean(urlConfig.clean_html),
+            process_services: urlConfig.process_services || [],
+            status_review_after_process: Boolean(urlConfig.status_review_after_process),
+            add_static_html: Boolean(urlConfig.add_static_html),
+            static_html_content: (urlConfig.static_html_content || '').slice(0, 1000),
+            screenshot_only: Boolean(urlConfig.screenshot_only),
+          },
+        })
+        setChannel(updated)
+        setUrlConfig({ ...DEFAULT_URL_CONFIG, ...(updated.url_config || {}) })
+        setSuccess('Обработка сохранена')
+      } else {
+        const { process_services: _drop, ...rest } = processing
+        const updated = await smmService.updateChannel(channel.brand_id, channel.id, {
+          processing: rest,
+        })
+        setChannel(updated)
+        setProcessing(updated.processing || {})
+        setSuccess('Обработка сохранена')
+      }
     } catch (err) {
       setError(getErrorMessage(err))
     } finally {
@@ -206,14 +285,25 @@ export function ChannelFlowPage() {
     setError('')
     setSuccess('')
     try {
-      const updated = await smmService.updateChannel(channel.brand_id, channel.id, {
-        publish_targets: publishTargets,
-        publish_enabled: publishEnabled && publishTargets.length > 0,
-      })
-      setChannel(updated)
-      setPublishTargets(updated.publish_targets || [])
-      setPublishEnabled(Boolean(updated.publish_enabled))
-      setSuccess('Целевые каналы публикации сохранены')
+      if (channel.network === 'url') {
+        const updated = await smmService.updateChannel(channel.brand_id, channel.id, {
+          publish_targets: publishTargets,
+          publish_enabled: false,
+        })
+        setChannel(updated)
+        setPublishTargets(updated.publish_targets || [])
+        setUrlConfig({ ...DEFAULT_URL_CONFIG, ...(updated.url_config || {}) })
+        setSuccess('Целевые каналы публикации сохранены')
+      } else {
+        const updated = await smmService.updateChannel(channel.brand_id, channel.id, {
+          publish_targets: publishTargets,
+          publish_enabled: publishEnabled && publishTargets.length > 0,
+        })
+        setChannel(updated)
+        setPublishTargets(updated.publish_targets || [])
+        setPublishEnabled(Boolean(updated.publish_enabled))
+        setSuccess('Целевые каналы публикации сохранены')
+      }
     } catch (err) {
       setError(getErrorMessage(err))
     } finally {
@@ -316,6 +406,22 @@ export function ChannelFlowPage() {
   }
 
   const isTg = channel.network === 'tg'
+  const isUrl = channel.network === 'url'
+
+  const flowTabs = (
+    isUrl
+      ? ([
+          ['collect', 'Сбор'],
+          ['processing', 'Обработка'],
+          ['publish', 'Публикация'],
+        ] as const)
+      : ([
+          ['collect', 'Сбор'],
+          ['processing', 'Обработка'],
+          ['publish', 'Публикация'],
+          ['alerting', 'Алерты'],
+        ] as const)
+  )
 
   return (
     <PageContainer>
@@ -327,9 +433,15 @@ export function ChannelFlowPage() {
         <Link to="/channels" className="text-primary-400 hover:underline">
           ← Channels
         </Link>
-        <Link to={analyticsHref} className="text-primary-400 hover:underline">
-          Смотреть аналитику →
-        </Link>
+        {isUrl ? (
+          <Link to="/custom-url" className="text-primary-400 hover:underline">
+            Собранные URL-посты →
+          </Link>
+        ) : (
+          <Link to={analyticsHref} className="text-primary-400 hover:underline">
+            Смотреть аналитику →
+          </Link>
+        )}
       </div>
       {error && <Alert variant="error">{error}</Alert>}
       {success && <Alert variant="success">{success}</Alert>}
@@ -347,14 +459,7 @@ export function ChannelFlowPage() {
       )}
 
       <div className="flex gap-2 mb-4 flex-wrap">
-        {(
-          [
-            ['collect', 'Сбор'],
-            ['processing', 'Обработка'],
-            ['publish', 'Публикация'],
-            ['alerting', 'Алерты'],
-          ] as const
-        ).map(([id, label]) => (
+        {flowTabs.map(([id, label]) => (
           <Button
             key={id}
             size="sm"
@@ -366,7 +471,115 @@ export function ChannelFlowPage() {
         ))}
       </div>
 
-      {tab === 'collect' && (
+      {tab === 'collect' && isUrl && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Сбор URL</CardTitle>
+            <CardDescription>
+              Страница для url-bot: URL, XPath и время запуска (ежедневно или один раз).
+            </CardDescription>
+          </CardHeader>
+          <form onSubmit={saveCollect}>
+            <CardContent className="space-y-4">
+              <label className="flex items-center gap-2 text-sm font-medium">
+                <input
+                  type="checkbox"
+                  checked={collectEnabled}
+                  onChange={(e) => setCollectEnabled(e.target.checked)}
+                />
+                Сбор включён (Collect)
+              </label>
+              <div>
+                <label className="text-sm text-[var(--text-secondary)]">URL</label>
+                <div className="mt-1 flex gap-2">
+                  <input
+                    type="url"
+                    value={urlConfig.url || ''}
+                    onChange={(e) => setUrlConfig((u) => ({ ...u, url: e.target.value }))}
+                    placeholder="https://example.com/news"
+                    className="flex-1 rounded-md border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-sm text-[var(--text-primary)]"
+                  />
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    disabled={!(urlConfig.url || '').trim()}
+                    onClick={() => {
+                      const v = (urlConfig.url || '').trim()
+                      if (!v) return
+                      void navigator.clipboard.writeText(v)
+                    }}
+                    title="Скопировать URL"
+                  >
+                    Copy
+                  </Button>
+                </div>
+              </div>
+              <Input
+                label="XPath"
+                value={urlConfig.xpath || ''}
+                onChange={(e) => setUrlConfig((u) => ({ ...u, xpath: e.target.value }))}
+                placeholder="//div[@class='content']"
+              />
+              <div className="space-y-2 max-w-xs">
+                <label className="text-sm font-medium text-[var(--text-secondary)] block">
+                  Время (HH:MM)
+                </label>
+                <Input
+                  type="time"
+                  value={urlConfig.schedule_time || '09:00'}
+                  onChange={(e) => setUrlConfig((u) => ({ ...u, schedule_time: e.target.value }))}
+                />
+              </div>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={Boolean(urlConfig.run_once)}
+                  onChange={(e) => setUrlConfig((u) => ({ ...u, run_once: e.target.checked }))}
+                />
+                Выполнить единоразово
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={Boolean(urlConfig.take_screenshot)}
+                  onChange={(e) =>
+                    setUrlConfig((u) => ({ ...u, take_screenshot: e.target.checked }))
+                  }
+                />
+                Take screenshot
+              </label>
+              {urlConfig.take_screenshot && (
+                <div className="flex gap-4 text-sm">
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      checked={(urlConfig.screenshot_format || 'base64') === 'base64'}
+                      onChange={() => setUrlConfig((u) => ({ ...u, screenshot_format: 'base64' }))}
+                    />
+                    base64
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      checked={urlConfig.screenshot_format === 'file'}
+                      onChange={() => setUrlConfig((u) => ({ ...u, screenshot_format: 'file' }))}
+                    />
+                    файл
+                  </label>
+                </div>
+              )}
+            </CardContent>
+            <CardFooter>
+              <Button type="submit" disabled={saving}>
+                {saving ? 'Saving…' : 'Save'}
+              </Button>
+            </CardFooter>
+          </form>
+        </Card>
+      )}
+
+      {tab === 'collect' && !isUrl && (
         <Card>
           <CardHeader>
             <CardTitle>Save Conditions</CardTitle>
@@ -401,7 +614,100 @@ export function ChannelFlowPage() {
         </Card>
       )}
 
-      {tab === 'processing' && (
+      {tab === 'processing' && isUrl && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Обработка</CardTitle>
+            <CardDescription>Обработка собранного с URL перед публикацией в own-каналы</CardDescription>
+          </CardHeader>
+          <form onSubmit={saveProcessing}>
+            <CardContent className="space-y-4">
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={Boolean(urlConfig.process_before_publish)}
+                  onChange={(e) =>
+                    setUrlConfig((u) => ({ ...u, process_before_publish: e.target.checked }))
+                  }
+                />
+                Обрабатывать перед публикацией
+              </label>
+              <div>
+                <label className="text-sm text-[var(--text-secondary)]">Описание обработки</label>
+                <textarea
+                  className="w-full mt-1 min-h-[80px] rounded-md border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-sm"
+                  value={urlConfig.process_description || ''}
+                  onChange={(e) =>
+                    setUrlConfig((u) => ({ ...u, process_description: e.target.value }))
+                  }
+                />
+              </div>
+              <div className="flex flex-wrap gap-4 text-sm">
+                {(
+                  [
+                    ['remove_emojis', 'Удалить эмодзи'],
+                    ['remove_images', 'Удалить картинки'],
+                    ['clean_html', 'Очистить HTML'],
+                    ['screenshot_only', 'Только скриншот'],
+                  ] as const
+                ).map(([key, label]) => (
+                  <label key={key} className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(urlConfig[key])}
+                      onChange={(e) => setUrlConfig((u) => ({ ...u, [key]: e.target.checked }))}
+                    />
+                    {label}
+                  </label>
+                ))}
+              </div>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={Boolean(urlConfig.status_review_after_process)}
+                  onChange={(e) =>
+                    setUrlConfig((u) => ({
+                      ...u,
+                      status_review_after_process: e.target.checked,
+                    }))
+                  }
+                />
+                На review после обработки
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={Boolean(urlConfig.add_static_html)}
+                  onChange={(e) =>
+                    setUrlConfig((u) => ({ ...u, add_static_html: e.target.checked }))
+                  }
+                />
+                Добавлять статичный HTML
+              </label>
+              {urlConfig.add_static_html && (
+                <textarea
+                  className="w-full min-h-[60px] rounded-md border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-sm"
+                  value={urlConfig.static_html_content || ''}
+                  maxLength={1000}
+                  onChange={(e) =>
+                    setUrlConfig((u) => ({
+                      ...u,
+                      static_html_content: e.target.value.slice(0, 1000),
+                    }))
+                  }
+                />
+              )}
+            </CardContent>
+            <CardFooter>
+              <Button type="submit" disabled={saving}>
+                {saving ? 'Saving…' : 'Save'}
+              </Button>
+            </CardFooter>
+          </form>
+        </Card>
+      )}
+
+      {tab === 'processing' && !isUrl && (
         <Card>
           <CardHeader>
             <CardTitle>Обработка</CardTitle>
@@ -482,26 +788,35 @@ export function ChannelFlowPage() {
           <CardHeader>
             <CardTitle>Публикация</CardTitle>
             <CardDescription>
-              Целевые каналы публикации — own-каналы этого бренда, куда уйдут обработанные
-              сообщения.
+              {isUrl
+                ? 'Собственные TG/VK каналы бренда, куда url-bot будет публиковать собранное по расписанию.'
+                : 'Целевые каналы публикации — own-каналы этого бренда, куда уйдут обработанные сообщения.'}
             </CardDescription>
           </CardHeader>
           <form onSubmit={savePublish}>
             <CardContent className="space-y-3">
-              <label className="flex items-center gap-2 text-sm font-medium">
-                <input
-                  type="checkbox"
-                  checked={publishEnabled}
-                  disabled={channel.role !== 'own' || !publishAllowed(channel)}
-                  onChange={(e) => setPublishEnabled(e.target.checked)}
-                />
-                Публикация включена (Publish)
-                {channel.role === 'own' && !publishAllowed(channel) && (
-                  <span className="text-xs text-amber-400 font-normal">
-                    — сначала Recheck ownership в Channels
-                  </span>
-                )}
-              </label>
+              {!isUrl && (
+                <label className="flex items-center gap-2 text-sm font-medium">
+                  <input
+                    type="checkbox"
+                    checked={publishEnabled}
+                    disabled={channel.role !== 'own' || !publishAllowed(channel)}
+                    onChange={(e) => setPublishEnabled(e.target.checked)}
+                  />
+                  Публикация включена (Publish)
+                  {channel.role === 'own' && !publishAllowed(channel) && (
+                    <span className="text-xs text-amber-400 font-normal">
+                      — сначала Recheck ownership в Channels
+                    </span>
+                  )}
+                </label>
+              )}
+              {isUrl && (
+                <p className="text-sm text-[var(--text-muted)]">
+                  Выберите хотя бы один own-канал. Публикация идёт через пайплайн Custom URL / url-bot
+                  в указанное на вкладке «Сбор» время.
+                </p>
+              )}
               {ownPublishCandidates.length === 0 ? (
                 <p className="text-sm text-[var(--text-muted)]">
                   Нет own-каналов бренда для выбора. Добавьте каналы с ролью own в хабе Channels.
@@ -522,9 +837,7 @@ export function ChannelFlowPage() {
                           onChange={() => togglePublishTarget(c.id)}
                         />
                         <span>
-                          <span className="font-medium">
-                            {c.title || c.external_id}
-                          </span>
+                          <span className="font-medium">{c.title || c.external_id}</span>
                           <span className="block text-xs text-[var(--text-muted)]">
                             {c.network.toUpperCase()} · {c.external_id}
                             {c.publish_enabled === false ? ' · publish off' : ''}
@@ -536,9 +849,7 @@ export function ChannelFlowPage() {
                 </div>
               )}
               {publishTargets.length > 0 && (
-                <p className="text-xs text-[var(--text-muted)]">
-                  Выбрано: {publishTargets.length}
-                </p>
+                <p className="text-xs text-[var(--text-muted)]">Выбрано: {publishTargets.length}</p>
               )}
             </CardContent>
             <CardFooter>
@@ -550,7 +861,7 @@ export function ChannelFlowPage() {
         </Card>
       )}
 
-      {tab === 'alerting' && (
+      {tab === 'alerting' && !isUrl && (
         <Card>
           <CardHeader>
             <CardTitle>Алерты</CardTitle>

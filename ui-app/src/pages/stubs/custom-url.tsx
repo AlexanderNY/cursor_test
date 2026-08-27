@@ -1,4 +1,4 @@
-import { useState, FormEvent, useEffect } from 'react'
+import { useState, FormEvent, useEffect, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
 import { PageHeader, PageContainer } from '@/components/ui'
 import { customURLService } from '@/services/custom-url-service'
+import { smmService } from '@/services/smm-service'
 import type { URLConfig, CustomURLSettings, UrlPostListItem } from '@/types/custom-url'
 import { formatDateTime } from '@/utils/date'
 
@@ -84,18 +85,29 @@ export function CustomURLPage() {
   const [posts, setPosts] = useState<UrlPostListItem[]>([])
   const [isLoadingPosts, setIsLoadingPosts] = useState(false)
   const [hasLoadedPosts, setHasLoadedPosts] = useState(false)
+  const [urlChannelByExternalId, setUrlChannelByExternalId] = useState<Record<string, number>>({})
 
   useEffect(() => {
     async function loadSettings() {
       setIsLoadingSettings(true)
       try {
-        const settings = await customURLService.getSettings()
+        const [settings, allChannels] = await Promise.all([
+          customURLService.getSettings(),
+          smmService.listAllChannels().catch(() => []),
+        ])
         if (settings) {
           setCollectEnabled(settings.collect_enabled ?? false)
           if (settings.urls && settings.urls.length > 0) {
             setUrlConfigs(settings.urls.map(mapUrlFromApi))
           }
         }
+        const map: Record<string, number> = {}
+        for (const ch of allChannels) {
+          if (ch.network === 'url' && ch.external_id) {
+            map[String(ch.external_id)] = ch.id
+          }
+        }
+        setUrlChannelByExternalId(map)
       } catch (err) {
         console.error('Failed to load settings:', err)
       } finally {
@@ -104,6 +116,11 @@ export function CustomURLPage() {
     }
     loadSettings()
   }, [])
+
+  const linkedChannelCount = useMemo(
+    () => Object.keys(urlChannelByExternalId).length,
+    [urlChannelByExternalId],
+  )
 
   useEffect(() => {
     if (activeTab === 'posts' && !hasLoadedPosts) {
@@ -195,7 +212,20 @@ export function CustomURLPage() {
 
   return (
     <PageContainer>
-      <PageHeader title="Custom URL Integration" description="Configure custom URL scraping and content collection" />
+      <PageHeader
+        title="Custom URL Integration"
+        description="Обзор URL-источников и собранных постов. Основная настройка — в Channels (сеть URL)."
+      />
+      <p className="mb-4 text-sm flex flex-wrap gap-3">
+        <Link to="/channels" className="text-primary-400 hover:underline">
+          Channels → добавить / настроить URL source
+        </Link>
+        {linkedChannelCount > 0 && (
+          <span className="text-[var(--text-muted)]">
+            Связано с каналами бренда: {linkedChannelCount}
+          </span>
+        )}
+      </p>
 
       {error && (
         <Alert variant="error" className="animate-slide-down">
@@ -237,7 +267,8 @@ export function CustomURLPage() {
             <CardHeader>
               <CardTitle>Custom URL Settings</CardTitle>
               <CardDescription>
-                Список URL для сбора. Обработка и публикация — на странице «Настроить».
+                Список URL для сбора. Для публикации в own-каналы бренда по расписанию используйте
+                Channels → URL source → Настроить.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -272,10 +303,17 @@ export function CustomURLPage() {
                               URL Configuration {index + 1}
                             </h4>
                             <div className="flex items-center gap-2">
+                              {config.id && urlChannelByExternalId[config.id] != null && (
+                                <Link to={`/channels/${urlChannelByExternalId[config.id]}`}>
+                                  <Button type="button" size="sm" variant="primary">
+                                    Настроить в Channels
+                                  </Button>
+                                </Link>
+                              )}
                               {config.id && (
                                 <Link to={`/custom-url/${config.id}`}>
                                   <Button type="button" size="sm" variant="secondary">
-                                    Настроить
+                                    Legacy flow
                                   </Button>
                                 </Link>
                               )}

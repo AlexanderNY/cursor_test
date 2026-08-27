@@ -1,4 +1,9 @@
 # docker-compose.yml
+#
+# Полный стек: docker compose up -d --no-deps --build --force-recreate
+# Поочерёдно (меньше пик RAM): python deploy/scripts/compose_up_sequential.py
+#
+# Ollama слушает 11434; модель по умолчанию qwen2.5:1.5b (~1GB, лимит ≤3GB), GPU: gpus: all
 
 # Публичный URL для OAuth/redirect (IP роутера). Проброс NAT: 95.165.87.163 → 192.168.1.66
 x-public-url: &public-url "http://95.165.87.163"
@@ -12,8 +17,8 @@ x-ui-public-ports: &ui-public-ports
   - "127.0.0.1:8100:8100/udp"
 
 x-ai-environment: &ai-environment
-  AI_SERVICE_URL: http://ollama:65535
-  AI_MODEL: qwen2.5:3b
+  AI_SERVICE_URL: http://ollama:11434
+  AI_MODEL: ${AI_MODEL:-qwen2.5:1.5b}
   # Короткие таймауты: при мёртвом/нестабильном Ollama пайплайн не зависает.
   AI_TIMEOUT_SEC: "30"
   AI_REALTIME_TIMEOUT_SEC: "8"
@@ -22,8 +27,7 @@ x-ai-environment: &ai-environment
   AI_CIRCUIT_RECOVERY_TIMEOUT_SEC: "30"
   AI_AVAILABILITY_PROBE_TIMEOUT_SEC: "2"
   AI_AVAILABILITY_CACHE_FAIL_TTL_SEC: "15"
-  # Kill-switch поверх тоггла Checks → AI. По умолчанию true — иначе UI «Включена», а запросы падают.
-  # Ollama поднимается только с профилем: docker compose --profile ai up -d
+  # Kill-switch поверх тоггла Checks → AI.
   AI_ENABLED: "${AI_ENABLED:-true}"
   CORE_SERVICE_URL: http://core:8002
   AI_SETTINGS_URL: http://core:8002/internal/ai-enabled
@@ -35,7 +39,7 @@ x-host-docker-internal: &host-docker-internal
     - "host.docker.internal:host-gateway"
 
 # Hard caps so a full stack cannot balloon Docker Desktop / host RAM.
-# Light API/UI ≈ 512m; workers ≈ 768m; Chromium bots ≈ 1.5g; Ollama ≈ 4g.
+# Light API/UI ≈ 512m; workers ≈ 768m; Chromium bots ≈ 1.5g; Ollama host RAM ≈ 2g (веса на GPU).
 x-mem-light: &mem-light
   mem_limit: 512m
   mem_reservation: 128m
@@ -50,8 +54,8 @@ x-mem-selenium: &mem-selenium
   shm_size: 512m
 
 x-mem-ollama: &mem-ollama
-  mem_limit: 4g
-  mem_reservation: 1g
+  mem_limit: 2g
+  mem_reservation: 512m
 
 services:
   core:
@@ -281,11 +285,18 @@ services:
 
   ollama:
     <<: *mem-ollama
-    profiles: ["ai"]
     image: ollama/ollama:latest
+    # RTX 3070 Ti: веса модели в VRAM, host RAM ограничен mem_limit 2g
     gpus: all
     ports:
-      - "127.0.0.1:65535:65535"
+      - "127.0.0.1:11434:11434"
+    environment:
+      OLLAMA_HOST: 0.0.0.0:11434
+      OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:-5m}
+      OLLAMA_MAX_LOADED_MODELS: "1"
+      OLLAMA_NUM_PARALLEL: "1"
+      # Не держать лишний контекст в RAM/VRAM
+      OLLAMA_FLASH_ATTENTION: "1"
     volumes:
       - ollama_data:/root/.ollama
     healthcheck:
@@ -293,21 +304,22 @@ services:
       interval: 10s
       timeout: 5s
       retries: 12
-      start_period: 20s
+      start_period: 45s
+    restart: unless-stopped
     networks:
       monitoring_network:
         ipv4_address: 172.20.10.20
 
   ollama-init:
     <<: *mem-light
-    profiles: ["ai"]
     image: ollama/ollama:latest
     depends_on:
       ollama:
         condition: service_healthy
     environment:
-      OLLAMA_HOST: http://ollama:65535
-      OLLAMA_MODEL: qwen2.5:3b
+      OLLAMA_HOST: http://ollama:11434
+      # ~986MB GGUF — укладывается в лимит «не более 3GB»
+      OLLAMA_MODEL: ${AI_MODEL:-qwen2.5:1.5b}
     entrypoint:
       - /bin/sh
       - -c
@@ -325,6 +337,7 @@ services:
         echo "Pulling $$OLLAMA_MODEL..."
         ollama pull "$$OLLAMA_MODEL"
         echo "Model $$OLLAMA_MODEL is ready."
+        ollama list
     restart: "no"
     networks:
       monitoring_network:

@@ -61,11 +61,22 @@ copy .env.example .env
 
 ## 3. Локальный запуск (монорепо)
 
-Из корня репозитория:
+Из корня репозитория. По умолчанию поднимается **полный стек** (все сервисы в `docker-compose.yaml`):
 
 ```powershell
 docker compose up -d --build
+# или полная пересборка без зависимостей:
+docker compose up -d --no-deps --build --force-recreate
 ```
+
+Поочерёдный старт (меньше пик RAM на Windows):
+
+```powershell
+python deploy/scripts/compose_up_sequential.py
+python deploy/scripts/compose_up_sequential.py --with 9to18,edge --build
+```
+
+Ollama API: http://127.0.0.1:11434 (внутри сети `http://ollama:11434`).
 
 UI: http://127.0.0.1:8100  
 API Gateway: http://127.0.0.1:8000  

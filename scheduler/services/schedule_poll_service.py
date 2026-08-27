@@ -305,23 +305,6 @@ async def run_poll_cycle() -> bool:
     await _sync_competitor_snapshots()
     await _recheck_stale_channel_auth()
 
-
-async def _recheck_stale_channel_auth() -> None:
-    base = (settings.CORE_SERVICE_URL or "").rstrip("/")
-    if not base:
-        return
-    url = f"{base}/internal/smm/channels/auth/recheck-stale"
-    try:
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            resp = await client.post(url, params={"max_age_hours": 24})
-        if resp.status_code >= 400:
-            logger.warning("Channel auth recheck failed: %s %s", resp.status_code, resp.text)
-        else:
-            data = resp.json()
-            if data.get("channels_updated"):
-                logger.info("Channel auth rechecked: %s", data.get("channels_updated"))
-    except Exception as e:
-        logger.warning("Channel auth recheck error: %s", e)
     try:
         async with get_db_connection() as conn:
             async with conn.cursor() as cur:
@@ -343,6 +326,24 @@ async def _recheck_stale_channel_auth() -> None:
         logger.debug("service_cycle_log skip: %s", e)
     _last_poll_at = datetime.utcnow()
     return changed
+
+
+async def _recheck_stale_channel_auth() -> None:
+    base = (settings.CORE_SERVICE_URL or "").rstrip("/")
+    if not base:
+        return
+    url = f"{base}/internal/smm/channels/auth/recheck-stale"
+    try:
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            resp = await client.post(url, params={"max_age_hours": 24})
+        if resp.status_code >= 400:
+            logger.warning("Channel auth recheck failed: %s %s", resp.status_code, resp.text)
+        else:
+            data = resp.json()
+            if data.get("channels_updated"):
+                logger.info("Channel auth rechecked: %s", data.get("channels_updated"))
+    except Exception as e:
+        logger.warning("Channel auth recheck error: %s", e)
 
 
 async def _run_smm_jobs() -> None:

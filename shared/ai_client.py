@@ -71,8 +71,8 @@ class SentimentResult:
 
 @dataclass
 class AIClientConfig:
-    service_url: str = field(default_factory=lambda: os.getenv("AI_SERVICE_URL", "http://ollama:65535"))
-    model: str = field(default_factory=lambda: os.getenv("AI_MODEL", "qwen2.5:3b"))
+    service_url: str = field(default_factory=lambda: os.getenv("AI_SERVICE_URL", "http://ollama:11434"))
+    model: str = field(default_factory=lambda: os.getenv("AI_MODEL", "qwen2.5:1.5b"))
     timeout_sec: float = field(default_factory=lambda: float(os.getenv("AI_TIMEOUT_SEC", "30")))
     realtime_timeout_sec: float = field(
         default_factory=lambda: float(os.getenv("AI_REALTIME_TIMEOUT_SEC", "8"))

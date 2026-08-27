@@ -8,9 +8,9 @@ services:
       dockerfile: Dockerfile
       target: production
     container_name: ui-9to18
-    # No host port publish — traffic only via ui-edge on edge_net
-    expose:
-      - "8200"
+    # Localhost only — public traffic via ui-edge on edge_net
+    ports:
+      - "${BIND_HOST:-127.0.0.1}:8200:8200/tcp"
     networks:
       - edge_net
     restart: unless-stopped

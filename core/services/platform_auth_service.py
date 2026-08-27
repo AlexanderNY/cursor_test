@@ -266,6 +266,18 @@ class PlatformAuthService:
                 "auth_checked_at": now,
             }
 
+        if network == "url":
+            return {
+                "auth_status": "not_required",
+                "auth_error": None,
+                "auth_capabilities": {
+                    "can_collect": True,
+                    "can_publish_text": False,
+                    "can_alert": False,
+                },
+                "auth_checked_at": now,
+            }
+
         if network == "tg":
             result = await self._probe_tg_channel(user_id, ext, now)
         elif network == "vk":
@@ -528,6 +540,10 @@ class PlatformAuthService:
     ) -> None:
         """Publish requires ownership confirmation; collect/alert only need platform session."""
         net = channel.get("network", "tg")
+
+        if net == "url":
+            # URL sources do not publish themselves; targets are own TG/VK channels.
+            return
 
         if updates.get("publish_enabled") is True:
             await self.require_platform(user_id, net, PlatformAction.PUBLISH_TEXT)

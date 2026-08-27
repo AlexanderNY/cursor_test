@@ -19,6 +19,13 @@ from services.quota_service import (
     plan_feature,
     plan_limit,
 )
+from services.url_channel_sync import (
+    ensure_curl_url_item,
+    new_url_channel_external_id,
+    remove_curl_url_item,
+    get_curl_url_item,
+    sync_url_channel_to_curl,
+)
 
 BRAND_PALETTE = [
     "#3B82F6",
@@ -490,30 +497,55 @@ class SmmService:
         user_id: int,
         brand_id: int,
         network: str,
-        external_id: str,
+        external_id: str = "",
         title: Optional[str] = None,
         kind: str = "channel",
         role: str = "own",
         color_override: Optional[str] = None,
+        initial_url: Optional[str] = None,
     ) -> dict:
         brand = await self.get_brand(user_id, brand_id)
         if not brand:
             raise ValueError("Brand not found")
-        if network not in ("tg", "vk"):
-            raise ValueError("network must be tg or vk")
+        network = (network or "").lower().strip()
+        if network not in ("tg", "vk", "url"):
+            raise ValueError("network must be tg, vk or url")
         if role not in ("own", "competitor", "source"):
             raise ValueError("invalid role")
         if kind not in ("channel", "group", "public"):
             raise ValueError("invalid kind")
-        if role == "own":
-            count = await self.count_own_channels(user_id)
-            await ensure_smm_limit(user_id, "max_own_channels", count, units=1)
-        if role == "competitor":
-            await ensure_smm_feature(user_id, "competitors")
 
-        ext = str(external_id or "").strip()
-        if not ext:
-            raise ValueError("Укажите ID канала")
+        # URL sources are never publish destinations / own quota
+        if network == "url":
+            role = "source"
+            kind = "public"
+            ext = new_url_channel_external_id()
+            page_url = (initial_url or "").strip()
+            if not page_url and title and str(title).strip().lower().startswith(("http://", "https://")):
+                page_url = str(title).strip()
+            if not page_url:
+                raise ValueError("Укажите URL страницы для сбора")
+            display_title = (title or "").strip()
+            if not display_title or display_title.lower().startswith(("http://", "https://")):
+                # Derive short title from host when user only provided URL
+                try:
+                    from urllib.parse import urlparse
+
+                    host = urlparse(page_url).netloc or page_url
+                    display_title = host.replace("www.", "") or page_url
+                except Exception:
+                    display_title = page_url
+            title = display_title
+            await ensure_curl_url_item(user_id, ext, title, initial_url=page_url)
+        else:
+            ext = str(external_id or "").strip()
+            if not ext:
+                raise ValueError("Укажите ID канала")
+            if role == "own":
+                count = await self.count_own_channels(user_id)
+                await ensure_smm_limit(user_id, "max_own_channels", count, units=1)
+            if role == "competitor":
+                await ensure_smm_feature(user_id, "competitors")
 
         # Friendly duplicate check before INSERT (UNIQUE brand_id, network, external_id)
         existing = await self.list_channels(user_id, brand_id)
@@ -543,7 +575,7 @@ class SmmService:
             "auth_capabilities": {},
             "auth_checked_at": datetime.utcnow(),
         }
-        if role == "competitor":
+        if role == "competitor" or network == "url":
             auth_probe["auth_status"] = "not_required"
         else:
             auth_probe = await platform_auth_service.probe_channel_access(
@@ -551,6 +583,8 @@ class SmmService:
             )
 
         is_owned = auth_probe.get("auth_status") == "connected"
+        publish_enabled = role == "own" and is_owned
+        collect_enabled = False if network == "url" else role in ("source", "own")
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
@@ -572,8 +606,8 @@ class SmmService:
                             kind,
                             role,
                             color_override,
-                            role == "own" and is_owned,
-                            role in ("source", "own"),
+                            publish_enabled,
+                            collect_enabled,
                             auth_probe.get("auth_status", "unknown"),
                             auth_probe.get("auth_error"),
                             auth_probe.get("auth_checked_at") or datetime.utcnow(),
@@ -587,6 +621,11 @@ class SmmService:
                     if "unique" in msg or "duplicate" in msg:
                         raise ValueError(
                             f"Канал {network}/{ext} уже есть у этого бренда"
+                        ) from exc
+                    if "check" in msg or "нарушает ограничение-проверку" in str(exc) or "checkviolation" in type(exc).__name__.lower():
+                        raise ValueError(
+                            "Сеть 'url' не разрешена схемой БД. "
+                            "Примените deploy/sql/patch_smm_brand_channels_network_url.sql"
                         ) from exc
                     raise
                 row = await cur.fetchone()
@@ -619,6 +658,9 @@ class SmmService:
                 ch = _row_channel(row[:CHANNEL_FIELD_COUNT])
                 ch["brand_name"] = row[CHANNEL_FIELD_COUNT]
                 ch["brand_color"] = row[CHANNEL_FIELD_COUNT + 1]
+                if ch.get("network") == "url":
+                    item = await get_curl_url_item(user_id, str(ch.get("external_id") or ""))
+                    ch["url_config"] = item
                 return ch
         finally:
             await release_db_connection(conn)
@@ -638,6 +680,18 @@ class SmmService:
             return None
 
         from services.platform_auth_service import platform_auth_service
+
+        url_config = fields.pop("url_config", None)
+
+        # URL channels: never enable SMM publish_enabled (publish targets only)
+        if existing.get("network") == "url":
+            fields.pop("external_id", None)
+            if fields.get("role") not in (None, "source"):
+                fields["role"] = "source"
+            if fields.get("publish_enabled") is True:
+                fields["publish_enabled"] = False
+            if fields.get("alert_enabled") is True:
+                fields["alert_enabled"] = False
 
         await platform_auth_service.validate_channel_update(user_id, existing, fields)
 
@@ -686,58 +740,80 @@ class SmmService:
             if val is not None or key in ("discussion_external_id", "discussion_title"):
                 updates.append(f"{key} = %s")
                 params.append(val)
-        if "external_id" in fields or "role" in fields:
+        if existing.get("network") != "url" and ("external_id" in fields or "role" in fields):
             updates.append("auth_status = %s")
             params.append("unknown")
             updates.append("auth_checked_at = NULL")
             updates.append("auth_error = NULL")
-        if not updates:
-            channels = await self.list_channels(user_id, brand_id)
-            return next((c for c in channels if c["id"] == channel_id), None)
-        params.extend([channel_id, brand_id])
-        conn = await get_db_connection()
-        try:
-            async with conn.cursor() as cur:
-                await cur.execute(
-                    f"""
-                    UPDATE smm_brand_channels SET {', '.join(updates)}
-                    WHERE id = %s AND brand_id = %s
-                    RETURNING {CHANNEL_RETURNING}
-                    """,
-                    params,
-                )
-                row = await cur.fetchone()
-                ch = _row_channel(row) if row else None
-                if ch and ("external_id" in fields or "role" in fields):
-                    from services.platform_auth_service import platform_auth_service
 
-                    probe = await platform_auth_service.probe_channel_access(
-                        user_id,
-                        ch["network"],
-                        ch["external_id"],
-                        ch.get("role") or "own",
-                        strict=False,
+        ch: Optional[dict] = None
+        if updates:
+            params.extend([channel_id, brand_id])
+            conn = await get_db_connection()
+            try:
+                async with conn.cursor() as cur:
+                    await cur.execute(
+                        f"""
+                        UPDATE smm_brand_channels SET {', '.join(updates)}
+                        WHERE id = %s AND brand_id = %s
+                        RETURNING {CHANNEL_RETURNING}
+                        """,
+                        params,
                     )
-                    await platform_auth_service.persist_channel_auth(channel_id, probe)
-                    # Ownership lost → force publish off
-                    if (
-                        ch.get("role") == "own"
-                        and probe.get("auth_status") != "connected"
-                        and ch.get("publish_enabled")
+                    row = await cur.fetchone()
+                    ch = _row_channel(row) if row else None
+                    if ch and existing.get("network") != "url" and (
+                        "external_id" in fields or "role" in fields
                     ):
-                        await cur.execute(
-                            """
-                            UPDATE smm_brand_channels
-                            SET publish_enabled = FALSE
-                            WHERE id = %s
-                            """,
-                            (channel_id,),
+                        probe = await platform_auth_service.probe_channel_access(
+                            user_id,
+                            ch["network"],
+                            ch["external_id"],
+                            ch.get("role") or "own",
+                            strict=False,
                         )
-                    refreshed = await self.get_channel(user_id, channel_id)
-                    return refreshed or ch
-                return ch
-        finally:
-            await release_db_connection(conn)
+                        await platform_auth_service.persist_channel_auth(channel_id, probe)
+                        if (
+                            ch.get("role") == "own"
+                            and probe.get("auth_status") != "connected"
+                            and ch.get("publish_enabled")
+                        ):
+                            await cur.execute(
+                                """
+                                UPDATE smm_brand_channels
+                                SET publish_enabled = FALSE
+                                WHERE id = %s
+                                """,
+                                (channel_id,),
+                            )
+            finally:
+                await release_db_connection(conn)
+
+        refreshed = await self.get_channel(user_id, channel_id)
+        if not refreshed:
+            return ch
+
+        if refreshed.get("network") == "url" and (
+            url_config is not None
+            or "publish_targets" in fields
+            or "collect_enabled" in fields
+            or "title" in fields
+        ):
+            brand_channels = await self.list_channels(user_id, brand_id)
+            all_user = await self.list_all_channels(user_id)
+            any_collect = any(
+                c.get("network") == "url" and c.get("collect_enabled") for c in all_user
+            )
+            item = await sync_url_channel_to_curl(
+                user_id,
+                refreshed,
+                url_config=url_config if isinstance(url_config, dict) else None,
+                brand_channels=brand_channels,
+                any_url_collect_enabled=any_collect,
+            )
+            refreshed["url_config"] = item
+
+        return refreshed
 
     async def list_all_channels(
         self, user_id: int, brand_id: Optional[int] = None
@@ -782,6 +858,7 @@ class SmmService:
         brand = await self.get_brand(user_id, brand_id)
         if not brand:
             return False
+        existing = await self.get_channel(user_id, channel_id)
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
@@ -789,9 +866,31 @@ class SmmService:
                     "DELETE FROM smm_brand_channels WHERE id = %s AND brand_id = %s",
                     (channel_id, brand_id),
                 )
-                return cur.rowcount > 0
+                deleted = cur.rowcount > 0
         finally:
             await release_db_connection(conn)
+        if deleted and existing and existing.get("network") == "url":
+            await remove_curl_url_item(user_id, str(existing.get("external_id") or ""))
+            await self._refresh_curl_collect_enabled(user_id)
+        return deleted
+
+    async def _refresh_curl_collect_enabled(self, user_id: int) -> None:
+        """Set curl_settings.collect_enabled from any URL channel with collect_enabled."""
+        from services.profile_service import profile_service
+
+        all_ch = await self.list_all_channels(user_id)
+        any_collect = any(
+            c.get("network") == "url" and c.get("collect_enabled") for c in all_ch
+        )
+        settings = await profile_service.get_curl_settings(user_id)
+        if not settings:
+            return
+        if bool(settings.get("collect_enabled")) == any_collect:
+            return
+        await profile_service.save_curl_settings(
+            user_id,
+            {**settings, "collect_enabled": any_collect},
+        )
 
     async def list_inbox(
         self,
