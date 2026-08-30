@@ -7,44 +7,74 @@ import {
 } from '@/data/learn/learn-store'
 import { getSortedRubrics, type LearnRubricId } from '@/data/learn'
 
-export function useLearnPosts(): {
+export function useLearnPosts(opts?: { admin?: boolean }): {
   posts: LearnPost[]
   isReady: boolean
+  error: string
   reload: () => void
 } {
   const [posts, setPosts] = useState<LearnPost[]>([])
   const [isReady, setIsReady] = useState(false)
+  const [error, setError] = useState('')
+  const admin = Boolean(opts?.admin)
 
   const reload = useCallback(() => {
-    setPosts(loadLearnPosts())
-    setIsReady(true)
-  }, [])
+    setIsReady(false)
+    setError('')
+    void loadLearnPosts({ admin })
+      .then((list) => {
+        setPosts(list)
+        setIsReady(true)
+      })
+      .catch((err) => {
+        setError(err instanceof Error ? err.message : 'Не удалось загрузить Learn')
+        setPosts([])
+        setIsReady(true)
+      })
+  }, [admin])
 
   useEffect(() => {
     reload()
   }, [reload])
 
-  return { posts, isReady, reload }
+  return { posts, isReady, error, reload }
 }
 
-export function useLearnPost(slug: string): {
+export function useLearnPost(
+  slug: string,
+  opts?: { admin?: boolean; preview?: boolean },
+): {
   post: LearnPost | undefined
   isReady: boolean
+  error: string
   reload: () => void
 } {
   const [post, setPost] = useState<LearnPost | undefined>()
   const [isReady, setIsReady] = useState(false)
+  const [error, setError] = useState('')
+  const admin = Boolean(opts?.admin)
+  const preview = Boolean(opts?.preview)
 
   const reload = useCallback(() => {
-    setPost(getLearnPostBySlug(slug))
-    setIsReady(true)
-  }, [slug])
+    setIsReady(false)
+    setError('')
+    void getLearnPostBySlug(slug, { admin, preview })
+      .then((item) => {
+        setPost(item)
+        setIsReady(true)
+      })
+      .catch((err) => {
+        setError(err instanceof Error ? err.message : 'Не удалось загрузить выпуск')
+        setPost(undefined)
+        setIsReady(true)
+      })
+  }, [slug, admin, preview])
 
   useEffect(() => {
     reload()
   }, [reload])
 
-  return { post, isReady, reload }
+  return { post, isReady, error, reload }
 }
 
 export function getPublishedPosts(posts: LearnPost[]): LearnPost[] {
@@ -64,10 +94,68 @@ export function getAdjacentPosts(
   if (index < 0) {
     return { prev: undefined, next: undefined }
   }
+  const current = track[index]
+  const seasonPrefix = current.episode.replace(/\d+$/, '') || current.episode.slice(0, 1)
+  const sameSeason = track.filter((post) => {
+    const prefix = post.episode.replace(/\d+$/, '') || post.episode.slice(0, 1)
+    return prefix === seasonPrefix
+  })
+  const seasonIndex = sameSeason.findIndex((post) => post.slug === slug)
+  if (seasonIndex >= 0) {
+    return {
+      prev: sameSeason[seasonIndex - 1],
+      next: sameSeason[seasonIndex + 1],
+    }
+  }
   return {
     prev: track[index - 1],
     next: track[index + 1],
   }
+}
+
+export function getSeasonTracks(posts: LearnPost[]): {
+  id: string
+  title: string
+  note: string
+  episodes: LearnPost[]
+}[] {
+  const published = getPublishedPosts(posts)
+  const seasonB = published.filter((post) => post.episode.startsWith('B'))
+  const seasonS01 = published.filter((post) => post.episode.startsWith('S01'))
+  const other = published.filter(
+    (post) => !post.episode.startsWith('B') && !post.episode.startsWith('S01'),
+  )
+  const tracks: {
+    id: string
+    title: string
+    note: string
+    episodes: LearnPost[]
+  }[] = []
+  if (seasonB.length > 0) {
+    tracks.push({
+      id: 'b',
+      title: 'Сезон B · Первое приложение',
+      note: 'Git → Python → React → Docker. Сквозной проект notes.',
+      episodes: seasonB,
+    })
+  }
+  if (seasonS01.length > 0) {
+    tracks.push({
+      id: 's01',
+      title: 'Сезон 1 · Слои и стенд',
+      note: 'Углубление: заявки, Postgres, Compose, Minikube.',
+      episodes: seasonS01,
+    })
+  }
+  if (other.length > 0) {
+    tracks.push({
+      id: 'other',
+      title: 'Другие выпуски',
+      note: 'Вне основных сезонов',
+      episodes: other,
+    })
+  }
+  return tracks
 }
 
 export function rubricTitleById(rubricId: LearnRubricId): string {

@@ -33,6 +33,7 @@ S01E02 · Карта · кто кому звонит
 
 ## Ссылки
 
+- CopyParse (регистрация, учебный контур): https://www.copyparse.ru/sign-up?utm_source=tg&utm_campaign=s01e02
 - Высокоуровневая схема стенда — docs/ARCHITECTURE.md (репозиторий курса / CopyParse)
 - Что делает UI после входа — docs/USER_GUIDE.md, раздел про кросспостинг
 - Зачем шлюз перед микросервисами (обзор паттерна BFF/gateway) — https://learn.microsoft.com/ru-ru/azure/architecture/microservices/design/gateway

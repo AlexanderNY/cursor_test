@@ -10,8 +10,9 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import get_settings
 from app.db import close_pool, init_pool
-from app.routers import credentials, runs, scenarios
+from app.routers import credentials, discoveries, runs, scenarios, sites
 from app.schemas.models import HealthOut
+from app.services.discovery_worker import start_discovery_worker, stop_discovery_worker
 from app.services.worker import start_worker, stop_worker
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -24,20 +25,24 @@ async def lifespan(_app: FastAPI):
     settings.artifacts_path.mkdir(parents=True, exist_ok=True)
     await init_pool()
     await start_worker()
+    await start_discovery_worker()
     logger.info(
         "tester ready; TARGET_UI_URL=%s ARTIFACTS_DIR=%s",
         settings.TARGET_UI_URL,
         settings.ARTIFACTS_DIR,
     )
     yield
+    await stop_discovery_worker()
     await stop_worker()
     await close_pool()
 
 
-app = FastAPI(title="E2E Tester", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="E2E Tester", version="0.3.0", lifespan=lifespan)
 app.include_router(credentials.router)
+app.include_router(sites.router)
 app.include_router(scenarios.router)
 app.include_router(runs.router)
+app.include_router(discoveries.router)
 
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 
@@ -49,7 +54,10 @@ async def health() -> HealthOut:
         status="ok",
         target_ui_url=settings.TARGET_UI_URL,
         target_api_url=settings.TARGET_API_URL,
-        details={"artifacts_dir": settings.ARTIFACTS_DIR},
+        details={
+            "artifacts_dir": settings.ARTIFACTS_DIR,
+            "sqlite_path": str(settings.sqlite_path),
+        },
     )
 
 

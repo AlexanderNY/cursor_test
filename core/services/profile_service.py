@@ -202,8 +202,9 @@ class ProfileService:
                         clean_html, process_services, status_review_after_process,
                         add_static_html, static_html_content,
                         summarize_enabled, summarize_min_length, digest_interval_min,
-                        digest_channel, classification_enabled, classification_categories
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        digest_channel, classification_enabled, classification_categories,
+                        batch_enrichment_enabled
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (user_id) DO UPDATE SET
                         publish_enabled = EXCLUDED.publish_enabled,
                         collect_enabled = EXCLUDED.collect_enabled,
@@ -234,6 +235,7 @@ class ProfileService:
                         digest_channel = EXCLUDED.digest_channel,
                         classification_enabled = EXCLUDED.classification_enabled,
                         classification_categories = EXCLUDED.classification_categories,
+                        batch_enrichment_enabled = EXCLUDED.batch_enrichment_enabled,
                         auth_state = CASE
                             WHEN tg_profiles.api_id IS DISTINCT FROM EXCLUDED.api_id
                               OR tg_profiles.api_hash IS DISTINCT FROM EXCLUDED.api_hash
@@ -315,6 +317,7 @@ class ProfileService:
                         data.get("digest_channel"),
                         data.get("classification_enabled", False),
                         classification_categories_json,
+                        data.get("batch_enrichment_enabled", False),
                     )
                 )
                 row = await cur.fetchone()
@@ -371,6 +374,7 @@ class ProfileService:
         profile.setdefault("digest_interval_min", 30)
         profile.setdefault("digest_channel", None)
         profile.setdefault("classification_enabled", False)
+        profile.setdefault("batch_enrichment_enabled", False)
         cc = profile.get("classification_categories")
         if isinstance(cc, str):
             try:
@@ -1096,7 +1100,6 @@ class ProfileService:
     async def save_vk_profile(self, user_id: int, data: Dict) -> Dict:
         """Сохраняет или обновляет профиль VKontakte."""
         access_token = data.get("access_token")
-        # При обновлении не перезаписываем токен маской "***"
         if access_token in (None, "", "***"):
             access_token = None
         user_access_token = data.get("user_access_token")
@@ -1105,6 +1108,12 @@ class ProfileService:
         vk_app_secret = data.get("vk_app_secret")
         if vk_app_secret in (None, "", "***"):
             vk_app_secret = None
+        vk_app_service_key = data.get("vk_app_service_key")
+        if vk_app_service_key in (None, "", "***"):
+            vk_app_service_key = None
+        vk_callback_secret = data.get("vk_callback_secret")
+        if vk_callback_secret in (None, "", "***"):
+            vk_callback_secret = None
         groups_to_read = data.get("groups_to_read", [])
         if not isinstance(groups_to_read, list):
             groups_to_read = []
@@ -1124,8 +1133,13 @@ class ProfileService:
                         message, attachments, signed, mark_as_ads,
                         access_token, user_access_token, groups_to_read, group_to_post,
                         post_to_own_wall, users_to_read,
-                        vk_app_id, vk_app_secret, vk_frontend_url, vk_public_gateway_url
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        vk_app_id, vk_app_secret, vk_app_service_key,
+                        vk_frontend_url, vk_public_gateway_url,
+                        vk_callback_confirmation, vk_callback_secret
+                    ) VALUES (
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s
+                    )
                     ON CONFLICT (user_id) DO UPDATE SET
                         publish_enabled = EXCLUDED.publish_enabled,
                         collect_enabled = EXCLUDED.collect_enabled,
@@ -1146,9 +1160,19 @@ class ProfileService:
                         users_to_read = COALESCE(EXCLUDED.users_to_read, vk_profiles.users_to_read),
                         vk_app_id = COALESCE(NULLIF(EXCLUDED.vk_app_id, ''), vk_profiles.vk_app_id),
                         vk_app_secret = COALESCE(NULLIF(EXCLUDED.vk_app_secret, ''), vk_profiles.vk_app_secret),
+                        vk_app_service_key = COALESCE(
+                            NULLIF(EXCLUDED.vk_app_service_key, ''), vk_profiles.vk_app_service_key
+                        ),
                         vk_frontend_url = COALESCE(NULLIF(EXCLUDED.vk_frontend_url, ''), vk_profiles.vk_frontend_url),
                         vk_public_gateway_url = COALESCE(
                             NULLIF(EXCLUDED.vk_public_gateway_url, ''), vk_profiles.vk_public_gateway_url
+                        ),
+                        vk_callback_confirmation = COALESCE(
+                            NULLIF(EXCLUDED.vk_callback_confirmation, ''),
+                            vk_profiles.vk_callback_confirmation
+                        ),
+                        vk_callback_secret = COALESCE(
+                            NULLIF(EXCLUDED.vk_callback_secret, ''), vk_profiles.vk_callback_secret
                         ),
                         updated_at = CURRENT_TIMESTAMP
                     RETURNING *
@@ -1174,9 +1198,12 @@ class ProfileService:
                         json.dumps(users_to_read),
                         data.get("vk_app_id") or None,
                         vk_app_secret,
+                        vk_app_service_key,
                         data.get("vk_frontend_url") or None,
                         data.get("vk_public_gateway_url") or None,
-                    )
+                        (data.get("vk_callback_confirmation") or None),
+                        vk_callback_secret,
+                    ),
                 )
                 row = await cur.fetchone()
                 return self._row_to_vk_profile(row, cur.description)
@@ -1218,13 +1245,15 @@ class ProfileService:
             await release_db_connection(conn)
 
     async def get_vk_oauth_config_raw(self, user_id: int) -> Optional[Dict[str, Any]]:
-        """OAuth-приложение VK из профиля (секрет без маскирования)."""
+        """OAuth-приложение VK из профиля (секрет без маскирования). Только БД."""
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
-                    SELECT vk_app_id, vk_app_secret, vk_frontend_url, vk_public_gateway_url
+                    SELECT vk_app_id, vk_app_secret, vk_app_service_key,
+                           vk_frontend_url, vk_public_gateway_url,
+                           vk_callback_confirmation, vk_callback_secret
                     FROM vk_profiles WHERE user_id = %s
                     """,
                     (user_id,),
@@ -1235,8 +1264,53 @@ class ProfileService:
                 return {
                     "vk_app_id": row[0],
                     "vk_app_secret": row[1],
-                    "vk_frontend_url": row[2],
-                    "vk_public_gateway_url": row[3],
+                    "vk_app_service_key": row[2],
+                    "vk_frontend_url": row[3],
+                    "vk_public_gateway_url": row[4],
+                    "vk_callback_confirmation": row[5],
+                    "vk_callback_secret": row[6],
+                }
+        finally:
+            await release_db_connection(conn)
+
+    async def get_vk_callback_config_by_group_id(self, group_id: int) -> Optional[Dict[str, Any]]:
+        """Callback confirmation/secret по group_id (group_to_post = id, -id, club{id})."""
+        if group_id == 0:
+            return None
+        abs_gid = abs(int(group_id))
+        if abs_gid <= 0:
+            return None
+        gid = str(abs_gid)
+        neg = f"-{abs_gid}"
+        club = f"club{abs_gid}"
+        public = f"public{abs_gid}"
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT user_id, vk_callback_confirmation, vk_callback_secret, group_to_post
+                    FROM vk_profiles
+                    WHERE group_to_post IS NOT NULL
+                      AND (
+                        TRIM(group_to_post) = %s
+                        OR TRIM(group_to_post) = %s
+                        OR LOWER(TRIM(group_to_post)) = LOWER(%s)
+                        OR LOWER(TRIM(group_to_post)) = LOWER(%s)
+                      )
+                    ORDER BY updated_at DESC NULLS LAST
+                    LIMIT 1
+                    """,
+                    (gid, neg, club, public),
+                )
+                row = await cur.fetchone()
+                if not row:
+                    return None
+                return {
+                    "user_id": row[0],
+                    "vk_callback_confirmation": row[1],
+                    "vk_callback_secret": row[2],
+                    "group_to_post": row[3],
                 }
         finally:
             await release_db_connection(conn)
@@ -1264,6 +1338,44 @@ class ProfileService:
                 )
         finally:
             await release_db_connection(conn)
+
+    async def save_vk_community_token(
+        self,
+        user_id: int,
+        access_token: str,
+        group_to_post: Optional[str] = None,
+    ) -> None:
+        """Сохраняет токен сообщества (access_token) после group OAuth."""
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                if group_to_post:
+                    await cur.execute(
+                        """
+                        INSERT INTO vk_profiles (user_id, access_token, group_to_post, from_group)
+                        VALUES (%s, %s, %s, TRUE)
+                        ON CONFLICT (user_id) DO UPDATE SET
+                            access_token = EXCLUDED.access_token,
+                            group_to_post = COALESCE(EXCLUDED.group_to_post, vk_profiles.group_to_post),
+                            from_group = TRUE,
+                            updated_at = CURRENT_TIMESTAMP
+                        """,
+                        (user_id, access_token, group_to_post),
+                    )
+                else:
+                    await cur.execute(
+                        """
+                        INSERT INTO vk_profiles (user_id, access_token, from_group)
+                        VALUES (%s, %s, TRUE)
+                        ON CONFLICT (user_id) DO UPDATE SET
+                            access_token = EXCLUDED.access_token,
+                            from_group = TRUE,
+                            updated_at = CURRENT_TIMESTAMP
+                        """,
+                        (user_id, access_token),
+                    )
+        finally:
+            await release_db_connection(conn)
     
     def _row_to_vk_profile(self, row, description) -> Dict:
         """Преобразует строку БД в словарь профиля VKontakte. Токен маскируется в ответах."""
@@ -1285,12 +1397,22 @@ class ProfileService:
         profile["vk_connected"] = has_user_oauth
         if "vk_user_id" not in profile:
             profile["vk_user_id"] = None
+        # Флаги наличия секретов (значение в API не отдаём — только маска / has_*)
+        profile["has_access_token"] = bool((profile.get("access_token") or "").strip())
+        profile["has_user_access_token"] = bool((profile.get("user_access_token") or "").strip())
+        profile["has_vk_app_secret"] = bool((profile.get("vk_app_secret") or "").strip())
+        profile["has_vk_app_service_key"] = bool((profile.get("vk_app_service_key") or "").strip())
+        profile["has_vk_callback_secret"] = bool((profile.get("vk_callback_secret") or "").strip())
         if profile.get("access_token"):
             profile["access_token"] = "***"
         if profile.get("user_access_token"):
             profile["user_access_token"] = "***"
         if profile.get("vk_app_secret"):
             profile["vk_app_secret"] = "***"
+        if profile.get("vk_app_service_key"):
+            profile["vk_app_service_key"] = "***"
+        if profile.get("vk_callback_secret"):
+            profile["vk_callback_secret"] = "***"
         return profile
     
     # ==================== cURL ====================

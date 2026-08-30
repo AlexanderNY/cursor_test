@@ -115,7 +115,14 @@ async def handle_schedule(request: ScheduleRequest) -> ScheduleResponse:
                 ),
             }
             if not result.get("error"):
-                detail["text"] = result.get("text") or ""
+                screenshot_only = bool(getattr(item, "screenshot_only", False))
+                raw_text = result.get("text") or ""
+                final_text = "" if screenshot_only else raw_text
+                detail["text"] = final_text
+                detail["has_text"] = bool(final_text)
+                detail["screenshot_only"] = screenshot_only
+                if getattr(item, "id", None):
+                    detail["url_item_id"] = item.id
                 if result.get("screenshot_path"):
                     detail["screenshot_path"] = result["screenshot_path"]
                 elif result.get("screenshot_base64"):

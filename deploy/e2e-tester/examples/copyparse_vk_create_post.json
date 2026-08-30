@@ -1,0 +1,112 @@
+{
+  "schema_version": 2,
+  "name": "copyparse_vk_create_post_test",
+  "site": "copyparse",
+  "base_url": "https://www.copyparse.ru",
+  "defaults": {
+    "timeout_ms": 45000,
+    "login": {
+      "path": "/sign-in",
+      "username_selector": "input[placeholder=\"Enter your username\"]",
+      "password_selector": "input[type=\"password\"]",
+      "submit_selector": "button[type=\"submit\"]"
+    }
+  },
+  "sections": [
+    {
+      "id": "auth",
+      "title": "Login",
+      "actions": [
+        { "action": "login_form" },
+        { "action": "wait_url", "contains": "/profile", "timeout_ms": 45000 },
+        { "action": "assert_text", "selector": "body", "contains": "Profile" },
+        { "action": "screenshot", "name": "S00_login" }
+      ]
+    },
+    {
+      "id": "home",
+      "title": "Главная",
+      "on_enter": [{ "action": "goto", "path": "/" }],
+      "actions": [
+        { "action": "wait", "ms": 2000 },
+        { "action": "screenshot", "name": "S01_home" }
+      ]
+    },
+    {
+      "id": "vkontakte",
+      "title": "VKontakte",
+      "on_enter": [{ "action": "goto", "path": "/vkontakte" }],
+      "actions": [
+        { "action": "wait_url", "contains": "/vkontakte", "timeout_ms": 30000 },
+        { "action": "assert_text", "selector": "body", "contains": "VKontakte Integration" },
+        { "action": "screenshot", "name": "S02_vkontakte" }
+      ]
+    },
+    {
+      "id": "create_vk_post",
+      "title": "Create VKontakte Post",
+      "actions": [
+        {
+          "action": "click",
+          "selector": "button:has-text(\"Create Post\")"
+        },
+        { "action": "wait", "ms": 1000 },
+        {
+          "action": "assert_text",
+          "selector": "body",
+          "contains": "Create VKontakte Post"
+        },
+        {
+          "action": "type",
+          "selector": ".ProseMirror",
+          "value": "ТЕСТ",
+          "clear": true
+        },
+        { "action": "wait", "ms": 500 },
+        {
+          "action": "screenshot",
+          "name": "S03_vk_post_filled"
+        },
+        {
+          "action": "click",
+          "selector": "button[type=\"submit\"]:has-text(\"Create Post\")"
+        },
+        { "action": "wait", "ms": 4000 },
+        {
+          "action": "screenshot",
+          "name": "S04_vk_post_submitted"
+        }
+      ]
+    },
+    {
+      "id": "posts_tab",
+      "title": "Posts → Refresh → найти ТЕСТ",
+      "actions": [
+        {
+          "action": "click",
+          "selector": "button:has-text(\"Posts\")"
+        },
+        { "action": "wait", "ms": 1500 },
+        {
+          "action": "assert_text",
+          "selector": "body",
+          "contains": "Collected and manual VKontakte posts"
+        },
+        {
+          "action": "click",
+          "selector": "button:has-text(\"Refresh\")"
+        },
+        { "action": "wait", "ms": 5000 },
+        {
+          "action": "assert_text",
+          "selector": "body",
+          "contains": "ТЕСТ"
+        },
+        {
+          "action": "screenshot",
+          "name": "S05_posts_has_test"
+        }
+      ]
+    }
+  ]
+}

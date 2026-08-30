@@ -12,24 +12,42 @@
       <h1>E2E Tester</h1>
       <p class="muted" id="health-line">Loading…</p>
       <p class="muted intro">
-        On-demand сервис браузерных E2E против уже запущенного основного стека.
-        Своя Postgres — только сценарии, креды и отчёты; Chromium ходит на ui:8100 через edge_net.
+        Универсальный on-demand сервис браузерных E2E. Один Docker-контейнер, SQLite в volume
+        (сайты, сценарии, креды, отчёты). Без отдельного Postgres.
       </p>
     </div>
   </header>
 
   <nav class="tabs">
-    <button type="button" class="tab active" data-tab="credentials">Credentials</button>
+    <button type="button" class="tab active" data-tab="sites">Sites</button>
+    <button type="button" class="tab" data-tab="credentials">Credentials</button>
+    <button type="button" class="tab" data-tab="discovery">Discovery</button>
+    <button type="button" class="tab" data-tab="builder">Builder</button>
     <button type="button" class="tab" data-tab="scenarios">Scenarios</button>
     <button type="button" class="tab" data-tab="runs">Runs</button>
     <button type="button" class="tab" data-tab="guide">Справка</button>
   </nav>
 
   <main>
-    <section id="tab-credentials" class="panel active">
+    <section id="tab-sites" class="panel active">
+      <h2>Sites</h2>
+      <p class="muted">Реестр целевых сайтов (base_url). При старте сидируется <code>copyparse</code> → https://www.copyparse.ru</p>
+      <form id="site-form" class="card form-grid">
+        <label>Name <input name="name" required placeholder="copyparse" /></label>
+        <label class="full">Base URL <input name="base_url" required placeholder="https://www.copyparse.ru" /></label>
+        <label class="full">Meta (JSON, optional)
+          <textarea name="meta" rows="4" placeholder='{"login":{"path":"/sign-in"}}'></textarea>
+        </label>
+        <button type="submit">Save site</button>
+      </form>
+      <div id="site-list" class="list"></div>
+    </section>
+
+    <section id="tab-credentials" class="panel">
       <h2>Credentials</h2>
+      <p class="muted">Логин/пароль для сайтов. Можно задать здесь или прямо в Builder. Секреты шифруются Fernet.</p>
       <form id="cred-form" class="card form-grid">
-        <label>Name <input name="name" required placeholder="admin_user" /></label>
+        <label>Name <input name="name" required placeholder="copyparse_admin" /></label>
         <label>Type
           <select name="cred_type" id="cred-type">
             <option value="password">password</option>
@@ -50,15 +68,150 @@
       <div id="cred-list" class="list"></div>
     </section>
 
+    <section id="tab-discovery" class="panel">
+      <h2>Discovery — обход сайта</h2>
+      <p class="muted">
+        Бот рекурсивно обходит сайт (same-origin), собирает ссылки и интерактивные элементы
+        (кнопки, submit). Отметьте нужные и создайте сценарий или отправьте в Builder.
+      </p>
+      <form id="discovery-form" class="card form-grid">
+        <label>Site
+          <select name="site_id" id="discovery-site-select">
+            <option value="">— указать URL вручную —</option>
+          </select>
+        </label>
+        <label class="full">Base URL override <input name="base_url" placeholder="https://www.copyparse.ru" /></label>
+        <label>Credentials (для login)
+          <select name="credentials_id" id="discovery-cred-select">
+            <option value="">— none —</option>
+          </select>
+        </label>
+        <label class="check-row">
+          <input type="checkbox" name="do_login" id="discovery-do-login" />
+          Сначала login
+        </label>
+        <label>Max pages <input name="max_pages" type="number" value="40" min="1" max="200" /></label>
+        <label>Max depth <input name="max_depth" type="number" value="3" min="0" max="10" /></label>
+        <button type="submit">Start discovery</button>
+      </form>
+
+      <div class="split">
+        <div>
+          <h3>История</h3>
+          <div id="discovery-list" class="list"></div>
+        </div>
+        <div>
+          <h3>Результат <span id="discovery-status" class="badge"></span></h3>
+          <div id="discovery-summary" class="summary-cards"></div>
+          <div class="row-actions" id="discovery-actions" style="display:none;margin-bottom:0.75rem">
+            <button type="button" class="secondary" id="discovery-select-all">Выбрать все</button>
+            <button type="button" class="secondary" id="discovery-select-none">Снять все</button>
+            <button type="button" class="secondary" id="discovery-to-builder">В Builder</button>
+            <button type="button" id="discovery-to-scenario">Создать сценарий</button>
+          </div>
+          <div id="discovery-filters" class="row-actions" style="display:none;margin-bottom:0.5rem">
+            <label class="check-row"><input type="checkbox" id="filter-link" checked /> links</label>
+            <label class="check-row"><input type="checkbox" id="filter-nav" checked /> nav</label>
+            <label class="check-row"><input type="checkbox" id="filter-button" checked /> buttons</label>
+            <label class="check-row"><input type="checkbox" id="filter-input" checked /> inputs</label>
+          </div>
+          <div id="discovery-items" class="discovery-items"></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-builder" class="panel">
+      <h2>Builder — конфигурация теста</h2>
+      <p class="muted">
+        Без ручного JSON: укажите сайт, логин, список разделов (ссылки) и кнопки.
+        Сервис соберёт JSON v2, сохранит site/credentials и сценарий.
+      </p>
+
+      <form id="builder-form" class="card form-grid">
+        <h3 class="full">Сайт</h3>
+        <label>Имя сценария <input name="name" required placeholder="my_site_smoke" /></label>
+        <label>Имя сайта <input name="site_name" placeholder="mysite" /></label>
+        <label class="full">Base URL <input name="base_url" required placeholder="https://www.copyparse.ru" /></label>
+        <label>Timeout (ms) <input name="timeout_ms" type="number" value="30000" min="1000" /></label>
+        <label>Существующий site
+          <select name="site_id" id="builder-site-select">
+            <option value="">— создать / обновить по имени —</option>
+          </select>
+        </label>
+
+        <h3 class="full">Логин</h3>
+        <label class="full check-row">
+          <input type="checkbox" name="login_enabled" id="builder-login-enabled" checked />
+          Выполнять login_form
+        </label>
+        <div id="builder-login-fields" class="form-grid full">
+          <label>Путь логина <input name="login_path" value="/sign-in" /></label>
+          <label>После логина URL содержит <input name="success_url" value="/profile" /></label>
+          <label>Текст на странице после логина <input name="success_text" value="Profile" /></label>
+          <label>Username selector <input name="user_sel" value='input[placeholder="Enter your username"]' /></label>
+          <label>Password selector <input name="pass_sel" value='input[type="password"]' /></label>
+          <label>Submit selector <input name="submit_sel" value='button[type="submit"]' /></label>
+          <label>Готовый credential
+            <select name="credentials_id" id="builder-cred-select">
+              <option value="">— создать из полей ниже —</option>
+            </select>
+          </label>
+          <label>Credential name <input name="credential_name" placeholder="mysite_admin" /></label>
+          <label>Username <input name="username" autocomplete="username" placeholder="Alex_admin" /></label>
+          <label>Password <input name="password" type="password" autocomplete="current-password" /></label>
+        </div>
+
+        <h3 class="full">Разделы сайта (ссылки)</h3>
+        <p class="muted full">Каждая строка — раздел: путь + текст для проверки. Кнопки — опционально.</p>
+        <div id="builder-pages" class="full pages-editor"></div>
+        <div class="full row-actions">
+          <button type="button" class="secondary" id="builder-add-page">+ Раздел</button>
+        </div>
+
+        <div class="full row-actions">
+          <button type="button" class="secondary" id="builder-preview">Preview JSON</button>
+          <button type="submit">Сохранить сценарий</button>
+        </div>
+        <label class="full">Preview
+          <textarea id="builder-preview-source" rows="12" readonly placeholder="Нажмите Preview JSON…"></textarea>
+        </label>
+      </form>
+    </section>
+
     <section id="tab-scenarios" class="panel">
       <h2>Scenarios</h2>
+
+      <form id="upload-form" class="card form-grid">
+        <h3 class="full">Загрузить свой сценарий</h3>
+        <p class="muted full">JSON / YAML / Playwright .py — файл сразу сохраняется в БД.</p>
+        <label>Name <input name="name" placeholder="optional (иначе имя файла)" /></label>
+        <label>Site
+          <select name="site_id" id="upload-site-select">
+            <option value="">— auto / none —</option>
+          </select>
+        </label>
+        <label>Credentials
+          <select name="credentials_id" id="upload-cred-select">
+            <option value="">— none —</option>
+          </select>
+        </label>
+        <label class="full">Файл <input type="file" name="file" id="upload-file" required accept=".yaml,.yml,.json,.py,text/*" /></label>
+        <button type="submit">Upload &amp; save</button>
+      </form>
+
       <form id="scenario-form" class="card form-grid">
-        <label>Name <input name="name" required placeholder="login_smoke" /></label>
+        <h3 class="full">Или вставить исходник вручную</h3>
+        <label>Name <input name="name" required placeholder="copyparse_smoke" /></label>
         <label>Format
           <select name="format">
-            <option value="yaml">yaml</option>
             <option value="json">json</option>
+            <option value="yaml">yaml</option>
             <option value="playwright_py">playwright_py</option>
+          </select>
+        </label>
+        <label>Site
+          <select name="site_id" id="scenario-site-select">
+            <option value="">— from JSON site / none —</option>
           </select>
         </label>
         <label>Default credentials
@@ -67,9 +220,9 @@
           </select>
         </label>
         <label class="full">Source
-          <textarea name="source" id="scenario-source" rows="14" required placeholder="name: login_smoke&#10;steps:&#10;  - action: login_form"></textarea>
+          <textarea name="source" id="scenario-source" rows="14" required placeholder='{"schema_version":2,"name":"smoke","sections":[...]}'></textarea>
         </label>
-        <label>Or upload file <input type="file" id="scenario-file" accept=".yaml,.yml,.json,.py,text/*" /></label>
+        <label>Load into editor <input type="file" id="scenario-file" accept=".yaml,.yml,.json,.py,text/*" /></label>
         <button type="submit">Save scenario</button>
       </form>
       <div id="scenario-list" class="list"></div>
@@ -81,11 +234,17 @@
         <label>Scenario
           <select name="scenario_id" id="run-scenario-select" required></select>
         </label>
+        <label>Site override
+          <select name="site_id" id="run-site-select">
+            <option value="">— scenario / JSON default —</option>
+          </select>
+        </label>
         <label>Credentials override
           <select name="credentials_id" id="run-cred-select">
             <option value="">— scenario default —</option>
           </select>
         </label>
+        <label class="full">Base URL override <input name="base_url" placeholder="optional https://…" /></label>
         <button type="submit">Start run</button>
       </form>
       <div class="split">
@@ -95,6 +254,12 @@
         </div>
         <div>
           <h3>Selected run <span id="run-status" class="badge"></span></h3>
+          <div id="run-report-actions" class="report-actions hidden">
+            <a id="run-report-html" class="btn-link" href="#" target="_blank" rel="noopener">Open HTML report</a>
+            <a id="run-report-zip" class="btn-link" href="#">Download ZIP</a>
+          </div>
+          <div id="run-summary" class="summary-cards"></div>
+          <div id="run-tree" class="result-tree"></div>
           <pre id="run-logs" class="logs"></pre>
           <div id="run-artifacts" class="artifacts"></div>
         </div>
@@ -105,132 +270,117 @@
       <nav class="guide-toc">
         <a href="#requirements">Требования</a>
         <a href="#start">Запуск</a>
-        <a href="#suites">Наборы сценариев</a>
+        <a href="#discovery-help">Discovery</a>
+        <a href="#builder-help">Builder</a>
+        <a href="#json-v2">JSON v2</a>
+        <a href="#suites">Наборы</a>
         <a href="#usage">Использование</a>
-        <a href="#yaml">YAML actions</a>
-        <a href="#playwright">Playwright .py</a>
+        <a href="#yaml">Actions</a>
         <a href="#notes">Важно</a>
       </nav>
 
       <article id="requirements" class="card guide-section">
         <h2>Требования</h2>
-        <p class="muted">Перед запуском тестера</p>
         <ol>
-          <li>Сеть <code>edge_net</code> существует.</li>
-          <li>Основной <code>docker compose</code> поднят (<code>ui</code> и <code>gateway</code> на <code>edge_net</code>).</li>
+          <li>Docker на локальном ПК.</li>
+          <li>Исходящий HTTPS для публичных сайтов; для сайта на хосте — <code>host.docker.internal</code>.</li>
+          <li>Данные в SQLite volume <code>tester_data</code> — отдельный Postgres не нужен.</li>
         </ol>
-        <pre class="code-block"># один раз
-docker network create edge_net
-
-# основной стек (из корня репозитория)
-docker compose up -d</pre>
       </article>
 
       <article id="start" class="card guide-section">
         <h2>Запуск тестера</h2>
         <p class="muted">Панель: <a href="http://127.0.0.1:8300" target="_blank" rel="noopener">http://127.0.0.1:8300</a></p>
         <pre class="code-block">cp deploy/e2e-tester/.env.example deploy/e2e-tester/.env
-# Сгенерируйте Fernet-ключ:
-python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-# Впишите в TESTER_SECRET_KEY=
+# Fernet: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 
-docker compose -f deploy/e2e-tester/docker-compose.yml --env-file deploy/e2e-tester/.env up -d --build
-# или:
-docker compose -f docker-compose.tester.yml --env-file deploy/e2e-tester/.env up -d --build</pre>
-        <p>Остановка:</p>
-        <pre class="code-block">docker compose -f deploy/e2e-tester/docker-compose.yml --env-file deploy/e2e-tester/.env down</pre>
-        <p>Тома <code>tester_pg_data</code> / <code>tester_artifacts</code> сохраняются до <code>down -v</code>.</p>
+docker compose -f deploy/e2e-tester/docker-compose.yml --env-file deploy/e2e-tester/.env up -d --build</pre>
+      </article>
+
+      <article id="discovery-help" class="card guide-section">
+        <h2>Discovery</h2>
+        <ol>
+          <li>Выберите site / URL, опционально login + credentials.</li>
+          <li>Start — бот обходит same-origin ссылки до max_pages / max_depth.</li>
+          <li>Собирает links, nav, buttons, inputs.</li>
+          <li>Отметьте элементы → <strong>В Builder</strong> или <strong>Создать сценарий</strong>.</li>
+        </ol>
+      </article>
+
+      <article id="builder-help" class="card guide-section">
+        <h2>Builder и загрузка</h2>
+        <ol>
+          <li><strong>Builder</strong> — форма: base URL, логин/пароль (или готовый credential), список разделов (path + assert text) и кнопок (text/selector).</li>
+          <li><strong>Scenarios → Upload</strong> — загрузить свой JSON/YAML/.py файл в БД.</li>
+          <li><strong>Preview JSON</strong> — посмотреть сгенерированный сценарий до сохранения.</li>
+        </ol>
+      </article>
+
+      <article id="json-v2" class="card guide-section">
+        <h2>JSON schema v2</h2>
+        <p>Иерархия: <code>sections</code> → <code>subsections</code> → <code>actions</code> / <code>on_enter</code>. После ошибки раздела прогон продолжается; итоговый run = failed, если упал хотя бы один узел.</p>
+        <p>Пример: <code>examples/copyparse_smoke_v2.json</code> для <code>https://www.copyparse.ru</code>.</p>
       </article>
 
       <article id="suites" class="card guide-section">
         <h2>Наборы сценариев</h2>
-        <p class="muted">Готовые YAML в <code>deploy/e2e-tester/examples/</code> — загрузите в панель с нужными credentials</p>
         <div class="table-wrap">
           <table class="guide-table">
             <thead>
-              <tr>
-                <th>Файл</th>
-                <th>ID</th>
-                <th>Креды</th>
-                <th>Покрытие</th>
-              </tr>
+              <tr><th>Файл</th><th>Формат</th><th>Покрытие</th></tr>
             </thead>
             <tbody>
               <tr>
+                <td><code>copyparse_smoke_v2.json</code></td>
+                <td>JSON v2</td>
+                <td>login + nav + brands/channels/posts + checks + telegram + custom-url</td>
+              </tr>
+              <tr>
                 <td><code>suite_smoke.yaml</code></td>
-                <td>S00, S01, S02, S10–S12, S20, S27</td>
-                <td>admin (password или JWT)</td>
-                <td>login, nav, Checks health, Brands/Channels/Posts, Telegram, Custom URL</td>
-              </tr>
-              <tr>
-                <td><code>suite_platforms.yaml</code></td>
-                <td>S20–S27</td>
-                <td>любой пользователь</td>
-                <td>TG, VK, IG, Threads, WP, Dzen, Twitter, Custom URL</td>
-              </tr>
-              <tr>
-                <td><code>suite_checks.yaml</code></td>
-                <td>S02, S30–S36</td>
-                <td>admin</td>
-                <td>Administration, Polls, Collector/Processor/Scheduler/AI, posting diag</td>
+                <td>YAML v1 flat</td>
+                <td>тот же smoke (совместимость)</td>
               </tr>
             </tbody>
           </table>
         </div>
-        <p>Read-only smoke: без реальной публикации. Наборы <code>suite_smoke</code> и <code>suite_checks</code> требуют роль admin для страниц Checks / Administration.</p>
       </article>
 
       <article id="usage" class="card guide-section">
         <h2>Использование</h2>
-        <p class="muted">Credentials → Scenarios → Runs</p>
         <ol>
-          <li><strong>Credentials</strong> — логин/пароль пользователя продукта или JWT (<code>access_token</code> / <code>refresh_token</code>). Секреты шифруются Fernet и не отдаются в API-списках.</li>
-          <li><strong>Scenarios</strong> — YAML/JSON шаги или <code>.py</code> Playwright-скрипт. Примеры: <code>deploy/e2e-tester/examples/</code>.</li>
-          <li><strong>Runs</strong> — Start → live-логи → скриншоты при ошибках.</li>
+          <li><strong>Sites</strong> — base_url цели (или используйте seed copyparse).</li>
+          <li><strong>Credentials</strong> — password/JWT; секреты не попадают в JSON.</li>
+          <li><strong>Scenarios</strong> — upload JSON v2, привязка к site и creds.</li>
+          <li><strong>Runs</strong> — Start → дерево результатов → Open HTML / Download ZIP.</li>
         </ol>
-        <p>JWT: перед сценарием токены кладутся в <code>localStorage</code> (<code>access_token</code> / <code>refresh_token</code>), как в ui-app.</p>
-        <p>Password: шаг <code>login_form</code> или ручные <code>fill</code> / <code>click</code>.</p>
       </article>
 
       <article id="yaml" class="card guide-section">
-        <h2>YAML actions</h2>
+        <h2>Actions</h2>
         <div class="table-wrap">
           <table class="guide-table">
-            <thead>
-              <tr>
-                <th>action</th>
-                <th>поля</th>
-              </tr>
-            </thead>
+            <thead><tr><th>action</th><th>поля</th></tr></thead>
             <tbody>
               <tr><td><code>goto</code></td><td>path или url</td></tr>
-              <tr><td><code>fill</code></td><td>selector, value или value_from (credentials.username / password / access_token / refresh_token)</td></tr>
+              <tr><td><code>fill</code></td><td>selector, value или value_from</td></tr>
               <tr><td><code>click</code></td><td>selector</td></tr>
               <tr><td><code>wait</code></td><td>ms</td></tr>
-              <tr><td><code>wait_url</code></td><td>contains, опционально timeout_ms</td></tr>
+              <tr><td><code>wait_url</code></td><td>contains, timeout_ms</td></tr>
               <tr><td><code>assert_text</code></td><td>selector, contains</td></tr>
               <tr><td><code>assert_url</code></td><td>contains</td></tr>
               <tr><td><code>screenshot</code></td><td>name</td></tr>
-              <tr><td><code>login_form</code></td><td>password-креды и форма /sign-in</td></tr>
+              <tr><td><code>login_form</code></td><td>селекторы из site.meta.login / defaults.login</td></tr>
             </tbody>
           </table>
         </div>
-      </article>
-
-      <article id="playwright" class="card guide-section">
-        <h2>Playwright .py</h2>
-        <p class="muted">Запрещены импорты os, subprocess, socket, httpx и т.п., а также eval / exec / open.</p>
-        <p>Скрипт должен объявить:</p>
-        <pre class="code-block">async def run(page, base_url, credentials, log):
-    ...</pre>
       </article>
 
       <article id="notes" class="card guide-section">
         <h2>Важно</h2>
         <ul>
-          <li>Тесты мутируют данные staging/prod-like окружения. Используйте отдельные учётки и cleanup-шаги.</li>
-          <li>Порт панели только на <code>127.0.0.1:8300</code>.</li>
-          <li>Health: <code>GET /api/health</code> на панели тестера.</li>
+          <li>Не коммитьте пароли в examples / .env.</li>
+          <li>Порт панели: <code>127.0.0.1:8300</code>.</li>
+          <li>Отчёты: <code>GET /api/runs/&#123;id&#125;/report.html</code>, <code>…/report.zip</code>.</li>
         </ul>
       </article>
     </section>

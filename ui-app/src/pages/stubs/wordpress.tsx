@@ -1,4 +1,5 @@
 import { useState, useEffect, FormEvent } from 'react'
+import { Link } from 'react-router-dom'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -34,7 +35,7 @@ const PUBLISH_INTERVAL_MINUTES_OPTIONS = Array.from({ length: 97 }, (_, i) => 15
 
 export function WordPressPage() {
   // Tab state
-  const [activeTab, setActiveTab] = useState<'create' | 'posts' | 'profile' | 'processing'>('create')
+  const [activeTab, setActiveTab] = useState<'create' | 'posts' | 'profile' | 'processing'>('posts')
 
   // Profile state
   const [siteUrl, setSiteUrl] = useState('')
@@ -496,6 +497,11 @@ export function WordPressPage() {
   return (
     <PageContainer maxWidth="wide">
       <PageHeader title="WordPress Integration" description="Manage your WordPress sites and content" />
+      <p className="mb-4 text-sm flex flex-wrap gap-4">
+        <Link to="/posts" className="text-primary-400 hover:underline">
+          Создать пост → /posts
+        </Link>
+      </p>
 
       {error && (
         <Alert variant="error" className="animate-slide-down">
@@ -511,31 +517,6 @@ export function WordPressPage() {
 
       {/* Tabs */}
       <div className="flex border-b border-[var(--border-color)]">
-        <button
-          className={`px-6 py-3 text-sm font-medium transition-all relative ${
-            activeTab === 'create'
-              ? 'text-primary-400'
-              : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-          }`}
-          onClick={() => {
-            setEditingPostId(null)
-            setPostTitle('')
-            setPostContent('')
-            setPostStatus('draft')
-            setPostCategories([''])
-            setPostTags([''])
-            setPostExcerpt('')
-            setPostSlug('')
-            setFeaturedMedia('')
-            setPostMeta('')
-            setActiveTab('create')
-          }}
-        >
-          Create Post
-          {activeTab === 'create' && (
-            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-500" />
-          )}
-        </button>
         <button
           className={`px-6 py-3 text-sm font-medium transition-all relative ${
             activeTab === 'posts'
@@ -578,16 +559,25 @@ export function WordPressPage() {
       </div>
 
       {/* Tab Content */}
-      {activeTab === 'create' && (
+      {activeTab === 'create' && editingPostId === null && (
+        <Alert className="mt-4">
+          Создание постов — на странице{' '}
+          <Link to="/posts" className="text-primary-400 hover:underline">
+            Posts
+          </Link>
+        </Alert>
+      )}
+
+      {activeTab === 'create' && editingPostId !== null && (
         <Card className="animate-slide-up">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
               </svg>
-              Create WordPress Post
+              Edit WordPress Post
             </CardTitle>
-            <CardDescription>Create a new post for your WordPress site</CardDescription>
+            <CardDescription>Edit an existing WordPress post</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleCreatePost} className="space-y-6">

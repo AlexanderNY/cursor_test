@@ -314,6 +314,11 @@ export function InboxPage() {
           <option value="">All networks</option>
           <option value="tg">Telegram</option>
           <option value="vk">VKontakte</option>
+          <option value="instagram">Instagram</option>
+          <option value="threads">Threads</option>
+          <option value="tw">Twitter</option>
+          <option value="dzen">Дзен</option>
+          <option value="wp">WordPress</option>
         </select>
         <select
           className="rounded-md border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-sm"
@@ -427,6 +432,13 @@ export function InboxPage() {
                   sourceText={selected.text || ''}
                   source="inbox"
                   sourceId={selected.id}
+                  brandId={selectedBrandId}
+                  brandToneHint={
+                    [selectedBrand?.tone_of_voice, selectedBrand?.style_notes]
+                      .filter(Boolean)
+                      .join(' · ') || null
+                  }
+                  promptSnippets={selectedBrand?.prompt_snippets}
                   defaultAction="reply_draft"
                   defaultNetwork={selected.network || 'tg'}
                   applyTargets={[

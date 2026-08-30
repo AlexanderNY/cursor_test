@@ -33,6 +33,7 @@ Insomnia (или аналог) нужна как **клиент контракт
 
 ## Ссылки
 
+- CopyParse (регистрация, учебный контур): https://www.copyparse.ru/sign-up?utm_source=tg&utm_campaign=s01e06
 - Скачать Insomnia — https://insomnia.rest/download
 - Документация: коллекции и окружения — https://docs.insomnia.rest/insomnia/environments
 - Импорт/экспорт — https://docs.insomnia.rest/insomnia/import-export-data

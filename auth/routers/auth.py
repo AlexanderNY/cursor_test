@@ -27,7 +27,10 @@ async def register(user_data: UserRegister) -> TokenResponse:
         result = await register_user(
             username=user_data.username,
             email=user_data.email,
-            password=user_data.password
+            password=user_data.password,
+            utm_source=user_data.utm_source,
+            utm_medium=user_data.utm_medium,
+            utm_campaign=user_data.utm_campaign,
         )
         
         return TokenResponse(

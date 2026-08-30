@@ -7,6 +7,7 @@ import type {
   ServicesStatusResponse,
   PostsTablesResponse,
   PostsListResponse,
+  PostRow,
   PipelineEventsResponse,
   ProcessorRunResponse,
   PostingDiagnosticsResponse,
@@ -106,6 +107,51 @@ export const coreService = {
       const response = await apiClient.get<PostsListResponse>('/core/admin/posts', {
         params: { limit, offset, ...(status ? { status } : {}) },
       })
+      return response.data
+    } catch (error) {
+      throw new Error(getErrorMessage(error))
+    }
+  },
+
+  async getPipelinePost(postId: number): Promise<PostRow> {
+    try {
+      const response = await apiClient.get<PostRow>(`/core/admin/posts/${postId}`)
+      return response.data
+    } catch (error) {
+      throw new Error(getErrorMessage(error))
+    }
+  },
+
+  async updatePipelinePost(
+    postId: number,
+    data: {
+      title?: string
+      text?: string
+      domain?: string
+      url?: string
+      author?: string
+      avatar?: string
+      post_date?: string
+      screenshot?: string
+      images?: string[]
+      image_over_text?: string
+      comments?: number
+      reposts?: number
+      likes?: number
+      views?: number
+      is_ad?: boolean
+      status?: string
+      to_tg?: boolean
+      to_tw?: boolean
+      to_wp?: boolean
+      to_vk?: boolean
+      to_threads?: boolean
+      to_dzen?: boolean
+      to_instagram?: boolean
+    }
+  ): Promise<PostRow> {
+    try {
+      const response = await apiClient.put<PostRow>(`/core/admin/posts/${postId}`, data)
       return response.data
     } catch (error) {
       throw new Error(getErrorMessage(error))

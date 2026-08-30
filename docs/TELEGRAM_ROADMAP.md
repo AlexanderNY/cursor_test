@@ -8,26 +8,48 @@
 
 ## Текущее состояние
 
-Раздел Telegram уже покрывает полный цикл: сбор (`PostCollector` → `tg_posts`), публикация (`PostPublisher`), кросс-платформенная обработка (Collector → Processor → distribute) и **реалтайм-алертинг** (до 10 правил на профиль).
+Фазы 0–3a из этой дорожной карты **реализованы**. Раздел Telegram — зрелый продукт: единый event log, умная маршрутизация, аналитика, AI-дайджесты и enrichment.
 
-| Область | Сейчас | Проблема |
-|---------|--------|----------|
-| Алертинг | Substring OR по `save_conditions`, fire-and-forget | Нет дедупликации, приоритетов, истории |
-| Сбор | Все сообщения из `chats_to_read` | `save_conditions` на уровне профиля не используются |
-| AI | Заглушки в `processor/services/ai_processor.py` | Нет реального вызова модели |
-| Аналитика | Общая статистика `posts` | Нет метрик по каналам, ключевым словам, алертам |
-| Архитектура | Polling + Telethon handlers | Нет очереди, нет единого event log |
+| Область | Сейчас | Примечание |
+|---------|--------|------------|
+| Алертинг | `RoutingEngine`: priority, dedup, rate-limit, time windows, sentiment filter | Единый Telethon-handler → collect + route |
+| Event log | `tg_events` через `EventLogger` (единственный INSERT-путь) | Типы: collected / alert_matched / alert_sent / alert_suppressed |
+| Сбор | `save_conditions` + profile/brand-channel collect | Brand channel flow + counters |
+| AI | `shared/ai_client.py` (Ollama/Qwen), classify/sentiment/digest | Квота `smm_ai_usage` через `shared/ai_quota.py` |
+| Enrichment | Realtime (classification_enabled) или **batch** (`batch_enrichment_enabled`) | Batch не блокирует Telethon; пишет в `tg_posts.metadata` + `tg_events.metadata` |
+| Аналитика | `/tg/analytics/*` + UI panel; CSV export; deep-link из `/channels/:id?tab=telegram` | Фильтр `chat_id`, сохранённый period |
+| Digests | `SummaryAggregator` + preview в UI Processing | AI quota на каждый digest |
+| Ops | Retention 90д + hourly cleanup; `/tg/analytics/health`; tg-bot `/health` counters | Индексы на `tg_events` / `tg_digests` |
 
-Ключевые файлы текущей реализации:
+Ключевые файлы:
 
 | Компонент | Файл |
 |-----------|------|
-| Алертинг | `tg-bot/services/alert_service.py` |
-| Сопоставление ключевых слов | `tg-bot/services/message_handler.py` |
-| Обработчики событий | `tg-bot/services/telegram_bot_service.py` |
-| Схема правил | `core/schemas.py` (`TelegramAlertRule`) |
-| UI настроек | `ui-app/src/pages/telegram/telegram.tsx` |
-| AI-заглушки | `processor/services/ai_processor.py` |
+| Unified handler | `tg-bot/services/telegram_bot_service.py` |
+| Event log | `tg-bot/services/event_logger.py` |
+| Routing | `tg-bot/services/routing_engine.py` |
+| Enrichment | `tg-bot/services/post_enrichment.py` |
+| Digests | `tg-bot/services/summary_aggregator.py` |
+| Analytics API | `core/services/tg_analytics_service.py` |
+| AI client / quota | `shared/ai_client.py`, `shared/ai_quota.py` |
+| UI analytics | `ui-app/src/pages/smm-analytics/telegram-analytics.tsx` |
+| UI settings | `ui-app/src/pages/telegram/telegram.tsx`, `processing-tab.tsx` |
+
+### Audit: пути записи в `tg_events`
+
+Единственный writer — `EventLogger.log_event`. Вызовы:
+
+1. `telegram_bot_service` → `collected`
+2. `routing_engine` → `alert_matched` / `alert_sent` / `alert_suppressed`
+
+Dual Telethon handlers **устранены** (`_register_unified_handler`).
+
+### Ops: retention и индексы
+
+- Retention: `EventLogger.RETENTION_DAYS = 90`; hourly `_maintenance_loop` вызывает `cleanup_old_events` + `cleanup_expired_dedup`.
+- Индексы: `(user_id, created_at)`, `(event_type, created_at)`, `(text_hash, chat_id)`, `(rule_id, created_at)`, `(chat_id, created_at)`, `(user_id, event_type, created_at)`.
+- Партиционирование по `created_at` — опционально при росте; для текущего объёма достаточно индексов + retention.
+- Health: `GET /tg/analytics/health` (alert_sent / suppressed / digests); tg-bot `GET /health` отдаёт enrichment/digest latency counters.
 
 ---
 
@@ -38,22 +60,25 @@ gantt
     title Дорожная карта Telegram
     dateFormat YYYY-MM
     section Фундамент
-    Event log + AI-клиент           :f0, 2025-07, 3w
+    Event log + AI-клиент           :done, f0, 2025-07, 3w
     section Быстрая ценность
-    Умная маршрутизация             :f1, after f0, 4w
-    Базовая аналитика               :f2, after f1, 3w
+    Умная маршрутизация             :done, f1, after f0, 4w
+    Базовая аналитика               :done, f2, after f1, 3w
     section AI-функции
-    AI-суммаризация                 :f3, after f0, 3w
-    AI-классификация                :f4, after f3, 3w
-    Sentiment analysis              :f5, after f4, 2w
+    AI-суммаризация                 :done, f3, after f0, 3w
+    AI-классификация                 :done, f4, after f3, 3w
+    Sentiment analysis              :done, f5, after f4, 2w
+    section Productization (1.1)
+    Batch enrich + UX + ops         :active, f6, 2026-08, 2w
 ```
 
-**Логика приоритетов:**
+**Логика приоритетов (историческая):**
 
 1. **Фундамент** — без журнала событий аналитика и AI не имеют данных.
 2. **Умная маршрутизация** — расширяет уже работающий алертинг, не требует AI, даёт быстрый эффект.
 3. **Аналитика** — строится поверх event log и таблицы алертов.
-4. **AI-функции** — общий клиент Qwen; суммаризация первой (уже есть заглушка в Processor), затем классификация и sentiment (один inference pipeline).
+4. **AI-функции** — общий клиент Qwen; суммаризация первой, затем классификация и sentiment.
+5. **Productization (план 1.1)** — batch enrichment, digest UX/quota, analytics filters/export, ops health.
 
 ---
 

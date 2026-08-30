@@ -18,6 +18,7 @@ from schemas import (
     ServicesStatusResponse,
     PostsTablesResponse,
     PostsListResponse,
+    PipelinePostUpdate,
     PostRow,
     ProcessorRunResponse,
     PostingDiagnosticsResponse,
@@ -88,6 +89,75 @@ async def get_admin_posts(
     rows = await post_service.get_all_posts(limit=limit, offset=offset, status=status, user_id=user_id)
     posts = [PostRow.model_validate(r) for r in rows]
     return PostsListResponse(posts=posts)
+
+
+@router.get("/posts/{post_id}", response_model=PostRow)
+async def get_admin_post(
+    post_id: int,
+    request: Request,
+    admin_user: Dict[str, Any] = Depends(get_admin_user),
+):
+    """Один пост из таблицы posts (только своего автора по X-User-Id)."""
+    del admin_user
+    x_user_id = request.headers.get("X-User-Id")
+    if not x_user_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User ID not provided")
+    try:
+        user_id = int(x_user_id)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid user ID")
+    post = await post_service.get_post(user_id=user_id, post_id=post_id)
+    if not post:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
+    return PostRow.model_validate(post)
+
+
+@router.put("/posts/{post_id}", response_model=PostRow)
+async def update_admin_post(
+    post_id: int,
+    data: PipelinePostUpdate,
+    request: Request,
+    admin_user: Dict[str, Any] = Depends(get_admin_user),
+):
+    """Обновляет пост в таблице posts (только своего автора по X-User-Id)."""
+    del admin_user
+    x_user_id = request.headers.get("X-User-Id")
+    if not x_user_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User ID not provided")
+    try:
+        user_id = int(x_user_id)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid user ID")
+    post = await post_service.update_post(
+        user_id=user_id,
+        post_id=post_id,
+        title=data.title,
+        post_text=data.text,
+        domain=data.domain,
+        url=data.url,
+        author=data.author,
+        avatar=data.avatar,
+        post_date=data.post_date,
+        screenshot=data.screenshot,
+        images=data.images,
+        image_over_text=data.image_over_text,
+        comments=data.comments,
+        reposts=data.reposts,
+        likes=data.likes,
+        views=data.views,
+        is_ad=data.is_ad,
+        status=data.status,
+        to_tg=data.to_tg,
+        to_tw=data.to_tw,
+        to_wp=data.to_wp,
+        to_vk=data.to_vk,
+        to_threads=data.to_threads,
+        to_dzen=data.to_dzen,
+        to_instagram=data.to_instagram,
+    )
+    if not post:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
+    return PostRow.model_validate(post)
 
 
 @router.get("/posting-diagnostics", response_model=PostingDiagnosticsResponse)
@@ -297,8 +367,11 @@ async def run_ai_check(
 
     started = time.perf_counter()
     try:
-        ai_status = await ai_client.get_status()
-        if not ai_status.get("ready"):
+        ai_status = await system_settings_service.get_ai_availability_snapshot(
+            enabled=True,
+            env_enabled=True,
+        )
+        if ai_status.get("status") != "ready":
             detail = {
                 "disabled": "AI is disabled. Enable it on Checks → AI.",
                 "circuit_open": "AI circuit breaker is open after repeated failures. Retry later.",
@@ -326,8 +399,14 @@ async def run_ai_check(
 async def get_ai_settings(admin_user: Dict[str, Any] = Depends(get_admin_user)):
     """Текущие настройки AI (вкл/выкл Ollama). Только admin."""
     del admin_user
-    data = await system_settings_service.get_ai_settings()
-    return AiSettingsResponse(**data)
+    try:
+        data = await system_settings_service.get_ai_settings()
+        return AiSettingsResponse(**data)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Unable to load AI settings: {exc!s}",
+        ) from exc
 
 
 @router.put("/ai-settings", response_model=AiSettingsResponse)

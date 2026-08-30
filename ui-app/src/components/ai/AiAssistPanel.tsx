@@ -1,13 +1,19 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
+import { LibraryPicker } from '@/components/library/LibraryPicker'
 import { smmService } from '@/services/smm-service'
 import { getErrorMessage } from '@/services/api-client'
+import { parseQuotaError, type QuotaErrorDetail } from '@/lib/quota'
+import { QuotaUpgradeModal } from '@/components/billing/QuotaUpgradeModal'
 import type {
   AiAssistAction,
   AiAssistActionId,
   AiProcessResponse,
   AiProcessResult,
+  AiUsage,
+  BrandPromptSnippet,
 } from '@/types/smm'
 
 const NOTE_MAX = 300
@@ -17,6 +23,10 @@ export interface AiAssistPanelProps {
   sourceText: string
   source?: 'inbox' | 'post'
   sourceId?: number
+  brandId?: number | null
+  /** Prefill tone from brand TOV (shown as hint; empty input = use brand voice) */
+  brandToneHint?: string | null
+  promptSnippets?: BrandPromptSnippet[]
   /** Prefill / restrict visible actions */
   allowedActions?: AiAssistActionId[]
   defaultAction?: AiAssistActionId
@@ -36,10 +46,23 @@ function resultDisplayText(result: AiProcessResult, action: AiAssistActionId): s
   return result.text || ''
 }
 
+function isAiQuotaError(message: string): boolean {
+  const lower = message.toLowerCase()
+  return (
+    lower.includes('лимит ai') ||
+    lower.includes('ai недоступен') ||
+    lower.includes('ai_calls') ||
+    lower.includes('ai composer')
+  )
+}
+
 export function AiAssistPanel({
   sourceText,
   source,
   sourceId,
+  brandId,
+  brandToneHint,
+  promptSnippets,
   allowedActions,
   defaultAction,
   defaultNetwork,
@@ -56,9 +79,25 @@ export function AiAssistPanel({
   const [categoriesText, setCategoriesText] = useState(DEFAULT_CATEGORIES.join(', '))
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [quotaBlocked, setQuotaBlocked] = useState(false)
+  const [quotaDetail, setQuotaDetail] = useState<QuotaErrorDetail | null>(null)
   const [response, setResponse] = useState<AiProcessResponse | null>(null)
   const [applyTarget, setApplyTarget] = useState(defaultApplyTarget || applyTargets?.[0]?.id || '')
   const [sourceExpanded, setSourceExpanded] = useState(false)
+  const [usage, setUsage] = useState<AiUsage | null>(null)
+
+  async function refreshUsage() {
+    try {
+      const u = await smmService.getAiUsage()
+      setUsage(u)
+    } catch {
+      /* meter is optional */
+    }
+  }
+
+  useEffect(() => {
+    void refreshUsage()
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -105,6 +144,8 @@ export function AiAssistPanel({
     [actions, actionId],
   )
 
+  const snippets = promptSnippets?.filter((s) => s.text?.trim()) ?? []
+
   async function handleGenerate() {
     const text = sourceText.trim()
     if (!text) {
@@ -112,6 +153,8 @@ export function AiAssistPanel({
       return
     }
     setError('')
+    setQuotaBlocked(false)
+    setQuotaDetail(null)
     setBusy(true)
     try {
       const categories = categoriesText
@@ -123,6 +166,7 @@ export function AiAssistPanel({
         text,
         source,
         source_id: sourceId,
+        brand_id: brandId ?? undefined,
         params: {
           note: note.trim() || undefined,
           tone: tone.trim() || undefined,
@@ -132,9 +176,18 @@ export function AiAssistPanel({
         },
       })
       setResponse(res)
+      void refreshUsage()
     } catch (err) {
       setResponse(null)
-      setError(getErrorMessage(err))
+      const msg = getErrorMessage(err)
+      setError(msg)
+      const q = parseQuotaError(err)
+      if (q) {
+        setQuotaDetail(q)
+        setQuotaBlocked(true)
+      } else {
+        setQuotaBlocked(isAiQuotaError(msg))
+      }
     } finally {
       setBusy(false)
     }
@@ -152,16 +205,43 @@ export function AiAssistPanel({
 
   const preview = sourceText.trim()
   const previewShort = preview.length > 160 ? `${preview.slice(0, 160)}…` : preview
+  const usageLabel =
+    usage && usage.limit > 0
+      ? `AI ${usage.used}/${usage.limit}`
+      : usage && usage.limit === 0
+        ? 'AI недоступен на плане'
+        : null
+  const usageNearLimit =
+    usage != null && usage.limit > 0 && usage.used / usage.limit >= 0.8
 
   return (
     <div
       className={`rounded-xl border border-[var(--border-color)] bg-[var(--bg-tertiary)]/50 p-3 space-y-3 ${className}`}
     >
+      <QuotaUpgradeModal
+        open={quotaDetail != null}
+        detail={quotaDetail}
+        onClose={() => setQuotaDetail(null)}
+      />
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h4 className="text-sm font-medium text-[var(--text-primary)]">AI помощник</h4>
-        {selected && (
-          <span className="text-xs text-[var(--text-muted)]">{selected.description}</span>
-        )}
+        <div className="flex items-center gap-2">
+          {usageLabel && (
+            <span
+              className={`text-xs tabular-nums ${
+                usageNearLimit || usage?.limit === 0
+                  ? 'text-amber-400'
+                  : 'text-[var(--text-muted)]'
+              }`}
+              title={usage?.period ? `Период ${usage.period}` : undefined}
+            >
+              {usageLabel}
+            </span>
+          )}
+          {selected && (
+            <span className="text-xs text-[var(--text-muted)]">{selected.description}</span>
+          )}
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-1.5">
@@ -191,9 +271,34 @@ export function AiAssistPanel({
             className="mt-1 w-full rounded-md border border-[var(--border-color)] bg-[var(--bg-primary)] px-2 py-1.5 text-sm"
             value={tone}
             maxLength={80}
-            placeholder={actionId === 'reply_draft' ? 'живой, короткий…' : 'деловой, дружелюбный…'}
+            placeholder={
+              brandToneHint
+                ? `Пусто = голос бренда: ${brandToneHint.slice(0, 60)}${brandToneHint.length > 60 ? '…' : ''}`
+                : actionId === 'reply_draft'
+                  ? 'живой, короткий…'
+                  : 'деловой, дружелюбный…'
+            }
             onChange={(e) => setTone(e.target.value)}
           />
+        </div>
+      )}
+
+      {snippets.length > 0 && (
+        <div>
+          <label className="text-xs text-[var(--text-secondary)]">Шаблоны бренда</label>
+          <div className="mt-1 flex flex-wrap gap-1.5">
+            {snippets.map((s, idx) => (
+              <button
+                key={`${s.title}-${idx}`}
+                type="button"
+                className="text-xs px-2 py-1 rounded-md border border-[var(--border-color)] text-[var(--text-muted)] hover:bg-[var(--bg-secondary)] hover:text-[var(--text-primary)]"
+                title={s.text}
+                onClick={() => setNote(s.text.slice(0, NOTE_MAX))}
+              >
+                {s.title || `Snippet ${idx + 1}`}
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
@@ -236,6 +341,21 @@ export function AiAssistPanel({
           placeholder="Например: выдели только факты про даты"
           onChange={(e) => setNote(e.target.value)}
         />
+        <LibraryPicker
+          className="mt-2"
+          brandId={brandId}
+          kinds={['prompt', 'cta']}
+          onApplyText={(text) => {
+            setNote((prev) => {
+              const next = prev ? `${prev}\n${text}` : text
+              return next.slice(0, NOTE_MAX)
+            })
+          }}
+          onApplyPrompt={(promptNote) => {
+            setNote(promptNote.slice(0, NOTE_MAX))
+            setActionId('rewrite')
+          }}
+        />
       </div>
 
       <Button
@@ -248,7 +368,19 @@ export function AiAssistPanel({
         {busy ? 'Генерация…' : 'Сгенерировать'}
       </Button>
 
-      {error && <Alert variant="error">{error}</Alert>}
+      {error && (
+        <Alert variant="error">
+          <span>{error}</span>
+          {quotaBlocked && (
+            <>
+              {' '}
+              <Link to="/pricing" className="underline text-primary-400 hover:text-primary-300">
+                Обновить план
+              </Link>
+            </>
+          )}
+        </Alert>
+      )}
 
       {response && (
         <div className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] p-3 space-y-2">
@@ -309,6 +441,7 @@ export function AiAssistPanel({
               onClick={() => {
                 setResponse(null)
                 setError('')
+                setQuotaBlocked(false)
               }}
             >
               Закрыть

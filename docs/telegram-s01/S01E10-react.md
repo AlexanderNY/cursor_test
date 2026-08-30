@@ -36,6 +36,7 @@ CORS. Если UI на `:5173`, а API на `:8000`, браузер заблок
 
 ## Ссылки
 
+- CopyParse (регистрация, учебный контур): https://www.copyparse.ru/sign-up?utm_source=tg&utm_campaign=s01e10
 - React: Think in React / списки — https://react.dev/learn/rendering-lists
 - Эффекты и загрузка данных — https://react.dev/learn/synchronizing-with-effects
 - Vite, старт — https://vite.dev/guide/

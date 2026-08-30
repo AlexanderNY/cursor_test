@@ -15,10 +15,14 @@ from exceptions import QuotaExceededError
 _PLAN_LIMITS: dict[str, dict[str, Any]] = {
     "free": {
         "monthly_posts": 300,
+        "storage_gb": 1,
         "max_own_channels": 3,
         "max_brands": 1,
         "max_targets_per_job": 1,
         "max_automations": 0,
+        "max_templates": 5,
+        "max_media_packs": 2,
+        "max_team_seats": 1,
         "ai_calls_month": 0,
         "schedule_horizon_days": 7,
         "stats_retention_days": 7,
@@ -38,10 +42,14 @@ _PLAN_LIMITS: dict[str, dict[str, Any]] = {
     },
     "standard": {
         "monthly_posts": 3000,
+        "storage_gb": 10,
         "max_own_channels": 10,
         "max_brands": 5,
         "max_targets_per_job": 5,
         "max_automations": 5,
+        "max_templates": 50,
+        "max_media_packs": 20,
+        "max_team_seats": 5,
         "ai_calls_month": 100,
         "schedule_horizon_days": 30,
         "stats_retention_days": 90,
@@ -61,10 +69,14 @@ _PLAN_LIMITS: dict[str, dict[str, Any]] = {
     },
     "full": {
         "monthly_posts": 50000,
+        "storage_gb": 100,
         "max_own_channels": 20,
         "max_brands": 20,
         "max_targets_per_job": 20,
         "max_automations": 50,
+        "max_templates": 500,
+        "max_media_packs": 100,
+        "max_team_seats": 20,
         "ai_calls_month": 2000,
         "schedule_horizon_days": 90,
         "stats_retention_days": 365,
@@ -208,36 +220,94 @@ async def ensure_smm_feature(user_id: int, feature: str) -> None:
 
 async def ensure_ai_calls_quota(user_id: int, *, units: int = 1) -> None:
     """Increment and enforce monthly AI call quota (smm_ai_usage)."""
+    from shared.ai_quota import AiQuotaExceeded, consume_ai_calls
+
+    try:
+        await consume_ai_calls(
+            user_id,
+            units=units,
+            acquire=get_db_connection,
+            release=release_db_connection,
+        )
+    except AiQuotaExceeded as exc:
+        raise QuotaExceededError(
+            resource=exc.resource, limit=exc.limit, used=exc.used
+        ) from exc
+
+
+async def get_ai_usage(user_id: int) -> dict[str, Any]:
+    """Read-only monthly AI usage for UI meter."""
+    from shared.ai_quota import read_ai_usage
+
     tariff = await get_user_tariff(user_id)
-    limit = plan_limit(tariff, "ai_calls_month", 0)
-    if limit <= 0:
-        raise QuotaExceededError(resource="ai_calls_month", limit=0, used=0)
-    month = datetime.now(timezone.utc).strftime("%Y-%m")
+    return await read_ai_usage(
+        user_id,
+        acquire=get_db_connection,
+        release=release_db_connection,
+        tariff=tariff,
+    )
+
+
+async def get_usage_summary(user_id: int) -> dict[str, Any]:
+    """Агрегат used/limit для billing UI и QuotaBanner."""
+    tariff = await get_user_tariff(user_id)
+    limits = get_plan_limits(tariff)
+    posts_used = await count_user_posts_in_current_month(user_id)
+    ai = await get_ai_usage(user_id)
+
+    channels_used = 0
+    brands_used = 0
+    automations_used = 0
     conn = await get_db_connection()
     try:
         async with conn.cursor() as cur:
             await cur.execute(
                 """
-                INSERT INTO smm_ai_usage (user_id, month, calls)
-                VALUES (%s, %s, 0)
-                ON CONFLICT (user_id, month) DO NOTHING
+                SELECT COUNT(*) FROM smm_brand_channels c
+                JOIN smm_brands b ON b.id = c.brand_id
+                WHERE b.user_id = %s AND c.role = 'own'
                 """,
-                (user_id, month),
-            )
-            await cur.execute(
-                "SELECT calls FROM smm_ai_usage WHERE user_id = %s AND month = %s",
-                (user_id, month),
+                (user_id,),
             )
             row = await cur.fetchone()
-            used = int(row[0] if row else 0)
-            if used + units > limit:
-                raise QuotaExceededError(resource="ai_calls_month", limit=limit, used=used)
+            channels_used = int(row[0] if row else 0)
+
             await cur.execute(
-                """
-                UPDATE smm_ai_usage SET calls = calls + %s
-                WHERE user_id = %s AND month = %s
-                """,
-                (units, user_id, month),
+                "SELECT COUNT(*) FROM smm_brands WHERE user_id = %s",
+                (user_id,),
             )
+            row = await cur.fetchone()
+            brands_used = int(row[0] if row else 0)
+
+            await cur.execute(
+                "SELECT COUNT(*) FROM smm_automations WHERE user_id = %s",
+                (user_id,),
+            )
+            row = await cur.fetchone()
+            automations_used = int(row[0] if row else 0)
     finally:
         await release_db_connection(conn)
+
+    def _metric(key: str, used: int | None, limit: int, *, unit: str = "") -> dict[str, Any]:
+        return {
+            "key": key,
+            "used": used,
+            "limit": limit,
+            "unit": unit,
+            "remaining": max(0, limit - (used or 0)) if used is not None and limit > 0 else None,
+        }
+
+    metrics = [
+        _metric("monthly_posts", posts_used, int(limits.get("monthly_posts", 0))),
+        _metric("ai_calls_month", int(ai.get("used", 0)), int(ai.get("limit", 0))),
+        _metric("max_own_channels", channels_used, int(limits.get("max_own_channels", 0))),
+        _metric("max_brands", brands_used, int(limits.get("max_brands", 0))),
+        _metric("max_automations", automations_used, int(limits.get("max_automations", 0))),
+        _metric("storage_gb", None, int(limits.get("storage_gb", 0)), unit="GB"),
+    ]
+    return {
+        "tariff": tariff,
+        "period": ai.get("period"),
+        "features": limits.get("features") or {},
+        "metrics": metrics,
+    }

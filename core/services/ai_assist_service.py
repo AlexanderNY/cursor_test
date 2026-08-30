@@ -133,10 +133,37 @@ def _normalize_network(raw: Any) -> Optional[str]:
     if raw is None:
         return None
     net = str(raw).strip().lower()
-    if net in ("tg", "telegram"):
-        return "tg"
-    if net in ("vk", "vkontakte"):
-        return "vk"
+    aliases = {
+        "telegram": "tg",
+        "vkontakte": "vk",
+        "twitter": "tw",
+        "x": "tw",
+        "wordpress": "wp",
+        "insta": "instagram",
+        "ig": "instagram",
+        "zen": "dzen",
+    }
+    net = aliases.get(net, net)
+    if net in ("tg", "vk", "tw", "threads", "instagram", "dzen", "wp"):
+        return net
+    return None
+
+
+def _network_prompt_hint(network: Optional[str]) -> Optional[str]:
+    if network == "tg":
+        return "для Telegram (можно HTML, spoiler)"
+    if network == "vk":
+        return "для ВКонтакте (plain text без HTML)"
+    if network == "tw":
+        return "для Twitter/X (коротко, без HTML)"
+    if network == "threads":
+        return "для Threads (короткий plain text)"
+    if network == "instagram":
+        return "для Instagram (caption, plain text)"
+    if network == "dzen":
+        return "для Яндекс Дзен"
+    if network == "wp":
+        return "для WordPress (можно HTML)"
     return None
 
 
@@ -201,6 +228,7 @@ async def process(
     *,
     source: Optional[str] = None,
     source_id: Optional[int] = None,
+    brand_id: Optional[int] = None,
 ) -> dict[str, Any]:
     """Выполняет шаблонное AI-действие и сохраняет результат в ai_tasks."""
     if action not in _ACTION_IDS:
@@ -213,6 +241,13 @@ async def process(
     )
     tone = sanitize_tone(params.get("tone") if params.get("tone") is not None else None)
     network = _normalize_network(params.get("network"))
+
+    # Brand TOV fills tone when the user did not pass an explicit one
+    if not tone and brand_id is not None:
+        from services.smm_service import compose_brand_voice, smm_service
+
+        brand = await smm_service.get_brand(user_id, int(brand_id))
+        tone = compose_brand_voice(brand)
 
     max_len_raw = params.get("max_len", 500)
     try:
@@ -237,6 +272,7 @@ async def process(
         "categories": categories,
         "source": source,
         "source_id": source_id,
+        "brand_id": brand_id,
     }
 
     task_id = await _insert_task(user_id, action, payload)
@@ -291,10 +327,9 @@ async def process(
                 parts = ["Перепиши следующий текст"]
                 if tone:
                     parts.append(f"в тоне «{tone}»")
-                if network == "tg":
-                    parts.append("для Telegram (можно HTML, spoiler)")
-                elif network == "vk":
-                    parts.append("для ВКонтакте (plain text без HTML)")
+                hint = _network_prompt_hint(network)
+                if hint:
+                    parts.append(hint)
                 parts.append(f"Уточнение: {note}")
                 user_prompt = f"{' '.join(parts)}:\n\n{source_text}"
                 rewritten = await ai_client.complete(

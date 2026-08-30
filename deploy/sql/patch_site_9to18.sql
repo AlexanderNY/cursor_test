@@ -1,0 +1,11 @@
+-- DEPRECATED for db_bot.
+-- Site tables live in dedicated database db_9to18.
+-- Use:
+--   psql -U postgres -f deploy/sql/create_db_9to18.sql
+--   psql -U postgres -d db_9to18 -f deploy/sql/init_db_9to18.sql
+--
+-- Optional cleanup if tables were previously created in db_bot:
+--   DROP TABLE IF EXISTS site_posts CASCADE;
+--   DROP TABLE IF EXISTS site_app_admins CASCADE;
+--   DROP TABLE IF EXISTS site_apps CASCADE;
+--   DROP TABLE IF EXISTS site_users CASCADE;

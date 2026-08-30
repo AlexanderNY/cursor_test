@@ -1,5 +1,5 @@
 import { useState, FormEvent, useEffect, useCallback } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams, useNavigate } from 'react-router-dom'
 import { Alert } from '@/components/ui/alert'
 import { PageHeader, PageContainer } from '@/components/ui'
 import {
@@ -37,7 +37,6 @@ import { ProcessingTab } from './processing-tab'
 import { AuthTab } from './auth-tab'
 
 const TAB_ORDER: { id: VKontakteTab; label: string; accent?: boolean }[] = [
-  { id: 'create', label: 'Create Post' },
   { id: 'posts', label: 'Posts' },
   { id: 'calendar', label: 'Calendar' },
   { id: 'profile', label: 'Profile Settings' },
@@ -47,9 +46,10 @@ const TAB_ORDER: { id: VKontakteTab; label: string; accent?: boolean }[] = [
 
 export function VKontaktePage() {
   const { user } = useAuth()
+  const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const [activeTab, setActiveTab] = useState<VKontakteTab>(() =>
-    searchParams.get('auth') === '1' ? 'auth' : 'create',
+    searchParams.get('auth') === '1' ? 'auth' : 'posts',
   )
   const [authStatus, setAuthStatus] = useState<VKAuthStatus | null>(null)
   const [subscriptions, setSubscriptions] = useState<VKSubscriptionItem[]>([])
@@ -75,10 +75,26 @@ export function VKontaktePage() {
   const [signed, setSigned] = useState(false)
   const [markAsAds, setMarkAsAds] = useState(false)
   const [accessToken, setAccessToken] = useState('')
+  const [userAccessToken, setUserAccessToken] = useState('')
   const [vkAppId, setVkAppId] = useState('')
   const [vkAppSecret, setVkAppSecret] = useState('')
+  const [vkAppServiceKey, setVkAppServiceKey] = useState('')
+  const [vkCallbackConfirmation, setVkCallbackConfirmation] = useState('')
+  const [vkCallbackSecret, setVkCallbackSecret] = useState('')
   const [vkFrontendUrl, setVkFrontendUrl] = useState('http://localhost:8100')
   const [vkPublicGatewayUrl, setVkPublicGatewayUrl] = useState('http://localhost:8000')
+  const [verifyResults, setVerifyResults] = useState<
+    Partial<Record<'community' | 'callback' | 'app' | 'oauth', import('@/types/vkontakte').VKAuthVerifyResult | null>>
+  >({})
+  const [verifyingBlock, setVerifyingBlock] = useState<
+    'community' | 'callback' | 'app' | 'oauth' | null
+  >(null)
+  const [testingCommunityWall, setTestingCommunityWall] = useState(false)
+  const [communityTestPostUrl, setCommunityTestPostUrl] = useState<string | null>(null)
+  const [loadingAdminGroups, setLoadingAdminGroups] = useState(false)
+  const [adminGroups, setAdminGroups] = useState<VKSubscriptionItem[]>([])
+  const [testingOwnWall, setTestingOwnWall] = useState(false)
+  const [ownWallTestPostUrl, setOwnWallTestPostUrl] = useState<string | null>(null)
   const [groupsToRead, setGroupsToRead] = useState<DynamicField[]>([{ id: generateId(), value: '' }])
   const [groupToPost, setGroupToPost] = useState('')
   const [processEnabled, setProcessEnabled] = useState(false)
@@ -146,9 +162,23 @@ export function VKontaktePage() {
         setAttachments(profile.attachments ?? '')
         setSigned(profile.signed ?? false)
         setMarkAsAds(profile.mark_as_ads ?? false)
-        setAccessToken(profile.access_token ?? '')
+        setAccessToken(
+          profile.access_token === '***' || profile.has_access_token ? '***' : '',
+        )
+        setUserAccessToken(
+          profile.user_access_token === '***' || profile.has_user_access_token ? '***' : '',
+        )
         setVkAppId(profile.vk_app_id ?? '')
-        setVkAppSecret(profile.vk_app_secret ?? '')
+        setVkAppSecret(
+          profile.vk_app_secret === '***' || profile.has_vk_app_secret ? '***' : '',
+        )
+        setVkAppServiceKey(
+          profile.vk_app_service_key === '***' || profile.has_vk_app_service_key ? '***' : '',
+        )
+        setVkCallbackConfirmation(profile.vk_callback_confirmation ?? '')
+        setVkCallbackSecret(
+          profile.vk_callback_secret === '***' || profile.has_vk_callback_secret ? '***' : '',
+        )
         setVkFrontendUrl(profile.vk_frontend_url?.trim() || 'http://localhost:8100')
         setVkPublicGatewayUrl(profile.vk_public_gateway_url?.trim() || 'http://localhost:8000')
         const gr = profile.groups_to_read
@@ -262,10 +292,7 @@ export function VKontaktePage() {
   }
 
   function switchToCreateTab() {
-    setEditingPostId(null)
-    setPostContent('')
-    setPostImages([])
-    setActiveTab('create')
+    navigate('/posts')
   }
 
   async function handleCreatePost(e: FormEvent) {
@@ -285,8 +312,10 @@ export function VKontaktePage() {
         await vkontakteService.updatePost(editingPostId, {
           text,
           images: imagesList.length ? imagesList : undefined,
+          // After failed publish posts land in review; saving re-queues them.
+          status: 'ready',
         })
-        setSuccess('Post updated successfully')
+        setSuccess('Post updated and set to ready for publishing')
         setEditingPostId(null)
         setPostContent('')
         setPostImages([])
@@ -395,7 +424,7 @@ export function VKontaktePage() {
       .filter((n) => !Number.isNaN(n))
     return {
       publish_enabled: publishEnabled,
-      collect_enabled: collectEnabled,
+      collect_enabled: Boolean(collectEnabled && authStatus?.connected),
       schedule_type: scheduleType,
       time_intervals: timeIntervalsPayload,
       owner_id: ownerId || undefined,
@@ -406,8 +435,13 @@ export function VKontaktePage() {
       signed: signed,
       mark_as_ads: markAsAds,
       access_token: accessToken && accessToken !== '***' ? accessToken : undefined,
+      user_access_token:
+        userAccessToken && userAccessToken !== '***' ? userAccessToken : undefined,
       vk_app_id: vkAppId.trim() || undefined,
       vk_app_secret: vkAppSecret && vkAppSecret !== '***' ? vkAppSecret : undefined,
+      vk_app_service_key: vkAppServiceKey && vkAppServiceKey !== '***' ? vkAppServiceKey : undefined,
+      vk_callback_confirmation: vkCallbackConfirmation.trim() || undefined,
+      vk_callback_secret: vkCallbackSecret && vkCallbackSecret !== '***' ? vkCallbackSecret : undefined,
       vk_frontend_url: vkFrontendUrl.trim() || undefined,
       vk_public_gateway_url: vkPublicGatewayUrl.trim() || undefined,
       groups_to_read: groupsToReadPayload,
@@ -436,8 +470,92 @@ export function VKontaktePage() {
     try {
       await vkontakteService.saveProfile(buildProfilePayload())
       setSuccess(successMessage)
+      await loadProfile()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save profile settings')
+    } finally {
+      setIsSavingProfile(false)
+    }
+  }
+
+  async function persistCommunityAuth() {
+    setError('')
+    setSuccess('')
+    setIsSavingProfile(true)
+    try {
+      await vkontakteService.saveProfile({
+        ...buildProfilePayload(),
+        group_to_post: groupToPost.trim() || undefined,
+        access_token:
+          accessToken && accessToken !== '***' ? accessToken.trim() : undefined,
+      })
+      setSuccess('Токен сообщества сохранён')
+      await loadProfile()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save community token')
+    } finally {
+      setIsSavingProfile(false)
+    }
+  }
+
+  async function persistUserToken() {
+    setError('')
+    setSuccess('')
+    setIsSavingProfile(true)
+    try {
+      await vkontakteService.saveProfile({
+        ...buildProfilePayload(),
+        user_access_token:
+          userAccessToken && userAccessToken !== '***' ? userAccessToken.trim() : undefined,
+      })
+      setSuccess('User token сохранён')
+      await loadProfile()
+      await loadAuthStatus()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save user token')
+    } finally {
+      setIsSavingProfile(false)
+    }
+  }
+
+  async function persistAppKeys() {
+    setError('')
+    setSuccess('')
+    setIsSavingProfile(true)
+    try {
+      await vkontakteService.saveProfile({
+        ...buildProfilePayload(),
+        vk_app_id: vkAppId.trim() || undefined,
+        vk_app_secret: vkAppSecret && vkAppSecret !== '***' ? vkAppSecret.trim() : undefined,
+        vk_app_service_key:
+          vkAppServiceKey && vkAppServiceKey !== '***' ? vkAppServiceKey.trim() : undefined,
+        vk_frontend_url: vkFrontendUrl.trim() || undefined,
+        vk_public_gateway_url: vkPublicGatewayUrl.trim() || undefined,
+      })
+      setSuccess('Ключи приложения сохранены')
+      await loadProfile()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save app keys')
+    } finally {
+      setIsSavingProfile(false)
+    }
+  }
+
+  async function persistCallbackAuth() {
+    setError('')
+    setSuccess('')
+    setIsSavingProfile(true)
+    try {
+      await vkontakteService.saveProfile({
+        ...buildProfilePayload(),
+        vk_callback_confirmation: vkCallbackConfirmation.trim() || undefined,
+        vk_callback_secret:
+          vkCallbackSecret && vkCallbackSecret !== '***' ? vkCallbackSecret.trim() : undefined,
+      })
+      setSuccess('Callback API настройки сохранены')
+      await loadProfile()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save callback settings')
     } finally {
       setIsSavingProfile(false)
     }
@@ -450,6 +568,12 @@ export function VKontaktePage() {
 
   async function handleSaveProfile(e: FormEvent) {
     e.preventDefault()
+    if (collectEnabled && !(authStatus?.connected)) {
+      setError(
+        'Сбор (Collect) требует user OAuth. Откройте Авторизация → «Подключить пользователя».',
+      )
+      return
+    }
     await persistFullVkProfile('Profile settings saved successfully')
   }
 
@@ -514,8 +638,104 @@ export function VKontaktePage() {
     return imagePreviewUrl(url, base, origin)
   }
 
-  const showAuthBlock = authStatus != null && !authStatus.connected
+  const showAuthBlock =
+    authStatus != null && !authStatus.connected && !authStatus.community_connected
   const vkOAuthRedirectUri = `${vkPublicGatewayUrl.replace(/\/$/, '')}/vk/oauth/callback`
+  const vkCallbackApiUrl = `${vkPublicGatewayUrl.replace(/\/$/, '')}/vk/callback`
+
+  const startVkOAuth = (flow: 'user' | 'group') => {
+    setError('')
+    void vkontakteService
+      .getAuthUrl(flow)
+      .then(({ url }) => {
+        window.location.href = url
+      })
+      .catch((err) => {
+        setError(err instanceof Error ? err.message : 'Failed to get OAuth URL')
+      })
+  }
+
+  async function runVerify(block: 'community' | 'callback' | 'app' | 'oauth') {
+    setVerifyingBlock(block)
+    setError('')
+    try {
+      const res = await vkontakteService.verifyAuthBlock(block)
+      setVerifyResults((prev) => ({ ...prev, [block]: res }))
+      if (res.ok) setSuccess(res.message)
+      else setError(res.message)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Verify failed'
+      setVerifyResults((prev) => ({
+        ...prev,
+        [block]: { ok: false, block, message },
+      }))
+      setError(message)
+    } finally {
+      setVerifyingBlock(null)
+    }
+  }
+
+  async function runTestCommunityWall() {
+    setTestingCommunityWall(true)
+    setError('')
+    setCommunityTestPostUrl(null)
+    try {
+      const res = await vkontakteService.testCommunityWall()
+      setVerifyResults((prev) => ({ ...prev, community: res }))
+      const url =
+        res.details && typeof res.details.post_url === 'string' ? res.details.post_url : null
+      setCommunityTestPostUrl(url)
+      if (res.ok) setSuccess(res.message)
+      else setError(res.message)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Тестовый пост не удался')
+    } finally {
+      setTestingCommunityWall(false)
+    }
+  }
+
+  async function runLoadAdminGroups() {
+    setLoadingAdminGroups(true)
+    setError('')
+    try {
+      const res = await vkontakteService.getAdminGroups()
+      setAdminGroups(res.subscriptions ?? [])
+      setSuccess(
+        res.count > 0
+          ? `Админ-сообществ: ${res.count}. Кликните, чтобы выбрать Group to post.`
+          : 'Список пуст — подключите user OAuth с доступом к группам.',
+      )
+    } catch (err) {
+      setAdminGroups([])
+      setError(err instanceof Error ? err.message : 'Не удалось загрузить admin-группы')
+    } finally {
+      setLoadingAdminGroups(false)
+    }
+  }
+
+  function selectAdminGroup(groupId: number) {
+    setGroupToPost(String(groupId))
+    setSuccess(`Group to post = ${groupId}. Сохраните блок «Сообщество».`)
+  }
+
+  async function runTestOwnWall() {
+    setTestingOwnWall(true)
+    setError('')
+    setOwnWallTestPostUrl(null)
+    try {
+      const res = await vkontakteService.testOwnWall()
+      setVerifyResults((prev) => ({ ...prev, oauth: res }))
+      const url =
+        res.details && typeof res.details.post_url === 'string' ? res.details.post_url : null
+      setOwnWallTestPostUrl(url)
+      if (res.ok) setSuccess(res.message)
+      else setError(res.message)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Тест на личную стену не удался')
+    } finally {
+      setTestingOwnWall(false)
+    }
+  }
 
   return (
     <PageContainer maxWidth="wide">
@@ -523,7 +743,10 @@ export function VKontaktePage() {
         title="VKontakte Integration"
         description="Configure your VKontakte account settings and post management"
       />
-      <p className="mb-4 text-sm">
+      <p className="mb-4 text-sm flex flex-wrap gap-4">
+        <Link to="/posts" className="text-primary-400 hover:underline">
+          Создать пост → /posts
+        </Link>
         <Link to="/channels" className="text-primary-400 hover:underline">
           Управлять каналами → /channels
         </Link>
@@ -556,7 +779,7 @@ export function VKontaktePage() {
               key={tab.id}
               type="button"
               className={`px-6 py-3 text-sm font-medium transition-all relative whitespace-nowrap flex items-center gap-1.5 ${textClass} ${isAuth && showAuthBlock && !isActive ? 'animate-pulse' : ''}`}
-              onClick={() => (tab.id === 'create' ? switchToCreateTab() : setActiveTab(tab.id))}
+              onClick={() => setActiveTab(tab.id)}
             >
               {isAuth && (
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -573,7 +796,7 @@ export function VKontaktePage() {
         })}
       </div>
 
-      {activeTab === 'create' && (
+      {editingPostId !== null && (
         <CreatePostTab
           postContent={postContent}
           onPostContentChange={setPostContent}
@@ -646,6 +869,7 @@ export function VKontaktePage() {
           }}
           collectEnabled={collectEnabled}
           onCollectEnabledChange={setCollectEnabled}
+          userOauthConnected={Boolean(authStatus?.connected)}
           groupsToRead={groupsToRead}
           onAddGroupToRead={() => setGroupsToRead((prev) => [...prev, { id: generateId(), value: '' }])}
           onRemoveGroupToRead={(id) => {
@@ -693,32 +917,49 @@ export function VKontaktePage() {
       {activeTab === 'auth' && (
         <AuthTab
           authStatus={authStatus}
+          groupToPost={groupToPost}
+          onGroupToPostChange={setGroupToPost}
+          accessToken={accessToken}
+          onAccessTokenChange={setAccessToken}
+          userAccessToken={userAccessToken}
+          onUserAccessTokenChange={setUserAccessToken}
+          onSaveUserToken={() => void persistUserToken()}
+          vkCallbackConfirmation={vkCallbackConfirmation}
+          onVkCallbackConfirmationChange={setVkCallbackConfirmation}
+          vkCallbackSecret={vkCallbackSecret}
+          onVkCallbackSecretChange={setVkCallbackSecret}
+          vkCallbackApiUrl={vkCallbackApiUrl}
           vkAppId={vkAppId}
           onVkAppIdChange={setVkAppId}
           vkAppSecret={vkAppSecret}
           onVkAppSecretChange={setVkAppSecret}
+          vkAppServiceKey={vkAppServiceKey}
+          onVkAppServiceKeyChange={setVkAppServiceKey}
           vkFrontendUrl={vkFrontendUrl}
           onVkFrontendUrlChange={setVkFrontendUrl}
           vkPublicGatewayUrl={vkPublicGatewayUrl}
           onVkPublicGatewayUrlChange={setVkPublicGatewayUrl}
           vkOAuthRedirectUri={vkOAuthRedirectUri}
-          accessToken={accessToken}
-          onAccessTokenChange={setAccessToken}
           isSavingProfile={isSavingProfile}
-          onSaveOAuthSettings={() => void persistFullVkProfile('Настройки OAuth VK сохранены')}
-          onSaveTokenSettings={() => void persistFullVkProfile('Токен и настройки VK сохранены')}
+          verifyResults={verifyResults}
+          verifyingBlock={verifyingBlock}
+          onSaveCommunity={() => void persistCommunityAuth()}
+          onSaveCallback={() => void persistCallbackAuth()}
+          onSaveApp={() => void persistAppKeys()}
+          onVerify={(block) => void runVerify(block)}
+          onTestCommunityWall={() => void runTestCommunityWall()}
+          testingCommunityWall={testingCommunityWall}
+          communityTestPostUrl={communityTestPostUrl}
+          onLoadAdminGroups={() => void runLoadAdminGroups()}
+          loadingAdminGroups={loadingAdminGroups}
+          adminGroups={adminGroups}
+          onSelectAdminGroup={selectAdminGroup}
+          onTestOwnWall={() => void runTestOwnWall()}
+          testingOwnWall={testingOwnWall}
+          ownWallTestPostUrl={ownWallTestPostUrl}
           onRefreshAuthStatus={() => void loadAuthStatus()}
-          onConnectVk={() => {
-            setError('')
-            void vkontakteService
-              .getAuthUrl()
-              .then(({ url }) => {
-                window.location.href = url
-              })
-              .catch((err) => {
-                setError(err instanceof Error ? err.message : 'Failed to get OAuth URL')
-              })
-          }}
+          onConnectVkUser={() => startVkOAuth('user')}
+          onConnectVkCommunity={() => startVkOAuth('group')}
           loadingSubscriptions={loadingSubscriptions}
           onLoadSubscriptions={() => void loadSubscriptions()}
           subscriptions={subscriptions}

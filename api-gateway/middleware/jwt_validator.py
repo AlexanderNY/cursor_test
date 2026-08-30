@@ -15,11 +15,13 @@ class JwtValidator:
         self.secret_key = secret_key
         self.algorithm = algorithm
     
-    def decode_token(self, token: str) -> dict:
+    def decode_token(self, token: str, *, audience: str | None = None) -> dict:
         """Декодирует JWT токен.
         
         Args:
             token: JWT токен
+            audience: если задан — проверяет aud; иначе aud не проверяется
+                (нужно и для CopyParse access, и для site_access 9to18)
         
         Returns:
             Декодированные данные токена (payload)
@@ -28,12 +30,13 @@ class JwtValidator:
             TokenValidationException: Если токен невалидный или истек
         """
         try:
-            payload = jwt.decode(
-                token,
-                self.secret_key,
-                algorithms=[self.algorithm]
-            )
-            return payload
+            kwargs: dict = {
+                "algorithms": [self.algorithm],
+                "options": {"verify_aud": bool(audience)},
+            }
+            if audience:
+                kwargs["audience"] = audience
+            return jwt.decode(token, self.secret_key, **kwargs)
         except jwt.ExpiredSignatureError as error:
             raise TokenValidationException("Token has expired.") from error
         except jwt.InvalidTokenError as error:
@@ -90,13 +93,32 @@ class JwtValidator:
         Returns:
             Словарь с данными пользователя из токена
         """
+        # verify_aud=False: токены CopyParse без aud и site JWT с aud=9to18
         payload = self.decode_token(token)
         token_type = payload.get("type")
+
+        # SSO-lite: site JWT супер-админа 9to18 для Learn admin API
+        if token_type == "site_access":
+            aud = payload.get("aud")
+            if aud not in ("9to18", None) and aud != ["9to18"]:
+                raise TokenValidationException("Invalid site token audience.")
+            if str(payload.get("site_role") or "") != "site_admin":
+                raise TokenValidationException(
+                    "Only site_admin can use site token for protected Learn routes."
+                )
+            return {
+                "user_id": payload.get("user_id"),
+                "role": "admin",
+                "type": token_type,
+                "exp": payload.get("exp"),
+                "site": True,
+            }
+
         if token_type != "access":
             raise TokenValidationException("Invalid token type. Access token required.")
         return {
-            "user_id": payload.get("user_id"),  # auth service использует user_id
-            "role": payload.get("role"),  # роль пользователя
+            "user_id": payload.get("user_id"),
+            "role": payload.get("role"),
             "type": token_type,
             "exp": payload.get("exp"),
         }
@@ -157,6 +179,22 @@ def check_public_endpoint(endpoint_path: str) -> bool:
     """
     # Точное совпадение
     if endpoint_path in PUBLIC_ENDPOINTS:
+        return True
+
+    # Learn public read: /learn/posts and /learn/posts/{slug}
+    if endpoint_path == "/learn/posts" or endpoint_path.startswith("/learn/posts/"):
+        return True
+
+    # Learn public contact form (9to18.ru)
+    if endpoint_path == "/learn/contact":
+        return True
+
+    # Learn public promo spotlight (9to18.ru home)
+    if endpoint_path == "/learn/promo":
+        return True
+
+    # 9to18 site contour: core validates its own site JWT
+    if endpoint_path == "/site" or endpoint_path.startswith("/site/"):
         return True
     
     # Schedule-прокси к ботам требуют JWT
@@ -234,9 +272,11 @@ async def get_current_user(
     token = credentials.credentials
     user = jwt_validator.get_user_from_token(token)
 
-    http_client = getattr(request.app.state, "http_client", None)
-    if await is_token_blacklisted(token, http_client):
-        raise TokenValidationException("Token has been revoked")
+    # Site JWT не проходит blacklist CopyParse auth
+    if not user.get("site"):
+        http_client = getattr(request.app.state, "http_client", None)
+        if await is_token_blacklisted(token, http_client):
+            raise TokenValidationException("Token has been revoked")
 
     return user
 
@@ -267,8 +307,9 @@ async def validate_jwt_middleware(request: Request) -> Optional[dict]:
     token = jwt_validator.extract_token_from_header(authorization_header)
     user = jwt_validator.get_user_from_token(token)
 
-    http_client = getattr(request.app.state, "http_client", None)
-    if await is_token_blacklisted(token, http_client):
-        raise TokenValidationException("Token has been revoked")
+    if not user.get("site"):
+        http_client = getattr(request.app.state, "http_client", None)
+        if await is_token_blacklisted(token, http_client):
+            raise TokenValidationException("Token has been revoked")
 
     return user

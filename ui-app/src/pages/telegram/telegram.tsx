@@ -1,5 +1,5 @@
 import { useState, useEffect, FormEvent, useCallback } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams, useNavigate } from 'react-router-dom'
 import { Alert } from '@/components/ui/alert'
 import { PageHeader, PageContainer } from '@/components/ui'
 import { apiClient } from '@/services/api-client'
@@ -48,7 +48,6 @@ import { ProcessingTab } from './processing-tab'
 import { AuthTab } from './auth-tab'
 
 const TAB_ORDER: { id: TelegramTab; label: string; accent?: boolean }[] = [
-  { id: 'create', label: 'Create Post' },
   { id: 'posts', label: 'Posts' },
   { id: 'calendar', label: 'Calendar' },
   { id: 'profile', label: 'Profile Settings' },
@@ -58,10 +57,11 @@ const TAB_ORDER: { id: TelegramTab; label: string; accent?: boolean }[] = [
 
 export function TelegramPage() {
   const { user } = useAuth()
+  const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
 
   const [activeTab, setActiveTab] = useState<TelegramTab>(() =>
-    searchParams.get('auth') === '1' ? 'auth' : 'create',
+    searchParams.get('auth') === '1' ? 'auth' : 'posts',
   )
 
   const [authStatus, setAuthStatus] = useState<TgAuthStatus | null>(null)
@@ -103,6 +103,7 @@ export function TelegramPage() {
   const [digestChannel, setDigestChannel] = useState('')
   const [classificationEnabled, setClassificationEnabled] = useState(false)
   const [classificationCategories, setClassificationCategories] = useState('новости, реклама, технологии, финансы, другое')
+  const [batchEnrichmentEnabled, setBatchEnrichmentEnabled] = useState(false)
   const [recentAlerts, setRecentAlerts] = useState<TgAnalyticsAlertItem[]>([])
 
   const [postText, setPostText] = useState('')
@@ -272,6 +273,7 @@ export function TelegramPage() {
         setDigestIntervalMin(profile.digest_interval_min ?? 30)
         setDigestChannel(profile.digest_channel || '')
         setClassificationEnabled(profile.classification_enabled ?? false)
+        setBatchEnrichmentEnabled(profile.batch_enrichment_enabled ?? false)
         if (profile.classification_categories?.length) {
           setClassificationCategories(profile.classification_categories.join(', '))
         }
@@ -334,6 +336,7 @@ export function TelegramPage() {
       digest_channel: digestChannel || undefined,
       classification_enabled: classificationEnabled,
       classification_categories: classificationCategories.split(',').map((s) => s.trim()).filter(Boolean),
+      batch_enrichment_enabled: batchEnrichmentEnabled,
     }
   }
 
@@ -737,9 +740,7 @@ export function TelegramPage() {
   }
 
   function switchToCreateTab() {
-    setEditingPostId(null)
-    resetPostForm()
-    setActiveTab('create')
+    navigate('/posts')
   }
 
   const showAuthBlock =
@@ -751,7 +752,10 @@ export function TelegramPage() {
   return (
     <PageContainer maxWidth="wide">
       <PageHeader title="Telegram Integration" description="Manage your Telegram posts and settings" />
-      <p className="mb-4 text-sm">
+      <p className="mb-4 text-sm flex flex-wrap gap-4">
+        <Link to="/posts" className="text-primary-400 hover:underline">
+          Создать пост → /posts
+        </Link>
         <Link to="/channels" className="text-primary-400 hover:underline">
           Управлять каналами → /channels
         </Link>
@@ -771,7 +775,7 @@ export function TelegramPage() {
             <button
               key={tab.id}
               className={`px-6 py-3 text-sm font-medium transition-all relative whitespace-nowrap flex items-center gap-1.5 ${textClass} ${isAuth && showAuthBlock && !isActive ? 'animate-pulse' : ''}`}
-              onClick={() => (tab.id === 'create' ? switchToCreateTab() : setActiveTab(tab.id))}
+              onClick={() => setActiveTab(tab.id)}
             >
               {isAuth && (
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -788,7 +792,7 @@ export function TelegramPage() {
         })}
       </div>
 
-      {activeTab === 'create' && (
+      {(activeTab === 'create' || editingPostId !== null) && editingPostId !== null && (
         <CreatePostTab
           postText={postText}
           onPostTextChange={setPostText}
@@ -921,6 +925,8 @@ export function TelegramPage() {
           onClassificationEnabledChange={setClassificationEnabled}
           classificationCategories={classificationCategories}
           onClassificationCategoriesChange={setClassificationCategories}
+          batchEnrichmentEnabled={batchEnrichmentEnabled}
+          onBatchEnrichmentEnabledChange={setBatchEnrichmentEnabled}
           onSubmit={handleSaveProcessing}
         />
       )}

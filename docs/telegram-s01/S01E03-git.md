@@ -130,6 +130,7 @@ git push -u origin s01-e03
 
 ## Ссылки
 
+- CopyParse (регистрация, учебный контур): https://www.copyparse.ru/sign-up?utm_source=tg&utm_campaign=s01e03
 - Pro Git, главы 2–3 (снимки и ветки), по-русски — https://git-scm.com/book/ru/v2
 - GitHub Flow: короткие ветки и PR — https://docs.github.com/ru/get-started/using-github/github-flow
 - Шаблоны `.gitignore` — https://github.com/github/gitignore

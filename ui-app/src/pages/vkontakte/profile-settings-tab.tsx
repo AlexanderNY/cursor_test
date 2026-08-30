@@ -1,7 +1,9 @@
 import { FormEvent } from 'react'
+import { Link } from 'react-router-dom'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
+import { Alert } from '@/components/ui/alert'
 import type { ScheduleType } from '@/types/vkontakte'
 import type { DynamicField } from './vkontakte-helpers'
 
@@ -22,6 +24,8 @@ export interface ProfileSettingsTabProps {
   onUpdateTimeInterval: (id: string, field: 'start' | 'end', value: string) => void
   collectEnabled: boolean
   onCollectEnabledChange: (v: boolean) => void
+  /** User OAuth connected — required to enable Collect */
+  userOauthConnected: boolean
   groupsToRead: DynamicField[]
   onAddGroupToRead: () => void
   onRemoveGroupToRead: (id: string) => void
@@ -46,6 +50,7 @@ export function ProfileSettingsTab({
   onUpdateTimeInterval,
   collectEnabled,
   onCollectEnabledChange,
+  userOauthConnected,
   groupsToRead,
   onAddGroupToRead,
   onRemoveGroupToRead,
@@ -164,12 +169,34 @@ export function ProfileSettingsTab({
 
             <div className="space-y-4 pt-4 border-t border-[var(--border-color)]">
               <h3 className="text-sm font-semibold text-[var(--text-primary)]">Collection (Parser)</h3>
-              <label className="flex items-center gap-3 cursor-pointer group">
+              <p className="text-xs text-[var(--text-muted)] leading-relaxed">
+                Для чтения стен (<code>wall.get</code>) нужен{' '}
+                <strong className="text-[var(--text-primary)]">user OAuth</strong> на вкладке{' '}
+                <Link to="/vkontakte?auth=1" className="text-primary-400 underline">
+                  Авторизация → блок 4
+                </Link>
+                . Токена сообщества недостаточно.
+              </p>
+              {!userOauthConnected && (
+                <Alert variant="warning">
+                  User OAuth не подключён — включить сбор нельзя. Откройте Авторизация → «Подключить
+                  пользователя».
+                </Alert>
+              )}
+              <label
+                className={`flex items-center gap-3 group ${
+                  userOauthConnected ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'
+                }`}
+              >
                 <div className="relative">
                   <input
                     type="checkbox"
-                    checked={collectEnabled}
-                    onChange={(e) => onCollectEnabledChange(e.target.checked)}
+                    checked={collectEnabled && userOauthConnected}
+                    disabled={!userOauthConnected}
+                    onChange={(e) => {
+                      if (!userOauthConnected) return
+                      onCollectEnabledChange(e.target.checked)
+                    }}
                     className="sr-only peer"
                   />
                   <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors" />
@@ -177,12 +204,11 @@ export function ProfileSettingsTab({
                 </div>
                 <span className="text-[var(--text-primary)]">Enable collection</span>
               </label>
-              {collectEnabled && (
+              {collectEnabled && userOauthConnected && (
                 <div className="space-y-4 animate-slide-down">
                   <p className="text-sm text-[var(--text-muted)]">
-                    Токен сообщества задаётся на вкладке{' '}
-                    <strong className="text-amber-400/90">Авторизация</strong>. Здесь укажите, с каких групп читать
-                    стену.
+                    User OAuth уже есть. Укажите, с каких групп читать стену (fallback, если нет
+                    brand-каналов в Channels).
                   </p>
                   <div className="p-4 bg-[var(--bg-secondary)] rounded-xl space-y-4 border border-[var(--border-color)]">
                     <h4 className="text-sm font-semibold text-[var(--text-primary)]">Groups to read (wall.get)</h4>

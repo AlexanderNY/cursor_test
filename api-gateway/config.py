@@ -79,6 +79,10 @@ RATE_LIMITS_CONFIG: dict[str, dict[str, int]] = {
     "/auth/reset-password": {"requests": 3, "window_seconds": 300},
     "/auth/refresh": {"requests": 10, "window_seconds": 60},
     "/auth/verify": {"requests": 5, "window_seconds": 60},
+    "/learn/contact": {"requests": 5, "window_seconds": 60},
+    "/site/auth/login": {"requests": 8, "window_seconds": 60},
+    "/site/auth/register": {"requests": 5, "window_seconds": 60},
+    "/site/contact": {"requests": 5, "window_seconds": 60},
     "/core/statistics": {"requests": 30, "window_seconds": 60},
     "/core/users-statistics": {"requests": 30, "window_seconds": 60},
     "/core/schedule": {"requests": 30, "window_seconds": 60},
@@ -139,6 +143,7 @@ RATE_LIMITS_CONFIG: dict[str, dict[str, int]] = {
 PUBLIC_ENDPOINTS: list[str] = [
     "/threads/oauth/callback",
     "/vk/oauth/callback",
+    "/vk/callback",
     "/dzen-bot/health",
     "/auth/login",
     "/auth/register",
@@ -149,6 +154,14 @@ PUBLIC_ENDPOINTS: list[str] = [
     "/auth/billing/plans",
     "/auth/billing/webhooks/stripe",
     "/core/guide/blocks",
+    "/learn/posts",
+    "/learn/contact",
+    "/learn/promo",
+    "/site/auth/register",
+    "/site/auth/login",
+    "/site/apps",
+    "/site/promo",
+    "/site/contact",
     "/health",
 ]
 

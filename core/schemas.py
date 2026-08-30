@@ -234,6 +234,7 @@ class TelegramProfileBase(BaseModel):
     classification_categories: List[str] = Field(
         default_factory=lambda: ["новости", "реклама", "технологии", "финансы", "другое"]
     )
+    batch_enrichment_enabled: bool = False
 
     @field_validator("chats_to_read", "channels_to_post", mode="before")
     @classmethod
@@ -676,11 +677,15 @@ class VKontakteProfileBase(BaseModel):
     users_to_read: List[int] = []  # ID пользователей для чтения стены
     group_to_post: Optional[str] = None  # ID или short_name группы для публикации
     post_to_own_wall: bool = False  # публиковать на личную стену пользователя
-    # OAuth-приложение VK (из UI «Авторизация»; fallback — env core)
+    # Приложение VK (ключи из UI; только БД, не env)
     vk_app_id: Optional[str] = None
     vk_app_secret: Optional[str] = None
+    vk_app_service_key: Optional[str] = None
     vk_frontend_url: Optional[str] = None
     vk_public_gateway_url: Optional[str] = None
+    # Callback API сообщества (confirmation + secret сервера)
+    vk_callback_confirmation: Optional[str] = None
+    vk_callback_secret: Optional[str] = None
 
 
 class VKontakteProfileCreate(VKontakteProfileBase):
@@ -1276,6 +1281,33 @@ class PostRow(BaseModel):
 class PostsListResponse(BaseModel):
     """Ответ со списком постов (админ)."""
     posts: List[PostRow] = []
+
+
+class PipelinePostUpdate(BaseModel):
+    """Обновление поста из таблицы posts (пайплайн / Posts Review)."""
+    title: Optional[str] = None
+    text: Optional[str] = Field(None, max_length=150000)
+    domain: Optional[str] = None
+    url: Optional[str] = None
+    author: Optional[str] = None
+    avatar: Optional[str] = None
+    post_date: Optional[datetime] = None
+    screenshot: Optional[str] = None
+    images: Optional[List[str]] = None
+    image_over_text: Optional[str] = None
+    comments: Optional[int] = None
+    reposts: Optional[int] = None
+    likes: Optional[int] = None
+    views: Optional[int] = None
+    is_ad: Optional[bool] = None
+    status: Optional[str] = None
+    to_tg: Optional[bool] = None
+    to_tw: Optional[bool] = None
+    to_wp: Optional[bool] = None
+    to_vk: Optional[bool] = None
+    to_threads: Optional[bool] = None
+    to_dzen: Optional[bool] = None
+    to_instagram: Optional[bool] = None
 
 
 class PipelineEventItem(BaseModel):

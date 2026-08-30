@@ -163,7 +163,10 @@ class PostPublisher:
                 result: List[Dict] = []
                 release_ids: List[int] = []
                 for post in claimed:
-                    if post.get("publish_enabled") is False:
+                    explicit_targets = _parse_json_list(post.get("target_channels"))
+                    # Profile publish_enabled is a global auto-pipeline kill-switch.
+                    # Posts with explicit targets (SMM / Posts page) must still go out.
+                    if post.get("publish_enabled") is False and not explicit_targets:
                         release_ids.append(post["id"])
                         continue
                     schedule_type = (post.get("schedule_type") or "immediate").strip()
@@ -393,11 +396,13 @@ class PostPublisher:
             if path and path.startswith(tmp):
                 await async_fs.unlink_quiet(path)
 
-    def _fallback_publish_text(self, post: Dict) -> str:
-        """Текст для публикации при screenshot_only / пустом post_text."""
+    def _fallback_publish_text(self, post: Dict, *, has_images: bool = False) -> str:
+        """Текст для публикации. При есть картинках и пустом post_text — без подписи (screenshot_only)."""
         text = (post.get("post_text") or "").strip()
         if text:
             return text
+        if has_images:
+            return ""
         title = (post.get("title") or "").strip()
         url = (post.get("url") or "").strip()
         if title and url:
@@ -408,7 +413,6 @@ class PostPublisher:
         """Публикует один пост во все целевые каналы."""
         post_id = post.get("id")
         user_id = post.get("user_id")
-        text = self._fallback_publish_text(post)
         channels = post.get("_channels") or self._resolve_channels(post)
 
         if not channels:
@@ -426,6 +430,7 @@ class PostPublisher:
             return False
 
         image_paths = await self.resolve_images_for_publish(post_id, post.get("images"))
+        text = self._fallback_publish_text(post, has_images=bool(image_paths))
 
         if not text and not image_paths:
             logger.error(

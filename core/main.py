@@ -5,6 +5,8 @@ from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 
 from database import init_db, close_db
+from site_database import init_site_db, close_site_db
+from site_schema import SITE_ALL_TABLES, SITE_SCHEMA_PATCHES
 from models import ALL_TABLES
 from exceptions import QuotaExceededError
 from routers import (
@@ -26,16 +28,18 @@ from routers import (
     internal,
     smm,
     guide,
+    learn,
+    site,
 )
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Обработчики событий жизненного цикла приложения."""
-    # Startup
     await init_db(ALL_TABLES)
+    await init_site_db(SITE_ALL_TABLES + SITE_SCHEMA_PATCHES)
     yield
-    # Shutdown
+    await close_site_db()
     await close_db()
 
 
@@ -65,17 +69,33 @@ app.include_router(threads.router)
 app.include_router(internal.router)
 app.include_router(smm.router)
 app.include_router(guide.router)
+app.include_router(learn.router)
+app.include_router(site.router)
 
 
 @app.exception_handler(QuotaExceededError)
 async def quota_exceeded_handler(request: Request, exc: QuotaExceededError) -> JSONResponse:
+    if exc.resource == "ai_calls_month":
+        message = (
+            "Лимит AI-вызовов исчерпан. Обновите план, чтобы продолжить."
+            if exc.limit > 0
+            else "AI недоступен на текущем плане. Обновите план."
+        )
+    elif exc.resource.startswith("feature:"):
+        feat = exc.resource.split(":", 1)[-1]
+        message = f"Функция «{feat}» недоступна на текущем плане. Обновите план."
+    else:
+        message = f"Лимит плана исчерпан: {exc.resource} ({exc.used}/{exc.limit})"
     return JSONResponse(
         status_code=402,
         content={
-            "detail": "Monthly post quota exceeded for your plan",
-            "resource": exc.resource,
-            "limit": exc.limit,
-            "used": exc.used,
+            "detail": {
+                "message": message,
+                "resource": exc.resource,
+                "limit": exc.limit,
+                "used": exc.used,
+                "upgrade_url": "/pricing",
+            }
         },
     )
 

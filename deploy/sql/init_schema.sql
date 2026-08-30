@@ -18,6 +18,9 @@ CREATE TABLE IF NOT EXISTS users (
     billing_subscription_id VARCHAR(255),
     subscription_status VARCHAR(40),
     subscription_current_period_end TIMESTAMPTZ,
+    utm_source VARCHAR(64),
+    utm_medium VARCHAR(64),
+    utm_campaign VARCHAR(128),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
@@ -101,6 +104,17 @@ CREATE TABLE IF NOT EXISTS billing_events (
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS growth_events (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    event_type VARCHAR(64) NOT NULL,
+    utm_source VARCHAR(64),
+    utm_medium VARCHAR(64),
+    utm_campaign VARCHAR(128),
+    meta JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS admin_audit_log (
     id SERIAL PRIMARY KEY,
     admin_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -126,6 +140,10 @@ CREATE INDEX IF NOT EXISTS idx_billing_events_user_id ON billing_events(user_id)
 CREATE INDEX IF NOT EXISTS idx_billing_events_created_at ON billing_events(created_at);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_billing_events_provider_event_id
     ON billing_events (provider, event_id);
+CREATE INDEX IF NOT EXISTS idx_growth_events_campaign
+    ON growth_events (utm_campaign, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_growth_events_type_created
+    ON growth_events (event_type, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_admin_audit_log_created_at ON admin_audit_log(created_at);
 CREATE INDEX IF NOT EXISTS idx_admin_audit_log_admin_user_id ON admin_audit_log(admin_user_id);
 
@@ -309,6 +327,21 @@ INSERT INTO system_settings (key, value)
 VALUES ('ai_enabled', 'true'::jsonb)
 ON CONFLICT (key) DO NOTHING;
 
+INSERT INTO system_settings (key, value)
+VALUES (
+    'site_9to18_promo',
+    '{
+      "enabled": true,
+      "serviceSlug": "copyparse",
+      "eyebrow": "Спотлайт · взаимное продвижение",
+      "title": "CopyParse: SaaS кросспостинга как живой стенд",
+      "body": "9to18 — площадка взаимного продвижения проектов. Сейчас в фокусе CopyParse: бренды, каналы, календарь и inbox — тот же стек, который разбираем в Learn. Поддержите развитие сервиса и загляните на стенд.",
+      "ctaLabel": "Открыть copyparse.ru",
+      "ctaHref": "https://www.copyparse.ru"
+    }'::jsonb
+)
+ON CONFLICT (key) DO NOTHING;
+
 CREATE TABLE IF NOT EXISTS guide_blocks (
     id SERIAL PRIMARY KEY,
     slug VARCHAR(64) NOT NULL UNIQUE,
@@ -329,6 +362,10 @@ CREATE TABLE IF NOT EXISTS smm_brands (
     group_id INTEGER REFERENCES groups(id) ON DELETE SET NULL,
     name VARCHAR(255) NOT NULL,
     color VARCHAR(7) NOT NULL DEFAULT '#3B82F6',
+    tone_of_voice TEXT,
+    style_notes TEXT,
+    prompt_snippets JSONB NOT NULL DEFAULT '[]'::jsonb,
+    is_demo BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
@@ -336,7 +373,10 @@ CREATE TABLE IF NOT EXISTS smm_brands (
 CREATE TABLE IF NOT EXISTS smm_brand_channels (
     id SERIAL PRIMARY KEY,
     brand_id INTEGER NOT NULL REFERENCES smm_brands(id) ON DELETE CASCADE,
-    network VARCHAR(10) NOT NULL CHECK (network IN ('tg', 'vk', 'url')),
+    network VARCHAR(20) NOT NULL CHECK (network IN (
+        'tg', 'vk', 'url',
+        'instagram', 'threads', 'tw', 'dzen', 'wp'
+    )),
     external_id VARCHAR(128) NOT NULL,
     title VARCHAR(255),
     kind VARCHAR(20) NOT NULL DEFAULT 'channel'
@@ -370,10 +410,13 @@ CREATE TABLE IF NOT EXISTS smm_inbox_items (
     id SERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL,
     brand_id INTEGER REFERENCES smm_brands(id) ON DELETE SET NULL,
-    network VARCHAR(10) NOT NULL CHECK (network IN ('tg', 'vk')),
+    network VARCHAR(20) NOT NULL CHECK (network IN (
+        'tg', 'vk', 'url',
+        'instagram', 'threads', 'tw', 'dzen', 'wp'
+    )),
     channel_id INTEGER REFERENCES smm_brand_channels(id) ON DELETE SET NULL,
     thread_id VARCHAR(128),
-    type VARCHAR(20) NOT NULL CHECK (type IN ('dm', 'comment', 'reaction')),
+    type VARCHAR(20) NOT NULL CHECK (type IN ('dm', 'comment', 'reaction', 'competitor_post')),
     author VARCHAR(255),
     text TEXT,
     status VARCHAR(20) NOT NULL DEFAULT 'new'
@@ -399,10 +442,17 @@ CREATE TABLE IF NOT EXISTS smm_publish_jobs (
     status VARCHAR(30) NOT NULL DEFAULT 'draft',
     retry_count INTEGER DEFAULT 0,
     last_error TEXT,
+    assigned_to INTEGER,
+    rejection_comment TEXT,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_smm_jobs_status_publish ON smm_publish_jobs(status, publish_at);
+CREATE INDEX IF NOT EXISTS idx_smm_jobs_assigned_to
+    ON smm_publish_jobs(assigned_to)
+    WHERE assigned_to IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_smm_jobs_user_status
+    ON smm_publish_jobs(user_id, status);
 
 CREATE TABLE IF NOT EXISTS smm_automations (
     id SERIAL PRIMARY KEY,
@@ -420,6 +470,8 @@ CREATE TABLE IF NOT EXISTS smm_competitor_snapshots (
     channel_id INTEGER NOT NULL REFERENCES smm_brand_channels(id) ON DELETE CASCADE,
     external_post_id VARCHAR(128),
     post_text TEXT,
+    post_url TEXT,
+    text_hash VARCHAR(64),
     views INTEGER DEFAULT 0,
     likes INTEGER DEFAULT 0,
     comments INTEGER DEFAULT 0,
@@ -427,6 +479,12 @@ CREATE TABLE IF NOT EXISTS smm_competitor_snapshots (
     posted_at TIMESTAMPTZ,
     collected_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
+CREATE UNIQUE INDEX IF NOT EXISTS idx_smm_competitor_external_post
+    ON smm_competitor_snapshots (channel_id, external_post_id)
+    WHERE external_post_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_smm_competitor_text_hash
+    ON smm_competitor_snapshots (channel_id, text_hash)
+    WHERE text_hash IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_smm_brands_user_id ON smm_brands(user_id);
 CREATE INDEX IF NOT EXISTS idx_smm_brand_channels_brand_id ON smm_brand_channels(brand_id);
@@ -435,6 +493,39 @@ CREATE INDEX IF NOT EXISTS idx_smm_inbox_brand_status ON smm_inbox_items(brand_i
 CREATE INDEX IF NOT EXISTS idx_smm_jobs_user_brand ON smm_publish_jobs(user_id, brand_id);
 CREATE INDEX IF NOT EXISTS idx_smm_automations_user ON smm_automations(user_id);
 CREATE INDEX IF NOT EXISTS idx_smm_competitor_channel ON smm_competitor_snapshots(channel_id);
+CREATE INDEX IF NOT EXISTS idx_smm_competitor_posted_at
+    ON smm_competitor_snapshots (channel_id, posted_at DESC NULLS LAST);
+
+CREATE TABLE IF NOT EXISTS smm_templates (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    brand_id INTEGER NOT NULL REFERENCES smm_brands(id) ON DELETE CASCADE,
+    kind VARCHAR(20) NOT NULL CHECK (kind IN ('prompt', 'cta', 'utm', 'post_body')),
+    title VARCHAR(255) NOT NULL,
+    body TEXT NOT NULL DEFAULT '',
+    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_smm_templates_brand
+    ON smm_templates(brand_id, kind);
+CREATE INDEX IF NOT EXISTS idx_smm_templates_user
+    ON smm_templates(user_id);
+
+CREATE TABLE IF NOT EXISTS smm_media_packs (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    brand_id INTEGER NOT NULL REFERENCES smm_brands(id) ON DELETE CASCADE,
+    title VARCHAR(255) NOT NULL,
+    object_keys JSONB NOT NULL DEFAULT '[]'::jsonb,
+    caption TEXT,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_smm_media_packs_brand
+    ON smm_media_packs(brand_id);
+CREATE INDEX IF NOT EXISTS idx_smm_media_packs_user
+    ON smm_media_packs(user_id);
 
 CREATE TABLE IF NOT EXISTS smm_channel_counters (
     id SERIAL PRIMARY KEY,
@@ -489,9 +580,14 @@ CREATE TABLE IF NOT EXISTS tg_profiles (
     digest_channel VARCHAR(50),
     classification_enabled BOOLEAN DEFAULT FALSE,
     classification_categories JSONB DEFAULT '["новости", "реклама", "технологии", "финансы", "другое"]',
+    batch_enrichment_enabled BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
+
+DO $$ BEGIN
+  ALTER TABLE tg_profiles ADD COLUMN batch_enrichment_enabled BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
 
 CREATE TABLE IF NOT EXISTS tg_posts (
     id SERIAL PRIMARY KEY,
@@ -563,6 +659,9 @@ CREATE INDEX IF NOT EXISTS idx_tg_events_user_created ON tg_events(user_id, crea
 CREATE INDEX IF NOT EXISTS idx_tg_events_type_created ON tg_events(event_type, created_at);
 CREATE INDEX IF NOT EXISTS idx_tg_events_hash_chat ON tg_events(text_hash, chat_id);
 CREATE INDEX IF NOT EXISTS idx_tg_events_rule_created ON tg_events(rule_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_tg_events_chat_created ON tg_events(chat_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_tg_events_user_type_created
+    ON tg_events(user_id, event_type, created_at);
 
 CREATE TABLE IF NOT EXISTS tg_dedup_cache (
     id SERIAL PRIMARY KEY,
@@ -577,6 +676,23 @@ CREATE TABLE IF NOT EXISTS tg_dedup_cache (
 CREATE INDEX IF NOT EXISTS idx_tg_dedup_user_hash_chat
     ON tg_dedup_cache(user_id, text_hash, chat_id);
 CREATE INDEX IF NOT EXISTS idx_tg_dedup_expires ON tg_dedup_cache(expires_at);
+
+CREATE TABLE IF NOT EXISTS vk_wall_cursors (
+    user_id INTEGER NOT NULL,
+    domain VARCHAR(255) NOT NULL,
+    last_source_id BIGINT NOT NULL DEFAULT 0,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id, domain)
+);
+
+CREATE TABLE IF NOT EXISTS vk_alert_dedup (
+    user_id INTEGER NOT NULL,
+    rule_id VARCHAR(256) NOT NULL,
+    text_hash VARCHAR(64) NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id, rule_id, text_hash)
+);
+CREATE INDEX IF NOT EXISTS idx_vk_alert_dedup_created ON vk_alert_dedup (created_at);
 
 CREATE TABLE IF NOT EXISTS tg_summary_cache (
     id SERIAL PRIMARY KEY,
@@ -596,6 +712,8 @@ CREATE TABLE IF NOT EXISTS tg_digests (
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_tg_digests_user_created ON tg_digests(user_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_tg_digests_user_chat_created
+    ON tg_digests(user_id, chat_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS vk_profiles (
     id SERIAL PRIMARY KEY,
@@ -611,8 +729,8 @@ CREATE TABLE IF NOT EXISTS vk_profiles (
     attachments TEXT,
     signed BOOLEAN DEFAULT FALSE,
     mark_as_ads BOOLEAN DEFAULT FALSE,
-    access_token VARCHAR(512),
-    user_access_token VARCHAR(512),
+    access_token TEXT,
+    user_access_token TEXT,
     groups_to_read JSONB DEFAULT '[]',
     users_to_read JSONB DEFAULT '[]',
     group_to_post VARCHAR(50),
@@ -629,8 +747,11 @@ CREATE TABLE IF NOT EXISTS vk_profiles (
     vk_user_id BIGINT,
     vk_app_id VARCHAR(32),
     vk_app_secret VARCHAR(512),
+    vk_app_service_key VARCHAR(512),
     vk_frontend_url VARCHAR(512),
     vk_public_gateway_url VARCHAR(512),
+    vk_callback_confirmation VARCHAR(64),
+    vk_callback_secret VARCHAR(256),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );

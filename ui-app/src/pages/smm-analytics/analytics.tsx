@@ -10,6 +10,7 @@ import { smmService } from '@/services/smm-service'
 import type { AnalyticsOverview, AnalyticsPost, BrandChannel } from '@/types/smm'
 import { getErrorMessage } from '@/services/api-client'
 import { formatDateTime } from '@/utils/date'
+import { PlanGate } from '@/components/billing/PlanGate'
 import { TelegramAnalyticsPanel } from './telegram-analytics'
 
 type Tab = 'overview' | 'channels' | 'messages' | 'competitors' | 'telegram'
@@ -40,10 +41,12 @@ export function SmmAnalyticsPage() {
   >([])
   const [growthPoints, setGrowthPoints] = useState<{ date: string; subscribers: number }[]>([])
   const [error, setError] = useState('')
-  const [compNetwork, setCompNetwork] = useState<'tg' | 'vk'>('tg')
+  const [compNetwork, setCompNetwork] = useState<'tg' | 'vk' | 'url'>('tg')
   const [compId, setCompId] = useState('')
   const [compTitle, setCompTitle] = useState('')
-  const [compPosts, setCompPosts] = useState<unknown[]>([])
+  const [compPosts, setCompPosts] = useState<
+    { id?: number; text?: string; posted_at?: string; collected_at?: string }[]
+  >([])
   const [selectedComp, setSelectedComp] = useState<BrandChannel | null>(null)
   const [canCompetitors, setCanCompetitors] = useState(true)
 
@@ -74,6 +77,13 @@ export function SmmAnalyticsPage() {
     if (selectedBrandId) next.set('brand_id', String(selectedBrandId))
     setSearchParams(next, { replace: true })
   }
+
+  useEffect(() => {
+    const tabParam = searchParams.get('tab')
+    if (tabParam === 'telegram' || tabParam === 'overview' || tabParam === 'channels' || tabParam === 'messages' || tabParam === 'competitors') {
+      setTab(tabParam)
+    }
+  }, [searchParams])
 
   useEffect(() => {
     const brandRaw = searchParams.get('brand_id')
@@ -129,13 +139,18 @@ export function SmmAnalyticsPage() {
   }, [selectedBrandId, period, tab, focusChannelId])
 
   async function handleAddCompetitor() {
-    if (!selectedBrandId || !compId.trim()) return
+    if (!selectedBrandId) return
+    const isUrl = compNetwork === 'url'
+    if (!isUrl && !compId.trim()) return
+    if (isUrl && !compId.trim()) return
     try {
       await smmService.addCompetitor({
         brand_id: selectedBrandId,
         network: compNetwork,
-        external_id: compId.trim(),
+        external_id: isUrl ? undefined : compId.trim(),
+        url: isUrl ? compId.trim() : undefined,
         title: compTitle.trim() || compId.trim(),
+        alert_enabled: true,
       })
       setCompId('')
       setCompTitle('')
@@ -464,6 +479,15 @@ export function SmmAnalyticsPage() {
       )}
 
       {tab === 'competitors' && (
+        <PlanGate allowed={canCompetitors} featureLabel="Competitors">
+        <div className="space-y-3">
+          <Alert variant="info">
+            Полноценный мониторинг конкурентов — в разделе{' '}
+            <Link to="/competitors" className="underline">
+              Competitors
+            </Link>
+            : дайджесты, compare и алерты.
+          </Alert>
         <div className="grid gap-4 lg:grid-cols-2">
           <Card>
             <CardHeader>
@@ -477,12 +501,17 @@ export function SmmAnalyticsPage() {
                 <select
                   className="rounded-md border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2"
                   value={compNetwork}
-                  onChange={(e) => setCompNetwork(e.target.value as 'tg' | 'vk')}
+                  onChange={(e) => setCompNetwork(e.target.value as 'tg' | 'vk' | 'url')}
                 >
                   <option value="tg">Telegram</option>
                   <option value="vk">VKontakte</option>
+                  <option value="url">URL / RSS</option>
                 </select>
-                <Input value={compId} onChange={(e) => setCompId(e.target.value)} placeholder="External ID" />
+                <Input
+                  value={compId}
+                  onChange={(e) => setCompId(e.target.value)}
+                  placeholder={compNetwork === 'url' ? 'https://…' : 'External ID'}
+                />
                 <Input value={compTitle} onChange={(e) => setCompTitle(e.target.value)} placeholder="Title" />
                 <Button onClick={() => void handleAddCompetitor()} disabled={!selectedBrandId}>
                   Add
@@ -516,12 +545,24 @@ export function SmmAnalyticsPage() {
                   Снимки появятся после сбора коллектором
                 </p>
               )}
-              <pre className="text-xs overflow-auto max-h-96">
-                {JSON.stringify(compPosts, null, 2)}
-              </pre>
+              <ul className="space-y-2 max-h-96 overflow-auto text-sm">
+                {compPosts.map((p, i) => (
+                  <li key={p.id ?? i} className="border-b border-[var(--border-color)] pb-2">
+                    <span className="text-xs text-[var(--text-muted)]">
+                      {formatDateTime(p.posted_at || p.collected_at)}
+                    </span>
+                    <p className="line-clamp-4">{p.text || '—'}</p>
+                  </li>
+                ))}
+              </ul>
+              <Link to="/competitors" className="inline-block mt-3 text-sm text-primary-400 hover:underline">
+                Open Competitors →
+              </Link>
             </CardContent>
           </Card>
         </div>
+        </div>
+        </PlanGate>
       )}
     </PageContainer>
   )

@@ -885,6 +885,8 @@ class PostService:
         to_wp: Optional[bool] = None,
         to_vk: Optional[bool] = None,
         to_threads: Optional[bool] = None,
+        to_dzen: Optional[bool] = None,
+        to_instagram: Optional[bool] = None,
     ) -> Optional[Dict]:
         """Обновляет пост в таблице posts (все переданные поля)."""
         conn = await get_db_connection()
@@ -955,6 +957,12 @@ class PostService:
                 if to_threads is not None:
                     updates.append("to_threads = %s")
                     params.append(to_threads)
+                if to_dzen is not None:
+                    updates.append("to_dzen = %s")
+                    params.append(to_dzen)
+                if to_instagram is not None:
+                    updates.append("to_instagram = %s")
+                    params.append(to_instagram)
                 if not updates:
                     return await self.get_post(user_id, post_id)
                 params.extend([user_id, post_id])

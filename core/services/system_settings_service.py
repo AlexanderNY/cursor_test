@@ -32,6 +32,8 @@ class SystemSettingsService:
                     except json.JSONDecodeError:
                         return value
                 return value
+        except Exception:
+            return default
         finally:
             await release_db_connection(conn)
 
@@ -69,38 +71,61 @@ class SystemSettingsService:
 
     async def set_ai_enabled(self, enabled: bool) -> bool:
         await self.set_value(AI_ENABLED_KEY, bool(enabled))
+        try:
+            from shared import ai_client
+
+            ai_client.invalidate_enabled_cache()
+        except Exception:
+            pass
         return bool(enabled)
+
+    async def get_ai_availability_snapshot(
+        self,
+        *,
+        enabled: bool,
+        env_enabled: bool,
+    ) -> dict[str, Any]:
+        """Снимок доступности Ollama без HTTP-опроса core (/internal/ai-enabled)."""
+        circuit_open = False
+        available = False
+        status = "disabled"
+        if not env_enabled or not enabled:
+            return {"available": False, "circuit_open": False, "status": "disabled"}
+
+        try:
+            from shared import ai_client
+            from shared.circuit_breaker import get_breaker
+
+            circuit_open = get_breaker("ai").is_open()
+            if circuit_open:
+                return {"available": False, "circuit_open": True, "status": "circuit_open"}
+
+            available = await ai_client.probe_available()
+            status = "ready" if available else "unavailable"
+            return {
+                "available": available,
+                "circuit_open": False,
+                "status": status,
+            }
+        except Exception:
+            return {"available": False, "circuit_open": circuit_open, "status": "unavailable"}
 
     async def get_ai_settings(self) -> dict[str, Any]:
         enabled = await self.is_ai_enabled()
         env_enabled = self.is_env_ai_enabled()
-        available = False
-        circuit_open = False
-        status = "disabled"
-        try:
-            from shared import ai_client
-
-            snapshot = await ai_client.get_status()
-            available = bool(snapshot.get("available"))
-            circuit_open = bool(snapshot.get("circuit_open"))
-            status = str(snapshot.get("status") or status)
-            # get_status уже учитывает env + DB через is_enabled poll;
-            # для admin UI источником правды по DB-флагу остаётся is_ai_enabled().
-            if not env_enabled:
-                status = "disabled"
-            elif not enabled:
-                status = "disabled"
-        except Exception:
-            status = "unavailable" if enabled and env_enabled else "disabled"
+        snapshot = await self.get_ai_availability_snapshot(
+            enabled=enabled,
+            env_enabled=env_enabled,
+        )
 
         return {
             "enabled": enabled,
             "env_enabled": env_enabled,
             "model": os.getenv("AI_MODEL", "qwen2.5:1.5b"),
             "service_url": os.getenv("AI_SERVICE_URL", "http://ollama:11434"),
-            "available": available,
-            "circuit_open": circuit_open,
-            "status": status,
+            "available": snapshot["available"],
+            "circuit_open": snapshot["circuit_open"],
+            "status": snapshot["status"],
         }
 
 

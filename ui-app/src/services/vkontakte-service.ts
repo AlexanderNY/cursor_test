@@ -24,8 +24,12 @@ export const vkontakteService = {
   },
 
   async saveProfile(profile: Partial<VKontakteProfile>): Promise<VKontakteProfile> {
-    const response = await apiClient.post<VKontakteProfile>('/vk/profile', profile)
-    return response.data
+    try {
+      const response = await apiClient.post<VKontakteProfile>('/vk/profile', profile)
+      return response.data
+    } catch (error) {
+      throw new Error(getErrorMessage(error))
+    }
   },
 
   async createPost(post: VKontaktePost): Promise<unknown> {
@@ -88,9 +92,41 @@ export const vkontakteService = {
     return path.startsWith('/') ? path : `/${path}`
   },
 
-  /** URL редиректа на oauth.vk.com (требуется JWT, X-User-Id через gateway). */
-  async getAuthUrl(): Promise<{ url: string }> {
-    const response = await apiClient.get<{ url: string }>('/vk/oauth/url')
+  /** URL редиректа на oauth.vk.com (требуется JWT, X-User-Id через gateway).
+   * flow=user — user_access_token; flow=group — access_token сообщества (нужен group_to_post).
+   */
+  async getAuthUrl(flow: 'user' | 'group' = 'user'): Promise<{ url: string; flow?: string; scope?: string }> {
+    const response = await apiClient.get<{ url: string; flow?: string; scope?: string }>('/vk/oauth/url', {
+      params: { flow },
+    })
+    return response.data
+  },
+
+  async verifyAuthBlock(
+    block: 'community' | 'callback' | 'app' | 'oauth'
+  ): Promise<import('@/types/vkontakte').VKAuthVerifyResult> {
+    const response = await apiClient.post<import('@/types/vkontakte').VKAuthVerifyResult>(
+      `/vk/auth/verify/${block}`
+    )
+    return response.data
+  },
+
+  async testCommunityWall(): Promise<import('@/types/vkontakte').VKAuthVerifyResult> {
+    const response = await apiClient.post<import('@/types/vkontakte').VKAuthVerifyResult>(
+      '/vk/auth/test/community-wall'
+    )
+    return response.data
+  },
+
+  async getAdminGroups(): Promise<VKSubscriptionsResult> {
+    const response = await apiClient.get<VKSubscriptionsResult>('/vk/auth/admin-groups')
+    return response.data
+  },
+
+  async testOwnWall(): Promise<import('@/types/vkontakte').VKAuthVerifyResult> {
+    const response = await apiClient.post<import('@/types/vkontakte').VKAuthVerifyResult>(
+      '/vk/auth/test/own-wall'
+    )
     return response.data
   },
 

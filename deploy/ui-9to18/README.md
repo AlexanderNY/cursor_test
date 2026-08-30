@@ -12,23 +12,25 @@
 | `/` | Главная — сетка разделов |
 | `/game/bowl` | Bowl 2D — игра на Pyodide |
 | `/game/learn` | Learn — оглавление (рубрики + сезон S01) |
+| `/game/learn/admin/login` | Learn — вход (JWT CopyParse: admin/author) |
 | `/game/learn/admin` | Learn — админка: список записей |
 | `/game/learn/admin/new` | Learn — создать запись |
 | `/game/learn/admin/:slug` | Learn — редактировать запись (HTML-редактор) |
 | `/game/learn/:slug` | Learn — выпуск (теория / лаба / шпаргалка) |
 | `/game/:slug` | Страница раздела (заглушка) |
 
-Записи Learn после первого открытия сидятся из S01 в `localStorage` браузера; админка правит их локально (без бэкенда).
+Learn читает/пишет контент через API gateway: `GET /api/learn/posts` (публично), админка — `/api/learn/admin/*` + `/api/auth/*`. Edge (`9to18.conf`) проксирует только эти префиксы. Seed S01 лежит в `core/data/learn_seed.json`. Bowl по-прежнему в localStorage.
 
 ## Локальная разработка
 
 ```powershell
 cd deploy/ui-9to18
 npm install
+# нужен gateway на :8000 (или VITE_API_GATEWAY_URL)
 npm run dev
 ```
 
-http://localhost:8200
+http://localhost:8200 — Vite проксирует `/api` → gateway.
 
 Pyodide WASM копируется в `public/pyodide/` при `npm run dev` / `npm run build`.
 

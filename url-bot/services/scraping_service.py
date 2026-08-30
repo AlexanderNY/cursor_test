@@ -200,8 +200,109 @@ def _create_driver() -> webdriver.Chrome:
     return driver
 
 
+_DISMISS_OVERLAYS_JS = """
+const target = arguments[0];
+if (!target || !target.getBoundingClientRect) return 0;
+
+const tr = target.getBoundingClientRect();
+if (tr.width < 1 || tr.height < 1) return 0;
+
+const overlaps = (a, b) =>
+  !(a.right <= b.left || a.left >= b.right || a.bottom <= b.top || a.top >= b.bottom);
+
+const isProtected = (el) =>
+  el === target || target.contains(el) || el.contains(target);
+
+const parseZ = (z) => {
+  const n = parseInt(z, 10);
+  return Number.isFinite(n) ? n : 0;
+};
+
+const looksLikeOverlayName = (el) => {
+  const s = (
+    (el.id || '') + ' ' +
+    (el.className && typeof el.className === 'string' ? el.className : '') + ' ' +
+    (el.getAttribute('role') || '')
+  ).toLowerCase();
+  return /cookie|consent|popup|pop-up|popunder|modal|overlay|banner|subscribe|newsletter|gdpr|promo/.test(s);
+};
+
+const candidates = [];
+const pushUnique = (el) => {
+  if (!el || isProtected(el) || candidates.includes(el)) return;
+  candidates.push(el);
+};
+
+for (const el of document.body.querySelectorAll('*')) {
+  if (isProtected(el)) continue;
+  const cs = getComputedStyle(el);
+  if (cs.display === 'none' || cs.visibility === 'hidden' || Number(cs.opacity) === 0) {
+    continue;
+  }
+  const r = el.getBoundingClientRect();
+  if (r.width < 8 || r.height < 8) continue;
+  if (!overlaps(tr, r)) continue;
+
+  const pos = cs.position;
+  const z = parseZ(cs.zIndex);
+  if (pos === 'fixed' || pos === 'sticky') {
+    pushUnique(el);
+    continue;
+  }
+  if (pos === 'absolute' && (z >= 50 || looksLikeOverlayName(el))) {
+    pushUnique(el);
+  }
+}
+
+for (const el of document.querySelectorAll(
+  '[role="dialog"], [aria-modal="true"], .cookie_warning, .custom-pop-up, .custom-pop-up--open'
+)) {
+  if (isProtected(el)) continue;
+  const cs = getComputedStyle(el);
+  if (cs.display === 'none' || cs.visibility === 'hidden') continue;
+  const r = el.getBoundingClientRect();
+  if (r.width < 8 || r.height < 8) continue;
+  if (overlaps(tr, r) || cs.position === 'fixed' || cs.position === 'sticky') {
+    pushUnique(el);
+  }
+}
+
+// Скрываем самые внешние контейнеры (родитель вместо кучи детей).
+const toHide = candidates.filter(
+  (el) => !candidates.some((other) => other !== el && other.contains(el))
+);
+
+let hidden = 0;
+for (const el of toHide) {
+  el.style.setProperty('display', 'none', 'important');
+  el.setAttribute('data-urlbot-overlay-hidden', '1');
+  hidden += 1;
+}
+return hidden;
+"""
+
+
+def _dismiss_overlays(driver: webdriver.Chrome, element: WebElement) -> int:
+    """Скрывает popup/cookie/fixed-оверлеи, пересекающие целевой элемент."""
+    try:
+        driver.execute_script(
+            "try { document.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape', bubbles:true})); } catch (e) {}"
+        )
+    except Exception:
+        pass
+    try:
+        hidden = driver.execute_script(_DISMISS_OVERLAYS_JS, element)
+        hidden_n = int(hidden or 0)
+        if hidden_n:
+            logger.info("Dismissed %s overlay(s) before screenshot", hidden_n)
+        return hidden_n
+    except Exception as e:
+        logger.debug("dismiss overlays failed: %s", e)
+        return 0
+
+
 def _prepare_element_for_screenshot(driver: webdriver.Chrome, element: WebElement) -> None:
-    """Прокрутка в центр и ожидание ненулевого размера."""
+    """Прокрутка в центр, снятие оверлеев и форс видимости элемента."""
     try:
         driver.execute_script(
             "arguments[0].scrollIntoView({block: 'center', inline: 'nearest'});",
@@ -209,6 +310,7 @@ def _prepare_element_for_screenshot(driver: webdriver.Chrome, element: WebElemen
         )
     except Exception as e:
         logger.debug("scrollIntoView failed: %s", e)
+    _dismiss_overlays(driver, element)
     try:
         driver.execute_script(
             """
@@ -236,6 +338,9 @@ def _capture_element_screenshot(
 
     if settle > 0:
         time.sleep(settle)
+
+    # Popup часто появляется во время settle — убрать до первой попытки.
+    _dismiss_overlays(driver, element)
 
     last_png = b""
     for attempt in range(1, retries + 1):

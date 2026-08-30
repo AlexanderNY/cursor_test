@@ -11,6 +11,9 @@ import { coreService } from '@/services/core-service'
 import type { GroupResponse, GroupMemberResponse } from '@/types/auth'
 import type { UserStatisticsItem } from '@/types/core'
 import { formatDateTime } from '@/utils/date'
+import { parseQuotaError, type QuotaErrorDetail } from '@/lib/quota'
+import { QuotaUpgradeModal } from '@/components/billing/QuotaUpgradeModal'
+import { getErrorMessage } from '@/services/api-client'
 
 export function GroupPage() {
   const { user, refreshUserData } = useAuth()
@@ -28,6 +31,7 @@ export function GroupPage() {
   const [statistics, setStatistics] = useState<UserStatisticsItem[]>([])
   const [isLoadingStats, setIsLoadingStats] = useState(false)
   const [statsError, setStatsError] = useState('')
+  const [quotaDetail, setQuotaDetail] = useState<QuotaErrorDetail | null>(null)
 
   const isManager = user?.role === 'manager' || user?.role_in_group === 'manager'
   const isAuthor = user?.role === 'author' || user?.role_in_group === 'author'
@@ -98,7 +102,13 @@ export function GroupPage() {
       setAddEmail('')
       if (isManager) await loadStats()
     } catch (e) {
-      setAddError(e instanceof Error ? e.message : 'Failed to add member')
+      const q = parseQuotaError(e)
+      if (q) {
+        setQuotaDetail(q)
+        setAddError(q.message)
+      } else {
+        setAddError(getErrorMessage(e))
+      }
     } finally {
       setIsAddingMember(false)
     }
@@ -212,6 +222,11 @@ export function GroupPage() {
       <PageHeader
         title="My group"
         description={isManager ? 'Manage your group and view statistics' : 'You are an author in this group'}
+      />
+      <QuotaUpgradeModal
+        open={quotaDetail != null}
+        detail={quotaDetail}
+        onClose={() => setQuotaDetail(null)}
       />
 
       <Card>

@@ -62,6 +62,7 @@ export interface TelegramConfig {
   digest_channel?: string
   classification_enabled?: boolean
   classification_categories?: string[]
+  batch_enrichment_enabled?: boolean
 }
 
 export interface TimeInterval {
@@ -202,6 +203,24 @@ export interface TgAnalyticsEngagement {
     created_at: string
   }>
   period: string
+  chat_id?: string | null
+}
+
+export interface TgAnalyticsHealth {
+  period: string
+  alert_sent: number
+  alert_suppressed: number
+  collected: number
+  digests: number
+  suppression_rate: number
+}
+
+export interface TgDigestItem {
+  id: number
+  chat_id: string
+  digest_text: string
+  message_count: number
+  created_at: string
 }
 
 export type TelegramTab =

@@ -95,44 +95,56 @@ async def save_url_post(item: dict[str, Any]) -> int | None:
             except (TypeError, ValueError):
                 pass
         async with conn.cursor() as cur:
-            # screenshot_only: сначала matching URL в urls[], иначе legacy global.
+            # screenshot_only: payload → match by item id / URL → legacy global.
             screenshot_only = False
-            try:
-                await cur.execute(
-                    "SELECT urls, screenshot_only FROM curl_settings WHERE user_id = %s",
-                    (user_id,),
-                )
-                row = await cur.fetchone()
-                if row:
-                    urls_raw, global_flag = row[0], row[1]
-                    if isinstance(urls_raw, str):
-                        try:
-                            urls_raw = json.loads(urls_raw) if urls_raw else []
-                        except (json.JSONDecodeError, TypeError):
-                            urls_raw = []
-                    matched = None
-                    needle = (url or "").strip()
-                    if needle and isinstance(urls_raw, list):
-                        for u in urls_raw:
-                            if not isinstance(u, dict):
-                                continue
-                            if str(u.get("url") or "").strip() == needle:
-                                matched = u
-                                break
-                        if matched is None:
-                            needle_norm = needle.rstrip("/")
-                            for u in urls_raw:
-                                if not isinstance(u, dict):
-                                    continue
-                                if str(u.get("url") or "").strip().rstrip("/") == needle_norm:
-                                    matched = u
-                                    break
-                    if matched is not None and "screenshot_only" in matched:
-                        screenshot_only = bool(matched.get("screenshot_only"))
-                    else:
-                        screenshot_only = bool(global_flag)
-            except Exception as e:
-                logger.warning("Failed to load screenshot_only for user %s: %s", user_id, e)
+            if "screenshot_only" in item:
+                screenshot_only = bool(item.get("screenshot_only"))
+            else:
+                try:
+                    await cur.execute(
+                        "SELECT urls, screenshot_only FROM curl_settings WHERE user_id = %s",
+                        (user_id,),
+                    )
+                    row = await cur.fetchone()
+                    if row:
+                        urls_raw, global_flag = row[0], row[1]
+                        if isinstance(urls_raw, str):
+                            try:
+                                urls_raw = json.loads(urls_raw) if urls_raw else []
+                            except (json.JSONDecodeError, TypeError):
+                                urls_raw = []
+                        matched = None
+                        item_id = str(item.get("url_item_id") or item.get("id") or "").strip()
+                        needle = (url or "").strip()
+                        if isinstance(urls_raw, list):
+                            if item_id:
+                                for u in urls_raw:
+                                    if not isinstance(u, dict):
+                                        continue
+                                    if str(u.get("id") or "").strip() == item_id:
+                                        matched = u
+                                        break
+                            if matched is None and needle:
+                                for u in urls_raw:
+                                    if not isinstance(u, dict):
+                                        continue
+                                    if str(u.get("url") or "").strip() == needle:
+                                        matched = u
+                                        break
+                                if matched is None:
+                                    needle_norm = needle.rstrip("/")
+                                    for u in urls_raw:
+                                        if not isinstance(u, dict):
+                                            continue
+                                        if str(u.get("url") or "").strip().rstrip("/") == needle_norm:
+                                            matched = u
+                                            break
+                        if matched is not None and "screenshot_only" in matched:
+                            screenshot_only = bool(matched.get("screenshot_only"))
+                        else:
+                            screenshot_only = bool(global_flag)
+                except Exception as e:
+                    logger.warning("Failed to load screenshot_only for user %s: %s", user_id, e)
 
             post_date = datetime.utcnow()
             status = "collected"

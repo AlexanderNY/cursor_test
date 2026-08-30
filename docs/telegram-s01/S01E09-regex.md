@@ -40,6 +40,7 @@ S01E09 · Regex · валидация и где уже вредно
 
 ## Ссылки
 
+- CopyParse (регистрация, учебный контур): https://www.copyparse.ru/sign-up?utm_source=tg&utm_campaign=s01e09
 - `re` в Python — https://docs.python.org/3/library/re.html
 - HOWTO по regex в документации Python — https://docs.python.org/3/howto/regex.html
 - Песочница regex101 — https://regex101.com/

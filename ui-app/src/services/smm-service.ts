@@ -10,9 +10,45 @@ import type {
   BestTimeSlot,
   Brand,
   BrandChannel,
+  CompetitorCompare,
+  CompetitorDigest,
+  CompetitorDiff,
+  CompetitorPost,
   InboxItem,
   PublishJob,
 } from '@/types/smm'
+
+export type ChannelsValidationIssue = {
+  channel_id: number
+  network?: string
+  external_id?: string
+  title?: string | null
+  role?: string
+  severity: 'error' | 'warning'
+  code: string
+  message: string
+}
+
+export type ChannelsValidationResult = {
+  ok: boolean
+  brand_id: number
+  checked: number
+  accessible: number
+  errors: number
+  warnings: number
+  issues: ChannelsValidationIssue[]
+}
+
+export type ChannelsImportResult = {
+  ok: boolean
+  created: number
+  updated: number
+  skipped: number
+  total: number
+  errors: { index: number; error: string; network?: string; external_id?: string }[]
+  warnings: string[]
+  validation?: ChannelsValidationResult
+}
 
 export const smmService = {
   async getPalette(): Promise<{
@@ -43,14 +79,28 @@ export const smmService = {
     return data.brands ?? []
   },
 
-  async createBrand(payload: { name: string; color: string; group_id?: number }): Promise<Brand> {
+  async createBrand(payload: {
+    name: string
+    color: string
+    group_id?: number
+    tone_of_voice?: string
+    style_notes?: string
+    prompt_snippets?: { title: string; text: string }[]
+  }): Promise<Brand> {
     const { data } = await apiClient.post('/smm/brands', payload)
     return data
   },
 
   async updateBrand(
     id: number,
-    payload: { name?: string; color?: string; group_id?: number | null },
+    payload: {
+      name?: string
+      color?: string
+      group_id?: number | null
+      tone_of_voice?: string | null
+      style_notes?: string | null
+      prompt_snippets?: { title: string; text: string }[]
+    },
   ): Promise<Brand> {
     const { data } = await apiClient.patch(`/smm/brands/${id}`, payload)
     return data
@@ -70,6 +120,53 @@ export const smmService = {
       params: brandId ? { brand_id: brandId } : undefined,
     })
     return data.channels ?? []
+  },
+
+  async exportChannels(brandId?: number | null): Promise<{
+    format: string
+    version: number
+    exported_at: string
+    brand_id?: number | null
+    channels: Record<string, unknown>[]
+  }> {
+    const { data } = await apiClient.get('/smm/channels/export', {
+      params: brandId ? { brand_id: brandId } : undefined,
+    })
+    return data
+  },
+
+  async importChannels(
+    brandId: number,
+    payload: { channels: Record<string, unknown>[]; update_existing?: boolean },
+  ): Promise<ChannelsImportResult> {
+    const { data } = await apiClient.post('/smm/channels/import', payload, {
+      params: { brand_id: brandId },
+    })
+    return data
+  },
+
+  async importChannelsFile(
+    brandId: number,
+    file: File,
+    updateExisting = true,
+  ): Promise<ChannelsImportResult> {
+    const form = new FormData()
+    form.append('file', file)
+    const { data } = await apiClient.post('/smm/channels/import-file', form, {
+      params: { brand_id: brandId, update_existing: updateExisting },
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    return data
+  },
+
+  async validateChannels(
+    brandId: number,
+    recheckAuth = true,
+  ): Promise<ChannelsValidationResult> {
+    const { data } = await apiClient.post('/smm/channels/validate', null, {
+      params: { brand_id: brandId, recheck_auth: recheckAuth },
+    })
+    return data
   },
 
   async updateChannel(
@@ -108,7 +205,7 @@ export const smmService = {
   async addChannel(
     brandId: number,
     payload: {
-      network: 'tg' | 'vk' | 'url'
+      network: import('@/types/smm').BrandNetwork | 'twitter' | 'wordpress'
       external_id?: string
       title?: string
       kind?: string
@@ -119,6 +216,34 @@ export const smmService = {
     },
   ): Promise<BrandChannel> {
     const { data } = await apiClient.post(`/smm/brands/${brandId}/channels`, payload)
+    return data
+  },
+
+  async bindChannel(
+    channelId: number,
+    payload?: {
+      external_id?: string
+      title?: string
+      from_profile?: boolean
+    },
+  ): Promise<BrandChannel> {
+    const { data } = await apiClient.post(`/smm/channels/${channelId}/bind`, payload ?? {})
+    return data
+  },
+
+  async channelStatus(channelId: number): Promise<{
+    channel_id: number
+    network: string
+    connected: boolean
+    auth_status?: string
+    setup_url?: string
+    last_publish_day?: string | null
+    last_collect_day?: string | null
+    sent_total?: number
+    received_total?: number
+    platform_connected?: boolean
+  }> {
+    const { data } = await apiClient.get(`/smm/channels/${channelId}/status`)
     return data
   },
 
@@ -202,6 +327,40 @@ export const smmService = {
     return data
   },
 
+  async rejectJob(id: number, comment?: string): Promise<PublishJob> {
+    const { data } = await apiClient.post(`/smm/jobs/${id}/reject`, { comment })
+    return data
+  },
+
+  async assignJob(id: number, assigned_to: number | null): Promise<PublishJob> {
+    const { data } = await apiClient.post(`/smm/jobs/${id}/assign`, { assigned_to })
+    return data
+  },
+
+  async bulkApproveJobs(jobIds: number[]): Promise<{
+    approved: number
+    job_ids: number[]
+    errors: { job_id: number; error: string }[]
+  }> {
+    const { data } = await apiClient.post('/smm/jobs/bulk-approve', { job_ids: jobIds })
+    return data
+  },
+
+  async bulkRescheduleJobs(
+    jobIds: number[],
+    publish_at: string,
+  ): Promise<{
+    updated: number
+    job_ids: number[]
+    errors: { job_id: number; error: string }[]
+  }> {
+    const { data } = await apiClient.post('/smm/jobs/bulk-reschedule', {
+      job_ids: jobIds,
+      publish_at,
+    })
+    return data
+  },
+
   async createJob(payload: {
     brand_id?: number | null
     text: string
@@ -211,6 +370,7 @@ export const smmService = {
     adapt?: boolean
     status?: string
     adapter_overrides?: Record<string, { text?: string }>
+    assigned_to?: number | null
   }): Promise<PublishJob> {
     const { data } = await apiClient.post('/smm/jobs', payload)
     return data
@@ -220,6 +380,12 @@ export const smmService = {
     brand_id?: number
     from?: string
     to?: string
+    status?: string
+    statuses?: string
+    channel_id?: number
+    network?: string
+    assigned_to?: number
+    assigned_to_me?: boolean
   }): Promise<PublishJob[]> {
     const { data } = await apiClient.get('/smm/jobs', { params })
     return data.jobs ?? []
@@ -233,6 +399,8 @@ export const smmService = {
       targets?: { network: string; external_id: string }[]
       publish_at?: string | null
       status?: string
+      assigned_to?: number | null
+      rejection_comment?: string | null
     },
   ): Promise<PublishJob> {
     const { data } = await apiClient.patch(`/smm/jobs/${id}`, payload)
@@ -243,6 +411,7 @@ export const smmService = {
     created: number
     job_ids: number[]
     errors: { line: number; error: string }[]
+    status?: string
   }> {
     const form = new FormData()
     form.append('file', file)
@@ -275,6 +444,16 @@ export const smmService = {
     payload: Partial<{ brand_id: number; type: string; config: Record<string, unknown>; enabled: boolean }>,
   ): Promise<AutomationRule> {
     const { data } = await apiClient.patch(`/smm/automations/${id}`, payload)
+    return data
+  },
+
+  async runAutomation(
+    id: number,
+    limit = 10,
+  ): Promise<{ created: number; job_ids: number[]; skipped: number; status: string }> {
+    const { data } = await apiClient.post(`/smm/automations/${id}/run`, null, {
+      params: { limit },
+    })
     return data
   },
 
@@ -365,18 +544,73 @@ export const smmService = {
 
   async addCompetitor(payload: {
     brand_id: number
-    network: 'tg' | 'vk'
-    external_id: string
+    network: 'tg' | 'vk' | 'url'
+    external_id?: string
     title?: string
     kind?: string
+    url?: string
+    alert_enabled?: boolean
+    sync_interval_min?: number
   }): Promise<BrandChannel> {
     const { data } = await apiClient.post('/smm/competitors', payload)
     return data
   },
 
-  async competitorPosts(channelId: number): Promise<unknown[]> {
+  async listCompetitors(brandId?: number | null): Promise<BrandChannel[]> {
+    const { data } = await apiClient.get('/smm/competitors', {
+      params: { brand_id: brandId ?? undefined },
+    })
+    return data.competitors ?? []
+  },
+
+  async updateCompetitor(
+    channelId: number,
+    payload: {
+      alert_enabled?: boolean
+      alert_delivery?: BrandChannel['alert_delivery']
+      sync_interval_min?: number
+    },
+  ): Promise<BrandChannel> {
+    const { data } = await apiClient.patch(`/smm/competitors/${channelId}`, payload)
+    return data
+  },
+
+  async competitorPosts(channelId: number): Promise<CompetitorPost[]> {
     const { data } = await apiClient.get(`/smm/competitors/${channelId}/posts`)
     return data.posts ?? []
+  },
+
+  async competitorDigest(
+    channelId: number,
+    period: '24h' | '7d' = '24h',
+    withAi = true,
+  ): Promise<CompetitorDigest> {
+    const { data } = await apiClient.get(`/smm/competitors/${channelId}/digest`, {
+      params: { period, with_ai: withAi },
+    })
+    return data
+  },
+
+  async competitorDiff(channelId: number, since?: string): Promise<CompetitorDiff> {
+    const { data } = await apiClient.get(`/smm/competitors/${channelId}/diff`, {
+      params: { since: since || undefined },
+    })
+    return data
+  },
+
+  async competitorCompare(
+    brandId: number,
+    competitorChannelId: number,
+    period: string = '7d',
+  ): Promise<CompetitorCompare> {
+    const { data } = await apiClient.get('/smm/competitors/compare', {
+      params: {
+        brand_id: brandId,
+        competitor_channel_id: competitorChannelId,
+        period,
+      },
+    })
+    return data
   },
 
   async aiSummarize(text: string, maxLen = 500): Promise<{ summary: string; fallback?: boolean }> {
@@ -386,7 +620,7 @@ export const smmService = {
 
   async aiRewrite(
     text: string,
-    opts?: { tone?: string; network?: string },
+    opts?: { tone?: string; network?: string; brand_id?: number | null },
   ): Promise<{ text: string; fallback?: boolean }> {
     const { data } = await apiClient.post('/smm/ai/rewrite', { text, ...opts })
     return data
@@ -395,8 +629,24 @@ export const smmService = {
   async aiAdapt(
     text: string,
     targets: string[] = ['tg', 'vk'],
-  ): Promise<{ variants: Record<string, string>; fallback?: boolean }> {
-    const { data } = await apiClient.post('/smm/ai/adapt', { text, targets })
+    opts?: { brand_id?: number | null; tone?: string },
+  ): Promise<{ variants: Record<string, string>; limits?: Record<string, number>; fallback?: boolean }> {
+    const { data } = await apiClient.post('/smm/ai/adapt', {
+      text,
+      targets,
+      brand_id: opts?.brand_id ?? undefined,
+      tone: opts?.tone,
+    })
+    return data
+  },
+
+  async getAiUsage(): Promise<import('@/types/smm').AiUsage> {
+    const { data } = await apiClient.get('/smm/ai/usage')
+    return data
+  },
+
+  async getUsageSummary(): Promise<import('@/types/smm').UsageSummary> {
+    const { data } = await apiClient.get('/smm/usage')
     return data
   },
 
@@ -411,8 +661,114 @@ export const smmService = {
     params?: AiProcessParams
     source?: 'inbox' | 'post'
     source_id?: number
+    brand_id?: number | null
   }): Promise<AiProcessResponse> {
     const { data } = await apiClient.post('/smm/ai/process', payload)
+    return data
+  },
+
+  async listTemplates(
+    brandId: number,
+    kind?: import('@/types/smm').TemplateKind,
+  ): Promise<import('@/types/smm').ContentTemplate[]> {
+    const { data } = await apiClient.get(`/smm/brands/${brandId}/templates`, {
+      params: kind ? { kind } : undefined,
+    })
+    return data.templates ?? []
+  },
+
+  async createTemplate(
+    brandId: number,
+    payload: {
+      kind: import('@/types/smm').TemplateKind
+      title: string
+      body?: string
+      metadata?: Record<string, unknown>
+    },
+  ): Promise<import('@/types/smm').ContentTemplate> {
+    const { data } = await apiClient.post(`/smm/brands/${brandId}/templates`, payload)
+    return data
+  },
+
+  async updateTemplate(
+    id: number,
+    payload: Partial<{
+      kind: import('@/types/smm').TemplateKind
+      title: string
+      body: string
+      metadata: Record<string, unknown>
+    }>,
+  ): Promise<import('@/types/smm').ContentTemplate> {
+    const { data } = await apiClient.patch(`/smm/templates/${id}`, payload)
+    return data
+  },
+
+  async deleteTemplate(id: number): Promise<void> {
+    await apiClient.delete(`/smm/templates/${id}`)
+  },
+
+  async applyTemplate(
+    id: number,
+    payload?: { job_id?: number; current_text?: string },
+  ): Promise<import('@/types/smm').TemplateApplyResult> {
+    const { data } = await apiClient.post(`/smm/templates/${id}/apply`, payload ?? {})
+    return data
+  },
+
+  async listMediaPacks(brandId: number): Promise<import('@/types/smm').MediaPack[]> {
+    const { data } = await apiClient.get(`/smm/brands/${brandId}/media-packs`)
+    return data.media_packs ?? []
+  },
+
+  async createMediaPack(
+    brandId: number,
+    payload: { title: string; object_keys?: string[]; caption?: string },
+  ): Promise<import('@/types/smm').MediaPack> {
+    const { data } = await apiClient.post(`/smm/brands/${brandId}/media-packs`, payload)
+    return data
+  },
+
+  async updateMediaPack(
+    id: number,
+    payload: Partial<{ title: string; object_keys: string[]; caption: string }>,
+  ): Promise<import('@/types/smm').MediaPack> {
+    const { data } = await apiClient.patch(`/smm/media-packs/${id}`, payload)
+    return data
+  },
+
+  async deleteMediaPack(id: number): Promise<void> {
+    await apiClient.delete(`/smm/media-packs/${id}`)
+  },
+
+  async applyMediaPack(
+    id: number,
+    payload?: { job_id?: number; merge?: boolean },
+  ): Promise<import('@/types/smm').MediaPackApplyResult> {
+    const { data } = await apiClient.post(`/smm/media-packs/${id}/apply`, payload ?? {})
+    return data
+  },
+
+  async buildUtmUrl(
+    baseUrl: string,
+    params?: Record<string, string>,
+  ): Promise<{ url: string }> {
+    const { data } = await apiClient.post('/smm/library/utm/build', {
+      base_url: baseUrl,
+      params,
+    })
+    return data
+  },
+
+  async republishVariant(
+    jobId: number,
+    payload?: { pending_approval?: boolean; network?: string },
+  ): Promise<{
+    source_job_id: number
+    job: PublishJob
+    ai_used: boolean
+    tone?: string | null
+  }> {
+    const { data } = await apiClient.post(`/smm/jobs/${jobId}/republish-variant`, payload ?? {})
     return data
   },
 
@@ -433,6 +789,16 @@ export const smmService = {
 
   async skipOnboarding(): Promise<import('@/types/smm').OnboardingState> {
     const { data } = await apiClient.post('/smm/onboarding/skip')
+    return data
+  },
+
+  async seedDemoWorkspace(force = false): Promise<{
+    seed: { seeded: boolean; already?: boolean; brand_id?: number; reason?: string }
+    state: import('@/types/smm').OnboardingState
+  }> {
+    const { data } = await apiClient.post('/smm/onboarding/seed-demo', null, {
+      params: { force },
+    })
     return data
   },
 }

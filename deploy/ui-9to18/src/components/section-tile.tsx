@@ -11,17 +11,9 @@ function prefetchBowlRuntime(): void {
   prefetchPyodideRuntime()
 }
 
-export function SectionTile({ section }: SectionTileProps) {
-  const isBowl = section.slug === 'bowl'
-
+function SectionTileContent({ section }: SectionTileProps) {
   return (
-    <Link
-      to={`/game/${section.slug}`}
-      className="section-tile"
-      style={{ '--tile-accent': section.accent } as CSSProperties}
-      onMouseEnter={isBowl ? prefetchBowlRuntime : undefined}
-      onFocus={isBowl ? prefetchBowlRuntime : undefined}
-    >
+    <>
       {section.emoji && (
         <span className="section-tile-emoji" aria-hidden>
           {section.emoji}
@@ -29,6 +21,47 @@ export function SectionTile({ section }: SectionTileProps) {
       )}
       <span className="section-tile-title">{section.title}</span>
       <span className="section-tile-subtitle">{section.subtitle}</span>
+    </>
+  )
+}
+
+function tileTarget(section: Section): string {
+  if (section.appPath) {
+    return section.appPath
+  }
+  return `/app/${section.slug}`
+}
+
+export function SectionTile({ section }: SectionTileProps) {
+  const isBowl = section.slug === 'bowl'
+  const tileStyle = { '--tile-accent': section.accent } as CSSProperties
+  const prefetchHandlers = {
+    onMouseEnter: isBowl ? prefetchBowlRuntime : undefined,
+    onFocus: isBowl ? prefetchBowlRuntime : undefined,
+  }
+
+  if (section.href?.startsWith('http')) {
+    return (
+      <a
+        href={section.href}
+        className="section-tile section-tile-external"
+        style={tileStyle}
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        <SectionTileContent section={section} />
+      </a>
+    )
+  }
+
+  return (
+    <Link
+      to={tileTarget(section)}
+      className="section-tile"
+      style={tileStyle}
+      {...prefetchHandlers}
+    >
+      <SectionTileContent section={section} />
     </Link>
   )
 }

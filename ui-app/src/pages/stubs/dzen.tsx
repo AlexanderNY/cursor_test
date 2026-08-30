@@ -1,4 +1,5 @@
 import { useState, FormEvent, useEffect, useCallback, useRef } from 'react'
+import { Link } from 'react-router-dom'
 import axios from 'axios'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -6,7 +7,6 @@ import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
 import { PageHeader, PageContainer } from '@/components/ui'
 import {
-  TargetSocialNetworksWidget,
   createDefaultTargets,
   EMPTY_SELECTED_BRAND_CHANNELS,
   type TargetSocialNetworks,
@@ -71,7 +71,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 export function DzenPage() {
-  const [activeTab, setActiveTab] = useState<'create' | 'posts' | 'profile' | 'auth'>('create')
+  const [activeTab, setActiveTab] = useState<'create' | 'posts' | 'profile' | 'auth'>('posts')
 
   const [publishEnabled, setPublishEnabled] = useState(false)
   const [collectEnabled, setCollectEnabled] = useState(false)
@@ -91,7 +91,7 @@ export function DzenPage() {
 
   const [postText, setPostText] = useState('')
   const [postTitle, setPostTitle] = useState('')
-  const [postTargets, setPostTargets] = useState<TargetSocialNetworks>(() =>
+  const [postTargets] = useState<TargetSocialNetworks>(() =>
     createDefaultTargets('dzen')
   )
   const [selectedChannels, setSelectedChannels] = useState<SelectedBrandChannels>({
@@ -559,6 +559,11 @@ export function DzenPage() {
         title="Яндекс Дзен"
         description="RSS, Selenium-бот (публикация и своя лента), посты с картинками и видео"
       />
+      <p className="mb-4 text-sm flex flex-wrap gap-4">
+        <Link to="/posts" className="text-primary-400 hover:underline">
+          Создать пост → /posts
+        </Link>
+      </p>
 
       {error && (
         <Alert variant="error" className="animate-slide-down">
@@ -573,7 +578,6 @@ export function DzenPage() {
 
       <div className="flex border-b border-[var(--border-color)]">
         {[
-          { key: 'create' as const, label: 'Создать пост' },
           { key: 'posts' as const, label: 'Посты' },
           { key: 'profile' as const, label: 'Настройки' },
           { key: 'auth' as const, label: 'Авторизация' },
@@ -583,14 +587,7 @@ export function DzenPage() {
             className={`px-6 py-3 text-sm font-medium transition-all relative ${
               activeTab === key ? 'text-primary-400' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
             }`}
-            onClick={() => {
-              if (key === 'create') {
-                setEditingPostId(null)
-                setPostText('')
-                setPostTitle('')
-              }
-              setActiveTab(key)
-            }}
+            onClick={() => setActiveTab(key)}
           >
             {label}
             {activeTab === key && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-500" />}
@@ -598,13 +595,20 @@ export function DzenPage() {
         ))}
       </div>
 
-      {activeTab === 'create' && (
+      {activeTab === 'create' && editingPostId === null && (
+        <Alert className="mt-4">
+          Создание постов — на странице{' '}
+          <Link to="/posts" className="text-primary-400 hover:underline">
+            Posts
+          </Link>
+        </Alert>
+      )}
+
+      {activeTab === 'create' && editingPostId !== null && (
         <Card className="animate-slide-up">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              {editingPostId !== null ? 'Редактировать пост' : 'Создать пост Дзен'}
-            </CardTitle>
-            <CardDescription>До {DZEN_MAX_LENGTH} символов. Можно добавить заголовок, картинки и видео.</CardDescription>
+            <CardTitle className="flex items-center gap-2">Редактировать пост</CardTitle>
+            <CardDescription>До {DZEN_MAX_LENGTH} символов. Можно добавить заголовок.</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleCreatePost} className="space-y-6">
@@ -631,39 +635,9 @@ export function DzenPage() {
                   {postText.length} / {DZEN_MAX_LENGTH} символов
                 </p>
               </div>
-              {!editingPostId && (
-                <>
-                  <div>
-                    <label className="text-sm font-medium text-[var(--text-secondary)] block mb-2">Изображения</label>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      multiple
-                      onChange={(e) => setImageFiles(e.target.files || null)}
-                      className="block w-full text-sm text-[var(--text-secondary)] file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:bg-primary-500 file:text-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-[var(--text-secondary)] block mb-2">Видео</label>
-                    <input
-                      type="file"
-                      accept="video/*"
-                      multiple
-                      onChange={(e) => setVideoFiles(e.target.files || null)}
-                      className="block w-full text-sm text-[var(--text-secondary)] file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:bg-primary-500 file:text-white"
-                    />
-                  </div>
-                  <TargetSocialNetworksWidget
-                    value={postTargets}
-                    onChange={setPostTargets}
-                    selectedChannels={selectedChannels}
-                    onSelectedChannelsChange={setSelectedChannels}
-                  />
-                </>
-              )}
               <CardFooter className="px-0">
                 <Button type="submit" isLoading={isCreatingPost} className="w-full sm:w-auto">
-                  {editingPostId !== null ? 'Сохранить' : 'Создать пост'}
+                  Сохранить
                 </Button>
               </CardFooter>
             </form>

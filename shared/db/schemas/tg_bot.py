@@ -37,9 +37,16 @@ CREATE TABLE IF NOT EXISTS tg_profiles (
     digest_channel VARCHAR(50),
     classification_enabled BOOLEAN DEFAULT FALSE,
     classification_categories JSONB DEFAULT '["новости", "реклама", "технологии", "финансы", "другое"]',
+    batch_enrichment_enabled BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
+"""
+
+TG_PROFILES_BATCH_ENRICH_MIGRATION = """
+DO $$ BEGIN
+  ALTER TABLE tg_profiles ADD COLUMN batch_enrichment_enabled BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
 """
 
 TG_POSTS_TABLE = build_post_table_ddl(
@@ -85,6 +92,9 @@ CREATE INDEX IF NOT EXISTS idx_tg_events_user_created ON tg_events(user_id, crea
 CREATE INDEX IF NOT EXISTS idx_tg_events_type_created ON tg_events(event_type, created_at);
 CREATE INDEX IF NOT EXISTS idx_tg_events_hash_chat ON tg_events(text_hash, chat_id);
 CREATE INDEX IF NOT EXISTS idx_tg_events_rule_created ON tg_events(rule_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_tg_events_chat_created ON tg_events(chat_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_tg_events_user_type_created
+    ON tg_events(user_id, event_type, created_at);
 """
 
 TG_DEDUP_CACHE_TABLE = """
@@ -124,10 +134,13 @@ CREATE TABLE IF NOT EXISTS tg_digests (
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_tg_digests_user_created ON tg_digests(user_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_tg_digests_user_chat_created
+    ON tg_digests(user_id, chat_id, created_at DESC);
 """
 
 ALL_TABLES: list[str] = [
     TG_PROFILES_TABLE,
+    TG_PROFILES_BATCH_ENRICH_MIGRATION,
     TG_POSTS_TABLE,
     TG_POSTS_INDEXES,
     TG_POST_TEMPLATES_TABLE,

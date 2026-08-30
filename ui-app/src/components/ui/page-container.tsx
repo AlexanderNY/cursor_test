@@ -17,7 +17,7 @@ export function PageContainer({
   const maxWidthClass = maxWidth === 'wide' ? PAGE_MAX_WIDTH_WIDE : PAGE_MAX_WIDTH_DEFAULT
   return (
     <div
-      className={`mx-auto space-y-6 animate-fade-in ${maxWidthClass} ${className}`.trim()}
+      className={`mx-auto w-full min-w-0 space-y-6 animate-fade-in ${maxWidthClass} ${className}`.trim()}
     >
       {children}
     </div>

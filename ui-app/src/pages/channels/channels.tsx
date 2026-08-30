@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { PageContainer, PageHeader } from '@/components/ui'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -9,9 +9,19 @@ import { DataTable, type DataTableColumn } from '@/components/ui/data-table'
 import { CheckCircleIcon, XCircleIcon } from '@/components/icons'
 import { useBrand } from '@/contexts/brand-context'
 import { smmService } from '@/services/smm-service'
-import type { BrandChannel, ChannelRole, PlatformStatusResponse } from '@/types/smm'
-import { authStatusLabel, publishAllowed } from '@/hooks/use-platform-readiness'
+import type { BrandChannel, BrandNetwork, ChannelRole, PlatformStatusResponse } from '@/types/smm'
+import { authStatusLabel, publishReady, collectReady, alertReady, channelReady, reviewEnabled } from '@/hooks/use-platform-readiness'
 import { getErrorMessage } from '@/services/api-client'
+import { parseQuotaError, type QuotaErrorDetail } from '@/lib/quota'
+import { QuotaUpgradeModal } from '@/components/billing/QuotaUpgradeModal'
+import { QuotaBanner } from '@/components/billing/QuotaBanner'
+import type { UsageSummary } from '@/types/smm'
+import {
+  BRAND_NETWORKS,
+  NETWORK_LABELS,
+  networkLabel,
+  networkSetupUrl,
+} from '@/lib/smm-networks'
 
 type ChannelRow = BrandChannel & { brand_name?: string; brand_color?: string }
 
@@ -20,11 +30,14 @@ function FlagStatusIcon({
   label,
   title,
   na = false,
+  warn = false,
 }: {
   on: boolean
   label: string
   title?: string
   na?: boolean
+  /** Enabled but misconfigured / incomplete */
+  warn?: boolean
 }) {
   if (na) {
     return (
@@ -34,6 +47,17 @@ function FlagStatusIcon({
         aria-label={`${label}: n/a`}
       >
         <span className="text-xs font-medium tracking-wide">—</span>
+      </span>
+    )
+  }
+  if (on && warn) {
+    return (
+      <span
+        className="inline-flex text-amber-400"
+        title={title || `${label}: включено, но настройка неполная`}
+        aria-label={`${label}: warn`}
+      >
+        <CheckCircleIcon size={20} />
       </span>
     )
   }
@@ -68,7 +92,7 @@ export function ChannelsPage() {
   const [channels, setChannels] = useState<ChannelRow[]>([])
   const [error, setError] = useState('')
   const [limits, setLimits] = useState<{ max_own_channels?: number; tariff?: string }>({})
-  const [network, setNetwork] = useState<'tg' | 'vk' | 'url'>('tg')
+  const [network, setNetwork] = useState<BrandNetwork>('tg')
   const [externalId, setExternalId] = useState('')
   const [title, setTitle] = useState('')
   const [sourceUrl, setSourceUrl] = useState('')
@@ -77,22 +101,35 @@ export function ChannelsPage() {
   const [saving, setSaving] = useState(false)
   const [loadingList, setLoadingList] = useState(false)
   const [filterTitle, setFilterTitle] = useState('')
-  const [filterNetwork, setFilterNetwork] = useState<'all' | 'tg' | 'vk' | 'url'>('all')
+  const [filterNetwork, setFilterNetwork] = useState<'all' | BrandNetwork>('all')
   const [copiedKey, setCopiedKey] = useState<string | null>(null)
   const [platformStatus, setPlatformStatus] = useState<PlatformStatusResponse | null>(null)
+  const [quotaDetail, setQuotaDetail] = useState<QuotaErrorDetail | null>(null)
+  const [usage, setUsage] = useState<UsageSummary | null>(null)
+  const [success, setSuccess] = useState('')
+  const [recheckingId, setRecheckingId] = useState<number | null>(null)
+  const [importing, setImporting] = useState(false)
+  const [exporting, setExporting] = useState(false)
+  const [validating, setValidating] = useState(false)
+  const [validationReport, setValidationReport] = useState<
+    import('@/services/smm-service').ChannelsValidationResult | null
+  >(null)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
   const hasBrands = brands.length > 0
 
   async function load() {
     setError('')
     setLoadingList(true)
     try {
-      const [list, palette, platforms] = await Promise.all([
+      const [list, palette, platforms, usageSummary] = await Promise.all([
         smmService.listAllChannels(selectedBrandId ?? undefined),
         smmService.getPalette(),
         smmService.platformStatus().catch(() => null),
+        smmService.getUsageSummary().catch(() => null),
       ])
       setChannels(list)
       setPlatformStatus(platforms)
+      setUsage(usageSummary)
       setLimits({
         max_own_channels: palette.max_own_channels,
         tariff: (palette as { tariff?: string }).tariff,
@@ -122,7 +159,8 @@ export function ChannelsPage() {
   }, [selectedBrandId, brands])
 
   const ownCount = channels.filter((c) => c.role === 'own').length
-  const hasCollectOrAlert = channels.some((c) => c.collect_enabled || c.alert_enabled)
+  const hasReadyChannel = channels.some((c) => channelReady(c))
+  const readyCount = channels.filter((c) => channelReady(c)).length
   const tgOwnPending = channels.filter(
     (c) => c.network === 'tg' && c.role === 'own' && c.auth_status !== 'connected',
   )
@@ -164,7 +202,16 @@ export function ChannelsPage() {
             : title.trim() || externalId.trim(),
         url: network === 'url' ? sourceUrl.trim() : undefined,
         role: network === 'url' ? 'source' : role,
-        kind: network === 'vk' || network === 'url' ? 'public' : 'channel',
+        kind:
+          network === 'vk' ||
+          network === 'url' ||
+          network === 'instagram' ||
+          network === 'threads' ||
+          network === 'tw' ||
+          network === 'dzen' ||
+          network === 'wp'
+            ? 'public'
+            : 'channel',
       })
       setExternalId('')
       setTitle('')
@@ -172,6 +219,8 @@ export function ChannelsPage() {
       await load()
       await refreshChannels()
     } catch (err) {
+      const q = parseQuotaError(err)
+      if (q) setQuotaDetail(q)
       setError(getErrorMessage(err))
     } finally {
       setSaving(false)
@@ -209,7 +258,9 @@ export function ChannelsPage() {
       'auth_status',
       'publish_enabled',
       'collect_enabled',
+      'review',
       'alert_enabled',
+      'ready',
     ]
     const rows = filtered.map((row) => [
       row.id,
@@ -224,7 +275,9 @@ export function ChannelsPage() {
       row.auth_status || '',
       row.publish_enabled ? '1' : '0',
       row.collect_enabled ? '1' : '0',
+      reviewEnabled(row) ? '1' : '0',
       row.alert_enabled ? '1' : '0',
+      channelReady(row) ? '1' : '0',
     ])
     const lines = [headers.join(','), ...rows.map((r) => r.map(escapeCell).join(','))]
     const blob = new Blob([`\uFEFF${lines.join('\n')}`], {
@@ -239,14 +292,139 @@ export function ChannelsPage() {
     URL.revokeObjectURL(url)
   }
 
-  async function recheckAuth(ch: ChannelRow) {
+  async function downloadChannelsJson() {
+    const targetBrand = selectedBrandId ?? brandId
+    setExporting(true)
+    setError('')
+    setSuccess('')
     try {
-      setError('')
-      await smmService.recheckChannelAuth(ch.id)
-      await load()
-      await refreshChannels()
+      const data = await smmService.exportChannels(targetBrand ?? undefined)
+      const blob = new Blob([JSON.stringify(data, null, 2)], {
+        type: 'application/json;charset=utf-8',
+      })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')
+      const suffix = targetBrand ? `brand-${targetBrand}` : 'all'
+      a.href = url
+      a.download = `channels-${suffix}-${stamp}.json`
+      a.click()
+      URL.revokeObjectURL(url)
+      setSuccess(
+        `Экспорт: ${data.channels?.length ?? 0} канал(ов) с настройками` +
+          (targetBrand ? ` (бренд #${targetBrand})` : ' (все бренды)'),
+      )
     } catch (err) {
       setError(getErrorMessage(err))
+    } finally {
+      setExporting(false)
+    }
+  }
+
+  async function handleImportFile(file: File) {
+    const targetBrand = selectedBrandId ?? brandId
+    if (!targetBrand) {
+      setError('Выберите бренд — импорт идёт в конкретный бренд')
+      return
+    }
+    setImporting(true)
+    setError('')
+    setSuccess('')
+    setValidationReport(null)
+    try {
+      const result = await smmService.importChannelsFile(targetBrand, file, true)
+      await load()
+      await refreshChannels()
+      const errN = result.errors?.length ?? 0
+      const warnN = result.warnings?.length ?? 0
+      const v = result.validation
+      if (v) setValidationReport(v)
+      setSuccess(
+        `Импорт в бренд #${targetBrand}: создано ${result.created}, обновлено ${result.updated}` +
+          (result.skipped ? `, пропущено ${result.skipped}` : '') +
+          (errN ? `, ошибок импорта ${errN}` : '') +
+          (warnN ? `, предупреждений ${warnN}` : '') +
+          (v
+            ? ` · валидация: ${v.accessible}/${v.checked} доступны` +
+              (v.errors ? `, ${v.errors} проблем` : '') +
+              (v.warnings ? `, ${v.warnings} предупр.` : '') +
+              (v.ok ? ', OK' : '')
+            : ''),
+      )
+      if (errN) {
+        const first = result.errors[0]
+        setError(
+          `Часть каналов не импортирована: ${first.error}` +
+            (errN > 1 ? ` (+${errN - 1})` : ''),
+        )
+      } else if (v && !v.ok) {
+        setError(
+          `После импорта найдены проблемы доступа/настроек (${v.errors}). См. отчёт ниже.`,
+        )
+      }
+    } catch (err) {
+      const q = parseQuotaError(err)
+      if (q) setQuotaDetail(q)
+      setError(getErrorMessage(err))
+    } finally {
+      setImporting(false)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+  }
+
+  async function runValidation() {
+    const targetBrand = selectedBrandId ?? brandId
+    if (!targetBrand) {
+      setError('Выберите бренд для проверки')
+      return
+    }
+    setValidating(true)
+    setError('')
+    setSuccess('')
+    try {
+      const v = await smmService.validateChannels(targetBrand, true)
+      setValidationReport(v)
+      await load()
+      await refreshChannels()
+      setSuccess(
+        v.ok
+          ? `Проверка бренда #${targetBrand}: ${v.accessible}/${v.checked} каналов доступны, настройки OK`
+          : `Проверка бренда #${targetBrand}: ${v.errors} ошибок, ${v.warnings} предупреждений`,
+      )
+      if (!v.ok) {
+        setError(`Есть проблемы доступа или настроек — см. отчёт ниже`)
+      }
+    } catch (err) {
+      setError(getErrorMessage(err))
+    } finally {
+      setValidating(false)
+    }
+  }
+
+  async function recheckAuth(ch: ChannelRow) {
+    if (recheckingId != null) return
+    try {
+      setError('')
+      setSuccess('')
+      setRecheckingId(ch.id)
+      const updated = await smmService.recheckChannelAuth(ch.id)
+      await load()
+      await refreshChannels()
+      const auth = updated.auth_status || 'unknown'
+      const pub =
+        updated.role === 'own'
+          ? updated.publish_enabled
+            ? ', publish включён'
+            : ', publish выключен'
+          : ''
+      setSuccess(
+        `Recheck #${ch.id}: ${authStatusLabel(auth)}${pub}` +
+          (updated.auth_error ? ` — ${updated.auth_error}` : ''),
+      )
+    } catch (err) {
+      setError(getErrorMessage(err))
+    } finally {
+      setRecheckingId(null)
     }
   }
 
@@ -267,7 +445,7 @@ export function ChannelsPage() {
         header: 'Сеть',
         render: (_v, row) => (
           <span className="font-semibold uppercase tracking-wide text-[var(--text-primary)]">
-            {row.network === 'vk' ? 'VK' : row.network === 'url' ? 'URL' : 'TG'}
+            {networkLabel(row.network)}
           </span>
         ),
       },
@@ -285,8 +463,8 @@ export function ChannelsPage() {
               : row.external_id
           const key = `row-${row.id}`
           return (
-            <div className="flex items-start gap-1.5 max-w-[220px]">
-              <code className="text-xs text-[var(--text-primary)] break-all flex-1">{display}</code>
+            <div className="flex items-start gap-1.5 max-w-[12rem] sm:max-w-[16rem]">
+              <code className="text-xs text-[var(--text-primary)] break-all flex-1 min-w-0">{display}</code>
               <button
                 type="button"
                 className="shrink-0 text-xs text-primary-400 hover:underline"
@@ -346,10 +524,14 @@ export function ChannelsPage() {
             {row.role !== 'competitor' && row.network !== 'url' && (
               <button
                 type="button"
-                className="text-xs text-primary-400 hover:underline text-left"
-                onClick={() => void recheckAuth(row)}
+                className="text-xs text-primary-400 hover:underline text-left disabled:opacity-50"
+                disabled={recheckingId === row.id}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  void recheckAuth(row)
+                }}
               >
-                Recheck
+                {recheckingId === row.id ? 'Recheck…' : 'Recheck'}
               </button>
             )}
           </div>
@@ -358,57 +540,120 @@ export function ChannelsPage() {
       {
         key: 'publish_enabled',
         header: 'Publish',
-        render: (_v, row) => (
-          <FlagStatusIcon
-            on={!!row.publish_enabled}
-            label="Publish"
-            na={row.role !== 'own'}
-            title={
-              row.role !== 'own'
-                ? 'Publish только для own'
-                : row.publish_enabled
-                  ? publishAllowed(row)
-                    ? 'Publish включён в настройках канала'
-                    : 'Publish включён, но ownership не подтверждён — Recheck'
-                  : 'Publish выключен — включите в «Настроить» → Публикация'
-            }
-          />
-        ),
+        render: (_v, row) => {
+          const ready = publishReady(row)
+          const on = !!row.publish_enabled
+          return (
+            <FlagStatusIcon
+              on={on}
+              warn={on && !ready}
+              label="Publish"
+              na={row.role !== 'own'}
+              title={
+                row.role !== 'own'
+                  ? 'Publish только для own'
+                  : ready
+                    ? 'Готово: Publish + подтверждённый доступ'
+                    : on
+                      ? 'Publish включён, но ownership не подтверждён — Recheck'
+                      : 'Publish выключен — «Настроить» → Публикация'
+              }
+            />
+          )
+        },
       },
       {
         key: 'collect_enabled',
         header: 'Collect',
-        render: (_v, row) => (
-          <FlagStatusIcon
-            on={!!row.collect_enabled}
-            label="Collect"
-            title={
-              row.collect_enabled
-                ? 'Collect включён в настройках канала'
-                : 'Collect выключен — включите в «Настроить» → Сбор'
-            }
-          />
-        ),
+        render: (_v, row) => {
+          const ready = collectReady(row)
+          const on = !!row.collect_enabled
+          const toReview = reviewEnabled(row)
+          const hasTargets = (row.publish_targets || []).length > 0
+          return (
+            <FlagStatusIcon
+              on={on}
+              warn={on && !ready}
+              label="Collect"
+              title={
+                ready
+                  ? toReview && !hasTargets
+                    ? 'Готово: Collect → Review'
+                    : toReview
+                      ? 'Готово: Collect → targets + Review'
+                      : 'Готово: Collect → publish targets'
+                  : on
+                    ? !hasTargets && !toReview
+                      ? 'Collect включён: укажите цели публикации или Review'
+                      : 'Collect включён, но нет доступа на чтение — Auth / Recheck'
+                    : 'Collect выключен — «Настроить» → Сбор'
+              }
+            />
+          )
+        },
+      },
+      {
+        key: 'review',
+        header: 'Review',
+        render: (_v, row) => {
+          const on = reviewEnabled(row)
+          return (
+            <FlagStatusIcon
+              on={on}
+              label="Review"
+              title={
+                on
+                  ? 'Собранные посты уходят на ручную проверку (status=review)'
+                  : 'Review выключен — «Настроить» → Сбор/Обработка → «На review»'
+              }
+            />
+          )
+        },
       },
       {
         key: 'alert_enabled',
         header: 'Alert',
-        render: (_v, row) => (
-          <FlagStatusIcon
-            on={!!row.alert_enabled}
-            label="Alert"
-            na={row.network !== 'tg'}
-            title={
-              row.network !== 'tg'
-                ? row.network === 'url'
-                  ? 'Алерты недоступны для URL-источников'
-                  : 'Alerting пока только для Telegram'
-                : row.alert_enabled
-                  ? 'Alert включён в настройках канала'
-                  : 'Alert выключен — включите в «Настроить» → Алерты'
-            }
-          />
-        ),
+        render: (_v, row) => {
+          const ready = alertReady(row)
+          const on = !!row.alert_enabled
+          return (
+            <FlagStatusIcon
+              on={on}
+              warn={on && !ready}
+              label="Alert"
+              na={row.network !== 'tg' && row.network !== 'vk'}
+              title={
+                row.network !== 'tg' && row.network !== 'vk'
+                  ? row.network === 'url'
+                    ? 'Алерты недоступны для URL-источников'
+                    : 'Алерты доступны для Telegram и VKontakte'
+                  : ready
+                    ? 'Готово: Alert + канал доставки + правила'
+                    : on
+                      ? 'Alert включён: укажите канал доставки, текст и ключевые слова'
+                      : 'Alert выключен — «Настроить» → Алерты'
+              }
+            />
+          )
+        },
+      },
+      {
+        key: 'ready',
+        header: 'Ready',
+        render: (_v, row) => {
+          const ready = channelReady(row)
+          return (
+            <FlagStatusIcon
+              on={ready}
+              label="Ready"
+              title={
+                ready
+                  ? 'Канал готов: Publish и/или Collect(+targets/Review) и/или Alert настроены'
+                  : 'Не готов: нужен Publish (own+auth), либо Collect с targets/Review, либо Alert с доставкой'
+              }
+            />
+          )
+        },
       },
       {
         key: 'actions',
@@ -427,11 +672,11 @@ export function ChannelsPage() {
         ),
       },
     ],
-    [channels, copiedKey],
+    [channels, copiedKey, recheckingId],
   )
 
   return (
-    <PageContainer>
+    <PageContainer maxWidth="wide">
       <PageHeader
         title="Channels"
         description="Единый хаб каналов · Brand → Channels → поток → Analytics"
@@ -441,6 +686,17 @@ export function ChannelsPage() {
           <Alert variant="error">{error}</Alert>
         </div>
       )}
+      {success && (
+        <div className="mb-4" role="status">
+          <Alert variant="success">{success}</Alert>
+        </div>
+      )}
+      <QuotaBanner metrics={usage?.metrics} focusKey="max_own_channels" className="mb-4" />
+      <QuotaUpgradeModal
+        open={quotaDetail != null}
+        detail={quotaDetail}
+        onClose={() => setQuotaDetail(null)}
+      />
       {!error && !tgConnected && hasBrands && (
         <Alert variant="info" className="mb-4">
           Для Collect/Publish по Telegram сначала авторизуйтесь:{' '}
@@ -499,8 +755,8 @@ export function ChannelsPage() {
               <span className={channels.length ? 'text-emerald-400' : 'text-[var(--text-muted)]'}>
                 Channels {channels.length ? '✓' : '· добавьте канал'}
               </span>
-              <span className={hasCollectOrAlert ? 'text-emerald-400' : 'text-[var(--text-muted)]'}>
-                Collect/Alert {hasCollectOrAlert ? '✓' : '· Настроить → Сбор/Алерты'}
+              <span className={hasReadyChannel ? 'text-emerald-400' : 'text-[var(--text-muted)]'}>
+                Ready {hasReadyChannel ? `✓ ${readyCount}` : '· Publish / Collect+Review / Alert'}
               </span>
               <Link to="/analytics" className="text-primary-400 hover:underline ml-auto">
                 Analytics →
@@ -517,11 +773,14 @@ export function ChannelsPage() {
             <Link to="/brands" className="text-primary-400 hover:underline">
               Manage brands →
             </Link>
-            <Link to="/telegram" className="text-primary-400 hover:underline">
+            <Link to={networkSetupUrl('tg')} className="text-primary-400 hover:underline">
               Telegram auth →
             </Link>
-            <Link to="/vkontakte" className="text-primary-400 hover:underline">
+            <Link to={networkSetupUrl('vk')} className="text-primary-400 hover:underline">
               VK auth →
+            </Link>
+            <Link to={networkSetupUrl('instagram')} className="text-primary-400 hover:underline">
+              IG auth →
             </Link>
             <Link to="/custom-url" className="text-primary-400 hover:underline">
               Custom URL / posts →
@@ -534,7 +793,9 @@ export function ChannelsPage() {
           <Card className="mb-4">
             <CardHeader>
               <CardTitle>Add channel</CardTitle>
-              <CardDescription>Discovery: подписки VK / channels TG в силосах</CardDescription>
+              <CardDescription>
+                Любая сеть пайплайна: TG / VK / IG / Threads / TW / Дзен / WP / URL
+              </CardDescription>
             </CardHeader>
             <CardContent>
               <form
@@ -565,24 +826,34 @@ export function ChannelsPage() {
                     className="w-full mt-1 rounded-md border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-sm"
                     value={network}
                     onChange={(e) => {
-                      const next = e.target.value as 'tg' | 'vk' | 'url'
+                      const next = e.target.value as BrandNetwork
                       setNetwork(next)
                       if (next === 'url') setRole('source')
                     }}
                   >
-                    <option value="tg">Telegram</option>
-                    <option value="vk">VKontakte</option>
-                    <option value="url">URL source</option>
+                    {BRAND_NETWORKS.map((net) => (
+                      <option key={net} value={net}>
+                        {NETWORK_LABELS[net]}
+                      </option>
+                    ))}
                   </select>
                 </div>
                 {network !== 'url' ? (
                   <div>
-                    <label className="text-sm text-[var(--text-secondary)]">ID канала</label>
+                    <label className="text-sm text-[var(--text-secondary)]">
+                      {network === 'tg' || network === 'vk' ? 'ID канала' : 'Handle / ID'}
+                    </label>
                     <div className="mt-1 flex gap-2">
                       <input
                         value={externalId}
                         onChange={(e) => setExternalId(e.target.value)}
-                        placeholder="-100… / group id"
+                        placeholder={
+                          network === 'tg'
+                            ? '-100…'
+                            : network === 'vk'
+                              ? '236… / club… / onlinestudies'
+                              : '@username / site'
+                        }
                         className="flex-1 rounded-md border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-sm text-[var(--text-primary)]"
                       />
                       <Button
@@ -644,6 +915,18 @@ export function ChannelsPage() {
                   {saving ? 'Adding…' : 'Add'}
                 </Button>
               </form>
+              {network !== 'url' && network !== 'tg' && network !== 'vk' && (
+                <p className="text-xs text-[var(--text-muted)] mt-3">
+                  Auth:{' '}
+                  <Link
+                    to={networkSetupUrl(network)}
+                    className="text-primary-400 hover:underline"
+                  >
+                    {NETWORK_LABELS[network]}
+                  </Link>
+                  {' → '}затем Recheck / Bind в карточке канала.
+                </p>
+              )}
             </CardContent>
           </Card>
 
@@ -661,12 +944,16 @@ export function ChannelsPage() {
               <select
                 className="block mt-1 rounded-md border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-sm"
                 value={filterNetwork}
-                onChange={(e) => setFilterNetwork(e.target.value as 'all' | 'tg' | 'vk' | 'url')}
+                onChange={(e) =>
+                  setFilterNetwork(e.target.value as 'all' | BrandNetwork)
+                }
               >
                 <option value="all">All</option>
-                <option value="tg">Telegram</option>
-                <option value="vk">VKontakte</option>
-                <option value="url">URL</option>
+                {BRAND_NETWORKS.map((net) => (
+                  <option key={net} value={net}>
+                    {NETWORK_LABELS[net]}
+                  </option>
+                ))}
               </select>
             </div>
             <Button
@@ -675,23 +962,137 @@ export function ChannelsPage() {
               size="sm"
               disabled={filtered.length === 0}
               onClick={downloadChannelsCsv}
-              title="Скачать текущую таблицу (с учётом фильтра) в CSV"
+              title="Скачать текущую таблицу (с учётом фильтра) в CSV — без вложенных настроек"
             >
               Download CSV
             </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              disabled={exporting || channels.length === 0}
+              onClick={() => void downloadChannelsJson()}
+              title={
+                selectedBrandId || brandId
+                  ? 'Скачать JSON выбранного бренда: Collect/Alert/условия/targets'
+                  : 'Скачать JSON всех брендов (импорт потом — в выбранный бренд)'
+              }
+            >
+              {exporting ? 'Export…' : 'Download JSON'}
+            </Button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="application/json,.json"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0]
+                if (f) void handleImportFile(f)
+              }}
+            />
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              disabled={importing || !(selectedBrandId ?? brandId)}
+              onClick={() => fileInputRef.current?.click()}
+              title="Загрузить JSON в выбранный бренд (создаёт / обновляет по network+id), затем проверка доступа"
+            >
+              {importing ? 'Import…' : 'Upload JSON'}
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              disabled={validating || !(selectedBrandId ?? brandId) || channels.length === 0}
+              onClick={() => void runValidation()}
+              title="Recheck доступа и проверка Collect/Alert/Publish/targets для бренда"
+            >
+              {validating ? 'Validate…' : 'Validate'}
+            </Button>
           </div>
+
+          {validationReport && (
+            <Card className="mb-4">
+              <CardHeader>
+                <CardTitle className="text-base">Отчёт проверки</CardTitle>
+                <CardDescription>
+                  Бренд #{validationReport.brand_id}: доступны {validationReport.accessible}/
+                  {validationReport.checked}
+                  {validationReport.errors
+                    ? ` · ошибок ${validationReport.errors}`
+                    : ''}
+                  {validationReport.warnings
+                    ? ` · предупреждений ${validationReport.warnings}`
+                    : ''}
+                  {validationReport.ok ? ' · всё в порядке' : ''}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {validationReport.issues.length === 0 ? (
+                  <p className="text-sm text-emerald-400">
+                    Все каналы доступны, флаги Collect/Alert/Publish и targets согласованы.
+                  </p>
+                ) : (
+                  <ul className="space-y-2 max-h-64 overflow-y-auto text-sm">
+                    {validationReport.issues.map((issue, i) => (
+                      <li
+                        key={`${issue.channel_id}-${issue.code}-${i}`}
+                        className={
+                          issue.severity === 'error'
+                            ? 'text-red-400'
+                            : 'text-amber-400/90'
+                        }
+                      >
+                        <span className="font-medium uppercase text-xs tracking-wide">
+                          {issue.severity}
+                        </span>
+                        {' · '}
+                        <Link
+                          to={`/channels/${issue.channel_id}`}
+                          className="underline text-[var(--text-primary)]"
+                        >
+                          #{issue.channel_id}
+                        </Link>{' '}
+                        <span className="text-[var(--text-muted)]">
+                          {(issue.network || '').toUpperCase()}
+                          {issue.external_id ? ` / ${issue.external_id}` : ''}
+                          {issue.title ? ` · ${issue.title}` : ''}
+                        </span>
+                        <div className="text-[var(--text-secondary)] pl-0 sm:pl-4">
+                          {issue.message}
+                          <span className="text-[var(--text-muted)] text-xs ml-2">
+                            ({issue.code})
+                          </span>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
           <DataTable
             columns={columns}
             data={filtered}
             keyExtractor={(row) => row.id}
             isLoading={loadingList}
+            rowClassName={(row) =>
+              channelReady(row)
+                ? 'bg-emerald-500/10 even:bg-emerald-500/15 hover:bg-emerald-500/20'
+                : undefined
+            }
             emptyMessage={
               channels.length === 0
                 ? 'Нет каналов — добавьте выше'
                 : 'Нет совпадений по фильтру'
             }
           />
+          <p className="mt-2 text-xs text-[var(--text-muted)]">
+            Зелёная строка = канал готов: Publish (own+auth), либо Collect с целями/Review, либо
+            Alert с доставкой. Жёлтый значок = флаг включён, но настройка неполная.
+          </p>
         </>
       )}
     </PageContainer>

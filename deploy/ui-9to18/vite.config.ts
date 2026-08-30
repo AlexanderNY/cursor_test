@@ -19,6 +19,13 @@ export default defineConfig({
       'localhost',
       '.9to18.ru',
     ],
+    proxy: {
+      '/api': {
+        target: process.env.VITE_API_GATEWAY_URL || 'http://127.0.0.1:8000',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, ''),
+      },
+    },
   },
   preview: {
     port: 8200,

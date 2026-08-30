@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
+import { AdminJumpNav } from '@/components/admin-jump-nav'
 import { PageShell } from '@/components/page-shell'
+import { clearLearnAuthSession, getLearnAuthSession } from '@/data/learn/learn-auth'
 import {
   deleteLearnPost,
   formatPublishDate,
@@ -13,27 +15,38 @@ import {
 import { rubricTitleById, useLearnPosts } from '@/data/learn/use-learn-posts'
 
 export function LearnAdminPage() {
-  const { posts, isReady, reload } = useLearnPosts()
+  const { posts, isReady, error, reload } = useLearnPosts({ admin: true })
   const [scheduleStart, setScheduleStart] = useState(() =>
     toDatetimeLocalValue(new Date().toISOString()),
   )
   const [intervalDays, setIntervalDays] = useState(1)
   const [scheduleMessage, setScheduleMessage] = useState('')
+  const [busy, setBusy] = useState(false)
+  const session = getLearnAuthSession()
 
   const handleDelete = (slug: string, title: string): void => {
     if (!window.confirm(`Удалить запись «${title}»?`)) {
       return
     }
-    deleteLearnPost(slug)
-    reload()
+    setBusy(true)
+    void deleteLearnPost(slug)
+      .then(() => reload())
+      .catch((err) => setScheduleMessage(err instanceof Error ? err.message : 'Ошибка удаления'))
+      .finally(() => setBusy(false))
   }
 
   const handleReset = (): void => {
-    if (!window.confirm('Сбросить все записи к исходным S01E01–E10? Локальные правки пропадут.')) {
+    if (!window.confirm('Сбросить все записи к seed S01? Правки на сервере будут заменены.')) {
       return
     }
-    resetLearnPostsToSeed()
-    reload()
+    setBusy(true)
+    void resetLearnPostsToSeed()
+      .then(() => {
+        setScheduleMessage('Сброс выполнен')
+        reload()
+      })
+      .catch((err) => setScheduleMessage(err instanceof Error ? err.message : 'Ошибка сброса'))
+      .finally(() => setBusy(false))
   }
 
   const handleScheduleAll = (): void => {
@@ -44,13 +57,16 @@ export function LearnAdminPage() {
     ) {
       return
     }
-    try {
-      scheduleAllLearnPosts(fromDatetimeLocalValue(scheduleStart), intervalDays)
-      setScheduleMessage('Расписание применено')
-      reload()
-    } catch (error) {
-      setScheduleMessage(error instanceof Error ? error.message : 'Не удалось применить расписание')
-    }
+    setBusy(true)
+    void scheduleAllLearnPosts(fromDatetimeLocalValue(scheduleStart), intervalDays)
+      .then(() => {
+        setScheduleMessage('Расписание применено')
+        reload()
+      })
+      .catch((err) =>
+        setScheduleMessage(err instanceof Error ? err.message : 'Не удалось применить расписание'),
+      )
+      .finally(() => setBusy(false))
   }
 
   return (
@@ -61,15 +77,42 @@ export function LearnAdminPage() {
 
       <header className="learn-header">
         <p className="learn-eyebrow">Learn · Админка</p>
-        <h1 className="learn-title">Записи блога</h1>
+        <h1 className="learn-title">Учебные записи</h1>
         <p className="learn-lead">
-          Добавление и правка выпусков. Контент хранится в localStorage этого браузера. На сайте
-          видны только записи с датой публикации ≤ сейчас.
+          Управление выпусками. Супер-админ сайта может входить с JWT 9to18 (SSO-lite); иначе —
+          аккаунт CopyParse (admin/author). Спотлайт на главной — в <Link to="/admin">/admin</Link>.
+          {session?.username
+            ? ` Сессия CopyParse: ${session.username} (${session.role}).`
+            : ' Сессия CopyParse не активна.'}
+        </p>
+        <p className="learn-admin-entry">
+          <button
+            type="button"
+            className="learn-admin-link"
+            onClick={() => {
+              clearLearnAuthSession()
+              window.location.href = '/game/learn/admin/login'
+            }}
+          >
+            Выйти
+          </button>
         </p>
       </header>
 
-      <section className="learn-schedule" aria-labelledby="learn-schedule-heading">
-        <h2 id="learn-schedule-heading" className="learn-section-title">
+      <AdminJumpNav
+        items={[
+          { id: 'learn-schedule', label: 'Расписание' },
+          { id: 'learn-posts', label: 'Записи' },
+          { id: 'learn-new', label: 'Новая запись', href: '/game/learn/admin/new' },
+          { id: 'learn-site-admin', label: 'Админка сайта', href: '/admin' },
+        ]}
+      />
+
+      <section
+        id="learn-schedule"
+        className="learn-schedule admin-jump-target"
+        aria-labelledby="learn-schedule-heading"
+      >        <h2 id="learn-schedule-heading" className="learn-section-title">
           Расписание всех статей
         </h2>
         <p className="learn-section-note">
@@ -100,18 +143,29 @@ export function LearnAdminPage() {
               }}
             />
           </label>
-          <button type="button" className="learn-admin-btn learn-admin-btn-primary" onClick={handleScheduleAll}>
+          <button
+            type="button"
+            className="learn-admin-btn learn-admin-btn-primary"
+            onClick={handleScheduleAll}
+            disabled={busy}
+          >
             Применить ко всем
           </button>
         </div>
         {scheduleMessage ? <p className="learn-admin-ok">{scheduleMessage}</p> : null}
+        {error ? (
+          <p className="learn-section-note" style={{ color: '#b91c1c' }}>
+            {error}
+          </p>
+        ) : null}
       </section>
 
+      <div id="learn-posts" className="admin-jump-target">
       <div className="learn-admin-actions">
         <Link to="/game/learn/admin/new" className="learn-admin-btn learn-admin-btn-primary">
           Добавить запись
         </Link>
-        <button type="button" className="learn-admin-btn" onClick={handleReset}>
+        <button type="button" className="learn-admin-btn" onClick={handleReset} disabled={busy}>
           Сбросить к S01
         </button>
       </div>
@@ -130,7 +184,8 @@ export function LearnAdminPage() {
                   <span className="learn-section-note">
                     {rubricTitleById(post.rubricId)} · order {post.order} ·{' '}
                     <span className={isLive ? 'learn-status-live' : 'learn-status-scheduled'}>
-                      {isLive ? 'опубликовано' : 'запланировано'} {formatPublishDate(post.publishedAt)}
+                      {isLive ? 'опубликовано' : 'запланировано'}{' '}
+                      {formatPublishDate(post.publishedAt)}
                     </span>
                   </span>
                 </div>
@@ -145,6 +200,7 @@ export function LearnAdminPage() {
                     type="button"
                     className="learn-admin-link learn-admin-danger"
                     onClick={() => handleDelete(post.slug, post.title)}
+                    disabled={busy}
                   >
                     Удалить
                   </button>
@@ -154,6 +210,7 @@ export function LearnAdminPage() {
           })}
         </ul>
       )}
+      </div>
     </PageShell>
   )
 }

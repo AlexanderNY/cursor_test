@@ -15,10 +15,12 @@ import type {
   ConditionsMode,
   UrlChannelConfig,
 } from '@/types/smm'
-import { publishAllowed, authStatusLabel } from '@/hooks/use-platform-readiness'
+import { publishAllowed, authStatusLabel, collectAllowed, alertAllowed } from '@/hooks/use-platform-readiness'
 import { getErrorMessage } from '@/services/api-client'
+import { networkLabel, networkSetupUrl } from '@/lib/smm-networks'
+import type { PlatformNetworkStatus } from '@/types/smm'
 
-type FlowTab = 'collect' | 'processing' | 'publish' | 'alerting'
+type FlowTab = 'collect' | 'processing' | 'publish' | 'alerting' | 'auth'
 
 const DEFAULT_URL_CONFIG: UrlChannelConfig = {
   url: '',
@@ -87,6 +89,16 @@ export function ChannelFlowPage() {
   const [success, setSuccess] = useState('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [binding, setBinding] = useState(false)
+  const [channelStatus, setChannelStatus] = useState<{
+    connected?: boolean
+    last_publish_day?: string | null
+    last_collect_day?: string | null
+    sent_total?: number
+    received_total?: number
+    setup_url?: string
+    platform_connected?: boolean
+  } | null>(null)
 
   const [conditions, setConditions] = useState<string[]>([])
   const [conditionsMode, setConditionsMode] = useState<ConditionsMode>('any_of')
@@ -99,6 +111,7 @@ export function ChannelFlowPage() {
   const [alertTargets, setAlertTargets] = useState<number[]>([])
   const [rules, setRules] = useState<ChannelAlertRule[]>([])
   const [urlConfig, setUrlConfig] = useState<UrlChannelConfig>({ ...DEFAULT_URL_CONFIG })
+  const [platformNet, setPlatformNet] = useState<PlatformNetworkStatus | null>(null)
 
   useEffect(() => {
     if (!Number.isFinite(channelId) || channelId <= 0) {
@@ -133,6 +146,19 @@ export function ChannelFlowPage() {
         setRules(ch.alert_rules?.length ? ch.alert_rules : [emptyRule()])
         const siblings = await smmService.listChannels(ch.brand_id)
         setBrandChannels(siblings)
+        const status = await smmService.channelStatus(channelId).catch(() => null)
+        setChannelStatus(status)
+        try {
+          const platforms = await smmService.platformStatus()
+          const net = ch.network as keyof typeof platforms
+          setPlatformNet(
+            net && platforms[net] && typeof platforms[net] === 'object'
+              ? (platforms[net] as PlatformNetworkStatus)
+              : null,
+          )
+        } catch {
+          setPlatformNet(null)
+        }
         const storedTargets = (nextDelivery.alert_targets || []).filter(
           (id) => Number.isFinite(id) && id > 0,
         )
@@ -169,6 +195,7 @@ export function ChannelFlowPage() {
       brand_id: String(channel.brand_id),
       channel_id: String(channel.id),
     })
+    if (channel.network === 'tg') q.set('tab', 'telegram')
     return `/analytics?${q.toString()}`
   }, [channel])
 
@@ -188,7 +215,7 @@ export function ChannelFlowPage() {
     return brandChannels.filter(
       (c) =>
         c.role === 'own' &&
-        c.network === 'tg' &&
+        (c.network === 'tg' || c.network === 'vk') &&
         c.id !== channel.id &&
         Boolean(c.external_id),
     )
@@ -197,6 +224,18 @@ export function ChannelFlowPage() {
   async function saveCollect(e: FormEvent) {
     e.preventDefault()
     if (!channel) return
+    if (
+      collectEnabled &&
+      channel.network !== 'url' &&
+      !collectAllowed(channel, platformNet)
+    ) {
+      setError(
+        channel.network === 'vk'
+          ? 'Collect требует user OAuth VK (VKontakte → Авторизация → Подключить пользователя), затем Recheck на вкладке Auth.'
+          : 'Collect требует авторизацию Telegram (Telegram → Auth), затем Recheck на вкладке Auth.',
+      )
+      return
+    }
     setSaving(true)
     setError('')
     setSuccess('')
@@ -210,6 +249,10 @@ export function ChannelFlowPage() {
             url: (urlConfig.url || '').trim(),
             xpath: (urlConfig.xpath || '').trim(),
             schedule_time: urlConfig.schedule_time || '09:00',
+            take_screenshot: Boolean(urlConfig.take_screenshot),
+            screenshot_format: urlConfig.screenshot_format || 'base64',
+            screenshot_only: Boolean(urlConfig.take_screenshot && urlConfig.screenshot_only),
+            status_review_after_process: Boolean(urlConfig.status_review_after_process),
           },
         })
         setChannel(updated)
@@ -222,11 +265,16 @@ export function ChannelFlowPage() {
           save_conditions,
           conditions_mode: conditionsMode,
           collect_enabled: collectEnabled,
+          processing: {
+            ...processing,
+            status_review_after_process: Boolean(processing.status_review_after_process),
+          },
         })
         setChannel(updated)
         setCollectEnabled(Boolean(updated.collect_enabled))
         setConditions(updated.save_conditions || [])
         setConditionsMode(updated.conditions_mode === 'all_of' ? 'all_of' : 'any_of')
+        setProcessing(updated.processing || {})
         setSuccess('Условия сбора сохранены')
       }
     } catch (err) {
@@ -314,8 +362,16 @@ export function ChannelFlowPage() {
   async function saveAlerting(e: FormEvent) {
     e.preventDefault()
     if (!channel) return
-    if (channel.network !== 'tg') {
-      setError('Alerting пока только для Telegram')
+    if (channel.network !== 'tg' && channel.network !== 'vk') {
+      setError('Алерты доступны для Telegram и VKontakte')
+      return
+    }
+    if (alertEnabled && !alertAllowed(channel, platformNet)) {
+      setError(
+        channel.network === 'vk'
+          ? 'Alert требует user OAuth VK (VKontakte → Авторизация → Подключить пользователя), затем Recheck.'
+          : 'Alert требует авторизацию Telegram (Telegram → Auth), затем Recheck.',
+      )
       return
     }
     setError('')
@@ -386,6 +442,51 @@ export function ChannelFlowPage() {
     )
   }
 
+  async function bindFromProfile() {
+    if (!channel) return
+    setBinding(true)
+    setError('')
+    setSuccess('')
+    try {
+      const updated = await smmService.bindChannel(channel.id, { from_profile: true })
+      setChannel(updated)
+      const status = await smmService.channelStatus(channel.id).catch(() => null)
+      setChannelStatus(status)
+      setSuccess('Канал привязан к профилю платформы')
+    } catch (err) {
+      setError(getErrorMessage(err))
+    } finally {
+      setBinding(false)
+    }
+  }
+
+  async function recheckAuth() {
+    if (!channel) return
+    setBinding(true)
+    setError('')
+    try {
+      await smmService.recheckChannelAuth(channel.id)
+      const ch = await smmService.getChannel(channel.id)
+      setChannel(ch)
+      const status = await smmService.channelStatus(channel.id).catch(() => null)
+      setChannelStatus(status)
+      const pub =
+        ch.role === 'own'
+          ? ch.publish_enabled
+            ? ' · publish включён'
+            : ' · publish выключен'
+          : ''
+      setSuccess(
+        `Auth: ${authStatusLabel(ch.auth_status)}${pub}` +
+          (ch.auth_error ? ` — ${ch.auth_error}` : ''),
+      )
+    } catch (err) {
+      setError(getErrorMessage(err))
+    } finally {
+      setBinding(false)
+    }
+  }
+
   if (loading) {
     return (
       <PageContainer>
@@ -406,7 +507,17 @@ export function ChannelFlowPage() {
   }
 
   const isTg = channel.network === 'tg'
+  const isAlertNetwork = isTg || channel.network === 'vk'
+  const canCollect = collectAllowed(channel, platformNet)
+  const canAlert = alertAllowed(channel, platformNet)
+  const authHintVk =
+    'Нужен user OAuth: VKontakte → Авторизация → блок 4 «Подключить пользователя». Токен сообщества не подходит для Collect/Alert.'
+  const authHintTg =
+    'Нужна сессия Telegram: Telegram → Auth. Затем Recheck на вкладке Auth этого канала.'
+  const collectAuthHint = channel.network === 'vk' ? authHintVk : authHintTg
+  const alertAuthHint = collectAuthHint
   const isUrl = channel.network === 'url'
+  const setupHref = networkSetupUrl(channel.network)
 
   const flowTabs = (
     isUrl
@@ -414,12 +525,14 @@ export function ChannelFlowPage() {
           ['collect', 'Сбор'],
           ['processing', 'Обработка'],
           ['publish', 'Публикация'],
+          ['auth', 'Auth'],
         ] as const)
       : ([
           ['collect', 'Сбор'],
           ['processing', 'Обработка'],
           ['publish', 'Публикация'],
           ['alerting', 'Алерты'],
+          ['auth', 'Auth'],
         ] as const)
   )
 
@@ -427,7 +540,7 @@ export function ChannelFlowPage() {
     <PageContainer>
       <PageHeader
         title={channel.title || channel.external_id}
-        description={`${channel.network.toUpperCase()} · ${channel.role} · ${channel.brand_name || `brand #${channel.brand_id}`}`}
+        description={`${networkLabel(channel.network)} · ${channel.role} · ${channel.brand_name || `brand #${channel.brand_id}`}`}
       />
       <div className="flex flex-wrap gap-3 mb-4 text-sm">
         <Link to="/channels" className="text-primary-400 hover:underline">
@@ -451,10 +564,10 @@ export function ChannelFlowPage() {
           {authStatusLabel(channel.auth_status)}
           {channel.auth_error ? ` — ${channel.auth_error}` : ''}). Канал можно настроить для
           сбора/алертов. Для Publish подключите{' '}
-          <Link to={channel.network === 'vk' ? '/vkontakte' : '/telegram'} className="underline">
-            {channel.network === 'vk' ? 'VK' : 'Telegram'}
+          <Link to={setupHref} className="underline">
+            {networkLabel(channel.network)}
           </Link>{' '}
-          и нажмите Recheck на Channels.
+          и нажмите Recheck на вкладке Auth.
         </Alert>
       )}
 
@@ -543,32 +656,70 @@ export function ChannelFlowPage() {
                 <input
                   type="checkbox"
                   checked={Boolean(urlConfig.take_screenshot)}
-                  onChange={(e) =>
-                    setUrlConfig((u) => ({ ...u, take_screenshot: e.target.checked }))
-                  }
+                  onChange={(e) => {
+                    const on = e.target.checked
+                    setUrlConfig((u) => ({
+                      ...u,
+                      take_screenshot: on,
+                      screenshot_only: on ? u.screenshot_only : false,
+                    }))
+                  }}
                 />
                 Take screenshot
               </label>
               {urlConfig.take_screenshot && (
-                <div className="flex gap-4 text-sm">
-                  <label className="flex items-center gap-2">
+                <div className="space-y-2 pl-1">
+                  <div className="flex gap-4 text-sm">
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="radio"
+                        checked={(urlConfig.screenshot_format || 'base64') === 'base64'}
+                        onChange={() => setUrlConfig((u) => ({ ...u, screenshot_format: 'base64' }))}
+                      />
+                      base64
+                    </label>
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="radio"
+                        checked={urlConfig.screenshot_format === 'file'}
+                        onChange={() => setUrlConfig((u) => ({ ...u, screenshot_format: 'file' }))}
+                      />
+                      файл
+                    </label>
+                  </div>
+                  <label className="flex items-center gap-2 text-sm">
                     <input
-                      type="radio"
-                      checked={(urlConfig.screenshot_format || 'base64') === 'base64'}
-                      onChange={() => setUrlConfig((u) => ({ ...u, screenshot_format: 'base64' }))}
+                      type="checkbox"
+                      checked={Boolean(urlConfig.screenshot_only)}
+                      onChange={(e) =>
+                        setUrlConfig((u) => ({ ...u, screenshot_only: e.target.checked }))
+                      }
                     />
-                    base64
+                    Только скриншот (без текста)
                   </label>
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="radio"
-                      checked={urlConfig.screenshot_format === 'file'}
-                      onChange={() => setUrlConfig((u) => ({ ...u, screenshot_format: 'file' }))}
-                    />
-                    файл
-                  </label>
+                  <p className="text-xs text-[var(--text-muted)] pl-6">
+                    В пост попадёт только картинка; текст со страницы и URL в подписи не сохраняются.
+                  </p>
                 </div>
               )}
+              <div className="rounded-lg border border-[var(--border-color)] p-3 space-y-1">
+                <label className="flex items-center gap-2 text-sm font-medium">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(urlConfig.status_review_after_process)}
+                    onChange={(e) =>
+                      setUrlConfig((u) => ({
+                        ...u,
+                        status_review_after_process: e.target.checked,
+                      }))
+                    }
+                  />
+                  На review после сбора
+                </label>
+                <p className="text-xs text-[var(--text-muted)] pl-6">
+                  Пост останется на ручной проверке. Без Review укажите цели на вкладке «Публикация».
+                </p>
+              </div>
             </CardContent>
             <CardFooter>
               <Button type="submit" disabled={saving}>
@@ -590,11 +741,29 @@ export function ChannelFlowPage() {
           </CardHeader>
           <form onSubmit={saveCollect}>
             <CardContent className="space-y-4">
-              <label className="flex items-center gap-2 text-sm font-medium">
+              {!canCollect && (
+                <Alert variant="warning">
+                  {collectAuthHint}{' '}
+                  <Link to={setupHref} className="underline">
+                    Открыть {networkLabel(channel.network)}
+                  </Link>
+                  {' · '}
+                  затем вкладка Auth → Recheck.
+                </Alert>
+              )}
+              <label
+                className={`flex items-center gap-2 text-sm font-medium ${
+                  canCollect ? '' : 'opacity-60'
+                }`}
+              >
                 <input
                   type="checkbox"
-                  checked={collectEnabled}
-                  onChange={(e) => setCollectEnabled(e.target.checked)}
+                  checked={collectEnabled && canCollect}
+                  disabled={!canCollect}
+                  onChange={(e) => {
+                    if (!canCollect) return
+                    setCollectEnabled(e.target.checked)
+                  }}
                 />
                 Сбор включён (Collect)
               </label>
@@ -603,10 +772,31 @@ export function ChannelFlowPage() {
                 mode={conditionsMode}
                 onConditionsChange={setConditions}
                 onModeChange={setConditionsMode}
+                disabled={!canCollect && !collectEnabled}
               />
+              <div className="rounded-lg border border-[var(--border-color)] p-3 space-y-1">
+                <label className="flex items-center gap-2 text-sm font-medium">
+                  <input
+                    type="checkbox"
+                    checked={!!processing.status_review_after_process}
+                    disabled={!canCollect && !collectEnabled}
+                    onChange={(e) =>
+                      setProcessing((p) => ({
+                        ...p,
+                        status_review_after_process: e.target.checked,
+                      }))
+                    }
+                  />
+                  На review после сбора / обработки
+                </label>
+                <p className="text-xs text-[var(--text-muted)] pl-6">
+                  Собранные сообщения уходят на ручную проверку. Либо включите Review, либо задайте
+                  цели на вкладке «Публикация» — иначе Collect не считается готовым.
+                </p>
+              </div>
             </CardContent>
             <CardFooter>
-              <Button type="submit" disabled={saving}>
+              <Button type="submit" disabled={saving || (collectEnabled && !canCollect)}>
                 {saving ? 'Saving…' : 'Save'}
               </Button>
             </CardFooter>
@@ -867,23 +1057,40 @@ export function ChannelFlowPage() {
             <CardTitle>Алерты</CardTitle>
             <CardDescription>
               Куда отправлять уведомление, когда в этом канале появляется сообщение с ключевыми
-              словами. Сейчас только Telegram.
+              словами. Telegram и VKontakte.
             </CardDescription>
           </CardHeader>
           <form onSubmit={saveAlerting}>
             <CardContent className="space-y-6">
-              {!isTg && (
+              {!isAlertNetwork && (
                 <Alert variant="error">
                   Алерты для {channel.network.toUpperCase()} пока недоступны
                 </Alert>
               )}
+              {isAlertNetwork && !canAlert && (
+                <Alert variant="warning">
+                  {alertAuthHint}{' '}
+                  <Link to={setupHref} className="underline">
+                    Открыть {networkLabel(channel.network)}
+                  </Link>
+                  {' · '}
+                  затем Auth → Recheck.
+                </Alert>
+              )}
 
-              <label className="flex items-center gap-2 text-sm font-medium">
+              <label
+                className={`flex items-center gap-2 text-sm font-medium ${
+                  isAlertNetwork && canAlert ? '' : 'opacity-60'
+                }`}
+              >
                 <input
                   type="checkbox"
-                  checked={alertEnabled}
-                  disabled={!isTg}
-                  onChange={(e) => setAlertEnabled(e.target.checked)}
+                  checked={alertEnabled && canAlert}
+                  disabled={!isAlertNetwork || !canAlert}
+                  onChange={(e) => {
+                    if (!canAlert) return
+                    setAlertEnabled(e.target.checked)
+                  }}
                 />
                 Алерты включены (Alert)
               </label>
@@ -891,12 +1098,12 @@ export function ChannelFlowPage() {
               <div className="space-y-3">
                 <h4 className="text-sm font-medium">Куда отправлять</h4>
                 <p className="text-xs text-[var(--text-muted)]">
-                  Свои (own) Telegram-каналы бренда — как на вкладке «Публикация», но для мгновенного
-                  уведомления, а не для готового поста.
+                  Свои (own) Telegram- и VK-каналы бренда — как на вкладке «Публикация», но для
+                  мгновенного уведомления, а не для готового поста.
                 </p>
                 {ownAlertCandidates.length === 0 ? (
                   <p className="text-sm text-[var(--text-muted)]">
-                    Нет own-каналов Telegram для выбора. Добавьте каналы с ролью own в хабе Channels.
+                    Нет own-каналов TG/VK для выбора. Добавьте каналы с ролью own в хабе Channels.
                   </p>
                 ) : (
                   <div className="space-y-2">
@@ -911,7 +1118,7 @@ export function ChannelFlowPage() {
                             type="checkbox"
                             className="mt-0.5"
                             checked={selected}
-                            disabled={!isTg}
+                            disabled={!isAlertNetwork || !canAlert}
                             onChange={() => toggleAlertTarget(c.id)}
                           />
                           <span>
@@ -937,7 +1144,7 @@ export function ChannelFlowPage() {
                   value={delivery.alert_text || ''}
                   onChange={(e) => setDelivery((d) => ({ ...d, alert_text: e.target.value }))}
                   placeholder="Заголовок алерта, например: Срочно / совпадение по ключу"
-                  disabled={!isTg}
+                  disabled={!isAlertNetwork || !canAlert}
                 />
                 <label className="flex items-center gap-2 text-sm">
                   <input
@@ -946,7 +1153,7 @@ export function ChannelFlowPage() {
                     onChange={(e) =>
                       setDelivery((d) => ({ ...d, include_ai_summary: e.target.checked }))
                     }
-                    disabled={!isTg}
+                    disabled={!isAlertNetwork || !canAlert}
                   />
                   Добавить краткое AI-резюме к тексту
                 </label>
@@ -966,7 +1173,7 @@ export function ChannelFlowPage() {
                     type="button"
                     size="sm"
                     variant="secondary"
-                    disabled={!isTg || rules.length >= 10}
+                    disabled={!isAlertNetwork || !canAlert || rules.length >= 10}
                     onClick={() => setRules((prev) => [...prev, emptyRule()])}
                   >
                     Ещё набор слов
@@ -988,7 +1195,7 @@ export function ChannelFlowPage() {
                           size="sm"
                           variant="ghost"
                           onClick={() => setRules((prev) => prev.filter((r) => r.id !== rule.id))}
-                          disabled={!isTg}
+                          disabled={!isAlertNetwork || !canAlert}
                         >
                           Удалить
                         </Button>
@@ -1001,7 +1208,7 @@ export function ChannelFlowPage() {
                         updateRule(rule.id, { save_conditions })
                       }
                       onModeChange={(conditions_mode) => updateRule(rule.id, { conditions_mode })}
-                      disabled={!isTg}
+                      disabled={!isAlertNetwork || !canAlert}
                       maxItems={10}
                       placeholder="Ключевое слово или фраза"
                     />
@@ -1010,11 +1217,110 @@ export function ChannelFlowPage() {
               </div>
             </CardContent>
             <CardFooter>
-              <Button type="submit" disabled={saving || !isTg}>
+              <Button
+                type="submit"
+                disabled={saving || !isAlertNetwork || (alertEnabled && !canAlert)}
+              >
                 {saving ? 'Saving…' : 'Save'}
               </Button>
             </CardFooter>
           </form>
+        </Card>
+      )}
+
+      {tab === 'auth' && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Auth / Connect</CardTitle>
+            <CardDescription>
+              Привязка к {networkLabel(channel.network)} профилю и статус публикации/сбора.
+              {(channel.network === 'vk' || channel.network === 'tg') && (
+                <>
+                  {' '}
+                  Collect и Alert требуют{' '}
+                  {channel.network === 'vk'
+                    ? 'user OAuth (не токен сообщества)'
+                    : 'сессию Telegram'}
+                  — после подключения нажмите Recheck.
+                </>
+              )}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4 text-sm">
+            <div className="grid gap-2 sm:grid-cols-2">
+              <div>
+                <span className="text-[var(--text-muted)]">Auth status</span>
+                <p className="font-medium">{authStatusLabel(channel.auth_status)}</p>
+              </div>
+              <div>
+                <span className="text-[var(--text-muted)]">Platform</span>
+                <p className="font-medium">
+                  {channelStatus?.platform_connected ? 'connected' : 'not connected'}
+                </p>
+              </div>
+              {(channel.network === 'tg' || channel.network === 'vk') && (
+                <>
+                  <div>
+                    <span className="text-[var(--text-muted)]">Collect / Alert auth</span>
+                    <p className="font-medium">
+                      {canCollect || canAlert ? 'ready' : 'missing — see requirements above'}
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-[var(--text-muted)]">Capabilities</span>
+                    <p className="font-medium text-xs">
+                      collect={canCollect ? 'yes' : 'no'} · alert={canAlert ? 'yes' : 'no'}
+                    </p>
+                  </div>
+                </>
+              )}
+              <div>
+                <span className="text-[var(--text-muted)]">Last collect</span>
+                <p className="font-medium">
+                  {channelStatus?.last_collect_day || '—'}
+                  {channelStatus?.received_total != null
+                    ? ` · ${channelStatus.received_total} recv`
+                    : ''}
+                </p>
+              </div>
+              <div>
+                <span className="text-[var(--text-muted)]">Last publish</span>
+                <p className="font-medium">
+                  {channelStatus?.last_publish_day || '—'}
+                  {channelStatus?.sent_total != null ? ` · ${channelStatus.sent_total} sent` : ''}
+                </p>
+              </div>
+            </div>
+            {channel.auth_error && (
+              <Alert variant="warning">{channel.auth_error}</Alert>
+            )}
+            <div className="flex flex-wrap gap-2">
+              {!isUrl && (
+                <Link to={setupHref}>
+                  <Button type="button" variant="secondary">
+                    Open {networkLabel(channel.network)}
+                  </Button>
+                </Link>
+              )}
+              {!isUrl && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={binding}
+                  onClick={() => void bindFromProfile()}
+                >
+                  {binding ? '…' : 'Bind from profile'}
+                </Button>
+              )}
+              <Button
+                type="button"
+                disabled={binding || isUrl}
+                onClick={() => void recheckAuth()}
+              >
+                Recheck
+              </Button>
+            </div>
+          </CardContent>
         </Card>
       )}
     </PageContainer>

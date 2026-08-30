@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
 import { HtmlEditor } from '@/components/html-editor'
@@ -38,52 +38,83 @@ export function LearnAdminEditPage() {
   const isNew = !slug || slug === 'new'
   const rubrics = getSortedRubrics()
 
-  const initial = useMemo((): LearnPostInput | null => {
-    if (isNew) {
-      const posts = loadLearnPosts()
-      const nextOrder = posts.reduce((max, post) => Math.max(max, post.order), 0) + 1
-      return createEmptyPost(nextOrder)
-    }
-    const existing = getLearnPostBySlug(slug)
-    if (!existing) {
-      return null
-    }
-    return {
-      slug: existing.slug,
-      episode: existing.episode,
-      title: existing.title,
-      shortTitle: existing.shortTitle,
-      rubricId: existing.rubricId,
-      order: existing.order,
-      theory:
-        existing.theoryFormat === 'html' ? existing.theory : plainTextToHtml(existing.theory),
-      lab: existing.labFormat === 'html' ? existing.lab : plainTextToHtml(existing.lab),
-      cheatsheet:
-        existing.cheatsheetFormat === 'html'
-          ? existing.cheatsheet
-          : plainTextToHtml(existing.cheatsheet),
-      diagram: existing.diagram,
-      links: existing.links,
-      theoryFormat: 'html',
-      labFormat: 'html',
-      cheatsheetFormat: 'html',
-      publishedAt: existing.publishedAt,
+  const [form, setForm] = useState<LearnPostInput | null>(null)
+  const [linksText, setLinksText] = useState('')
+  const [error, setError] = useState('')
+  const [isSaved, setIsSaved] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [missing, setMissing] = useState(false)
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    setMissing(false)
+    void (async () => {
+      try {
+        if (isNew) {
+          const posts = await loadLearnPosts({ admin: true })
+          const nextOrder = posts.reduce((max, post) => Math.max(max, post.order), 0) + 1
+          const empty = createEmptyPost(nextOrder)
+          if (!cancelled) {
+            setForm(empty)
+            setLinksText('')
+          }
+          return
+        }
+        const existing = await getLearnPostBySlug(slug!, { admin: true })
+        if (!existing) {
+          if (!cancelled) setMissing(true)
+          return
+        }
+        const next: LearnPostInput = {
+          slug: existing.slug,
+          episode: existing.episode,
+          title: existing.title,
+          shortTitle: existing.shortTitle,
+          rubricId: existing.rubricId,
+          order: existing.order,
+          theory:
+            existing.theoryFormat === 'html' ? existing.theory : plainTextToHtml(existing.theory),
+          lab: existing.labFormat === 'html' ? existing.lab : plainTextToHtml(existing.lab),
+          cheatsheet:
+            existing.cheatsheetFormat === 'html'
+              ? existing.cheatsheet
+              : plainTextToHtml(existing.cheatsheet),
+          diagram: existing.diagram,
+          links: existing.links,
+          theoryFormat: 'html',
+          labFormat: 'html',
+          cheatsheetFormat: 'html',
+          publishedAt: existing.publishedAt,
+        }
+        if (!cancelled) {
+          setForm(next)
+          setLinksText(linksToText(next.links))
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'Ошибка загрузки')
+          setMissing(true)
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
     }
   }, [isNew, slug])
 
-  const [form, setForm] = useState<LearnPostInput | null>(initial)
-  const [linksText, setLinksText] = useState(initial ? linksToText(initial.links) : '')
-  const [error, setError] = useState('')
-  const [isSaved, setIsSaved] = useState(false)
+  if (loading) {
+    return (
+      <PageShell>
+        <p className="learn-section-note">Загрузка…</p>
+      </PageShell>
+    )
+  }
 
-  useEffect(() => {
-    setForm(initial)
-    setLinksText(initial ? linksToText(initial.links) : '')
-    setError('')
-    setIsSaved(false)
-  }, [initial])
-
-  if (!form) {
+  if (missing || !form) {
     return <Navigate to="/game/learn/admin" replace />
   }
 
@@ -118,31 +149,39 @@ export function LearnAdminEditPage() {
       return
     }
 
-    const hasConflict = loadLearnPosts().some(
-      (post) => post.slug === normalizedSlug && (isNew || post.slug !== slug),
-    )
-    if (hasConflict) {
-      setError('Такой slug уже занят')
-      return
-    }
-
-    const saved = saveLearnPost({
-      ...form,
-      slug: normalizedSlug,
-      title: form.title.trim(),
-      shortTitle: form.shortTitle.trim() || form.title.trim().slice(0, 24),
-      episode: form.episode.trim() || 'S01',
-      links: textToLinks(linksText),
-      theoryFormat: 'html',
-      labFormat: 'html',
-      cheatsheetFormat: 'html',
-    })
-
-    setIsSaved(true)
+    setSaving(true)
     setError('')
-    if (isNew || slug !== saved.slug) {
-      navigate(`/game/learn/admin/${saved.slug}`, { replace: true })
-    }
+    void (async () => {
+      try {
+        const posts = await loadLearnPosts({ admin: true })
+        const hasConflict = posts.some(
+          (post) => post.slug === normalizedSlug && (isNew || post.slug !== slug),
+        )
+        if (hasConflict) {
+          setError('Такой slug уже занят')
+          return
+        }
+        const saved = await saveLearnPost({
+          ...form,
+          slug: normalizedSlug,
+          title: form.title.trim(),
+          shortTitle: form.shortTitle.trim() || form.title.trim().slice(0, 24),
+          episode: form.episode.trim() || 'S01',
+          links: textToLinks(linksText),
+          theoryFormat: 'html',
+          labFormat: 'html',
+          cheatsheetFormat: 'html',
+        })
+        setIsSaved(true)
+        if (isNew || slug !== saved.slug) {
+          navigate(`/game/learn/admin/${saved.slug}`, { replace: true })
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Не удалось сохранить')
+      } finally {
+        setSaving(false)
+      }
+    })()
   }
 
   return (
@@ -226,27 +265,27 @@ export function LearnAdminEditPage() {
               onChange={(event) =>
                 updateField('publishedAt', fromDatetimeLocalValue(event.target.value))
               }
-              required
             />
           </label>
         </div>
 
         <HtmlEditor
-          label="Теория"
+          label="Теория (HTML)"
           value={form.theory}
-          onChange={(html) => updateField('theory', html)}
+          onChange={(value) => updateField('theory', value)}
         />
-        <HtmlEditor label="Лаба" value={form.lab} onChange={(html) => updateField('lab', html)} />
+
+        <HtmlEditor label="Лаба (HTML)" value={form.lab} onChange={(value) => updateField('lab', value)} />
+
         <HtmlEditor
-          label="Шпаргалка"
+          label="Шпаргалка (HTML)"
           value={form.cheatsheet}
-          onChange={(html) => updateField('cheatsheet', html)}
+          onChange={(value) => updateField('cheatsheet', value)}
         />
 
         <label className="learn-admin-field">
-          <span>Mermaid-схема</span>
+          <span>Mermaid</span>
           <textarea
-            className="learn-admin-textarea"
             rows={6}
             value={form.diagram}
             onChange={(event) => updateField('diagram', event.target.value)}
@@ -255,28 +294,15 @@ export function LearnAdminEditPage() {
 
         <label className="learn-admin-field">
           <span>Ссылки (строка: подпись | url)</span>
-          <textarea
-            className="learn-admin-textarea"
-            rows={4}
-            value={linksText}
-            onChange={(event) => {
-              setLinksText(event.target.value)
-              setIsSaved(false)
-            }}
-          />
+          <textarea rows={4} value={linksText} onChange={(event) => setLinksText(event.target.value)} />
         </label>
 
-        {error ? <p className="learn-admin-error">{error}</p> : null}
+        {error ? <p className="learn-section-note" style={{ color: '#b91c1c' }}>{error}</p> : null}
         {isSaved ? <p className="learn-admin-ok">Сохранено</p> : null}
 
-        <div className="learn-admin-actions">
-          <button type="submit" className="learn-admin-btn learn-admin-btn-primary">
-            Сохранить
-          </button>
-          <Link to={`/game/learn/${form.slug}?preview=1`} className="learn-admin-btn">
-            Открыть на сайте
-          </Link>
-        </div>
+        <button type="submit" className="learn-admin-btn learn-admin-btn-primary" disabled={saving}>
+          {saving ? 'Сохранение…' : 'Сохранить'}
+        </button>
       </form>
     </PageShell>
   )

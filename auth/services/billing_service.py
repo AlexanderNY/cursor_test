@@ -19,14 +19,90 @@ if settings.STRIPE_SECRET_KEY:
     stripe.api_key = settings.STRIPE_SECRET_KEY
 
 
+def _price_id_for_plan(plan: str) -> Optional[str]:
+    """Resolve Stripe Price ID for standard|full (legacy BASIC/PREMIUM env names)."""
+    code = (plan or "").strip().lower()
+    if code in ("standard", "basic"):
+        return (
+            (settings.STRIPE_PRICE_STANDARD or "").strip()
+            or (settings.STRIPE_PRICE_BASIC or "").strip()
+            or None
+        )
+    if code in ("full", "premium"):
+        return (
+            (settings.STRIPE_PRICE_FULL or "").strip()
+            or (settings.STRIPE_PRICE_PREMIUM or "").strip()
+            or None
+        )
+    return None
+
+
 def _tariff_from_price_id(price_id: Optional[str]) -> Optional[str]:
     if not price_id:
         return None
-    if settings.STRIPE_PRICE_BASIC and price_id == settings.STRIPE_PRICE_BASIC:
+    standard_ids = {
+        p
+        for p in (
+            (settings.STRIPE_PRICE_STANDARD or "").strip(),
+            (settings.STRIPE_PRICE_BASIC or "").strip(),
+        )
+        if p
+    }
+    full_ids = {
+        p
+        for p in (
+            (settings.STRIPE_PRICE_FULL or "").strip(),
+            (settings.STRIPE_PRICE_PREMIUM or "").strip(),
+        )
+        if p
+    }
+    if price_id in standard_ids:
         return "standard"
-    if settings.STRIPE_PRICE_PREMIUM and price_id == settings.STRIPE_PRICE_PREMIUM:
+    if price_id in full_ids:
         return "full"
     return None
+
+
+async def create_checkout_session(
+    *,
+    user_id: int,
+    email: str,
+    plan: str,
+    billing_customer_id: Optional[str] = None,
+) -> dict[str, Any]:
+    """Create Stripe Checkout Session for Standard/Full subscription."""
+    from billing.plan_definitions import normalize_tariff_code
+
+    tariff = normalize_tariff_code(plan)
+    if tariff not in ("standard", "full"):
+        raise ValueError("plan must be standard or full")
+
+    if not settings.STRIPE_SECRET_KEY:
+        raise RuntimeError("Stripe is not configured")
+
+    price_id = _price_id_for_plan(tariff)
+    if not price_id:
+        raise RuntimeError(f"Stripe price is not configured for plan '{tariff}'")
+
+    stripe.api_key = settings.STRIPE_SECRET_KEY
+    meta = {"user_id": str(user_id), "tariff": tariff}
+    params: dict[str, Any] = {
+        "mode": "subscription",
+        "line_items": [{"price": price_id, "quantity": 1}],
+        "success_url": settings.BILLING_CHECKOUT_SUCCESS_URL,
+        "cancel_url": settings.BILLING_CHECKOUT_CANCEL_URL,
+        "client_reference_id": str(user_id),
+        "metadata": meta,
+        "subscription_data": {"metadata": meta},
+        "allow_promotion_codes": True,
+    }
+    if billing_customer_id:
+        params["customer"] = billing_customer_id
+    else:
+        params["customer_email"] = email
+
+    session = stripe.checkout.Session.create(**params)
+    return {"url": session.url, "session_id": session.id}
 
 
 async def _insert_billing_event(

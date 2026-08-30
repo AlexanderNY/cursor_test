@@ -3,8 +3,18 @@ export type ScheduleType = 'immediate' | 'intervals'
 /** Статус OAuth VK (пользовательский токен для стены/фото группы) */
 export interface VKAuthStatus {
   connected: boolean
+  /** Токен сообщества сохранён (access_token) */
+  community_connected?: boolean
   message: string
   vk_user_id?: number | null
+}
+
+/** Ответ POST /vk/auth/verify/* */
+export interface VKAuthVerifyResult {
+  ok: boolean
+  block: string
+  message: string
+  details?: Record<string, unknown> | null
 }
 
 /** Элемент списка подписок / групп (VK API) */
@@ -19,7 +29,7 @@ export interface VKSubscriptionItem {
 
 export interface VKSubscriptionsResult {
   ok: boolean
-  source: 'user_oauth' | 'community_token'
+  source: 'user_oauth' | 'community_token' | 'user_oauth_admin' | 'selenium_web'
   subscriptions: VKSubscriptionItem[]
   count: number
   message?: string
@@ -69,10 +79,21 @@ export interface VKontakteProfile {
   vk_app_id?: string | null
   /** Секрет приложения VK (маскируется как "***") */
   vk_app_secret?: string | null
+  /** Сервисный ключ приложения */
+  vk_app_service_key?: string | null
   /** URL UI после OAuth (FRONTEND_URL) */
   vk_frontend_url?: string | null
   /** Публичный URL gateway для redirect_uri (VK_PUBLIC_GATEWAY_URL) */
   vk_public_gateway_url?: string | null
+  /** Callback API: строка подтверждения */
+  vk_callback_confirmation?: string | null
+  /** Callback API: секрет сервера (маскируется) */
+  vk_callback_secret?: string | null
+  has_access_token?: boolean
+  has_user_access_token?: boolean
+  has_vk_app_secret?: boolean
+  has_vk_app_service_key?: boolean
+  has_vk_callback_secret?: boolean
   process_enabled?: boolean
   processing_description?: string | null
   remove_emojis?: boolean

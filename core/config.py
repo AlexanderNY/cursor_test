@@ -7,6 +7,8 @@ class Settings(BaseSettings):
     
     # База данных (обязательно через env / .env)
     DATABASE_URL: str = ""
+    # Отдельная БД контура 9to18.ru (если пусто — тот же хост, dbname=db_9to18)
+    SITE_DATABASE_URL: str = ""
     DB_POOL_MINSIZE: int = 2
     DB_POOL_MAXSIZE: int = 8
     
@@ -55,11 +57,8 @@ class Settings(BaseSettings):
     # Доп. разрешённые origins для редиректа после VK OAuth (через запятую)
     VK_OAUTH_ALLOWED_FRONTENDS: str = ""
 
-    # VK OAuth (user_access_token для wall/photos на стене группы)
-    VK_APP_ID: str = ""
-    VK_APP_SECRET: str = ""
+    # VK: публичные URL (не секреты). App ID/Secret/Callback — только в vk_profiles (UI).
     VK_OAUTH_REDIRECT_URI: str = ""
-    # Публичный URL gateway (как его видит браузер и VK), не внутренний http://gateway:8000
     VK_PUBLIC_GATEWAY_URL: str = "http://localhost:8000"
 
     # X (Twitter) OAuth 2.0 PKCE (Core callback обменивает code на токены)

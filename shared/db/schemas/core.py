@@ -138,6 +138,21 @@ CREATE TABLE IF NOT EXISTS system_settings (
 INSERT INTO system_settings (key, value)
 VALUES ('ai_enabled', 'true'::jsonb)
 ON CONFLICT (key) DO NOTHING;
+
+INSERT INTO system_settings (key, value)
+VALUES (
+    'site_9to18_promo',
+    '{
+      "enabled": true,
+      "serviceSlug": "copyparse",
+      "eyebrow": "Спотлайт · взаимное продвижение",
+      "title": "CopyParse: SaaS кросспостинга как живой стенд",
+      "body": "9to18 — площадка взаимного продвижения проектов. Сейчас в фокусе CopyParse: бренды, каналы, календарь и inbox — тот же стек, который разбираем в Learn. Поддержите развитие сервиса и загляните на стенд.",
+      "ctaLabel": "Открыть copyparse.ru",
+      "ctaHref": "https://www.copyparse.ru"
+    }'::jsonb
+)
+ON CONFLICT (key) DO NOTHING;
 """
 
 GUIDE_BLOCKS_TABLE = """
@@ -163,16 +178,29 @@ CREATE TABLE IF NOT EXISTS smm_brands (
     group_id INTEGER REFERENCES groups(id) ON DELETE SET NULL,
     name VARCHAR(255) NOT NULL,
     color VARCHAR(7) NOT NULL DEFAULT '#3B82F6',
+    tone_of_voice TEXT,
+    style_notes TEXT,
+    prompt_snippets JSONB NOT NULL DEFAULT '[]'::jsonb,
+    is_demo BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
+"""
+
+SMM_BRANDS_DEMO_MIGRATION = """
+DO $$ BEGIN
+  ALTER TABLE smm_brands ADD COLUMN is_demo BOOLEAN NOT NULL DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
 """
 
 SMM_BRAND_CHANNELS_TABLE = """
 CREATE TABLE IF NOT EXISTS smm_brand_channels (
     id SERIAL PRIMARY KEY,
     brand_id INTEGER NOT NULL REFERENCES smm_brands(id) ON DELETE CASCADE,
-    network VARCHAR(10) NOT NULL CHECK (network IN ('tg', 'vk')),
+    network VARCHAR(20) NOT NULL CHECK (network IN (
+        'tg', 'vk', 'url',
+        'instagram', 'threads', 'tw', 'dzen', 'wp'
+    )),
     external_id VARCHAR(128) NOT NULL,
     title VARCHAR(255),
     kind VARCHAR(20) NOT NULL DEFAULT 'channel'
@@ -208,10 +236,13 @@ CREATE TABLE IF NOT EXISTS smm_inbox_items (
     id SERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL,
     brand_id INTEGER REFERENCES smm_brands(id) ON DELETE SET NULL,
-    network VARCHAR(10) NOT NULL CHECK (network IN ('tg', 'vk')),
+    network VARCHAR(20) NOT NULL CHECK (network IN (
+        'tg', 'vk', 'url',
+        'instagram', 'threads', 'tw', 'dzen', 'wp'
+    )),
     channel_id INTEGER REFERENCES smm_brand_channels(id) ON DELETE SET NULL,
     thread_id VARCHAR(128),
-    type VARCHAR(20) NOT NULL CHECK (type IN ('dm', 'comment', 'reaction')),
+    type VARCHAR(20) NOT NULL CHECK (type IN ('dm', 'comment', 'reaction', 'competitor_post')),
     author VARCHAR(255),
     text TEXT,
     status VARCHAR(20) NOT NULL DEFAULT 'new'
@@ -239,10 +270,26 @@ CREATE TABLE IF NOT EXISTS smm_publish_jobs (
     status VARCHAR(30) NOT NULL DEFAULT 'draft',
     retry_count INTEGER DEFAULT 0,
     last_error TEXT,
+    assigned_to INTEGER,
+    rejection_comment TEXT,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_smm_jobs_status_publish ON smm_publish_jobs(status, publish_at);
+"""
+
+SMM_JOBS_APPROVAL_MIGRATION = """
+DO $$ BEGIN
+  ALTER TABLE smm_publish_jobs ADD COLUMN assigned_to INTEGER;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE smm_publish_jobs ADD COLUMN rejection_comment TEXT;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+CREATE INDEX IF NOT EXISTS idx_smm_jobs_assigned_to
+    ON smm_publish_jobs(assigned_to)
+    WHERE assigned_to IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_smm_jobs_user_status
+    ON smm_publish_jobs(user_id, status);
 """
 
 SMM_AUTOMATIONS_TABLE = """
@@ -264,6 +311,8 @@ CREATE TABLE IF NOT EXISTS smm_competitor_snapshots (
     channel_id INTEGER NOT NULL REFERENCES smm_brand_channels(id) ON DELETE CASCADE,
     external_post_id VARCHAR(128),
     post_text TEXT,
+    post_url TEXT,
+    text_hash VARCHAR(64),
     views INTEGER DEFAULT 0,
     likes INTEGER DEFAULT 0,
     comments INTEGER DEFAULT 0,
@@ -271,6 +320,18 @@ CREATE TABLE IF NOT EXISTS smm_competitor_snapshots (
     posted_at TIMESTAMPTZ,
     collected_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
+DO $$ BEGIN
+  ALTER TABLE smm_competitor_snapshots ADD COLUMN post_url TEXT;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE smm_competitor_snapshots ADD COLUMN text_hash VARCHAR(64);
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_smm_competitor_external_post
+    ON smm_competitor_snapshots (channel_id, external_post_id)
+    WHERE external_post_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_smm_competitor_text_hash
+    ON smm_competitor_snapshots (channel_id, text_hash)
+    WHERE text_hash IS NOT NULL;
 """
 
 SMM_INDEXES = """
@@ -281,6 +342,8 @@ CREATE INDEX IF NOT EXISTS idx_smm_inbox_brand_status ON smm_inbox_items(brand_i
 CREATE INDEX IF NOT EXISTS idx_smm_jobs_user_brand ON smm_publish_jobs(user_id, brand_id);
 CREATE INDEX IF NOT EXISTS idx_smm_automations_user ON smm_automations(user_id);
 CREATE INDEX IF NOT EXISTS idx_smm_competitor_channel ON smm_competitor_snapshots(channel_id);
+CREATE INDEX IF NOT EXISTS idx_smm_competitor_posted_at
+    ON smm_competitor_snapshots (channel_id, posted_at DESC NULLS LAST);
 """
 
 SMM_CHANNEL_COUNTERS_TABLE = """
@@ -364,6 +427,94 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_column THEN NULL; END $$;
 """
 
+SMM_BRANDS_AI_MIGRATION = """
+DO $$ BEGIN
+  ALTER TABLE smm_brands ADD COLUMN tone_of_voice TEXT;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE smm_brands ADD COLUMN style_notes TEXT;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE smm_brands ADD COLUMN prompt_snippets JSONB NOT NULL DEFAULT '[]'::jsonb;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+"""
+
+SMM_TEMPLATES_TABLE = """
+CREATE TABLE IF NOT EXISTS smm_templates (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    brand_id INTEGER NOT NULL REFERENCES smm_brands(id) ON DELETE CASCADE,
+    kind VARCHAR(20) NOT NULL CHECK (kind IN ('prompt', 'cta', 'utm', 'post_body')),
+    title VARCHAR(255) NOT NULL,
+    body TEXT NOT NULL DEFAULT '',
+    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_smm_templates_brand
+    ON smm_templates(brand_id, kind);
+CREATE INDEX IF NOT EXISTS idx_smm_templates_user
+    ON smm_templates(user_id);
+"""
+
+SMM_MEDIA_PACKS_TABLE = """
+CREATE TABLE IF NOT EXISTS smm_media_packs (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    brand_id INTEGER NOT NULL REFERENCES smm_brands(id) ON DELETE CASCADE,
+    title VARCHAR(255) NOT NULL,
+    object_keys JSONB NOT NULL DEFAULT '[]'::jsonb,
+    caption TEXT,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_smm_media_packs_brand
+    ON smm_media_packs(brand_id);
+CREATE INDEX IF NOT EXISTS idx_smm_media_packs_user
+    ON smm_media_packs(user_id);
+"""
+
+LEARN_POSTS_TABLE = """
+CREATE TABLE IF NOT EXISTS learn_posts (
+    id SERIAL PRIMARY KEY,
+    slug VARCHAR(128) UNIQUE NOT NULL,
+    episode VARCHAR(32) NOT NULL DEFAULT '',
+    title VARCHAR(512) NOT NULL,
+    short_title VARCHAR(128) NOT NULL DEFAULT '',
+    rubric_id VARCHAR(64) NOT NULL DEFAULT 'architecture',
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    theory TEXT NOT NULL DEFAULT '',
+    lab TEXT NOT NULL DEFAULT '',
+    cheatsheet TEXT NOT NULL DEFAULT '',
+    diagram TEXT NOT NULL DEFAULT '',
+    links JSONB NOT NULL DEFAULT '[]'::jsonb,
+    theory_format VARCHAR(16) NOT NULL DEFAULT 'markdown'
+        CHECK (theory_format IN ('markdown', 'html')),
+    lab_format VARCHAR(16) NOT NULL DEFAULT 'markdown'
+        CHECK (lab_format IN ('markdown', 'html')),
+    cheatsheet_format VARCHAR(16) NOT NULL DEFAULT 'markdown'
+        CHECK (cheatsheet_format IN ('markdown', 'html')),
+    published_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_learn_posts_order
+    ON learn_posts (sort_order ASC, id ASC);
+CREATE INDEX IF NOT EXISTS idx_learn_posts_published
+    ON learn_posts (published_at);
+"""
+
+LEARN_PROGRESS_TABLE = """
+CREATE TABLE IF NOT EXISTS learn_progress (
+    user_id INTEGER NOT NULL,
+    slug VARCHAR(128) NOT NULL REFERENCES learn_posts(slug) ON DELETE CASCADE,
+    completed_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id, slug)
+);
+CREATE INDEX IF NOT EXISTS idx_learn_progress_user
+    ON learn_progress (user_id);
+"""
+
 ALL_TABLES: list[str] = [
     POSTS_TABLE,
     POSTS_INDEXES,
@@ -382,6 +533,7 @@ ALL_TABLES: list[str] = [
     SMM_BRAND_CHANNELS_TABLE,
     SMM_INBOX_TABLE,
     SMM_JOBS_TABLE,
+    SMM_JOBS_APPROVAL_MIGRATION,
     SMM_AUTOMATIONS_TABLE,
     SMM_COMPETITOR_SNAPSHOTS_TABLE,
     SMM_INDEXES,
@@ -389,4 +541,10 @@ ALL_TABLES: list[str] = [
     SMM_AI_USAGE_TABLE,
     SMM_ANALYTICS_MIGRATION,
     SMM_CHANNEL_AUTH_MIGRATION,
+    SMM_BRANDS_AI_MIGRATION,
+    SMM_BRANDS_DEMO_MIGRATION,
+    SMM_TEMPLATES_TABLE,
+    SMM_MEDIA_PACKS_TABLE,
+    LEARN_POSTS_TABLE,
+    LEARN_PROGRESS_TABLE,
 ]

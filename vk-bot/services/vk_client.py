@@ -54,22 +54,30 @@ def _is_retryable_vk_error(exc: BaseException) -> bool:
 
 def _wall_get_sync(access_token: str, owner_id: int, count: int = 20) -> Dict[str, Any]:
     """Синхронный вызов wall.get. owner_id для группы отрицательный (например -123456)."""
-    vk_session = vk_api.VkApi(token=access_token)
+    vk_session = vk_api.VkApi(token=access_token, api_version="5.199")
     vk = vk_session.get_api()
     return vk.wall.get(owner_id=owner_id, count=count, filter="owner")
 
 
 def _wall_get_by_id_sync(access_token: str, owner_id: int, post_id: int) -> List[Dict[str, Any]]:
-    vk_session = vk_api.VkApi(token=access_token)
+    vk_session = vk_api.VkApi(token=access_token, api_version="5.199")
     vk = vk_session.get_api()
     posts = f"{owner_id}_{post_id}"
     return vk.wall.getById(posts=posts)
 
 
 def _groups_get_by_id_sync(access_token: str, group_ids: List[str]) -> List[Dict[str, Any]]:
-    vk_session = vk_api.VkApi(token=access_token)
+    vk_session = vk_api.VkApi(token=access_token, api_version="5.199")
     vk = vk_session.get_api()
-    return vk.groups.getById(group_ids=",".join(group_ids), fields="members_count")
+    result = vk.groups.getById(group_ids=",".join(group_ids), fields="members_count")
+    if isinstance(result, dict):
+        groups = result.get("groups")
+        if isinstance(groups, list):
+            return [g for g in groups if isinstance(g, dict)]
+        if result.get("id") is not None:
+            return [result]
+        return []
+    return result or []
 
 
 def _wall_post_sync(
@@ -80,12 +88,14 @@ def _wall_post_sync(
     attachments: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Синхронный вызов wall.post. owner_id — ID владельца стены (положительный — пользователь, отрицательный — группа)."""
-    vk_session = vk_api.VkApi(token=access_token)
+    vk_session = vk_api.VkApi(token=access_token, api_version="5.199")
     vk = vk_session.get_api()
+    # На стену сообщества всегда from_group=1 (пост от имени группы), иначе VK может отклонить community-токен.
+    post_as_group = owner_id < 0 and from_group
     params = {
         "owner_id": owner_id,
         "message": message[:16384] if message else "",
-        "from_group": 1 if from_group and owner_id < 0 else 0,
+        "from_group": 1 if post_as_group else 0,
     }
     if attachments:
         params["attachments"] = attachments
@@ -95,7 +105,7 @@ def _wall_post_sync(
 def _users_get_sync(access_token: str) -> Optional[int]:
     """Синхронный вызов users.get без параметров — возвращает id текущего пользователя по токену."""
     try:
-        vk_session = vk_api.VkApi(token=access_token)
+        vk_session = vk_api.VkApi(token=access_token, api_version="5.199")
         vk = vk_session.get_api()
         resp = vk.users.get()
         if resp and len(resp) > 0:
@@ -113,7 +123,7 @@ def _upload_photo_wall_sync(
     Для группы VK требует **пользовательский** access_token (photos.getWallUploadServer недоступен с токеном сообщества).
     """
     try:
-        vk_session = vk_api.VkApi(token=access_token)
+        vk_session = vk_api.VkApi(token=access_token, api_version="5.199")
         upload = VkUpload(vk_session)
         if owner_id > 0:
             photo_list = upload.photo_wall(photo_path, user_id=owner_id)
@@ -133,7 +143,7 @@ def _upload_document_wall_sync(
 ) -> Optional[str]:
     """Загружает документ на стену. owner_id > 0 — пользователь, < 0 — группа. Возвращает строку вложения doc{owner_id}_{id}."""
     try:
-        vk_session = vk_api.VkApi(token=access_token)
+        vk_session = vk_api.VkApi(token=access_token, api_version="5.199")
         upload = VkUpload(vk_session)
         title = title or "document"
         if owner_id < 0:

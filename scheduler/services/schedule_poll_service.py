@@ -399,6 +399,8 @@ async def _persist_url_posts(schedule_response: dict[str, Any]) -> None:
             "post_text": (d.get("text") or "").strip(),
             "screenshot_path": d.get("screenshot_path"),
             "screenshot_base64": d.get("screenshot_base64"),
+            "screenshot_only": bool(d.get("screenshot_only")),
+            "url_item_id": d.get("url_item_id"),
             "to_tg": d.get("to_tg", False),
             "to_wp": d.get("to_wp", False),
             "to_tw": d.get("to_tw", False),

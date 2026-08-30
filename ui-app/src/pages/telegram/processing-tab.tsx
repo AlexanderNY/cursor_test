@@ -1,7 +1,10 @@
-import { FormEvent } from 'react'
+import { FormEvent, useEffect, useState } from 'react'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
+import { telegramService } from '@/services/telegram-service'
+import type { TgDigestItem } from '@/types/telegram'
+import { formatDateTime } from '@/utils/date'
 
 export interface ProcessingTabProps {
   isLoadingProfile: boolean
@@ -42,6 +45,8 @@ export interface ProcessingTabProps {
   onClassificationEnabledChange: (v: boolean) => void
   classificationCategories: string
   onClassificationCategoriesChange: (v: string) => void
+  batchEnrichmentEnabled: boolean
+  onBatchEnrichmentEnabledChange: (v: boolean) => void
   onSubmit: (e: FormEvent) => void
 }
 
@@ -85,8 +90,31 @@ export function ProcessingTab(props: ProcessingTabProps) {
     onClassificationEnabledChange,
     classificationCategories,
     onClassificationCategoriesChange,
+    batchEnrichmentEnabled,
+    onBatchEnrichmentEnabledChange,
     onSubmit,
   } = props
+
+  const [digests, setDigests] = useState<TgDigestItem[]>([])
+
+  useEffect(() => {
+    if (!summarizeEnabled) {
+      setDigests([])
+      return
+    }
+    let cancelled = false
+    void (async () => {
+      try {
+        const items = await telegramService.getDigests(3)
+        if (!cancelled) setDigests(items)
+      } catch {
+        if (!cancelled) setDigests([])
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [summarizeEnabled])
 
   return (
     <Card className="animate-slide-up">
@@ -202,10 +230,27 @@ export function ProcessingTab(props: ProcessingTabProps) {
                 <span className="text-[var(--text-primary)]">Суммаризация длинных постов</span>
               </label>
               {summarizeEnabled && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <Input label="Min length для суммаризации" type="number" value={summarizeMinLength} onChange={(e) => onSummarizeMinLengthChange(Number(e.target.value) || 500)} />
-                  <Input label="Digest interval (min)" type="number" value={digestIntervalMin} onChange={(e) => onDigestIntervalMinChange(Number(e.target.value) || 30)} />
-                  <Input label="Digest channel" value={digestChannel} onChange={(e) => onDigestChannelChange(e.target.value)} placeholder="-100..." />
+                <div className="space-y-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <Input label="Min length для суммаризации" type="number" value={summarizeMinLength} onChange={(e) => onSummarizeMinLengthChange(Number(e.target.value) || 500)} />
+                    <Input label="Digest interval (min)" type="number" value={digestIntervalMin} onChange={(e) => onDigestIntervalMinChange(Number(e.target.value) || 30)} />
+                    <Input label="Digest channel" value={digestChannel} onChange={(e) => onDigestChannelChange(e.target.value)} placeholder="-100..." />
+                  </div>
+                  <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)] p-3 space-y-2">
+                    <p className="text-xs font-semibold text-[var(--text-primary)]">Последние дайджесты</p>
+                    {digests.length === 0 ? (
+                      <p className="text-xs text-[var(--text-muted)]">Пока нет сохранённых дайджестов.</p>
+                    ) : (
+                      digests.map((d) => (
+                        <div key={d.id} className="text-xs space-y-1 border-t border-[var(--border-color)] pt-2 first:border-0 first:pt-0">
+                          <p className="text-[var(--text-muted)]">
+                            {formatDateTime(d.created_at)} · chat {d.chat_id} · {d.message_count} сообщ.
+                          </p>
+                          <p className="text-[var(--text-primary)] line-clamp-4 whitespace-pre-wrap">{d.digest_text}</p>
+                        </div>
+                      ))
+                    )}
+                  </div>
                 </div>
               )}
               <label className="flex items-center gap-3 cursor-pointer group">
@@ -213,7 +258,20 @@ export function ProcessingTab(props: ProcessingTabProps) {
                 <span className="text-[var(--text-primary)]">AI-классификация сообщений</span>
               </label>
               {classificationEnabled && (
-                <Input label="Categories (comma-separated)" value={classificationCategories} onChange={(e) => onClassificationCategoriesChange(e.target.value)} />
+                <div className="space-y-3">
+                  <Input label="Categories (comma-separated)" value={classificationCategories} onChange={(e) => onClassificationCategoriesChange(e.target.value)} />
+                  <label className="flex items-center gap-3 cursor-pointer group">
+                    <input
+                      type="checkbox"
+                      checked={batchEnrichmentEnabled}
+                      onChange={(e) => onBatchEnrichmentEnabledChange(e.target.checked)}
+                      className="w-4 h-4"
+                    />
+                    <span className="text-[var(--text-primary)]">
+                      Batch enrichment (offline classify+sentiment, не блокирует сбор)
+                    </span>
+                  </label>
+                </div>
               )}
             </div>
 

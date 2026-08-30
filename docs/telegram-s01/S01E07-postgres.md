@@ -44,6 +44,7 @@ CREATE TABLE tickets (
 
 ## Ссылки
 
+- CopyParse (регистрация, учебный контур): https://www.copyparse.ru/sign-up?utm_source=tg&utm_campaign=s01e07
 - Учебник PostgreSQL: старт — https://www.postgresql.org/docs/current/tutorial-start.html
 - Русское издание Postgres Pro, создание таблиц — https://postgrespro.ru/docs/postgresql/current/ddl-basics
 - `IDENTITY` / сериалы — https://postgrespro.ru/docs/postgresql/current/sql-createtable

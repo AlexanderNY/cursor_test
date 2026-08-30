@@ -33,6 +33,7 @@ COPY web /app/web
 COPY examples /app/examples
 
 ENV ARTIFACTS_DIR=/data/artifacts
+ENV SQLITE_PATH=/data/tester.db
 ENV PYTHONUNBUFFERED=1
 
 EXPOSE 8300

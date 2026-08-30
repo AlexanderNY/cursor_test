@@ -37,9 +37,15 @@ export const navItems: NavItem[] = [
   { path: '/channels', label: 'Channels', Icon: LinkIcon },
   { path: '/inbox', label: 'Inbox', Icon: DocumentTextIcon },
   { path: '/posts', label: 'Posts', Icon: PlusIcon },
+  { path: '/library', label: 'Library', Icon: DocumentTextIcon },
   { path: '/calendar', label: 'Calendar', Icon: CheckCircleIcon },
   { path: '/analytics', label: 'Analytics', Icon: ChartBarIcon },
+  { path: '/competitors', label: 'Competitors', Icon: UsersIcon },
   { path: '/automations', label: 'Automations', Icon: SettingsIcon },
+]
+
+/** Advanced / legacy platform silos — secondary in sidebar */
+export const platformNavItems: NavItem[] = [
   { path: '/telegram', label: 'Telegram', Icon: TelegramIcon },
   { path: '/vkontakte', label: 'VKontakte', Icon: VKontakteIcon },
   { path: '/instagram', label: 'Instagram', Icon: InstagramIcon },

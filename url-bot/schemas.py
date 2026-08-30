@@ -23,9 +23,11 @@ class RunResponse(BaseModel):
 
 class ScheduleUrlItem(BaseModel):
     """Один URL в расписании (из core curl_settings)."""
+    id: Optional[str] = None
     url: str = ""
     xpath: str = ""
     take_screenshot: bool = False
+    screenshot_only: bool = False
     schedule_time: Optional[str] = None
     target_social_networks: Optional[dict[str, bool]] = None
     target_channels: list[str] = Field(default_factory=list)

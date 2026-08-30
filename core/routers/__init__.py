@@ -16,6 +16,8 @@ from . import threads
 from . import internal
 from . import smm
 from . import guide
+from . import learn
+from . import site
 
 __all__ = [
     "healthcheck",
@@ -36,4 +38,6 @@ __all__ = [
     "internal",
     "smm",
     "guide",
+    "learn",
+    "site",
 ]

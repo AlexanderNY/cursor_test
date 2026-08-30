@@ -20,7 +20,8 @@ copy .env.example .env
 
 | Переменная | Назначение |
 |------------|------------|
-| `DATABASE_URL` | PostgreSQL, например `dbname=db_bot user=postgres password=... host=host.docker.internal` |
+| `DATABASE_URL` | PostgreSQL CopyParse, например `dbname=db_bot user=postgres password=... host=host.docker.internal` |
+| `SITE_DATABASE_URL` | В файле **`.env.9to18`** (не в корневом `.env`). PostgreSQL 9to18.ru; если пусто — core подставит `dbname=db_9to18` из `DATABASE_URL` |
 | `JWT_SECRET_KEY` / `SECRET_KEY` | Одинаковые; `openssl rand -hex 32` (без `$`) |
 | `GAME_BOT_TOKEN` | Токен tg-game от BotFather (обязателен; старый из git отозвать) |
 | `GAME_ADMIN_API_TOKEN` | Сильный токен админ-API игры (`openssl rand -hex 32`) |
@@ -37,6 +38,19 @@ copy .env.example .env
 | `VK_OAUTH_ALLOWED_FRONTENDS` | Доп. origins для редиректа после VK OAuth |
 
 В `.env` для Compose символ `$` интерполируется — не используйте bcrypt-хеши как JWT; литеральный `$` пишите как `$$`.
+
+### База 9to18.ru (отдельно от CopyParse)
+
+```powershell
+# один раз на Postgres-хосте
+psql -U postgres -f deploy/sql/create_db_9to18.sql
+psql -U postgres -d db_9to18 -f deploy/sql/init_db_9to18.sql
+```
+
+Таблицы сайта (`site_users`, `site_apps`, блоги, контакты, спотлайт) живут только в `db_9to18`.  
+Учебный Learn (`learn_posts`) пока остаётся в `db_bot` через тот же core.
+
+Если `site_*` уже успели попасть в `db_bot`, их можно удалить там после переноса (см. комментарии в `deploy/sql/patch_site_9to18.sql`).
 
 Порты приложений (кроме UI через edge) привязаны к **127.0.0.1**. Публичный вход — только ui-edge :80/:443.
 

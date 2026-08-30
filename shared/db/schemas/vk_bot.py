@@ -17,8 +17,8 @@ CREATE TABLE IF NOT EXISTS vk_profiles (
     attachments TEXT,
     signed BOOLEAN DEFAULT FALSE,
     mark_as_ads BOOLEAN DEFAULT FALSE,
-    access_token VARCHAR(512),
-    user_access_token VARCHAR(512),
+    access_token TEXT,
+    user_access_token TEXT,
     groups_to_read JSONB DEFAULT '[]',
     users_to_read JSONB DEFAULT '[]',
     group_to_post VARCHAR(50),
@@ -35,11 +35,32 @@ CREATE TABLE IF NOT EXISTS vk_profiles (
     vk_user_id BIGINT,
     vk_app_id VARCHAR(32),
     vk_app_secret VARCHAR(512),
+    vk_app_service_key VARCHAR(512),
     vk_frontend_url VARCHAR(512),
     vk_public_gateway_url VARCHAR(512),
+    vk_callback_confirmation VARCHAR(64),
+    vk_callback_secret VARCHAR(256),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
+"""
+
+VK_AUTH_BLOCKS_MIGRATION = """
+DO $$ BEGIN
+  ALTER TABLE vk_profiles ADD COLUMN vk_callback_confirmation VARCHAR(64);
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE vk_profiles ADD COLUMN vk_callback_secret VARCHAR(256);
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE vk_profiles ADD COLUMN vk_app_service_key VARCHAR(512);
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE vk_profiles ALTER COLUMN access_token TYPE TEXT;
+EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE vk_profiles ALTER COLUMN user_access_token TYPE TEXT;
+EXCEPTION WHEN others THEN NULL; END $$;
 """
 
 VK_POSTS_TABLE = build_post_table_ddl(
@@ -71,4 +92,5 @@ ALL_TABLES: list[str] = [
     VK_POSTS_TABLE,
     VK_POSTS_INDEXES,
     VK_POSTS_PUBLISHED_MIGRATION,
+    VK_AUTH_BLOCKS_MIGRATION,
 ]

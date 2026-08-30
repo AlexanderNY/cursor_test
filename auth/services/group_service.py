@@ -1,8 +1,22 @@
 """Сервис для работы с рабочими группами (пользователь может состоять в нескольких группах)."""
 
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
+from billing.plan_definitions import plan_limit
 from database import get_db_connection
+
+
+class TeamSeatLimitError(Exception):
+    """Превышен лимит мест команды по тарифу владельца группы."""
+
+    def __init__(self, *, limit: int, used: int, tariff: str) -> None:
+        self.limit = limit
+        self.used = used
+        self.tariff = tariff
+        self.resource = "max_team_seats"
+        super().__init__(
+            f"Team seat limit reached ({used}/{limit}) on {tariff} plan. Upgrade to add more members."
+        )
 
 
 async def _count_group_members(group_id: int) -> int:
@@ -28,6 +42,24 @@ async def _count_managers_in_group(group_id: int) -> int:
             )
             row = await cur.fetchone()
     return int(row[0]) if row else 0
+
+
+async def _seat_budget_for_group(group_id: int) -> Tuple[int, str]:
+    """Лимит seats по тарифу создателя группы (billing owner)."""
+    async with get_db_connection() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                """
+                SELECT COALESCE(u.tariff, 'free')
+                FROM groups g
+                LEFT JOIN users u ON u.id = g.created_by_user_id
+                WHERE g.id = %s
+                """,
+                (group_id,),
+            )
+            row = await cur.fetchone()
+    tariff = str(row[0] if row and row[0] else "free")
+    return plan_limit(tariff, "max_team_seats", 1), tariff
 
 
 def _is_group_admin(role_in_group: Optional[str]) -> bool:
@@ -342,6 +374,9 @@ async def add_member_by_email(
     else:
         if role_in_group == "admin" and await _count_managers_in_group(group_id) >= 1:
             raise ValueError("This group already has an admin")
+        seat_limit, seat_tariff = await _seat_budget_for_group(group_id)
+        if n_members >= seat_limit:
+            raise TeamSeatLimitError(limit=seat_limit, used=n_members, tariff=seat_tariff)
 
     async with get_db_connection() as conn:
         async with conn.cursor() as cur:

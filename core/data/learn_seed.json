@@ -1,0 +1,694 @@
+[
+  {
+    "slug": "s01e01-sloi",
+    "episode": "S01E01",
+    "title": "Зачем собирать сервис слоями",
+    "shortTitle": "Слои",
+    "rubricId": "architecture",
+    "order": 1,
+    "theory": "S01E01 · Слои · UI / API / БД / деплой\n\nСервис — это не «один файл Python, который рисует HTML». Как только появляются второй пользователь, обновление кода и падение базы, слои начинают окупаться.\n\nЧетыре слоя, которые вы соберёте за сезон:\n\n1. UI — то, что видит человек (у нас позже React).\n2. API — контракт: HTTP, JSON, ошибки. Без экранов.\n3. БД — факты, которые переживают перезапуск процесса (PostgreSQL).\n4. Деплой — как это запускают одинаково у вас и на стенде (сначала Compose, потом Minikube).\n\nЗачем это в живом сервисе. У CopyParse браузер не ходит в базу: он говорит с UI и с `/api`, дальше шлюз, сервисы, Postgres. Если смешать всё в одном процессе, нельзя заменить только бота или только фронт.\n\nГраница. Слой «оркестратор / Kafka / микросервисы на каждый чих» в первую неделю — лишняя фича. Сначала четыре коробки и понятные стрелки.\n\nСледующий выпуск: карта CopyParse — кто кому звонит, без клонирования всего монорепо.",
+    "lab": "**20 минут.** На бумаге или в любом редакторе нарисуйте свой учебный сервис «Заявки» четырьмя прямоугольниками: UI, API, БД, деплой. Подпишите одну стрелку: кто кого вызывает при «создать заявку».\n\n**В группу:** фото схемы. Не код.\n\n**Проверка:** на схеме база не торчит в браузер напрямую.",
+    "links": [
+      {
+        "label": "Двенадцать факторов: процессы, конфиг, подключённые сервисы",
+        "href": "https://12factor.net/ru/"
+      },
+      {
+        "label": "HTTP как транспорт API (методы, статус-коды)",
+        "href": "https://developer.mozilla.org/ru/docs/Web/HTTP/Overview"
+      },
+      {
+        "label": "Как устроен стенд курса: docs/ARCHITECTURE.md в репозитории CopyParse",
+        "href": "#"
+      }
+    ],
+    "diagram": "flowchart LR\n  User[Человек] --> UI[UI]\n  UI --> API[API]\n  API --> DB[(БД)]\n  Deploy[Деплой] -.-> UI\n  Deploy -.-> API\n  Deploy -.-> DB",
+    "cheatsheet": "### Слои (запомнить)\n\n| Слой | Отвечает за | Не делает |\n|------|-------------|-----------|\n| UI | Экраны, формы | Прямой доступ к БД |\n| API | HTTP, JSON, коды ошибок | Вёрстку |\n| БД | Факты после рестарта | Бизнес-логику UI |\n| Деплой | Одинаковый запуск | «У меня локально ок» |\n\n### Стрелка «создать заявку»\n\n`Человек → UI → API → БД`\n\n### Не делать\n\n- Браузер → Postgres\n- Один файл «и HTML, и SQL, и деплой»\n- Kafka / оркестратор в первую неделю\n\n### Готово, если…\n\n- [ ] На схеме 4 коробки\n- [ ] Одна подписанная стрелка вызова\n- [ ] БД не торчит в браузер",
+    "theoryFormat": "markdown",
+    "labFormat": "markdown",
+    "cheatsheetFormat": "markdown",
+    "publishedAt": "2026-08-18T22:49:01.216Z"
+  },
+  {
+    "slug": "s01e02-karta",
+    "episode": "S01E02",
+    "title": "Карта CopyParse за 10 минут",
+    "shortTitle": "Карта",
+    "rubricId": "architecture",
+    "order": 2,
+    "theory": "S01E02 · Карта · кто кому звонит\n\nСегодня не поднимаем стенд. Учимся читать чужую систему по коробкам, а не по файлам.\n\nУпрощённо CopyParse:\n\n- Край: nginx принимает HTTPS и режет по Host.\n- UI — React. Браузер ходит на UI и на `/api`.\n- Шлюз (gateway) — JWT, CORS, прокси во внутренние сервисы.\n- Платформа: auth, core, scheduler, collector, processor.\n- Боты площадок: Telegram, VK и остальные.\n- Данные: PostgreSQL и объектное хранилище S3 (MinIO).\n\nПуть «опубликовать пост»: UI или бот → данные в Postgres → collector/processor гоняют статусы → бот площадки публикует. Это конвейер со статусами, не один скрипт `send()`.\n\nЗачем это вам. Ваш сервис заявок в миниатюре повторит ту же идею: UI не пишет в БД в обход API, деплой не равен «у меня на ноутбуке завелось».\n\nГраница. Не клонируйте весь монорепо на первой неделе и не пытайтесь понять каждый бот. Пять коробок достаточно.\n\nСледующий выпуск: Git и GitHub — чтобы лабы жили в ветке, а не в архиве на Рабочем столе.",
+    "lab": "**20 минут.** Перерисуйте схему своими словами (можно 6–7 блоков, не 20). Подпишите красным путь одного действия: «пользователь нажал Опубликовать».\n\n**В группу:** фото/скрин схемы.\n\n**Проверка:** на пути есть API или шлюз; UI не подключён к Postgres напрямую.",
+    "links": [
+      {
+        "label": "Высокоуровневая схема стенда — docs/ARCHITECTURE.md",
+        "href": "#"
+      },
+      {
+        "label": "Что делает UI после входа — docs/USER_GUIDE.md",
+        "href": "#"
+      },
+      {
+        "label": "Паттерн BFF / gateway (Microsoft)",
+        "href": "https://learn.microsoft.com/ru-ru/azure/architecture/microservices/design/gateway"
+      }
+    ],
+    "diagram": "flowchart LR\n  User[Браузер] --> Edge[nginx]\n  Edge --> UI[UI]\n  Edge --> GW[gateway]\n  UI --> GW\n  GW --> Auth[auth]\n  GW --> Core[core]\n  GW --> Bots[боты]\n  Core --> PG[(PostgreSQL)]\n  Bots --> PG",
+    "cheatsheet": "### Коробки CopyParse\n\n1. **nginx** — HTTPS, Host\n2. **UI** — React\n3. **gateway** — JWT, CORS, прокси\n4. **Сервисы** — auth, core, боты…\n5. **Данные** — Postgres + S3/MinIO\n\n### Путь «Опубликовать»\n\n`UI → gateway → core/боты → Postgres → статусы → публикация`\n\nНе: `UI → send() в бот напрямую`.\n\n### Не делать\n\n- Клонировать весь монорепо в первую неделю\n- Рисовать 20 микросервисов «как в проде»\n- UI → Postgres\n\n### Готово, если…\n\n- [ ] 5–7 блоков своими словами\n- [ ] Красный путь «Опубликовать»\n- [ ] На пути есть API/шлюз",
+    "theoryFormat": "markdown",
+    "labFormat": "markdown",
+    "cheatsheetFormat": "markdown",
+    "publishedAt": "2026-08-19T22:49:01.216Z"
+  },
+  {
+    "slug": "s01e03-git",
+    "episode": "S01E03",
+    "title": "Git / GitHub",
+    "shortTitle": "Git",
+    "rubricId": "tools",
+    "order": 3,
+    "theory": "S01E03 · Git · commit, ветка, PR — на примерах\n\nКод без истории — черновик на Рабочем столе. Git фиксирует *что* изменилось. GitHub — *где это обсудить*, не кидая zip в мессенджер.\n\nСквозной пример сезона: репозиторий учебного сервиса **«Заявки»** (`tickets`).\n\n### 1. Репозиторий\n\nОдин учебный проект — один repo. На GitHub: New repository → имя `tickets` (private нормально) → **без** README, если будете `git init` локально.\n\n```bash\nmkdir tickets\ncd tickets\ngit init\ngit branch -M main\n```\n\n### 2. .gitignore сразу, до первого commit\n\nИначе `.env` и `venv/` уедут в историю навсегда.\n\n```\n.env\nvenv/\n.venv/\n__pycache__/\n*.pyc\nnode_modules/\n.idea/\n.vscode/\n*.pem\n```\n\nПлохо: закоммитить `.env` с `DATABASE_URL=...` и потом «удалить файл» — секрет уже в истории.\n\n### 3. Commit — снимок с понятным сообщением\n\n```bash\ngit add .gitignore README.md\ngit status\ngit commit -m \"init: учебный сервис заявок, gitignore\"\n```\n\n| Плохо | Хорошо |\n|-------|--------|\n| `fix` | `init: учебный сервис заявок, gitignore` |\n| `asdf` | `docs: схема слоёв UI/API/БД` |\n| `update` | `feat: черновик статусов заявки` |\n\n### 4. Ветка: `main` бережём\n\n```bash\ngit switch -c s01-e03\n# правите docs/layers.md (схема из E01 текстом)\ngit add docs/layers.md\ngit commit -m \"docs: схема слоёв для сервиса заявок\"\n```\n\nИмена веток: `s01-e03`, `feature/tickets-api` — коротко и по делу.\n\n### 5. Push и Pull Request\n\n```bash\ngit remote add origin https://github.com/<you>/tickets.git\ngit push -u origin main\ngit push -u origin s01-e03\n```\n\nНа GitHub: Compare & pull request → `s01-e03` → `main`. В PR смотрите **Files changed** (дифф), не кнопку Merge.\n\nЗачем это в живом сервисе. В CopyParse секреты не кладут в git (`secret.yaml` собирают из example). Один пароль БД в истории = ротация у всех.\n\nГраница. Теги, rebase «как в банке» и монорепо-тулинг подождут. В сезон 1: ветка + понятный commit + PR.\n\nСледующий выпуск: системный анализ — контракт API до первой строчки FastAPI.",
+    "lab": "**30–40 минут.** Цель: один PR без секретов.\n\n1. Создайте пустой репозиторий `tickets` на GitHub (private ок). **Не** ставьте галку «Add a README», если идёте путём ниже.\n2. Локально:\n\n```bash\nmkdir tickets && cd tickets\ngit init\ngit branch -M main\n```\n\nСоздайте `.gitignore` (блок из теории) и `README.md` на 3 строки: что за сервис, для кого, стек позже.\n\n3. Первый commit в `main`, push:\n\n```bash\ngit add .gitignore README.md\ngit commit -m \"init: учебный сервис заявок, gitignore\"\ngit remote add origin https://github.com/<you>/tickets.git\ngit push -u origin main\n```\n\n4. Ветка и второй commit:\n\n```bash\ngit switch -c s01-e03\n# файл docs/layers.md — четыре слоя + стрелка «создать заявку» (из E01)\ngit add docs/layers.md\ngit commit -m \"docs: схема слоёв для сервиса заявок\"\ngit push -u origin s01-e03\n```\n\n5. Откройте Pull Request `s01-e03` → `main`. Просмотрите Files changed.\n\n**В группу:** ссылка на PR.\n\n**Проверка:**\n- в диффе нет `.env`, `venv/`, `__pycache__/`\n- у обоих commit сообщения читаются (не `fix`)\n- PR идёт не из `main` в `main`, а из ветки лабы",
+    "links": [
+      {
+        "label": "Pro Git, главы 2–3",
+        "href": "https://git-scm.com/book/ru/v2"
+      },
+      {
+        "label": "GitHub Flow",
+        "href": "https://docs.github.com/ru/get-started/using-github/github-flow"
+      },
+      {
+        "label": "Шаблоны .gitignore",
+        "href": "https://github.com/github/gitignore"
+      }
+    ],
+    "diagram": "flowchart LR\n  Main[main] --> Branch[s01_e03]\n  Branch --> Commit[commit_docs]\n  Commit --> Push[push]\n  Push --> PR[Pull_Request]\n  PR --> Review[ревью_диффа]\n  Review --> Main",
+    "cheatsheet": "### Команды подряд (happy path)\n\n```bash\ngit init\ngit branch -M main\ngit status\ngit add .gitignore README.md\ngit commit -m \"init: учебный сервис заявок, gitignore\"\ngit remote add origin https://github.com/<you>/tickets.git\ngit push -u origin main\n\ngit switch -c s01-e03\ngit add docs/layers.md\ngit commit -m \"docs: схема слоёв для сервиса заявок\"\ngit push -u origin s01-e03\n# дальше PR на GitHub: s01-e03 → main\n```\n\n### Смотреть, что происходит\n\n```bash\ngit status          # что изменено / в индексе\ngit log --oneline   # короткая история\ngit diff            # незакоммиченный дифф\ngit diff --staged   # то, что уже в add\n```\n\n### .gitignore (минимум)\n\n```\n.env\nvenv/\n.venv/\n__pycache__/\n*.pyc\nnode_modules/\n*.pem\n```\n\n### Не делать\n\n- Commit `fix` / `asdf` / `update`\n- Класть `.env` и `venv/` в репозиторий\n- Писать лабу прямо в `main` без ветки и PR\n- «Починить» секрет удалением файла без ротации — история помнит\n\n### Готово, если…\n\n- [ ] Есть PR со ссылкой\n- [ ] В Files changed нет секретов и venv\n- [ ] Два осмысленных commit message\n- [ ] Ветка лабы ≠ `main`",
+    "theoryFormat": "markdown",
+    "labFormat": "markdown",
+    "cheatsheetFormat": "markdown",
+    "publishedAt": "2026-08-20T22:49:01.216Z"
+  },
+  {
+    "slug": "s01e04-sa",
+    "episode": "S01E04",
+    "title": "SA: от боли к контракту API",
+    "shortTitle": "SA / контракт",
+    "rubricId": "api",
+    "order": 4,
+    "theory": "S01E04 · SA · контракт до экранов\n\nСистемный анализ — не «нарисовать макет». Это ответить: какая боль, какой факт в системе меняется, какой HTTP-контракт это фиксирует.\n\nПорядок, который экономит переписывание React:\n\n1. Боль. «Куратор не видит, какие заявки зависли».\n2. Факт. Заявка имеет статус: `new` → `in_progress` → `done` (отказ — отдельный статус, не удаление строки «чтобы не потерять историю»).\n3. Контракт. `POST /tickets`, `GET /tickets`, `PATCH /tickets/{id}` — поля, коды 400/404/409.\n4. Экран. Список и форма появляются после пунктов 1–3.\n\nТак устроен CopyParse: пост живёт статусами (`collected` → `review`/`ready` → `published`), а не кнопкой «отправить во все сети сразу».\n\nГраница. Не пишите ТЗ на 40 страниц и не тащите Kafka «на вырост». Одна страница: цель, 3–5 операций, статусы, что *не* делаем в MVP.\n\nСледующий выпуск: FastAPI — первый роутер под этот контракт.",
+    "lab": "**40 минут.** Одна страница (Google Doc, Markdown в репо — как удобно).\n\nЗаголовок: «Заявки, MVP». Блоки:\n\n- Кто пользователь и какая боль (2–3 предложения).\n- Статусы заявки (3–4 значения, переходы).\n- Таблица операций: метод, путь, тело, успешный код, ошибка.\n- Одна убитая фича: что сознательно не делаем (комментарии, файлы, роли админа — выберите одно и напишите почему).\n\n**В группу:** ссылка или файл `docs/tz-mvp.md` в PR.\n\n**Проверка:** в таблице есть хотя бы один 409/404; нет пункта «красивый UI».",
+    "links": [
+      {
+        "label": "Методы HTTP",
+        "href": "https://developer.mozilla.org/ru/docs/Web/HTTP/Reference/Methods"
+      },
+      {
+        "label": "Семантика статус-кодов",
+        "href": "https://developer.mozilla.org/ru/docs/Web/HTTP/Reference/Status"
+      },
+      {
+        "label": "Ресурсная модель REST (Microsoft)",
+        "href": "https://learn.microsoft.com/ru-ru/azure/architecture/best-practices/api-design"
+      }
+    ],
+    "diagram": "flowchart LR\n  Pain[Боль] --> Fact[Факт_и_статусы]\n  Fact --> Contract[Контракт_HTTP]\n  Contract --> UI[Экраны]",
+    "cheatsheet": "### Порядок SA\n\n`Боль → Факт/статусы → Контракт HTTP → Экраны`\n\n### Таблица операций (шаблон)\n\n| Метод | Путь | Тело | OK | Ошибка |\n|-------|------|------|-----|--------|\n| POST | /tickets | title | 201 | 400 |\n| GET | /tickets | — | 200 | — |\n| PATCH | /tickets/{id} | status | 200 | 404 / 409 |\n\n### Статусы заявки (пример)\n\n`new → in_progress → done` (+ `rejected`, не DELETE)\n\n### Не делать\n\n- ТЗ на 40 страниц\n- Kafka «на вырост»\n- Начинать с макета React\n\n### Готово, если…\n\n- [ ] Есть 409 или 404 в таблице\n- [ ] Есть убитая фича\n- [ ] Нет пункта «красивый UI»",
+    "theoryFormat": "markdown",
+    "labFormat": "markdown",
+    "cheatsheetFormat": "markdown",
+    "publishedAt": "2026-08-21T22:49:01.216Z"
+  },
+  {
+    "slug": "s01e05-fastapi",
+    "episode": "S01E05",
+    "title": "FastAPI: первый роутер и Pydantic",
+    "shortTitle": "FastAPI",
+    "rubricId": "api",
+    "order": 5,
+    "theory": "S01E05 · FastAPI · роутер и Pydantic\n\nAPI начинается не с базы, а с контракта: путь, вход, выход, ошибка. FastAPI как раз заставляет это написать типами.\n\nТри понятия:\n\n- Роутер — набор путей (`GET /health`, `GET /tickets`). Позже разрежете по модулям, сейчас хватит одного файла.\n- Pydantic-модель — JSON, который вы обещаете. Лишнее поле клиента не должно молча ломать сервер; недостающее — 422, не 500.\n- Обработчик — функция. Пока можно вернуть список из памяти. База будет в E07.\n\nЗачем это в живом сервисе. В CopyParse сервисы на FastAPI: шлюз и core говорят JSON-контрактами, а не «как получилось в print».\n\nГраница. Не подключайте ORM, JWT и Docker в этом выпуске. Один процесс, `uvicorn`, две ручки. Swagger сам появится на `/docs` — это нормально, не отдельный микросервис.\n\nСледующий выпуск: Insomnia — те же ручки без браузера и без React.",
+    "lab": "**40 минут.** В ветке репозитория заявок:\n\n1. Минимальный FastAPI: `GET /health` → `{\"status\": \"ok\"}`.\n2. Модель `Ticket` (id, title, status) и `GET /tickets` — верните 2–3 объекта из списка в коде.\n3. Запуск: `uvicorn`. Откройте `/docs`.\n\n**В группу:** скрин `/docs` и URL локально (localhost достаточно).\n\n**Проверка:** OpenAPI в `/docs` совпадает с таблицей из вашего ТЗ хотя бы по `GET /tickets`. Если нет — поправьте либо код, либо ТЗ, не оба «на потом».",
+    "links": [
+      {
+        "label": "First Steps",
+        "href": "https://fastapi.tiangolo.com/tutorial/first-steps/"
+      },
+      {
+        "label": "Pydantic-модели в FastAPI",
+        "href": "https://fastapi.tiangolo.com/tutorial/body/"
+      },
+      {
+        "label": "Автодокументация OpenAPI",
+        "href": "https://fastapi.tiangolo.com/tutorial/metadata/"
+      }
+    ],
+    "diagram": "flowchart LR\n  Client[Клиент] --> Route[\"GET /tickets\"]\n  Route --> Model[Pydantic]\n  Model --> Handler[Обработчик]\n  Handler --> JSON[JSON]",
+    "cheatsheet": "### Скелет\n\n```python\nfrom fastapi import FastAPI\nfrom pydantic import BaseModel\n\napp = FastAPI()\n\nclass Ticket(BaseModel):\n    id: int\n    title: str\n    status: str\n\n@app.get(\"/health\")\ndef health():\n    return {\"status\": \"ok\"}\n\n@app.get(\"/tickets\", response_model=list[Ticket])\ndef list_tickets():\n    return [...]\n```\n\n### Запуск\n\n```bash\nuvicorn main:app --reload\n# docs → http://127.0.0.1:8000/docs\n```\n\n### Коды\n\n| Ситуация | Код |\n|----------|-----|\n| OK | 200 |\n| Создано | 201 |\n| Плохое тело / валидация | 422 |\n| Не найдено | 404 |\n| Сервер упал | 500 — чинить, не маскировать |\n\n### Не делать\n\n- ORM + JWT + Docker в этом выпуске\n- Ответ «как print» без модели\n\n### Готово, если…\n\n- [ ] `/health` и `/tickets` в `/docs`\n- [ ] Совпадает с ТЗ хотя бы по GET /tickets",
+    "theoryFormat": "markdown",
+    "labFormat": "markdown",
+    "cheatsheetFormat": "markdown",
+    "publishedAt": "2026-08-22T22:49:01.216Z"
+  },
+  {
+    "slug": "s01e06-insomnia",
+    "episode": "S01E06",
+    "title": "Insomnia: коллекция до UI",
+    "shortTitle": "Insomnia",
+    "rubricId": "tools",
+    "order": 6,
+    "theory": "S01E06 · Insomnia · API проверяем до React\n\nUI ещё нет — и это хорошо. Если ручка жива только «когда открыта страница», вы не отличите баг фронта от бага сервера.\n\nInsomnia (или аналог) нужна как **клиент контракта**:\n\n- Коллекция — набор запросов, который живёт рядом с кодом, а не в голове.\n- Environment — `base_url` для local (`http://127.0.0.1:8000`). Позже добавите minikube, не плодя копии запросов.\n- Заголовки. Пока без JWT; привыкайте видеть `Content-Type: application/json`. Authorization появится позже.\n\nЗачем это в живом сервисе. Шлюз CopyParse отдаёт JSON; отладка «пост не ушёл» начинается с запроса к API, не с кликов в UI.\n\nГраница. Не превращайте Insomnia в CI. Сначала руками, коллекцию — в git. Прогоны в Jenkins — сезон 2.\n\nСледующий выпуск: PostgreSQL — факты заявок переживут перезапуск uvicorn.",
+    "lab": "**30 минут.**\n\n1. Установите Insomnia: https://insomnia.rest/download\n2. Создайте коллекцию «Заявки», env `local` с `base_url`.\n3. Запросы: `GET {{ base_url }}/health` и `GET {{ base_url }}/tickets`. Сохраните успешные ответы.\n4. Экспорт коллекции (JSON) в репозиторий, например `insomnia/tickets.json`. Commit в ветке.\n\n**В группу:** скрин двух зелёных запросов + путь к файлу коллекции в PR.\n\n**Проверка:** одногруппник может импортировать JSON и попасть в ваши ручки, сменив только `base_url`.",
+    "links": [
+      {
+        "label": "Скачать Insomnia",
+        "href": "https://insomnia.rest/download"
+      },
+      {
+        "label": "Коллекции и окружения",
+        "href": "https://docs.insomnia.rest/insomnia/environments"
+      },
+      {
+        "label": "Импорт / экспорт",
+        "href": "https://docs.insomnia.rest/insomnia/import-export-data"
+      }
+    ],
+    "diagram": "flowchart LR\n  Insomnia[Insomnia] --> Health[\"GET /health\"]\n  Insomnia --> Tickets[\"GET /tickets\"]\n  Health --> API[FastAPI]\n  Tickets --> API",
+    "cheatsheet": "### Environment\n\n```\nbase_url = http://127.0.0.1:8000\n```\n\nЗапросы: `{{ base_url }}/health`, `{{ base_url }}/tickets`\n\n### Чеклист запроса\n\n- Method + URL\n- `Content-Type: application/json` (для тела)\n- Сохранённый успешный ответ в коллекции\n- JSON коллекции в git\n\n### Не делать\n\n- Копии одних и тех же запросов под каждый стенд (используйте env)\n- «Проверил только в браузере на UI»\n- Jenkins вместо ручной коллекции в сезон 1\n\n### Готово, если…\n\n- [ ] Два зелёных запроса\n- [ ] `insomnia/*.json` в PR\n- [ ] Меняется только `base_url`",
+    "theoryFormat": "markdown",
+    "labFormat": "markdown",
+    "cheatsheetFormat": "markdown",
+    "publishedAt": "2026-08-23T22:49:01.216Z"
+  },
+  {
+    "slug": "s01e07-postgres",
+    "episode": "S01E07",
+    "title": "PostgreSQL: таблица и SELECT",
+    "shortTitle": "PostgreSQL",
+    "rubricId": "data",
+    "order": 7,
+    "theory": "S01E07 · PostgreSQL · таблица, PK, SELECT\n\nПока заявки живут в списке Python, перезапуск сервера стирает учебный стенд. База — это факты: строка либо есть, либо её нет.\n\nМинимум:\n\n- Таблица `tickets`: столбцы с типами, не «одна JSON-простыня на всё».\n- Первичный ключ (`id`). Без него вы не скажете PATCH/DELETE «вот эта заявка».\n- `SELECT` — чтение. Сначала без JOIN.\n- Подключение с API. Один пул / одно соединение на запрос в учебном коде допустимо; соединение в глобальном цикле без закрытия — нет.\n\nЗачем это в живом сервисе. CopyParse хранит посты и статусы в PostgreSQL: конвейер переживает рестарт бота.\n\nГраница. Не настраивайте репликацию, партиции и Kafka «чтобы было как в банке». Одна база, одна таблица, три строки.\n\nСледующий выпуск: JOIN и индекс — когда таблиц станет две.",
+    "lab": "**40 минут.**\n\n1. Поднимите Postgres (локально или контейнер). Создайте БД `tickets`.\n2. SQL:\n\n```sql\nCREATE TABLE tickets (\n  id         bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,\n  title      text NOT NULL,\n  status     text NOT NULL,\n  created_at timestamptz NOT NULL DEFAULT now()\n);\n```\n\n3. Вставьте 3 заявки. `SELECT id, title, status FROM tickets;`\n4. Подключите FastAPI к БД: `GET /tickets` читает таблицу, не список в памяти.\n\n**В группу:** скрин SELECT из клиента (psql, DBeaver, DataGrip) и зелёный `GET /tickets` в Insomnia после рестарта uvicorn.\n\n**Проверка:** после рестарта API список тот же.",
+    "links": [
+      {
+        "label": "Учебник PostgreSQL: старт",
+        "href": "https://www.postgresql.org/docs/current/tutorial-start.html"
+      },
+      {
+        "label": "Создание таблиц (Postgres Pro)",
+        "href": "https://postgrespro.ru/docs/postgresql/current/ddl-basics"
+      },
+      {
+        "label": "Docker image postgres",
+        "href": "https://hub.docker.com/_/postgres"
+      }
+    ],
+    "diagram": "flowchart LR\n  API[FastAPI] --> PG[(tickets)]\n  Insomnia[Insomnia] --> API",
+    "cheatsheet": "### DDL\n\n```sql\nCREATE TABLE tickets (\n  id         bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,\n  title      text NOT NULL,\n  status     text NOT NULL,\n  created_at timestamptz NOT NULL DEFAULT now()\n);\n\nINSERT INTO tickets (title, status) VALUES\n  ('Первая', 'new'),\n  ('Вторая', 'in_progress'),\n  ('Третья', 'done');\n\nSELECT id, title, status FROM tickets;\n```\n\n### Правило\n\nСписок в Python → **пропадает** после рестарта.  \nСтроки в Postgres → **остаются**.\n\n### Не делать\n\n- Одна JSON-простыня «на всё»\n- Соединение без закрытия в бесконечном цикле\n- Репликация / партиции в этот выпуск\n\n### Готово, если…\n\n- [ ] SELECT в клиенте БД\n- [ ] GET /tickets после рестарта uvicorn тот же",
+    "theoryFormat": "markdown",
+    "labFormat": "markdown",
+    "cheatsheetFormat": "markdown",
+    "publishedAt": "2026-08-24T22:49:01.216Z"
+  },
+  {
+    "slug": "s01e08-sql",
+    "episode": "S01E08",
+    "title": "SQL: JOIN и индекс",
+    "shortTitle": "SQL JOIN",
+    "rubricId": "data",
+    "order": 8,
+    "theory": "S01E08 · SQL · JOIN и зачем индекс\n\nОдна таблица врёт, как только появляется «чей это». Автор заявки — не строка, повторённая в каждом title, а другая сущность.\n\nJOIN склеивает факты по ключу: `tickets.author_id = users.id`. Это не «цикл в Python по двум спискам», это работа СУБД.\n\nИндекс — структура, которая ускоряет поиск по условию (`WHERE status = ...`, `WHERE author_id = ...`). Цена: INSERT/UPDATE становятся чуть дороже, место на диске тоже. Индекс «на всякий случай по всем колонкам» — лишняя фича.\n\n`EXPLAIN` (и `EXPLAIN ANALYZE`) показывает, пошла ли база seq scan по всей таблице или index scan. На трёх строках разницы не видно — и это нормально. Смотрите план, привыкайте к словам.\n\nЗачем это в живом сервисе. В аналитике и в ядре CopyParse без JOIN и индексов под реальные выборки вы не отладите «почему тормозит список».\n\nГраница. Не учите оконные функции и CTE в этом выпуске, если JOIN ещё не уверенный. Партиции и шардинг — не сюда.\n\nСледующий выпуск: регулярные выражения — валидация на входе, не парсинг всего HTML.",
+    "lab": "**40 минут.**\n\n1. Таблица `users (id, name)`. 2–3 пользователя. В `tickets` добавьте `author_id` (FK).\n2. Запрос: все заявки с именем автора — `INNER JOIN`.\n3. Индекс: `CREATE INDEX tickets_author_id_idx ON tickets (author_id);`\n4. `EXPLAIN SELECT ... JOIN ... WHERE tickets.author_id = 1;`\n\n**В группу:** текст JOIN-запроса и скрин `EXPLAIN` (не обязательно ANALYZE).\n\n**Проверка:** без JOIN в Python. Имена авторов приходят из SQL.",
+    "links": [
+      {
+        "label": "JOIN в учебнике Postgres Pro",
+        "href": "https://postgrespro.ru/docs/postgresql/current/tutorial-join"
+      },
+      {
+        "label": "Индексы",
+        "href": "https://postgrespro.ru/docs/postgresql/current/indexes-intro"
+      },
+      {
+        "label": "Как читать EXPLAIN",
+        "href": "https://postgrespro.ru/docs/postgresql/current/using-explain"
+      }
+    ],
+    "diagram": "flowchart LR\n  Users[users] --> Join[JOIN]\n  Tickets[tickets] --> Join\n  Join --> Result[заявка_плюс_автор]",
+    "cheatsheet": "### JOIN\n\n```sql\nSELECT t.id, t.title, u.name AS author\nFROM tickets t\nINNER JOIN users u ON u.id = t.author_id\nWHERE t.author_id = 1;\n```\n\n### Индекс\n\n```sql\nCREATE INDEX tickets_author_id_idx ON tickets (author_id);\nEXPLAIN SELECT ... WHERE tickets.author_id = 1;\n```\n\n### Когда индекс\n\n- Часто фильтруете / джойните по колонке\n- Не «на все колонки сразу»\n\n### Не делать\n\n- JOIN в цикле Python по двум спискам\n- Оконные функции, пока JOIN не уверенный\n- Индекс «на всякий случай»\n\n### Готово, если…\n\n- [ ] Имя автора из SQL, не из Python\n- [ ] Есть скрин EXPLAIN",
+    "theoryFormat": "markdown",
+    "labFormat": "markdown",
+    "cheatsheetFormat": "markdown",
+    "publishedAt": "2026-08-25T22:49:01.216Z"
+  },
+  {
+    "slug": "s01e09-regex",
+    "episode": "S01E09",
+    "title": "Регулярные выражения",
+    "shortTitle": "Regex",
+    "rubricId": "tools",
+    "order": 9,
+    "theory": "S01E09 · Regex · валидация и где уже вредно\n\nРегулярное выражение — это формальный язык для поиска по строке, не «искусственный интеллект» и не парсер HTML.\n\nГде уместно в сервисе заявок:\n\n- Грубый формат: код заявки `TCK-\\d+`, e-mail «есть @ и точка», slug из латиницы.\n- Вырезать кусок из лога: номер запроса, статус.\n- Серверная проверка плюс та же идея на клиенте — но источником правды остаётся API.\n\nГде вредно:\n\n- Разбор HTML/XML regex’ом («достать все ссылки из страницы») — ломается на вложенности. Для этого парсер.\n- «Умная» валидация ФИО, адресов, телефона всех стран одним выражением — ложные отказы.\n- Секреты и SQL: regex не заменяет параметризованные запросы.\n\nВ Python — модуль `re`. Отлаживать удобно на regex101: видны группы и расхождения Python vs JS.\n\nЗачем это в живом сервисе. В пайплайне контента (чистка текста, URL, лимиты) без дисциплины regex легко сломать валидные данные.\n\nГраница. Не пишите комбайн на 80 групп. Если выражение нельзя прочитать вслух — упростите или откажитесь.\n\nСледующий выпуск: React — список заявок из того API, которое вы уже проверили Insomnia.",
+    "lab": "**30 минут.**\n\n1. На https://regex101.com/ (Flavor: Python) напишите выражение для кода заявки: `TCK-` и цифры. Прогоните 5 положительных и 3 отрицательных примера.\n2. В FastAPI: поле `code` (или валидация `title`) через `pattern` в Pydantic либо `re` в хендлере. Невалидное тело → 422, не 500.\n3. Insomnia: один запрос, который должен упасть, один — пройти.\n\n**В группу:** ссылка на сохранённый regex101 (или скрин тестов) + скрин 422.\n\n**Проверка:** вы не парсите HTML. Есть хотя бы один сознательно отвергнутый ввод.",
+    "links": [
+      {
+        "label": "re в Python",
+        "href": "https://docs.python.org/3/library/re.html"
+      },
+      {
+        "label": "Песочница regex101",
+        "href": "https://regex101.com/"
+      },
+      {
+        "label": "MDN: регулярные выражения (диалект JS)",
+        "href": "https://developer.mozilla.org/ru/docs/Web/JavaScript/Guide/Regular_expressions"
+      }
+    ],
+    "diagram": "flowchart LR\n  Input[Ввод] --> Re[re_pattern]\n  Re -->|ok| API[Принять]\n  Re -->|fail| Err[422]",
+    "cheatsheet": "### Пример\n\n```\n^TCK-\\d+$\n```\n\n- Flavor на regex101: **Python**\n- В Pydantic: `pattern=...` → невалидное → **422**\n\n### Уместно / вредно\n\n| Уместно | Вредно |\n|---------|--------|\n| Код `TCK-123` | Парсинг HTML |\n| Грубый e-mail | «Телефон всех стран» |\n| Кусок из лога | Замена параметризованного SQL |\n\n### Не делать\n\n- Комбайн на 80 групп\n- Источник правды только на клиенте\n\n### Готово, если…\n\n- [ ] 5+ / 3− примера на regex101\n- [ ] Скрин 422 из Insomnia\n- [ ] HTML не парсите regex’ом",
+    "theoryFormat": "markdown",
+    "labFormat": "markdown",
+    "cheatsheetFormat": "markdown",
+    "publishedAt": "2026-08-26T22:49:01.216Z"
+  },
+  {
+    "slug": "s01e10-react",
+    "episode": "S01E10",
+    "title": "React: страница списка и вызов API",
+    "shortTitle": "React",
+    "rubricId": "frontend",
+    "order": 10,
+    "theory": "S01E10 · React · список и fetch\n\nUI — последний слой в этой десятке, не первый. Вы уже знаете контракт (`GET /tickets`) и видели JSON в Insomnia. Страница только рисует то, что API уже умеет.\n\nМинимум Vite + React:\n\n- Страница «Список заявок»: запрос к API при загрузке, вывод `title` и `status`.\n- Один `baseURL` (лучше переменная `VITE_API_URL`), не размазанные по компонентам localhost.\n- Ошибка сети — текст на странице, не пустой экран.\n- Пока без дизайн-системы, без Redux, без авторизации (JWT — позже).\n\nCORS. Если UI на `:5173`, а API на `:8000`, браузер заблокирует запрос, пока FastAPI не отдаст CORS. Это не баг React. Либо прокси Vite на `/api`, либо настройки CORS на бэке — выберите одно и зафиксируйте в README.\n\nЗачем это в живом сервисе. UI CopyParse ходит в `/api` так же: один клиент, не «каждый экран сам знает хост core».\n\nГраница. Не верстайте админку и не тащите компонентную библиотеку «как на проде». Список из API важнее кнопок.\n\nСледующий выпуск: JWT — логин без самодельной криптографии.",
+    "lab": "**40 минут.**\n\n1. `npm create vite@latest` → React. Страница списка.\n2. `fetch` (или тонкая обёртка) на `GET /tickets`. Отобразите 3 поля.\n3. README: как запустить UI и API, какая переменная URL, как обойден CORS.\n4. Скрин: Insomnia показывает те же заявки, что и страница.\n\n**В группу:** скрин UI + ссылка на PR.\n\n**Проверка:** остановка API даёт видимую ошибку в UI. Нет захардкоженного списка «на время».",
+    "links": [
+      {
+        "label": "React: списки",
+        "href": "https://react.dev/learn/rendering-lists"
+      },
+      {
+        "label": "Эффекты и загрузка данных",
+        "href": "https://react.dev/learn/synchronizing-with-effects"
+      },
+      {
+        "label": "Vite, старт",
+        "href": "https://vite.dev/guide/"
+      },
+      {
+        "label": "CORS в FastAPI",
+        "href": "https://fastapi.tiangolo.com/tutorial/cors/"
+      }
+    ],
+    "diagram": "flowchart LR\n  Page[Страница_списка] --> Fetch[fetch]\n  Fetch --> API[\"GET /tickets\"]\n  API --> PG[(PostgreSQL)]\n  Fetch --> View[Таблица_на_экране]",
+    "cheatsheet": "### Минимум страницы\n\n```ts\nconst base = import.meta.env.VITE_API_URL\n\nuseEffect(() => {\n  fetch(`${base}/tickets`)\n    .then((r) => {\n      if (!r.ok) throw new Error(String(r.status))\n      return r.json()\n    })\n    .then(setTickets)\n    .catch(setError)\n}, [])\n```\n\n### CORS\n\nUI `:5173` + API `:8000` → нужен CORS на FastAPI **или** proxy Vite. Зафиксируйте в README.\n\n### Не делать\n\n- Хардкод списка «пока без API»\n- Redux / UI-kit / JWT в этом выпуске\n- Пустой экран при ошибке сети\n\n### Готово, если…\n\n- [ ] Список = то же, что Insomnia\n- [ ] Стоп API → ошибка на экране\n- [ ] Один `VITE_API_URL`",
+    "theoryFormat": "markdown",
+    "labFormat": "markdown",
+    "cheatsheetFormat": "markdown",
+    "publishedAt": "2026-08-27T22:49:01.216Z"
+  },
+  {
+    "slug": "b01-karta",
+    "episode": "B01",
+    "title": "Из чего состоит первое приложение",
+    "shortTitle": "Карта",
+    "rubricId": "architecture",
+    "order": 101,
+    "theory": "B01 · Карта · первое приложение за серию\n\nЦель сезона B: быстро собрать своё первое приложение — **«Заметки»** (`notes`): API на Python, страница на React, упаковка в Docker. Не весь прод-стенд, а минимальный круг «кнопка → API → список».\n\nЧетыре кирпича, которые вы соберёте:\n\n1. **Git** — где живёт код и история ([B02](/game/learn/b02-git), [B06](/game/learn/b06-git-branch)).\n2. **Python / FastAPI** — HTTP и JSON ([B03](/game/learn/b03-python)–[B07](/game/learn/b07-notes-api)).\n3. **React** — экран поверх готового API ([B08](/game/learn/b08-react-list), [B09](/game/learn/b09-react-form)).\n4. **Docker / Compose** — одинаковый запуск у вас и у друга ([B10](/game/learn/b10-docker), [B11](/game/learn/b11-compose)).\n\nПорядок важен: сначала API можно проверить без UI ([B05](/game/learn/b05-api-check)), потом уже React. Docker — когда код уже отвечает.\n\nЗачем это на 9to18. Площадка про взаимное продвижение проектов: сначала учимся запускать своё, потом показывать его другим. CopyParse — пример «взрослого» стенда, не ДЗ на клон.\n\nГраница. JWT, Kubernetes, Kafka и «красивый дизайн» в сезон B не входят. Финал — [склейка B12](/game/learn/b12-sklejka).\n\nСледующий выпуск: [B02 · Git](/game/learn/b02-git) — репозиторий до первой строки Python.",
+    "lab": "**20 минут.** На бумаге или в `docs/map.md` нарисуйте три коробки: **React**, **API (Python)**, **Git-репозиторий**. Стрелка: «добавить заметку».\n\n**Проверка:** браузер не ходит в базу напрямую; API стоит между UI и данными (пока данные могут быть в памяти — это ок до Docker).\n\n**Дальше:** [B02 · Git](/game/learn/b02-git).",
+    "cheatsheet": "### Сезон B — маршрут\n\n| № | Тема | Ссылка |\n|---|------|--------|\n| B01 | Карта | этот выпуск |\n| B02 | Git init | [открыть](/game/learn/b02-git) |\n| B03 | Python / venv | [открыть](/game/learn/b03-python) |\n| B04 | FastAPI `/health` | [открыть](/game/learn/b04-fastapi-health) |\n| B05 | Проверка API | [открыть](/game/learn/b05-api-check) |\n| B06 | Git ветка | [открыть](/game/learn/b06-git-branch) |\n| B07 | Notes API | [открыть](/game/learn/b07-notes-api) |\n| B08 | React список | [открыть](/game/learn/b08-react-list) |\n| B09 | React форма | [открыть](/game/learn/b09-react-form) |\n| B10 | Docker | [открыть](/game/learn/b10-docker) |\n| B11 | Compose | [открыть](/game/learn/b11-compose) |\n| B12 | Склейка | [открыть](/game/learn/b12-sklejka) |\n\n### Не делать в B01\n\n- Ставить Minikube «на вырост»\n- Писать UI до API",
+    "diagram": "flowchart LR\n  User[Браузер] --> UI[React]\n  UI --> API[FastAPI]\n  API --> Mem[(Память_или_БД)]\n  Git[GitHub] -.-> UI\n  Git -.-> API\n  Docker[Compose] -.-> UI\n  Docker -.-> API",
+    "links": [
+      {
+        "label": "B02 · Git →",
+        "href": "/game/learn/b02-git"
+      },
+      {
+        "label": "Оглавление Learn",
+        "href": "/game/learn"
+      },
+      {
+        "label": "CopyParse (референс стенда)",
+        "href": "https://www.copyparse.ru"
+      }
+    ],
+    "theoryFormat": "markdown",
+    "labFormat": "markdown",
+    "cheatsheetFormat": "markdown",
+    "publishedAt": "2026-08-29T10:00:00Z"
+  },
+  {
+    "slug": "b02-git",
+    "episode": "B02",
+    "title": "Git: репозиторий за 15 минут",
+    "shortTitle": "Git",
+    "rubricId": "tools",
+    "order": 102,
+    "theory": "B02 · Git · init, commit, .gitignore\n\nКод на Рабочем столе без истории — черновик. Git фиксирует *что* изменилось. GitHub — место, куда потом положите Docker-инструкции из [B11](/game/learn/b11-compose).\n\nСквозной проект сезона: репозиторий **`notes`**.\n\n### 1. Создайте repo\n\nНа GitHub: New repository → `notes` (private ок) → **без** README, если делаете `git init` локально.\n\n```bash\nmkdir notes && cd notes\ngit init\ngit branch -M main\n```\n\n### 2. .gitignore до первого commit\n\nИначе `venv/` и `.env` уедут в историю навсегда (секреты понадобятся ближе к [B10](/game/learn/b10-docker)).\n\n```\n.env\nvenv/\n.venv/\n__pycache__/\n*.pyc\nnode_modules/\ndist/\n.idea/\n.vscode/\n*.pem\n```\n\n### 3. Первый commit\n\n```bash\n# README: что за сервис (заметки), для кого, стек позже\ngit add .gitignore README.md\ngit status\ngit commit -m \"init: notes app, gitignore\"\n```\n\nКарта слоёв из [B01](/game/learn/b01-karta) можно положить в `docs/map.md` вторым commit — или оставить на [B06](/game/learn/b06-git-branch).\n\nЗачем это дальше. В [B03](/game/learn/b03-python) в этот же repo появится Python. В [B08](/game/learn/b08-react-list) — папка `web/`. Один репозиторий на всё приложение.\n\nГраница. Ветки и PR — в [B06](/game/learn/b06-git-branch). Сейчас достаточно `main` + понятный commit.\n\nСледующий: [B03 · Python](/game/learn/b03-python).",
+    "lab": "**25 минут.**\n\n1. Создайте GitHub-репозиторий `notes` (без README).\n2. Локально: `git init`, `.gitignore` из теории, `README.md` на 3 строки.\n3. Commit `init: notes app, gitignore` и `git push -u origin main`.\n\n**В группу / себе:** ссылка на репозиторий.\n\n**Проверка:** в Files на GitHub нет `venv/`; в README есть слово «заметки».\n\n**Дальше:** [B03 · Python](/game/learn/b03-python). Назад: [B01](/game/learn/b01-karta).",
+    "cheatsheet": "### Happy path\n\n```bash\ngit init && git branch -M main\ngit add .gitignore README.md\ngit commit -m \"init: notes app, gitignore\"\ngit remote add origin https://github.com/<you>/notes.git\ngit push -u origin main\n```\n\n### Связи\n\n- Карта приложения: [B01](/game/learn/b01-karta)\n- Ветка и PR: [B06](/game/learn/b06-git-branch)",
+    "diagram": "flowchart LR\n  Local[локально] --> Init[git_init]\n  Init --> Ignore[gitignore]\n  Ignore --> Commit[commit]\n  Commit --> Remote[GitHub]",
+    "links": [
+      {
+        "label": "← B01 · Карта",
+        "href": "/game/learn/b01-karta"
+      },
+      {
+        "label": "B03 · Python →",
+        "href": "/game/learn/b03-python"
+      },
+      {
+        "label": "B06 · Ветка Git",
+        "href": "/game/learn/b06-git-branch"
+      },
+      {
+        "label": "Pro Git",
+        "href": "https://git-scm.com/book/ru/v2"
+      }
+    ],
+    "theoryFormat": "markdown",
+    "labFormat": "markdown",
+    "cheatsheetFormat": "markdown",
+    "publishedAt": "2026-08-30T10:00:00Z"
+  },
+  {
+    "slug": "b03-python",
+    "episode": "B03",
+    "title": "Python: venv и первая команда",
+    "shortTitle": "Python",
+    "rubricId": "api",
+    "order": 103,
+    "theory": "B03 · Python · окружение\n\nAPI сезона будет на **Python 3.12+**. Сначала — изолированное окружение, чтобы пакеты FastAPI из [B04](/game/learn/b04-fastapi-health) не смешались с системным Python.\n\nРаботайте **внутри** репозитория `notes` из [B02](/game/learn/b02-git).\n\n### 1. Проверьте Python\n\n```bash\npython --version\n# или: python3 --version\n```\n\nНужен 3.11+ (лучше 3.12).\n\n### 2. venv\n\n```bash\ncd notes\npython -m venv .venv\n# Windows PowerShell:\n.\\.venv\\Scripts\\Activate.ps1\n# macOS / Linux:\n# source .venv/bin/activate\npython -m pip install --upgrade pip\n```\n\nПапка `.venv/` уже в `.gitignore` из B02 — не коммитьте её.\n\n### 3. Проверка\n\n```bash\npython -c \"print('notes ok')\"\n```\n\nГраница. Пока не ставьте FastAPI — это [B04](/game/learn/b04-fastapi-health). Не ставьте глобально без venv.\n\nСледующий: [B04 · FastAPI `/health`](/game/learn/b04-fastapi-health).",
+    "lab": "**20 минут.** В репо `notes`:\n\n1. Создайте и активируйте `.venv`.\n2. Выполните `python -c \"print('notes ok')\"`.\n3. Commit не нужен (venv не в git). Обновите README одной строкой: «Python 3.12, venv».\n\n**Проверка:** в терминале видно `(.venv)`; `python -c` печатает `notes ok`.\n\n**Дальше:** [B04](/game/learn/b04-fastapi-health). Назад: [B02](/game/learn/b02-git).",
+    "cheatsheet": "```bash\npython -m venv .venv\n# Windows: .\\.venv\\Scripts\\Activate.ps1\npython -m pip install --upgrade pip\npython -c \"print('notes ok')\"\n```\n\nНе коммитить: `.venv/`, `__pycache__/`.\n\nДальше: [B04 FastAPI](/game/learn/b04-fastapi-health).",
+    "diagram": "flowchart LR\n  Py[Python] --> Venv[.venv]\n  Venv --> Pip[pip]\n  Pip --> App[код_notes]",
+    "links": [
+      {
+        "label": "← B02 · Git",
+        "href": "/game/learn/b02-git"
+      },
+      {
+        "label": "B04 · FastAPI →",
+        "href": "/game/learn/b04-fastapi-health"
+      },
+      {
+        "label": "venv — docs.python.org",
+        "href": "https://docs.python.org/3/library/venv.html"
+      }
+    ],
+    "theoryFormat": "markdown",
+    "labFormat": "markdown",
+    "cheatsheetFormat": "markdown",
+    "publishedAt": "2026-08-31T10:00:00Z"
+  },
+  {
+    "slug": "b04-fastapi-health",
+    "episode": "B04",
+    "title": "FastAPI: первый /health",
+    "shortTitle": "FastAPI",
+    "rubricId": "api",
+    "order": 104,
+    "theory": "B04 · FastAPI · `/health`\n\nAPI начинается с контракта: путь, ответ, код. FastAPI это фиксирует типами и сразу даёт Swagger на `/docs`.\n\nВ репо `notes` (venv из [B03](/game/learn/b03-python)):\n\n```bash\npip install \"fastapi[standard]\"\n```\n\nМинимальный `api/main.py`:\n\n```python\nfrom fastapi import FastAPI\n\napp = FastAPI(title=\"notes\")\n\n@app.get(\"/health\")\ndef health():\n    return {\"status\": \"ok\"}\n```\n\nЗапуск:\n\n```bash\nuvicorn api.main:app --reload --port 8000\n```\n\nОткройте `http://127.0.0.1:8000/health` и `http://127.0.0.1:8000/docs`.\n\nЗачем без React. В [B05](/game/learn/b05-api-check) научитесь проверять API до UI. В [B07](/game/learn/b07-notes-api) добавите заметки. В [B10](/game/learn/b10-docker) этот же процесс попадёт в Docker.\n\nГраница. Без БД, JWT и CORS-танцев. Один процесс, одна ручка.\n\nСледующий: [B05 · проверка API](/game/learn/b05-api-check).",
+    "lab": "**30 минут.**\n\n1. `pip install \"fastapi[standard]\"` в venv.\n2. Файл `api/main.py` с `GET /health`.\n3. Запустите uvicorn, откройте `/docs`.\n4. Commit: `feat: fastapi health endpoint`.\n\n**Проверка:** `/health` → `{\"status\":\"ok\"}`; в `/docs` видна ручка.\n\n**Дальше:** [B05](/game/learn/b05-api-check). Назад: [B03](/game/learn/b03-python).",
+    "cheatsheet": "```bash\npip install \"fastapi[standard]\"\nuvicorn api.main:app --reload --port 8000\n```\n\n| URL | Ожидание |\n|-----|----------|\n| `/health` | `{\"status\":\"ok\"}` |\n| `/docs` | Swagger UI |\n\nСвязи: [B05](/game/learn/b05-api-check), [B07](/game/learn/b07-notes-api), [B10](/game/learn/b10-docker).",
+    "diagram": "flowchart LR\n  Client[Клиент] --> Health[GET_/health]\n  Health --> App[FastAPI]\n  App --> JSON[status_ok]",
+    "links": [
+      {
+        "label": "← B03 · Python",
+        "href": "/game/learn/b03-python"
+      },
+      {
+        "label": "B05 · Проверка API →",
+        "href": "/game/learn/b05-api-check"
+      },
+      {
+        "label": "B07 · Notes API",
+        "href": "/game/learn/b07-notes-api"
+      },
+      {
+        "label": "FastAPI First Steps",
+        "href": "https://fastapi.tiangolo.com/tutorial/first-steps/"
+      }
+    ],
+    "theoryFormat": "markdown",
+    "labFormat": "markdown",
+    "cheatsheetFormat": "markdown",
+    "publishedAt": "2026-09-01T10:00:00Z"
+  },
+  {
+    "slug": "b05-api-check",
+    "episode": "B05",
+    "title": "Как проверить API без React",
+    "shortTitle": "Проверка API",
+    "rubricId": "tools",
+    "order": 105,
+    "theory": "B05 · Проверка · curl и браузер\n\nПока нет React ([B08](/game/learn/b08-react-list)), API из [B04](/game/learn/b04-fastapi-health) уже можно проверить тремя способами.\n\n### 1. Браузер\n\n`http://127.0.0.1:8000/health` — для GET достаточно.\n\n### 2. Swagger `/docs`\n\nКнопка Try it out → Execute. Удобно видеть схему ответа.\n\n### 3. curl / PowerShell\n\n```bash\ncurl http://127.0.0.1:8000/health\n```\n\nPowerShell:\n\n```powershell\nInvoke-RestMethod http://127.0.0.1:8000/health\n```\n\nЗачем это. Когда в [B07](/game/learn/b07-notes-api) появится `POST /notes`, вы сначала проверите его здесь, и только потом повесите кнопку в [B09](/game/learn/b09-react-form). Иначе отладка «не работает форма» смешивает UI и API.\n\nГраница. Insomnia/Postman — по желанию; curl достаточно.\n\nСледующий: [B06 · Git ветка](/game/learn/b06-git-branch) — зафиксировать прогресс до усложнения API.",
+    "lab": "**15 минут.** При запущенном uvicorn из [B04](/game/learn/b04-fastapi-health):\n\n1. Откройте `/health` в браузере.\n2. Выполните curl или `Invoke-RestMethod`.\n3. В `/docs` нажмите Execute на `/health`.\n\n**Проверка:** три способа показывают `status: ok`.\n\n**Дальше:** [B06](/game/learn/b06-git-branch). Назад: [B04](/game/learn/b04-fastapi-health).",
+    "cheatsheet": "```bash\ncurl http://127.0.0.1:8000/health\n```\n\nПорядок отладки: **API → потом UI**. См. [B09](/game/learn/b09-react-form).",
+    "diagram": "flowchart LR\n  Browser[Браузер] --> Health\n  Curl[curl] --> Health\n  Docs[Swagger] --> Health\n  Health[GET_/health]",
+    "links": [
+      {
+        "label": "← B04 · FastAPI",
+        "href": "/game/learn/b04-fastapi-health"
+      },
+      {
+        "label": "B06 · Git ветка →",
+        "href": "/game/learn/b06-git-branch"
+      },
+      {
+        "label": "B07 · Notes API",
+        "href": "/game/learn/b07-notes-api"
+      }
+    ],
+    "theoryFormat": "markdown",
+    "labFormat": "markdown",
+    "cheatsheetFormat": "markdown",
+    "publishedAt": "2026-09-02T10:00:00Z"
+  },
+  {
+    "slug": "b06-git-branch",
+    "episode": "B06",
+    "title": "Git: ветка и понятный README",
+    "shortTitle": "Git ветка",
+    "rubricId": "tools",
+    "order": 106,
+    "theory": "B06 · Git · ветка и README\n\nПеред `POST /notes` ([B07](/game/learn/b07-notes-api)) закрепим привычку: лаба не пишется прямо в `main`.\n\n```bash\ngit switch -c b06-readme\n# обновите README: как поднять venv и uvicorn (команды из B03–B04)\ngit add README.md\ngit commit -m \"docs: how to run health API\"\ngit push -u origin b06-readme\n```\n\nНа GitHub: Pull Request `b06-readme` → `main`. Смотрите **Files changed**.\n\nREADME минимум:\n\n1. Что это (`notes`).\n2. Как создать venv ([B03](/game/learn/b03-python)).\n3. Как запустить `uvicorn` ([B04](/game/learn/b04-fastapi-health)).\n\nПозже в [B12](/game/learn/b12-sklejka) добавите Compose.\n\nГраница. Rebase и monorepo-тулинг не нужны. Ветка + PR + читаемый commit.\n\nСледующий: [B07 · Notes API](/game/learn/b07-notes-api).",
+    "lab": "**25 минут.**\n\n1. Ветка `b06-readme`, обновите README командами запуска.\n2. Push и PR в `main`.\n3. Merge после самопроверки диффа.\n\n**Проверка:** в PR нет `.venv`; commit message не `fix`.\n\n**Дальше:** [B07](/game/learn/b07-notes-api). Назад: [B02](/game/learn/b02-git), [B05](/game/learn/b05-api-check).",
+    "cheatsheet": "```bash\ngit switch -c b06-readme\ngit add README.md\ngit commit -m \"docs: how to run health API\"\ngit push -u origin b06-readme\n```\n\nСвязи: [B02](/game/learn/b02-git), финал README — [B12](/game/learn/b12-sklejka).",
+    "diagram": "flowchart LR\n  Main[main] --> Branch[b06_readme]\n  Branch --> PR[Pull_Request]\n  PR --> Main",
+    "links": [
+      {
+        "label": "← B05 · Проверка API",
+        "href": "/game/learn/b05-api-check"
+      },
+      {
+        "label": "B07 · Notes API →",
+        "href": "/game/learn/b07-notes-api"
+      },
+      {
+        "label": "B02 · Git init",
+        "href": "/game/learn/b02-git"
+      },
+      {
+        "label": "GitHub Flow",
+        "href": "https://docs.github.com/ru/get-started/using-github/github-flow"
+      }
+    ],
+    "theoryFormat": "markdown",
+    "labFormat": "markdown",
+    "cheatsheetFormat": "markdown",
+    "publishedAt": "2026-09-03T10:00:00Z"
+  },
+  {
+    "slug": "b07-notes-api",
+    "episode": "B07",
+    "title": "Notes API: список и создание",
+    "shortTitle": "Notes API",
+    "rubricId": "api",
+    "order": 107,
+    "theory": "B07 · FastAPI · заметки в памяти\n\nРасширяем [B04](/game/learn/b04-fastapi-health): ресурс заметок без БД. React в [B08](/game/learn/b08-react-list)–[B09](/game/learn/b09-react-form) будет бить именно сюда.\n\nПример моделей и ручек в `api/main.py`:\n\n```python\nfrom fastapi import FastAPI\nfrom pydantic import BaseModel, Field\n\napp = FastAPI(title=\"notes\")\n_notes: list[dict] = []\n_next_id = 1\n\nclass NoteIn(BaseModel):\n    title: str = Field(min_length=1, max_length=200)\n\nclass Note(NoteIn):\n    id: int\n\n@app.get(\"/health\")\ndef health():\n    return {\"status\": \"ok\"}\n\n@app.get(\"/notes\", response_model=list[Note])\ndef list_notes():\n    return _notes\n\n@app.post(\"/notes\", response_model=Note)\ndef create_note(body: NoteIn):\n    global _next_id\n    note = {\"id\": _next_id, \"title\": body.title}\n    _next_id += 1\n    _notes.append(note)\n    return note\n```\n\nПроверьте через приёмы [B05](/game/learn/b05-api-check):\n\n```bash\ncurl -X POST http://127.0.0.1:8000/notes -H \"Content-Type: application/json\" -d \"{\\\"title\\\":\\\"первая\\\"}\"\ncurl http://127.0.0.1:8000/notes\n```\n\nГраница. Postgres подождёт сезона S01. После рестарта uvicorn список обнулится — это ожидаемо.\n\nСледующий: [B08 · React список](/game/learn/b08-react-list).",
+    "lab": "**40 минут.** В ветке `b07-notes-api`:\n\n1. Добавьте `GET/POST /notes` как в теории (или эквивалент).\n2. Проверьте curl/Swagger.\n3. Commit + PR.\n\n**Проверка:** после POST список на GET содержит новую заметку; `/health` жив.\n\n**Дальше:** [B08](/game/learn/b08-react-list). Назад: [B04](/game/learn/b04-fastapi-health), [B05](/game/learn/b05-api-check).",
+    "cheatsheet": "| Метод | Путь | Назначение |\n|-------|------|------------|\n| GET | `/health` | живость |\n| GET | `/notes` | список |\n| POST | `/notes` | создать |\n\nОтладка: [B05](/game/learn/b05-api-check). UI: [B08](/game/learn/b08-react-list), [B09](/game/learn/b09-react-form).",
+    "diagram": "flowchart LR\n  Client --> Post[POST_/notes]\n  Client --> Get[GET_/notes]\n  Post --> Mem[(list_in_memory)]\n  Get --> Mem",
+    "links": [
+      {
+        "label": "← B06 · Git ветка",
+        "href": "/game/learn/b06-git-branch"
+      },
+      {
+        "label": "B08 · React список →",
+        "href": "/game/learn/b08-react-list"
+      },
+      {
+        "label": "B05 · Проверка API",
+        "href": "/game/learn/b05-api-check"
+      },
+      {
+        "label": "Pydantic / Body",
+        "href": "https://fastapi.tiangolo.com/tutorial/body/"
+      }
+    ],
+    "theoryFormat": "markdown",
+    "labFormat": "markdown",
+    "cheatsheetFormat": "markdown",
+    "publishedAt": "2026-09-04T10:00:00Z"
+  },
+  {
+    "slug": "b08-react-list",
+    "episode": "B08",
+    "title": "React: список заметок с API",
+    "shortTitle": "React список",
+    "rubricId": "frontend",
+    "order": 108,
+    "theory": "B08 · React · список\n\nUI появляется **после** рабочего API ([B07](/game/learn/b07-notes-api)). В том же репо `notes`:\n\n```bash\nnpm create vite@latest web -- --template react-ts\ncd web\nnpm install\nnpm run dev\n```\n\nНа странице: `fetch(\"http://127.0.0.1:8000/notes\")` → показать `title` списком.\n\nCORS: в FastAPI добавьте (временно для учёбы):\n\n```python\nfrom fastapi.middleware.cors import CORSMiddleware\napp.add_middleware(\n    CORSMiddleware,\n    allow_origins=[\"http://127.0.0.1:5173\", \"http://localhost:5173\"],\n    allow_methods=[\"*\"],\n    allow_headers=[\"*\"],\n)\n```\n\nЗачем так. В [B05](/game/learn/b05-api-check) вы уже знаете, что API отвечает; если список пустой — сначала curl, потом React.\n\nСледующий: [B09 · форма](/game/learn/b09-react-form).",
+    "lab": "**40 минут.**\n\n1. Создайте Vite React-TS в `web/`.\n2. На главной загрузите `/notes` и отрисуйте список.\n3. Включите CORS на API, commit оба изменения.\n\n**Проверка:** при запущенных API и `npm run dev` видны заметки, созданные через curl.\n\n**Дальше:** [B09](/game/learn/b09-react-form). Назад: [B07](/game/learn/b07-notes-api).",
+    "cheatsheet": "```bash\nnpm create vite@latest web -- --template react-ts\ncd web && npm install && npm run dev\n```\n\nПорядок отладки: curl ([B05](/game/learn/b05-api-check)) → React.\n\nФорма: [B09](/game/learn/b09-react-form).",
+    "diagram": "flowchart LR\n  Page[React] --> Fetch[fetch_/notes]\n  Fetch --> API[FastAPI]\n  API --> List[ul_li]",
+    "links": [
+      {
+        "label": "← B07 · Notes API",
+        "href": "/game/learn/b07-notes-api"
+      },
+      {
+        "label": "B09 · React форма →",
+        "href": "/game/learn/b09-react-form"
+      },
+      {
+        "label": "Vite Guide",
+        "href": "https://vite.dev/guide/"
+      }
+    ],
+    "theoryFormat": "markdown",
+    "labFormat": "markdown",
+    "cheatsheetFormat": "markdown",
+    "publishedAt": "2026-09-05T10:00:00Z"
+  },
+  {
+    "slug": "b09-react-form",
+    "episode": "B09",
+    "title": "React: форма «добавить заметку»",
+    "shortTitle": "React форма",
+    "rubricId": "frontend",
+    "order": 109,
+    "theory": "B09 · React · POST из формы\n\nЗамыкаем круг: поле ввода → `POST /notes` → обновить список ([B07](/game/learn/b07-notes-api), [B08](/game/learn/b08-react-list)).\n\n```ts\nawait fetch(\"http://127.0.0.1:8000/notes\", {\n  method: \"POST\",\n  headers: { \"Content-Type\": \"application/json\" },\n  body: JSON.stringify({ title }),\n})\n```\n\nПосле успеха — снова `GET /notes` или добавьте ответ POST в локальный state.\n\nЭто и есть «первое приложение» до Docker: человек жмёт кнопку, данные появляются в списке.\n\nДальше упакуем API в образ ([B10](/game/learn/b10-docker)) и поднимем Compose ([B11](/game/learn/b11-compose)).\n\nГраница. Авторизация, редактирование, удаление — не в сезон B.",
+    "lab": "**40 минут.**\n\n1. Форма с `title`, кнопка «Добавить».\n2. POST на API, обновление списка без перезагрузки страницы.\n3. Commit + короткий скрин в PR (по желанию).\n\n**Проверка:** заметка из UI видна и в curl `GET /notes`.\n\n**Дальше:** [B10](/game/learn/b10-docker). Назад: [B08](/game/learn/b08-react-list).",
+    "cheatsheet": "Круг: `форма → POST /notes → GET /notes → ul`.\n\nСвязи: [B07](/game/learn/b07-notes-api), [B08](/game/learn/b08-react-list), Docker: [B10](/game/learn/b10-docker).",
+    "diagram": "flowchart LR\n  Form[форма] --> Post[POST_/notes]\n  Post --> API[FastAPI]\n  API --> Refresh[GET_/notes]\n  Refresh --> UI[список]",
+    "links": [
+      {
+        "label": "← B08 · React список",
+        "href": "/game/learn/b08-react-list"
+      },
+      {
+        "label": "B10 · Docker →",
+        "href": "/game/learn/b10-docker"
+      },
+      {
+        "label": "B07 · Notes API",
+        "href": "/game/learn/b07-notes-api"
+      }
+    ],
+    "theoryFormat": "markdown",
+    "labFormat": "markdown",
+    "cheatsheetFormat": "markdown",
+    "publishedAt": "2026-09-06T10:00:00Z"
+  },
+  {
+    "slug": "b10-docker",
+    "episode": "B10",
+    "title": "Docker: образ API",
+    "shortTitle": "Docker",
+    "rubricId": "tools",
+    "order": 110,
+    "theory": "B10 · Docker · образ FastAPI\n\nДруг без вашего venv должен поднять тот же API из [B07](/game/learn/b07-notes-api). Для этого — образ.\n\n`api/requirements.txt`:\n\n```\nfastapi[standard]==0.115.6\n```\n\n`api/Dockerfile` (пример):\n\n```dockerfile\nFROM python:3.12-slim\nWORKDIR /app\nCOPY requirements.txt .\nRUN pip install --no-cache-dir -r requirements.txt\nCOPY . .\nCMD [\"uvicorn\", \"main:app\", \"--host\", \"0.0.0.0\", \"--port\", \"8000\"]\n```\n\nЕсли код в `api/main.py` и контекст сборки — папка `api/`:\n\n```bash\ncd api\ndocker build -t notes-api .\ndocker run --rm -p 8000:8000 notes-api\n```\n\nПроверка как в [B05](/game/learn/b05-api-check): `curl localhost:8000/health`.\n\nГраница. UI в образ пока не кладём — в [B11](/game/learn/b11-compose) решим через Compose (API + dev UI или статика).\n\nСледующий: [B11 · Compose](/game/learn/b11-compose).",
+    "lab": "**40 минут.**\n\n1. `requirements.txt` + `Dockerfile` для API.\n2. `docker build` и `docker run -p 8000:8000`.\n3. curl `/health` и `/notes`.\n4. Commit.\n\n**Проверка:** API отвечает из контейнера без локального venv.\n\n**Дальше:** [B11](/game/learn/b11-compose). Назад: [B07](/game/learn/b07-notes-api), [B04](/game/learn/b04-fastapi-health).",
+    "cheatsheet": "```bash\ndocker build -t notes-api .\ndocker run --rm -p 8000:8000 notes-api\n```\n\nНе коммитить секреты. Compose: [B11](/game/learn/b11-compose).",
+    "diagram": "flowchart LR\n  Dockerfile --> Build[docker_build]\n  Build --> Image[notes_api]\n  Image --> Run[docker_run_:8000]",
+    "links": [
+      {
+        "label": "← B09 · React форма",
+        "href": "/game/learn/b09-react-form"
+      },
+      {
+        "label": "B11 · Compose →",
+        "href": "/game/learn/b11-compose"
+      },
+      {
+        "label": "B05 · Проверка API",
+        "href": "/game/learn/b05-api-check"
+      },
+      {
+        "label": "Docker Get Started",
+        "href": "https://docs.docker.com/get-started/"
+      }
+    ],
+    "theoryFormat": "markdown",
+    "labFormat": "markdown",
+    "cheatsheetFormat": "markdown",
+    "publishedAt": "2026-09-07T10:00:00Z"
+  },
+  {
+    "slug": "b11-compose",
+    "episode": "B11",
+    "title": "Compose: поднять приложение одной командой",
+    "shortTitle": "Compose",
+    "rubricId": "tools",
+    "order": 111,
+    "theory": "B11 · Compose · API (+ UI)\n\n`docker-compose.yml` в корне `notes`:\n\n```yaml\nservices:\n  api:\n    build: ./api\n    ports:\n      - \"8000:8000\"\n```\n\nЗапуск:\n\n```bash\ndocker compose up --build\n```\n\nОпционально добавьте сервис `web` (nginx со статикой после `npm run build`) или оставьте UI на `npm run dev` против `localhost:8000` — для учёбы оба варианта ок. Главное: **API поднимается одной командой**, как обещали в [B01](/game/learn/b01-karta).\n\nПроверка: [B05](/game/learn/b05-api-check) + форма из [B09](/game/learn/b09-react-form).\n\nСледующий: [B12 · склейка](/game/learn/b12-sklejka) — чеклист и README для портфолио / взаимного продвижения на 9to18.",
+    "lab": "**40 минут.**\n\n1. `docker-compose.yml` с сервисом `api`.\n2. `docker compose up --build`, curl `/health`.\n3. Обновите README секцией Compose.\n4. Commit.\n\n**Проверка:** на чистой машине с Docker (без ручного venv) API отвечает.\n\n**Дальше:** [B12](/game/learn/b12-sklejka). Назад: [B10](/game/learn/b10-docker).",
+    "cheatsheet": "```bash\ndocker compose up --build\n```\n\nСвязи: [B10](/game/learn/b10-docker), финал: [B12](/game/learn/b12-sklejka).",
+    "diagram": "flowchart LR\n  Compose[compose_up] --> API[api_:8000]\n  Compose -.-> Web[web_опционально]\n  User[браузер] --> Web\n  User --> API",
+    "links": [
+      {
+        "label": "← B10 · Docker",
+        "href": "/game/learn/b10-docker"
+      },
+      {
+        "label": "B12 · Склейка →",
+        "href": "/game/learn/b12-sklejka"
+      },
+      {
+        "label": "B01 · Карта",
+        "href": "/game/learn/b01-karta"
+      },
+      {
+        "label": "Compose spec",
+        "href": "https://docs.docker.com/compose/"
+      }
+    ],
+    "theoryFormat": "markdown",
+    "labFormat": "markdown",
+    "cheatsheetFormat": "markdown",
+    "publishedAt": "2026-09-08T10:00:00Z"
+  },
+  {
+    "slug": "b12-sklejka",
+    "episode": "B12",
+    "title": "Склейка: что должно получиться",
+    "shortTitle": "Склейка",
+    "rubricId": "architecture",
+    "order": 112,
+    "theory": "B12 · Склейка · чеклист первого приложения\n\nВы прошли круг сезона B:\n\n1. Карта — [B01](/game/learn/b01-karta)\n2. Git — [B02](/game/learn/b02-git), [B06](/game/learn/b06-git-branch)\n3. Python / FastAPI — [B03](/game/learn/b03-python)–[B07](/game/learn/b07-notes-api)\n4. Проверка без UI — [B05](/game/learn/b05-api-check)\n5. React — [B08](/game/learn/b08-react-list), [B09](/game/learn/b09-react-form)\n6. Docker / Compose — [B10](/game/learn/b10-docker), [B11](/game/learn/b11-compose)\n\n### Чеклист «готово»\n\n- [ ] Репозиторий на GitHub, README с командами\n- [ ] `GET /health` и `GET/POST /notes`\n- [ ] React: список + форма\n- [ ] `docker compose up --build` поднимает API\n- [ ] В git нет `.venv`, `node_modules`, `.env` с секретами\n\n### Что писать в README для продвижения\n\nНа 9to18 взаимное продвижение начинается с понятного «как запустить за 5 минут». Три команды в README важнее длинного манифеста.\n\n### Куда дальше\n\nКогда будете готовы к БД, JWT и Minikube — смотрите сезон S01 на Learn (Postgres, Docker «взрослее», k8s). Сезон B сознательно короче.\n\nСледующий шаг вне серии: покажите `notes` другу или вынесите ссылку на репо в спотлайт сообщества.",
+    "lab": "**30 минут.** Пройдите чеклист из теории по своему репо. Допишите README, если чего-то нет.\n\n**Проверка:** человек с Docker Desktop поднимает API по README без голосовых подсказок.\n\n**Назад по серии:** [B01](/game/learn/b01-karta) … [B11](/game/learn/b11-compose). Оглавление: [/game/learn](/game/learn).",
+    "cheatsheet": "### Маршрут сезона B\n\n[B01](/game/learn/b01-karta) → [B02](/game/learn/b02-git) → [B03](/game/learn/b03-python) → [B04](/game/learn/b04-fastapi-health) → [B05](/game/learn/b05-api-check) → [B06](/game/learn/b06-git-branch) → [B07](/game/learn/b07-notes-api) → [B08](/game/learn/b08-react-list) → [B09](/game/learn/b09-react-form) → [B10](/game/learn/b10-docker) → [B11](/game/learn/b11-compose) → **B12**\n\n### Готово, если…\n\n- API + React + Compose\n- README на 5 минут запуска\n- Без секретов в git",
+    "diagram": "flowchart LR\n  B01 --> B02 --> B03 --> B04 --> B05 --> B06\n  B06 --> B07 --> B08 --> B09 --> B10 --> B11 --> B12",
+    "links": [
+      {
+        "label": "← B11 · Compose",
+        "href": "/game/learn/b11-compose"
+      },
+      {
+        "label": "B01 · Карта (старт)",
+        "href": "/game/learn/b01-karta"
+      },
+      {
+        "label": "Оглавление Learn",
+        "href": "/game/learn"
+      },
+      {
+        "label": "Сезон S01 · слои (продолжение)",
+        "href": "/game/learn/s01e01-sloi"
+      }
+    ],
+    "theoryFormat": "markdown",
+    "labFormat": "markdown",
+    "cheatsheetFormat": "markdown",
+    "publishedAt": "2026-09-09T10:00:00Z"
+  }
+]

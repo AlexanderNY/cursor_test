@@ -4,14 +4,23 @@ import { getSortedRubrics } from '@/data/learn'
 import {
   getPostsByRubric,
   getPublishedPosts,
+  getSeasonTracks,
   useLearnPosts,
 } from '@/data/learn/use-learn-posts'
+import {
+  progressPercent,
+  useSiteLearnProgress,
+} from '@/data/site/use-learn-progress'
 
 export function LearnIndexPage() {
   const rubrics = getSortedRubrics()
   const { posts, isReady } = useLearnPosts()
   const published = getPublishedPosts(posts)
-  const seasonTrack = published
+  const seasonTracks = getSeasonTracks(posts)
+  const { completedSlugs, isAuthed, isReady: progressReady } = useSiteLearnProgress()
+  const doneCount = published.filter((p) => completedSlugs.has(p.slug)).length
+  const pct = progressPercent(doneCount, published.length)
+  const continuePost = published.find((p) => !completedSlugs.has(p.slug)) || published[0]
 
   return (
     <PageShell>
@@ -20,12 +29,29 @@ export function LearnIndexPage() {
       </Link>
 
       <header className="learn-header">
-        <p className="learn-eyebrow">Сезон 1 · учебный блог</p>
+        <p className="learn-eyebrow">Learn · учебный блог</p>
         <h1 className="learn-title">Learn</h1>
         <p className="learn-lead">
-          Теория, лабораторные и шпаргалки. Сквозной учебный сервис — заявки (tickets). CopyParse —
-          референс взрослого стенда, не форк.
+          Сезон B — быстрый старт первого приложения (Git, Python, React, Docker). Сезон 1 —
+          углубление со сквозным сервисом заявок. Выпуски перелинкованы между собой.
         </p>
+        {isAuthed && progressReady && published.length > 0 ? (
+          <p className="learn-section-note">
+            Прогресс: {doneCount}/{published.length} ({pct}%)
+            {continuePost ? (
+              <>
+                {' · '}
+                <Link to={`/game/learn/${continuePost.slug}`}>Продолжить →</Link>
+              </>
+            ) : null}
+            {' · '}
+            <Link to="/game/tasks">Чек-лист</Link>
+          </p>
+        ) : (
+          <p className="learn-section-note">
+            <Link to="/login">Войдите</Link>, чтобы сохранять прогресс по выпускам.
+          </p>
+        )}
         <p className="learn-admin-entry">
           <Link to="/game/learn/admin" className="learn-admin-link">
             Админка
@@ -39,24 +65,41 @@ export function LearnIndexPage() {
         <p className="learn-section-note">Пока нет опубликованных выпусков. Загляните позже.</p>
       ) : (
         <>
-          <section className="learn-season" aria-labelledby="learn-season-heading">
-            <div className="learn-season-head">
-              <h2 id="learn-season-heading" className="learn-section-title">
-                Идти по сезону
-              </h2>
-              <p className="learn-section-note">Линейный порядок выпусков</p>
-            </div>
-            <ol className="learn-season-list">
-              {seasonTrack.map((episode) => (
-                <li key={episode.slug}>
-                  <Link to={`/game/learn/${episode.slug}`} className="learn-season-link">
-                    <span className="learn-episode-code">{episode.episode}</span>
-                    <span className="learn-episode-name">{episode.shortTitle}</span>
-                  </Link>
-                </li>
-              ))}
-            </ol>
-          </section>
+          {seasonTracks.map((track) => {
+            const trackDone = track.episodes.filter((e) => completedSlugs.has(e.slug)).length
+            return (
+              <section
+                key={track.id}
+                className="learn-season"
+                aria-labelledby={`learn-season-${track.id}`}
+              >
+                <div className="learn-season-head">
+                  <h2 id={`learn-season-${track.id}`} className="learn-section-title">
+                    {track.title}
+                  </h2>
+                  <p className="learn-section-note">
+                    {track.note}
+                    {isAuthed
+                      ? ` · ${trackDone}/${track.episodes.length} пройдено`
+                      : ''}
+                  </p>
+                </div>
+                <ol className="learn-season-list">
+                  {track.episodes.map((episode) => (
+                    <li key={episode.slug}>
+                      <Link to={`/game/learn/${episode.slug}`} className="learn-season-link">
+                        <span className="learn-episode-code">{episode.episode}</span>
+                        <span className="learn-episode-name">
+                          {completedSlugs.has(episode.slug) ? '✓ ' : ''}
+                          {episode.shortTitle}
+                        </span>
+                      </Link>
+                    </li>
+                  ))}
+                </ol>
+              </section>
+            )
+          })}
 
           <div className="learn-rubrics">
             {rubrics.map((rubric) => {
@@ -81,7 +124,10 @@ export function LearnIndexPage() {
                       <li key={episode.slug}>
                         <Link to={`/game/learn/${episode.slug}`} className="learn-episode-card">
                           <span className="learn-episode-code">{episode.episode}</span>
-                          <span className="learn-episode-title">{episode.title}</span>
+                          <span className="learn-episode-title">
+                            {completedSlugs.has(episode.slug) ? '✓ ' : ''}
+                            {episode.title}
+                          </span>
                         </Link>
                       </li>
                     ))}

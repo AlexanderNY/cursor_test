@@ -157,6 +157,68 @@ async def vk_oauth_callback(request: Request) -> Response:
     return await forward_to_core("/vk/oauth/callback", request)
 
 
+@router.post("/callback")
+async def vk_callback_api(request: Request) -> Response:
+    """VK Callback API сообщества: проксирование на core (без JWT)."""
+    return await forward_to_core("/vk/callback", request)
+
+
+@router.post("/auth/verify/community")
+async def verify_vk_community(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    return await forward_to_core("/vk/auth/verify/community", request)
+
+
+@router.post("/auth/verify/callback")
+async def verify_vk_callback(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    return await forward_to_core("/vk/auth/verify/callback", request)
+
+
+@router.post("/auth/verify/app")
+async def verify_vk_app(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    return await forward_to_core("/vk/auth/verify/app", request)
+
+
+@router.post("/auth/verify/oauth")
+async def verify_vk_oauth(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    return await forward_to_core("/vk/auth/verify/oauth", request)
+
+
+@router.post("/auth/test/community-wall")
+async def test_vk_community_wall(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    return await forward_to_core("/vk/auth/test/community-wall", request)
+
+
+@router.get("/auth/admin-groups")
+async def list_vk_admin_groups(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    return await forward_to_core("/vk/auth/admin-groups", request)
+
+
+@router.post("/auth/test/own-wall")
+async def test_vk_own_wall(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    return await forward_to_core("/vk/auth/test/own-wall", request)
+
+
 @router.get("/oauth/status")
 async def vk_oauth_status(
     request: Request,

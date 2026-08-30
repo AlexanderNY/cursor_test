@@ -33,6 +33,7 @@ JOIN склеивает факты по ключу: `tickets.author_id = users.i
 
 ## Ссылки
 
+- CopyParse (регистрация, учебный контур): https://www.copyparse.ru/sign-up?utm_source=tg&utm_campaign=s01e08
 - JOIN в учебнике Postgres Pro — https://postgrespro.ru/docs/postgresql/current/tutorial-join
 - Виды JOIN (картинки-схемы в статье) — https://postgrespro.ru/docs/postgresql/current/queries-table-expressions
 - Индексы — https://postgrespro.ru/docs/postgresql/current/indexes-intro

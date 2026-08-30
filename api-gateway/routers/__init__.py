@@ -13,6 +13,8 @@ from .threads_routes import router as threads_router
 from .stubs import router as stubs_router
 from .game_routes import router as game_router
 from .smm_routes import router as smm_router
+from .learn_routes import router as learn_router
+from .site_routes import router as site_router
 
 __all__ = [
     "auth_router",
@@ -30,6 +32,6 @@ __all__ = [
     "stubs_router",
     "game_router",
     "smm_router",
+    "learn_router",
+    "site_router",
 ]
-
-

@@ -67,6 +67,7 @@ class TelegramBotService:
         self._publisher_task = None
         self._maintenance_task = None
         self._digest_task = None
+        self._enrichment_task = None
         self._engagement_task = None
         self._subscriber_task = None
         self._discussion_refresh_task = None
@@ -109,6 +110,7 @@ class TelegramBotService:
         self._publisher_task = asyncio.create_task(self._publisher_loop())
         self._maintenance_task = asyncio.create_task(self._maintenance_loop())
         self._digest_task = asyncio.create_task(self._digest_loop())
+        self._enrichment_task = asyncio.create_task(self._enrichment_loop())
         self._engagement_task = asyncio.create_task(self._engagement_loop())
         self._subscriber_task = asyncio.create_task(self._subscriber_loop())
         self._discussion_refresh_task = asyncio.create_task(self._discussion_refresh_loop())
@@ -195,6 +197,13 @@ class TelegramBotService:
                 await asyncio.sleep(3600)
                 if not self._running:
                     break
+                deleted_events = await self.event_logger.cleanup_old_events()
+                deleted_dedup = await self.event_logger.cleanup_expired_dedup()
+                _log_action(
+                    "Maintenance: purged %d tg_events, %d dedup rows",
+                    deleted_events,
+                    deleted_dedup,
+                )
             except asyncio.CancelledError:
                 break
             except Exception as e:
@@ -212,6 +221,20 @@ class TelegramBotService:
                 break
             except Exception as e:
                 logger.error("Error in digest loop: %s", e, exc_info=True)
+
+    async def _enrichment_loop(self) -> None:
+        while self._running:
+            try:
+                await asyncio.sleep(120)
+                if not self._running:
+                    break
+                enriched = await self.post_enrichment.run_batch_cycle(limit=20)
+                if enriched:
+                    _log_action("Enrichment loop: enriched %d posts", enriched)
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error("Error in enrichment loop: %s", e, exc_info=True)
 
     async def _engagement_loop(self) -> None:
         while self._running:
@@ -323,22 +346,38 @@ class TelegramBotService:
                             profile=collect_profile,
                         )
                         if post:
-                            await self.event_logger.log_event(
-                                user_id,
-                                "collected",
-                                event,
-                                metadata={
-                                    "post_id": post.get("id"),
-                                    "brand_channel_id": brand_ch.get("id") if brand_ch else None,
-                                },
-                            )
                             enrichment = await self.post_enrichment.enrich_post_if_enabled(
                                 post_id=post["id"],
                                 text=post.get("post_text") or "",
                                 profile=collect_profile,
+                                user_id=user_id,
                             )
                             if enrichment:
                                 message_metadata = enrichment
+                                await self.event_logger.log_event(
+                                    user_id,
+                                    "collected",
+                                    event,
+                                    metadata={
+                                        "post_id": post.get("id"),
+                                        "brand_channel_id": brand_ch.get("id") if brand_ch else None,
+                                        "category": enrichment.get("category"),
+                                        "sentiment": enrichment.get("sentiment"),
+                                        "score": enrichment.get("score"),
+                                        "confidence": enrichment.get("confidence"),
+                                        "enriched": True,
+                                    },
+                                )
+                            else:
+                                await self.event_logger.log_event(
+                                    user_id,
+                                    "collected",
+                                    event,
+                                    metadata={
+                                        "post_id": post.get("id"),
+                                        "brand_channel_id": brand_ch.get("id") if brand_ch else None,
+                                    },
+                                )
                             _log_action("Saved post %s for user %s", post.get("id"), user_id)
                             if brand_ch and brand_ch.get("id"):
                                 await bump_channel_counter(
@@ -462,6 +501,7 @@ class TelegramBotService:
             self._publisher_task,
             self._maintenance_task,
             self._digest_task,
+            self._enrichment_task,
             self._engagement_task,
             self._subscriber_task,
             self._discussion_refresh_task,
@@ -476,6 +516,7 @@ class TelegramBotService:
         self._publisher_task = None
         self._maintenance_task = None
         self._digest_task = None
+        self._enrichment_task = None
         self._engagement_task = None
         self._subscriber_task = None
         self._discussion_refresh_task = None

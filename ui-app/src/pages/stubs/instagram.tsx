@@ -1,11 +1,11 @@
 import { useState, FormEvent, useEffect, useCallback } from 'react'
+import { Link } from 'react-router-dom'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
 import { PageHeader, PageContainer } from '@/components/ui'
 import {
-  TargetSocialNetworksWidget,
   createDefaultTargets,
   EMPTY_SELECTED_BRAND_CHANNELS,
   type TargetSocialNetworks,
@@ -32,7 +32,7 @@ interface DynamicField {
 const INSTAGRAM_CAPTION_MAX = 2200
 
 export function InstagramPage() {
-  const [activeTab, setActiveTab] = useState<'auth' | 'create' | 'posts' | 'profile'>('create')
+  const [activeTab, setActiveTab] = useState<'auth' | 'create' | 'posts' | 'profile'>('posts')
 
   const [publishEnabled, setPublishEnabled] = useState(false)
   const [collectEnabled, setCollectEnabled] = useState(false)
@@ -50,7 +50,7 @@ export function InstagramPage() {
   const [instagramVerificationPending, setInstagramVerificationPending] = useState(false)
 
   const [postCaption, setPostCaption] = useState('')
-  const [postTargets, setPostTargets] = useState<TargetSocialNetworks>(() =>
+  const [postTargets] = useState<TargetSocialNetworks>(() =>
     createDefaultTargets('instagram')
   )
   const [selectedChannels, setSelectedChannels] = useState<SelectedBrandChannels>({
@@ -348,6 +348,11 @@ export function InstagramPage() {
         title="Instagram"
         description="Профиль, сбор постов и публикация (caption до 2200 символов)"
       />
+      <p className="mb-4 text-sm flex flex-wrap gap-4">
+        <Link to="/posts" className="text-primary-400 hover:underline">
+          Создать пост → /posts
+        </Link>
+      </p>
 
       {error && (
         <Alert variant="error" className="animate-slide-down">
@@ -363,7 +368,6 @@ export function InstagramPage() {
       <div className="flex border-b border-[var(--border-color)] flex-wrap gap-1">
         {[
           { id: 'auth' as const, label: 'Авторизация' },
-          { id: 'create' as const, label: 'Create post' },
           { id: 'posts' as const, label: 'Posts' },
           { id: 'profile' as const, label: 'Profile' },
         ].map((tab) => (
@@ -590,11 +594,20 @@ export function InstagramPage() {
         </Card>
       )}
 
-      {activeTab === 'create' && (
+      {activeTab === 'create' && editingPostId === null && (
+        <Alert className="mt-6">
+          Создание постов — на странице{' '}
+          <Link to="/posts" className="text-primary-400 hover:underline">
+            Posts
+          </Link>
+        </Alert>
+      )}
+
+      {activeTab === 'create' && editingPostId !== null && (
         <Card className="mt-6">
           <CardHeader>
-            <CardTitle>{editingPostId ? 'Edit post' : 'Create Instagram post'}</CardTitle>
-            <CardDescription>Caption max {INSTAGRAM_CAPTION_MAX} characters. Add images for photo/carousel.</CardDescription>
+            <CardTitle>Edit post</CardTitle>
+            <CardDescription>Caption max {INSTAGRAM_CAPTION_MAX} characters.</CardDescription>
           </CardHeader>
           <form onSubmit={handleCreatePost}>
             <CardContent className="space-y-4">
@@ -611,35 +624,14 @@ export function InstagramPage() {
                   {postCaption.length} / {INSTAGRAM_CAPTION_MAX}
                 </span>
               </div>
-              {!editingPostId && (
-                <div>
-                  <label className="block text-sm font-medium mb-1">Images</label>
-                  <Input
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    onChange={(e) => setImageFiles(e.target.files || null)}
-                  />
-                </div>
-              )}
-              {!editingPostId && (
-                <TargetSocialNetworksWidget
-                  value={postTargets}
-                  onChange={setPostTargets}
-                  selectedChannels={selectedChannels}
-                  onSelectedChannelsChange={setSelectedChannels}
-                />
-              )}
             </CardContent>
             <CardFooter>
               <Button type="submit" disabled={isCreatingPost}>
-                {isCreatingPost ? 'Saving...' : editingPostId ? 'Update post' : 'Create post'}
+                {isCreatingPost ? 'Saving...' : 'Update post'}
               </Button>
-              {editingPostId && (
-                <Button type="button" variant="outline" onClick={() => setEditingPostId(null)}>
-                  Cancel
-                </Button>
-              )}
+              <Button type="button" variant="secondary" onClick={() => setEditingPostId(null)}>
+                Cancel
+              </Button>
             </CardFooter>
           </form>
         </Card>

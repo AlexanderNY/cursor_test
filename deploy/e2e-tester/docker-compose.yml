@@ -1,57 +1,31 @@
-# On-demand E2E tester. Requires main stack on edge_net:
-#   docker network create edge_net   # once
-#   docker compose up -d             # main stack
+# E2E Tester — один контейнер на локальном ПК.
+# Данные: SQLite + артефакты в Docker volume (без отдельного Postgres).
+#
+#   cp deploy/e2e-tester/.env.example deploy/e2e-tester/.env
 #   docker compose -f deploy/e2e-tester/docker-compose.yml --env-file deploy/e2e-tester/.env up -d --build
+#
+# Панель: http://127.0.0.1:8300
+# Сайт на хосте (не в docker): TARGET_UI_URL=http://host.docker.internal:PORT
 
 services:
-  tester-db:
-    image: postgres:16.6-alpine
-    container_name: tester-db
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-tester}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-tester}
-      POSTGRES_DB: ${POSTGRES_DB:-tester}
-    volumes:
-      - tester_pg_data:/var/lib/postgresql/data
-    networks:
-      - tester_net
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-tester} -d ${POSTGRES_DB:-tester}"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-    restart: unless-stopped
-
   tester:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: tester
-    depends_on:
-      tester-db:
-        condition: service_healthy
     ports:
       - "127.0.0.1:8300:8300"
     environment:
-      DATABASE_URL: dbname=${POSTGRES_DB:-tester} user=${POSTGRES_USER:-tester} password=${POSTGRES_PASSWORD:-tester} host=tester-db
+      SQLITE_PATH: ${SQLITE_PATH:-/data/tester.db}
       TESTER_SECRET_KEY: ${TESTER_SECRET_KEY}
-      TARGET_UI_URL: ${TARGET_UI_URL:-http://ui:8100}
-      TARGET_API_URL: ${TARGET_API_URL:-http://gateway:8000}
+      TARGET_UI_URL: ${TARGET_UI_URL:-https://www.copyparse.ru}
+      TARGET_API_URL: ${TARGET_API_URL:-}
       ARTIFACTS_DIR: /data/artifacts
     volumes:
-      - tester_artifacts:/data/artifacts
-    networks:
-      - tester_net
-      - edge_net
+      - tester_data:/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     restart: unless-stopped
 
-networks:
-  tester_net:
-    driver: bridge
-  edge_net:
-    external: true
-    name: edge_net
-
 volumes:
-  tester_pg_data:
-  tester_artifacts:
+  tester_data:

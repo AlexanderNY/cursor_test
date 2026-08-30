@@ -8,10 +8,38 @@ from typing import Any, List, Literal, Optional
 from fastapi import APIRouter, File, Header, HTTPException, Query, UploadFile
 from pydantic import BaseModel, Field
 
-from services.smm_service import BRAND_PALETTE, smm_service
-from services.quota_service import get_user_tariff, get_plan_limits, plan_feature, ensure_ai_calls_quota
+from services.smm_service import BRAND_PALETTE, compose_brand_voice, smm_service
+from services.content_library_service import (
+    TEMPLATE_KINDS,
+    build_utm_url,
+    content_library_service,
+)
+from services.smm_networks import (
+    is_adapt_network,
+    network_text_limit,
+    normalize_network,
+)
+from services.quota_service import (
+    get_user_tariff,
+    get_plan_limits,
+    plan_feature,
+    ensure_ai_calls_quota,
+    ensure_smm_feature,
+    get_ai_usage,
+    get_usage_summary,
+)
 from exceptions import QuotaExceededError, ChannelAccessError
 from services.platform_auth_service import PlatformAuthError, platform_auth_service, platform_auth_http_detail
+
+SmmNetwork = Literal[
+    "tg", "vk", "url", "instagram", "threads", "tw", "dzen", "wp",
+    "twitter", "wordpress",  # aliases accepted by API, normalized in service
+]
+InboxNetwork = Literal[
+    "tg", "vk", "url", "instagram", "threads", "tw", "dzen", "wp",
+    "twitter", "wordpress",
+]
+CompetitorNetwork = Literal["tg", "vk", "url"]
 
 logger = logging.getLogger(__name__)
 
@@ -28,13 +56,22 @@ def get_user_id(x_user_id: Optional[str] = Header(None)) -> int:
 
 
 def _http_quota(exc: QuotaExceededError) -> HTTPException:
+    if exc.resource == "ai_calls_month":
+        message = (
+            "Лимит AI-вызовов исчерпан. Обновите план, чтобы продолжить."
+            if exc.limit > 0
+            else "AI недоступен на текущем плане. Обновите план."
+        )
+    else:
+        message = f"Plan limit exceeded: {exc.resource}"
     return HTTPException(
         status_code=402,
         detail={
-            "message": f"Plan limit exceeded: {exc.resource}",
+            "message": message,
             "resource": exc.resource,
             "limit": exc.limit,
             "used": exc.used,
+            "upgrade_url": "/pricing",
         },
     )
 
@@ -49,16 +86,22 @@ class BrandCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     color: str = Field(default="#3B82F6", max_length=7)
     group_id: Optional[int] = None
+    tone_of_voice: Optional[str] = Field(None, max_length=500)
+    style_notes: Optional[str] = Field(None, max_length=1000)
+    prompt_snippets: Optional[List[dict[str, Any]]] = None
 
 
 class BrandUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=255)
     color: Optional[str] = Field(None, max_length=7)
     group_id: Optional[int] = None
+    tone_of_voice: Optional[str] = Field(None, max_length=500)
+    style_notes: Optional[str] = Field(None, max_length=1000)
+    prompt_snippets: Optional[List[dict[str, Any]]] = None
 
 
 class ChannelCreate(BaseModel):
-    network: Literal["tg", "vk", "url"]
+    network: SmmNetwork
     external_id: Optional[str] = Field(None, max_length=128)
     title: Optional[str] = None
     kind: Literal["channel", "group", "public"] = "channel"
@@ -103,14 +146,22 @@ class InboxRedirect(BaseModel):
 
 class InboxCreate(BaseModel):
     brand_id: Optional[int] = None
-    network: Literal["tg", "vk"]
+    network: InboxNetwork
     channel_id: Optional[int] = None
     thread_id: Optional[str] = None
-    type: Literal["dm", "comment", "reaction"]
+    type: Literal["dm", "comment", "reaction", "competitor_post"]
     author: Optional[str] = None
     text: Optional[str] = None
     external_msg_id: Optional[str] = None
     status: Optional[str] = "new"
+
+
+class ChannelBind(BaseModel):
+    """Bind channel.external_id to a platform profile handle / id."""
+
+    external_id: Optional[str] = Field(None, max_length=128)
+    title: Optional[str] = None
+    from_profile: bool = False
 
 
 class InboxReply(BaseModel):
@@ -126,6 +177,7 @@ class JobCreate(BaseModel):
     adapt: bool = True
     status: Optional[str] = None
     adapter_overrides: Optional[dict[str, Any]] = None
+    assigned_to: Optional[int] = None
 
 
 class JobUpdate(BaseModel):
@@ -135,6 +187,25 @@ class JobUpdate(BaseModel):
     publish_at: Optional[str] = None
     status: Optional[str] = None
     adapters_result: Optional[dict[str, Any]] = None
+    assigned_to: Optional[int] = None
+    rejection_comment: Optional[str] = None
+
+
+class JobReject(BaseModel):
+    comment: Optional[str] = Field(None, max_length=2000)
+
+
+class JobAssign(BaseModel):
+    assigned_to: Optional[int] = None
+
+
+class JobBulkApprove(BaseModel):
+    job_ids: List[int] = Field(..., min_length=1, max_length=100)
+
+
+class JobBulkReschedule(BaseModel):
+    job_ids: List[int] = Field(..., min_length=1, max_length=100)
+    publish_at: str
 
 
 class AutomationCreate(BaseModel):
@@ -160,11 +231,14 @@ class AiRewriteRequest(BaseModel):
     text: str
     tone: Optional[str] = None
     network: Optional[str] = None
+    brand_id: Optional[int] = None
 
 
 class AiAdaptRequest(BaseModel):
     text: str
     targets: List[str] = Field(default_factory=list)
+    brand_id: Optional[int] = None
+    tone: Optional[str] = None
 
 
 class AiProcessRequest(BaseModel):
@@ -173,14 +247,71 @@ class AiProcessRequest(BaseModel):
     params: Optional[dict[str, Any]] = None
     source: Optional[Literal["inbox", "post"]] = None
     source_id: Optional[int] = None
+    brand_id: Optional[int] = None
 
 
 class CompetitorCreate(BaseModel):
     brand_id: int
-    network: Literal["tg", "vk"]
-    external_id: str
+    network: CompetitorNetwork
+    external_id: Optional[str] = None
     title: Optional[str] = None
     kind: Literal["channel", "group", "public"] = "channel"
+    """Page URL for network=url (RSS / Custom URL radar)."""
+    url: Optional[str] = Field(None, max_length=2048)
+    alert_enabled: bool = False
+    sync_interval_min: Optional[int] = Field(None, ge=5, le=1440)
+
+
+class CompetitorAlertUpdate(BaseModel):
+    alert_enabled: Optional[bool] = None
+    alert_delivery: Optional[dict[str, Any]] = None
+    sync_interval_min: Optional[int] = Field(None, ge=5, le=1440)
+
+
+class TemplateCreate(BaseModel):
+    kind: Literal["prompt", "cta", "utm", "post_body"]
+    title: str = Field(..., min_length=1, max_length=255)
+    body: str = ""
+    metadata: Optional[dict[str, Any]] = None
+
+
+class TemplateUpdate(BaseModel):
+    kind: Optional[Literal["prompt", "cta", "utm", "post_body"]] = None
+    title: Optional[str] = Field(None, min_length=1, max_length=255)
+    body: Optional[str] = None
+    metadata: Optional[dict[str, Any]] = None
+
+
+class TemplateApplyRequest(BaseModel):
+    job_id: Optional[int] = None
+    current_text: Optional[str] = None
+
+
+class MediaPackCreate(BaseModel):
+    title: str = Field(..., min_length=1, max_length=255)
+    object_keys: List[str] = Field(default_factory=list)
+    caption: Optional[str] = Field(None, max_length=2000)
+
+
+class MediaPackUpdate(BaseModel):
+    title: Optional[str] = Field(None, min_length=1, max_length=255)
+    object_keys: Optional[List[str]] = None
+    caption: Optional[str] = Field(None, max_length=2000)
+
+
+class MediaPackApplyRequest(BaseModel):
+    job_id: Optional[int] = None
+    merge: bool = True
+
+
+class RepublishVariantRequest(BaseModel):
+    pending_approval: Optional[bool] = None
+    network: Optional[str] = None
+
+
+class UtmBuildRequest(BaseModel):
+    base_url: str = Field(..., min_length=1, max_length=2048)
+    params: Optional[dict[str, Any]] = None
 
 
 # ---------- Brands ----------
@@ -205,12 +336,103 @@ async def get_my_smm_plan(x_user_id: Optional[str] = Header(None)):
     return {"tariff": tariff, "limits": get_plan_limits(tariff)}
 
 
+@router.get("/usage")
+async def get_my_usage_summary(x_user_id: Optional[str] = Header(None)):
+    """Used/limit агрегатор для billing и QuotaBanner."""
+    user_id = get_user_id(x_user_id)
+    return await get_usage_summary(user_id)
+
+
 @router.get("/channels")
 async def list_all_channels(
     brand_id: Optional[int] = None, x_user_id: Optional[str] = Header(None)
 ):
     user_id = get_user_id(x_user_id)
     return {"channels": await smm_service.list_all_channels(user_id, brand_id)}
+
+
+@router.get("/channels/export")
+async def export_channels(
+    brand_id: Optional[int] = None, x_user_id: Optional[str] = Header(None)
+):
+    """Download channels as JSON (settings + portable publish/alert target refs)."""
+    user_id = get_user_id(x_user_id)
+    return await smm_service.export_channels(user_id, brand_id)
+
+
+class ChannelsImportBody(BaseModel):
+    format: Optional[str] = None
+    version: Optional[int] = None
+    channels: List[dict[str, Any]] = Field(default_factory=list)
+    update_existing: bool = True
+
+
+@router.post("/channels/import")
+async def import_channels(
+    body: ChannelsImportBody,
+    brand_id: int = Query(..., description="Target brand id"),
+    x_user_id: Optional[str] = Header(None),
+):
+    """Import channels into a brand. Matches by network+external_id (URL by page url)."""
+    user_id = get_user_id(x_user_id)
+    try:
+        return await smm_service.import_channels(
+            user_id,
+            brand_id,
+            body.model_dump(),
+            update_existing=body.update_existing,
+        )
+    except QuotaExceededError as exc:
+        raise _http_quota(exc)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+
+@router.post("/channels/import-file")
+async def import_channels_file(
+    brand_id: int = Query(...),
+    update_existing: bool = Query(True),
+    file: UploadFile = File(...),
+    x_user_id: Optional[str] = Header(None),
+):
+    """Import channels from uploaded JSON file."""
+    user_id = get_user_id(x_user_id)
+    raw = await file.read()
+    try:
+        import json as _json
+
+        payload = _json.loads(raw.decode("utf-8-sig"))
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid JSON: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=422, detail="JSON root must be an object")
+    try:
+        return await smm_service.import_channels(
+            user_id,
+            brand_id,
+            payload,
+            update_existing=update_existing,
+        )
+    except QuotaExceededError as exc:
+        raise _http_quota(exc)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+
+@router.post("/channels/validate")
+async def validate_channels(
+    brand_id: int = Query(..., description="Brand to validate"),
+    recheck_auth: bool = Query(True, description="Live probe each channel"),
+    x_user_id: Optional[str] = Header(None),
+):
+    """Validate channel access and flow settings for a brand (post-import check)."""
+    user_id = get_user_id(x_user_id)
+    try:
+        return await smm_service.validate_brand_channels(
+            user_id, brand_id, recheck_auth=recheck_auth
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
 
 
 @router.get("/brands")
@@ -224,7 +446,15 @@ async def list_brands(x_user_id: Optional[str] = Header(None)):
 async def create_brand(body: BrandCreate, x_user_id: Optional[str] = Header(None)):
     user_id = get_user_id(x_user_id)
     try:
-        return await smm_service.create_brand(user_id, body.name, body.color, body.group_id)
+        return await smm_service.create_brand(
+            user_id,
+            body.name,
+            body.color,
+            body.group_id,
+            tone_of_voice=body.tone_of_voice,
+            style_notes=body.style_notes,
+            prompt_snippets=body.prompt_snippets,
+        )
     except QuotaExceededError as exc:
         raise _http_quota(exc)
     except PlatformAuthError as exc:
@@ -245,8 +475,18 @@ async def get_brand(brand_id: int, x_user_id: Optional[str] = Header(None)):
 @router.patch("/brands/{brand_id}")
 async def update_brand(brand_id: int, body: BrandUpdate, x_user_id: Optional[str] = Header(None)):
     user_id = get_user_id(x_user_id)
+    fields_set = body.model_fields_set if hasattr(body, "model_fields_set") else set()
     brand = await smm_service.update_brand(
-        user_id, brand_id, name=body.name, color=body.color, group_id=body.group_id
+        user_id,
+        brand_id,
+        name=body.name,
+        color=body.color,
+        group_id=body.group_id,
+        tone_of_voice=body.tone_of_voice,
+        style_notes=body.style_notes,
+        prompt_snippets=body.prompt_snippets,
+        clear_tone_of_voice="tone_of_voice" in fields_set and body.tone_of_voice is None,
+        clear_style_notes="style_notes" in fields_set and body.style_notes is None,
     )
     if not brand:
         raise HTTPException(status_code=404, detail="Brand not found")
@@ -276,7 +516,7 @@ async def add_channel(brand_id: int, body: ChannelCreate, x_user_id: Optional[st
         return await smm_service.add_channel(
             user_id,
             brand_id,
-            network=body.network,
+            network=normalize_network(body.network),
             external_id=body.external_id or "",
             title=body.title,
             kind=body.kind,
@@ -370,7 +610,9 @@ async def list_inbox(
 async def create_inbox_item(body: InboxCreate, x_user_id: Optional[str] = Header(None)):
     """Internal/collector helper to seed inbox items."""
     user_id = get_user_id(x_user_id)
-    return await smm_service.ingest_inbox_item(user_id, body.model_dump())
+    payload = body.model_dump()
+    payload["network"] = normalize_network(payload.get("network"))
+    return await smm_service.ingest_inbox_item(user_id, payload)
 
 
 @router.post("/inbox/{item_id}/read")
@@ -454,6 +696,7 @@ async def create_job(body: JobCreate, x_user_id: Optional[str] = Header(None)):
             adapt=body.adapt,
             status=body.status or "ready",
             adapter_overrides=body.adapter_overrides,
+            assigned_to=body.assigned_to,
         )
     except QuotaExceededError as exc:
         raise _http_quota(exc)
@@ -479,6 +722,60 @@ async def approve_job(job_id: int, x_user_id: Optional[str] = Header(None)):
     return job
 
 
+@router.post("/jobs/{job_id}/reject")
+async def reject_job(
+    job_id: int, body: JobReject, x_user_id: Optional[str] = Header(None)
+):
+    user_id = get_user_id(x_user_id)
+    try:
+        job = await smm_service.reject_job(user_id, job_id, body.comment)
+    except QuotaExceededError as exc:
+        raise _http_quota(exc)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return job
+
+
+@router.post("/jobs/{job_id}/assign")
+async def assign_job(
+    job_id: int, body: JobAssign, x_user_id: Optional[str] = Header(None)
+):
+    user_id = get_user_id(x_user_id)
+    try:
+        job = await smm_service.assign_job(user_id, job_id, body.assigned_to)
+    except QuotaExceededError as exc:
+        raise _http_quota(exc)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return job
+
+
+@router.post("/jobs/bulk-approve")
+async def bulk_approve_jobs(body: JobBulkApprove, x_user_id: Optional[str] = Header(None)):
+    user_id = get_user_id(x_user_id)
+    try:
+        return await smm_service.bulk_approve_jobs(user_id, body.job_ids)
+    except QuotaExceededError as exc:
+        raise _http_quota(exc)
+
+
+@router.post("/jobs/bulk-reschedule")
+async def bulk_reschedule_jobs(
+    body: JobBulkReschedule, x_user_id: Optional[str] = Header(None)
+):
+    user_id = get_user_id(x_user_id)
+    try:
+        return await smm_service.bulk_reschedule_jobs(
+            user_id, body.job_ids, body.publish_at
+        )
+    except QuotaExceededError as exc:
+        raise _http_quota(exc)
+
+
 @router.post("/jobs/run-due")
 async def run_due_jobs(
     limit: int = Query(50, ge=1, le=200),
@@ -494,29 +791,77 @@ async def list_jobs(
     brand_id: Optional[int] = None,
     date_from: Optional[str] = Query(None, alias="from"),
     date_to: Optional[str] = Query(None, alias="to"),
+    status: Optional[str] = None,
+    statuses: Optional[str] = Query(
+        None, description="Comma-separated statuses, e.g. draft,pending_approval,ready"
+    ),
+    channel_id: Optional[int] = None,
+    network: Optional[str] = None,
+    assigned_to: Optional[int] = None,
+    assigned_to_me: bool = False,
     x_user_id: Optional[str] = Header(None),
 ):
     user_id = get_user_id(x_user_id)
-    jobs = await smm_service.list_jobs(user_id, brand_id, date_from, date_to)
+    status_list = (
+        [s.strip() for s in statuses.split(",") if s.strip()] if statuses else None
+    )
+    jobs = await smm_service.list_jobs(
+        user_id,
+        brand_id,
+        date_from,
+        date_to,
+        status=status,
+        statuses=status_list,
+        channel_id=channel_id,
+        network=network,
+        assigned_to=assigned_to,
+        assigned_to_me=assigned_to_me,
+    )
     return {"jobs": jobs}
 
 
 @router.patch("/jobs/{job_id}")
 async def update_job(job_id: int, body: JobUpdate, x_user_id: Optional[str] = Header(None)):
     user_id = get_user_id(x_user_id)
-    job = await smm_service.update_job(
-        user_id,
-        job_id,
-        source_text=body.source_text,
-        media=body.media,
-        targets=body.targets,
-        publish_at=body.publish_at,
-        status=body.status,
-        adapters_result=body.adapters_result,
-    )
+    try:
+        job = await smm_service.update_job(
+            user_id,
+            job_id,
+            source_text=body.source_text,
+            media=body.media,
+            targets=body.targets,
+            publish_at=body.publish_at,
+            status=body.status,
+            adapters_result=body.adapters_result,
+            assigned_to=body.assigned_to,
+            rejection_comment=body.rejection_comment,
+        )
+    except QuotaExceededError as exc:
+        raise _http_quota(exc)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     return job
+
+
+@router.post("/jobs/{job_id}/republish-variant")
+async def republish_variant(
+    job_id: int,
+    body: RepublishVariantRequest = RepublishVariantRequest(),
+    x_user_id: Optional[str] = Header(None),
+):
+    """Copy a published/existing job with AI rewrite (brand TOV) into a new draft/approval job."""
+    user_id = get_user_id(x_user_id)
+    try:
+        return await content_library_service.republish_variant(
+            user_id,
+            job_id,
+            pending_approval=body.pending_approval,
+            network=body.network,
+        )
+    except QuotaExceededError as exc:
+        raise _http_quota(exc)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
 
 
 @router.post("/jobs/import-csv")
@@ -531,7 +876,10 @@ async def import_csv(
         content = raw.decode("utf-8-sig")
     except UnicodeDecodeError:
         content = raw.decode("cp1251", errors="replace")
-    return await smm_service.import_csv(user_id, brand_id, content)
+    try:
+        return await smm_service.import_csv(user_id, brand_id, content)
+    except QuotaExceededError as exc:
+        raise _http_quota(exc)
 
 
 # ---------- Automations ----------
@@ -584,6 +932,25 @@ async def delete_automation(automation_id: int, x_user_id: Optional[str] = Heade
     if not ok:
         raise HTTPException(status_code=404, detail="Automation not found")
     return {"ok": True}
+
+
+@router.post("/automations/{automation_id}/run")
+async def run_automation(
+    automation_id: int,
+    limit: int = Query(10, ge=1, le=50),
+    x_user_id: Optional[str] = Header(None),
+):
+    """Pull RSS items into SMM jobs (pending_approval when approval_workflow is on)."""
+    user_id = get_user_id(x_user_id)
+    try:
+        return await smm_service.run_automation(user_id, automation_id, limit=limit)
+    except QuotaExceededError as exc:
+        raise _http_quota(exc)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    except Exception as exc:
+        logger.exception("RSS automation run failed")
+        raise HTTPException(status_code=502, detail=f"Feed fetch failed: {exc}") from exc
 
 
 # ---------- Analytics ----------
@@ -663,19 +1030,45 @@ async def analytics_messages(
 
 # ---------- Competitors ----------
 
+@router.get("/competitors")
+async def list_competitors(
+    brand_id: Optional[int] = None,
+    x_user_id: Optional[str] = Header(None),
+):
+    user_id = get_user_id(x_user_id)
+    try:
+        await ensure_smm_feature(user_id, "competitors")
+    except QuotaExceededError as exc:
+        raise _http_quota(exc)
+    return {"competitors": await smm_service.list_competitors(user_id, brand_id)}
+
+
 @router.post("/competitors")
 async def add_competitor(body: CompetitorCreate, x_user_id: Optional[str] = Header(None)):
     user_id = get_user_id(x_user_id)
     try:
-        return await smm_service.add_channel(
+        channel = await smm_service.add_channel(
             user_id,
             body.brand_id,
-            network=body.network,
-            external_id=body.external_id,
+            network=normalize_network(body.network),
+            external_id=body.external_id or "",
             title=body.title,
             kind=body.kind,
             role="competitor",
+            initial_url=body.url,
         )
+        updates: dict[str, Any] = {}
+        if body.alert_enabled:
+            updates["alert_enabled"] = True
+        if body.sync_interval_min is not None:
+            processing = dict(channel.get("processing") or {})
+            processing["sync_interval_min"] = body.sync_interval_min
+            updates["processing"] = processing
+        if updates:
+            channel = await smm_service.update_channel(
+                user_id, body.brand_id, channel["id"], **updates
+            ) or channel
+        return channel
     except QuotaExceededError as exc:
         raise _http_quota(exc)
     except PlatformAuthError as exc:
@@ -684,10 +1077,92 @@ async def add_competitor(body: CompetitorCreate, x_user_id: Optional[str] = Head
         raise HTTPException(status_code=422, detail=str(exc))
 
 
+@router.get("/competitors/compare")
+async def competitor_compare(
+    brand_id: int = Query(...),
+    competitor_channel_id: int = Query(...),
+    period: str = Query("7d"),
+    x_user_id: Optional[str] = Header(None),
+):
+    user_id = get_user_id(x_user_id)
+    try:
+        return await smm_service.competitor_compare(
+            user_id, brand_id, competitor_channel_id, period
+        )
+    except QuotaExceededError as exc:
+        raise _http_quota(exc)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+
+@router.patch("/competitors/{channel_id}")
+async def update_competitor_settings(
+    channel_id: int,
+    body: CompetitorAlertUpdate,
+    x_user_id: Optional[str] = Header(None),
+):
+    user_id = get_user_id(x_user_id)
+    try:
+        await ensure_smm_feature(user_id, "competitors")
+    except QuotaExceededError as exc:
+        raise _http_quota(exc)
+    ch = await smm_service.get_channel(user_id, channel_id)
+    if not ch or ch.get("role") != "competitor":
+        raise HTTPException(status_code=404, detail="Competitor not found")
+    fields: dict[str, Any] = {}
+    if body.alert_enabled is not None:
+        fields["alert_enabled"] = body.alert_enabled
+    if body.alert_delivery is not None:
+        fields["alert_delivery"] = body.alert_delivery
+    if body.sync_interval_min is not None:
+        processing = dict(ch.get("processing") or {})
+        processing["sync_interval_min"] = body.sync_interval_min
+        fields["processing"] = processing
+    if not fields:
+        return ch
+    updated = await smm_service.update_channel(
+        user_id, int(ch["brand_id"]), channel_id, **fields
+    )
+    return updated or ch
+
+
 @router.get("/competitors/{channel_id}/posts")
 async def competitor_posts(channel_id: int, x_user_id: Optional[str] = Header(None)):
     user_id = get_user_id(x_user_id)
     return {"posts": await smm_service.competitor_posts(user_id, channel_id)}
+
+
+@router.get("/competitors/{channel_id}/digest")
+async def competitor_digest(
+    channel_id: int,
+    period: str = Query("24h"),
+    with_ai: bool = Query(True),
+    x_user_id: Optional[str] = Header(None),
+):
+    user_id = get_user_id(x_user_id)
+    try:
+        return await smm_service.competitor_digest(
+            user_id, channel_id, period, with_ai=with_ai
+        )
+    except QuotaExceededError as exc:
+        raise _http_quota(exc)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+
+@router.get("/competitors/{channel_id}/diff")
+async def competitor_diff(
+    channel_id: int,
+    since: Optional[str] = Query(None),
+    x_user_id: Optional[str] = Header(None),
+):
+    user_id = get_user_id(x_user_id)
+    try:
+        return await smm_service.competitor_diff(user_id, channel_id, since=since)
+    except QuotaExceededError as exc:
+        raise _http_quota(exc)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
 
 
 # ---------- AI ----------
@@ -701,12 +1176,26 @@ async def ai_actions(x_user_id: Optional[str] = Header(None)):
     return {"actions": list_actions()}
 
 
+@router.get("/ai/usage")
+async def ai_usage(x_user_id: Optional[str] = Header(None)):
+    """Остаток месячной AI-квоты: {used, limit, period, remaining}."""
+    user_id = get_user_id(x_user_id)
+    return await get_ai_usage(user_id)
+
+
 @router.post("/ai/process")
 async def ai_process(body: AiProcessRequest, x_user_id: Optional[str] = Header(None)):
     """Шаблонный AI-запрос: action + text + ограниченные params."""
     user_id = get_user_id(x_user_id)
     if not plan_feature(await get_user_tariff(user_id), "ai_composer"):
-        raise HTTPException(status_code=402, detail="AI composer requires Standard or Full plan")
+        raise HTTPException(
+            status_code=402,
+            detail={
+                "message": "AI недоступен на текущем плане. Обновите план.",
+                "resource": "feature:ai_composer",
+                "upgrade_url": "/pricing",
+            },
+        )
     try:
         await ensure_ai_calls_quota(user_id)
     except QuotaExceededError as exc:
@@ -726,6 +1215,7 @@ async def ai_process(body: AiProcessRequest, x_user_id: Optional[str] = Header(N
             body.params,
             source=body.source,
             source_id=body.source_id,
+            brand_id=body.brand_id,
         )
     except AiAssistError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
@@ -735,7 +1225,14 @@ async def ai_process(body: AiProcessRequest, x_user_id: Optional[str] = Header(N
 async def ai_summarize(body: AiSummarizeRequest, x_user_id: Optional[str] = Header(None)):
     user_id = get_user_id(x_user_id)
     if not plan_feature(await get_user_tariff(user_id), "ai_composer"):
-        raise HTTPException(status_code=402, detail="AI composer requires Standard or Full plan")
+        raise HTTPException(
+            status_code=402,
+            detail={
+                "message": "AI недоступен на текущем плане. Обновите план.",
+                "resource": "feature:ai_composer",
+                "upgrade_url": "/pricing",
+            },
+        )
     try:
         await ensure_ai_calls_quota(user_id)
     except QuotaExceededError as exc:
@@ -761,7 +1258,14 @@ async def ai_summarize(body: AiSummarizeRequest, x_user_id: Optional[str] = Head
 async def ai_rewrite(body: AiRewriteRequest, x_user_id: Optional[str] = Header(None)):
     user_id = get_user_id(x_user_id)
     if not plan_feature(await get_user_tariff(user_id), "ai_composer"):
-        raise HTTPException(status_code=402, detail="AI composer requires Standard or Full plan")
+        raise HTTPException(
+            status_code=402,
+            detail={
+                "message": "AI недоступен на текущем плане. Обновите план.",
+                "resource": "feature:ai_composer",
+                "upgrade_url": "/pricing",
+            },
+        )
     try:
         await ensure_ai_calls_quota(user_id)
     except QuotaExceededError as exc:
@@ -770,10 +1274,14 @@ async def ai_rewrite(body: AiRewriteRequest, x_user_id: Optional[str] = Header(N
         raise _http_platform_auth(exc)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
+    tone = body.tone
+    if not tone and body.brand_id is not None:
+        brand = await smm_service.get_brand(user_id, body.brand_id)
+        tone = compose_brand_voice(brand)
     try:
         from shared.ai_client import rewrite  # type: ignore
 
-        text = await rewrite(body.text, tone=body.tone, network=body.network)
+        text = await rewrite(body.text, tone=tone, network=body.network)
         return {"text": text}
     except Exception as exc:
         logger.warning("AI rewrite fallback: %s", exc)
@@ -784,7 +1292,14 @@ async def ai_rewrite(body: AiRewriteRequest, x_user_id: Optional[str] = Header(N
 async def ai_adapt(body: AiAdaptRequest, x_user_id: Optional[str] = Header(None)):
     user_id = get_user_id(x_user_id)
     if not plan_feature(await get_user_tariff(user_id), "ai_composer"):
-        raise HTTPException(status_code=402, detail="AI composer requires Standard or Full plan")
+        raise HTTPException(
+            status_code=402,
+            detail={
+                "message": "AI недоступен на текущем плане. Обновите план.",
+                "resource": "feature:ai_composer",
+                "upgrade_url": "/pricing",
+            },
+        )
     try:
         await ensure_ai_calls_quota(user_id)
     except QuotaExceededError as exc:
@@ -793,25 +1308,47 @@ async def ai_adapt(body: AiAdaptRequest, x_user_id: Optional[str] = Header(None)
         raise _http_platform_auth(exc)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
-    targets = body.targets or ["tg", "vk"]
+
+    raw_targets = body.targets or ["tg", "vk"]
+    targets: list[str] = []
+    seen: set[str] = set()
+    for raw in raw_targets:
+        net = normalize_network(raw)
+        if not is_adapt_network(net) or net in seen:
+            continue
+        seen.add(net)
+        targets.append(net)
+    if not targets:
+        targets = ["tg", "vk"]
+
+    tone = body.tone
+    if not tone and body.brand_id is not None:
+        brand = await smm_service.get_brand(user_id, body.brand_id)
+        tone = compose_brand_voice(brand)
+
     variants: dict[str, str] = {}
+    limits: dict[str, int] = {}
     try:
         from shared.ai_client import rewrite  # type: ignore
 
         for net in targets:
-            variants[net] = await rewrite(body.text, network=net)
+            limit = network_text_limit(net) or 4096
+            limits[net] = limit
+            variants[net] = await rewrite(
+                body.text, tone=tone, network=net, max_length=limit
+            )
     except Exception as exc:
         logger.warning("AI adapt fallback: %s", exc)
         import re
 
         plain = re.sub(r"<[^>]+>", "", body.text).strip()
         for net in targets:
-            if net == "tg":
-                variants[net] = body.text
-            else:
-                variants[net] = plain
-        return {"variants": variants, "fallback": True}
-    return {"variants": variants}
+            limit = network_text_limit(net) or 4096
+            limits[net] = limit
+            base = body.text if net == "tg" else plain
+            variants[net] = base[:limit] if len(base) > limit else base
+        return {"variants": variants, "limits": limits, "fallback": True}
+    return {"variants": variants, "limits": limits}
 
 
 @router.get("/platform-status")
@@ -835,6 +1372,38 @@ async def get_channel_auth(channel_id: int, x_user_id: Optional[str] = Header(No
     }
 
 
+@router.get("/channels/{channel_id}/status")
+async def get_channel_status(channel_id: int, x_user_id: Optional[str] = Header(None)):
+    """Connect status + last collect/publish counters for a channel."""
+    user_id = get_user_id(x_user_id)
+    try:
+        return await smm_service.get_channel_connect_status(user_id, channel_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@router.post("/channels/{channel_id}/bind")
+async def bind_channel(
+    channel_id: int,
+    body: ChannelBind,
+    x_user_id: Optional[str] = Header(None),
+):
+    """Bind channel.external_id to profile handle (or explicit id) and recheck auth."""
+    user_id = get_user_id(x_user_id)
+    try:
+        return await smm_service.bind_channel_profile(
+            user_id,
+            channel_id,
+            external_id=body.external_id,
+            title=body.title,
+            from_profile=body.from_profile,
+        )
+    except PlatformAuthError as exc:
+        raise _http_platform_auth(exc)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+
 @router.post("/channels/{channel_id}/auth/recheck")
 async def recheck_channel_auth(channel_id: int, x_user_id: Optional[str] = Header(None)):
     user_id = get_user_id(x_user_id)
@@ -856,3 +1425,193 @@ async def onboarding_state(x_user_id: Optional[str] = Header(None)):
 async def onboarding_skip(x_user_id: Optional[str] = Header(None)):
     user_id = get_user_id(x_user_id)
     return await platform_auth_service.set_onboarding_skipped(user_id, True)
+
+
+@router.post("/onboarding/seed-demo")
+async def onboarding_seed_demo(
+    x_user_id: Optional[str] = Header(None),
+    force: bool = False,
+):
+    """One-click учебный демо-бренд (S01). Без UTM — передайте force=true."""
+    user_id = get_user_id(x_user_id)
+    return await platform_auth_service.seed_demo_onboarding(user_id, force=force)
+
+
+# ---------- Content library ----------
+
+@router.get("/brands/{brand_id}/templates")
+async def list_templates(
+    brand_id: int,
+    kind: Optional[str] = None,
+    x_user_id: Optional[str] = Header(None),
+):
+    user_id = get_user_id(x_user_id)
+    if kind and kind not in TEMPLATE_KINDS:
+        raise HTTPException(status_code=422, detail=f"Invalid kind: {kind}")
+    try:
+        templates = await content_library_service.list_templates(user_id, brand_id, kind)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    return {"templates": templates}
+
+
+@router.post("/brands/{brand_id}/templates")
+async def create_template(
+    brand_id: int,
+    body: TemplateCreate,
+    x_user_id: Optional[str] = Header(None),
+):
+    user_id = get_user_id(x_user_id)
+    try:
+        return await content_library_service.create_template(
+            user_id,
+            brand_id,
+            kind=body.kind,
+            title=body.title,
+            body=body.body,
+            metadata=body.metadata,
+        )
+    except QuotaExceededError as exc:
+        raise _http_quota(exc)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+
+@router.patch("/templates/{template_id}")
+async def update_template(
+    template_id: int,
+    body: TemplateUpdate,
+    x_user_id: Optional[str] = Header(None),
+):
+    user_id = get_user_id(x_user_id)
+    try:
+        tpl = await content_library_service.update_template(
+            user_id,
+            template_id,
+            title=body.title,
+            body=body.body,
+            metadata=body.metadata,
+            kind=body.kind,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    if not tpl:
+        raise HTTPException(status_code=404, detail="Template not found")
+    return tpl
+
+
+@router.delete("/templates/{template_id}")
+async def delete_template(template_id: int, x_user_id: Optional[str] = Header(None)):
+    user_id = get_user_id(x_user_id)
+    ok = await content_library_service.delete_template(user_id, template_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Template not found")
+    return {"ok": True}
+
+
+@router.post("/templates/{template_id}/apply")
+async def apply_template(
+    template_id: int,
+    body: TemplateApplyRequest = TemplateApplyRequest(),
+    x_user_id: Optional[str] = Header(None),
+):
+    user_id = get_user_id(x_user_id)
+    try:
+        return await content_library_service.apply_template(
+            user_id,
+            template_id,
+            job_id=body.job_id,
+            current_text=body.current_text,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@router.get("/brands/{brand_id}/media-packs")
+async def list_media_packs(brand_id: int, x_user_id: Optional[str] = Header(None)):
+    user_id = get_user_id(x_user_id)
+    try:
+        packs = await content_library_service.list_media_packs(user_id, brand_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    return {"media_packs": packs}
+
+
+@router.post("/brands/{brand_id}/media-packs")
+async def create_media_pack(
+    brand_id: int,
+    body: MediaPackCreate,
+    x_user_id: Optional[str] = Header(None),
+):
+    user_id = get_user_id(x_user_id)
+    try:
+        return await content_library_service.create_media_pack(
+            user_id,
+            brand_id,
+            title=body.title,
+            object_keys=body.object_keys,
+            caption=body.caption,
+        )
+    except QuotaExceededError as exc:
+        raise _http_quota(exc)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+
+@router.patch("/media-packs/{pack_id}")
+async def update_media_pack(
+    pack_id: int,
+    body: MediaPackUpdate,
+    x_user_id: Optional[str] = Header(None),
+):
+    user_id = get_user_id(x_user_id)
+    clear_caption = body.caption is not None and body.caption.strip() == ""
+    try:
+        pack = await content_library_service.update_media_pack(
+            user_id,
+            pack_id,
+            title=body.title,
+            object_keys=body.object_keys,
+            caption=body.caption,
+            clear_caption=clear_caption,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    if not pack:
+        raise HTTPException(status_code=404, detail="Media pack not found")
+    return pack
+
+
+@router.delete("/media-packs/{pack_id}")
+async def delete_media_pack(pack_id: int, x_user_id: Optional[str] = Header(None)):
+    user_id = get_user_id(x_user_id)
+    ok = await content_library_service.delete_media_pack(user_id, pack_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Media pack not found")
+    return {"ok": True}
+
+
+@router.post("/media-packs/{pack_id}/apply")
+async def apply_media_pack(
+    pack_id: int,
+    body: MediaPackApplyRequest = MediaPackApplyRequest(),
+    x_user_id: Optional[str] = Header(None),
+):
+    user_id = get_user_id(x_user_id)
+    try:
+        return await content_library_service.apply_media_pack(
+            user_id,
+            pack_id,
+            job_id=body.job_id,
+            merge=body.merge,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@router.post("/library/utm/build")
+async def build_utm_link(body: UtmBuildRequest, x_user_id: Optional[str] = Header(None)):
+    get_user_id(x_user_id)
+    url = build_utm_url(body.base_url, body.params)
+    return {"url": url}
+

@@ -11,6 +11,9 @@ import { coreService } from '@/services/core-service'
 import type { GroupResponse, GroupMemberResponse } from '@/types/auth'
 import type { UserStatisticsItem } from '@/types/core'
 import { isGroupAdmin, roleLabel, type GroupRole } from '@/types/smm'
+import { parseQuotaError, type QuotaErrorDetail } from '@/lib/quota'
+import { QuotaUpgradeModal } from '@/components/billing/QuotaUpgradeModal'
+import { getErrorMessage } from '@/services/api-client'
 
 export function TeamPage() {
   const { user, refreshUserData } = useAuth()
@@ -29,6 +32,7 @@ export function TeamPage() {
   const [statistics, setStatistics] = useState<UserStatisticsItem[]>([])
   const [isLoadingStats, setIsLoadingStats] = useState(false)
   const [statsError, setStatsError] = useState('')
+  const [quotaDetail, setQuotaDetail] = useState<QuotaErrorDetail | null>(null)
 
   const roleInGroup = group?.role_in_group ?? user?.role_in_group
   const isAdmin = isGroupAdmin(roleInGroup) || user?.role === 'admin'
@@ -105,7 +109,13 @@ export function TeamPage() {
       setAddEmail('')
       if (isAdmin) await loadStats()
     } catch (e) {
-      setAddError(e instanceof Error ? e.message : 'Failed to add member')
+      const q = parseQuotaError(e)
+      if (q) {
+        setQuotaDetail(q)
+        setAddError(q.message)
+      } else {
+        setAddError(getErrorMessage(e))
+      }
     } finally {
       setIsAddingMember(false)
     }
@@ -204,6 +214,11 @@ export function TeamPage() {
       <PageHeader
         title="Team"
         description={`Роль: ${roleLabel(roleInGroup)} · доступы без передачи паролей`}
+      />
+      <QuotaUpgradeModal
+        open={quotaDetail != null}
+        detail={quotaDetail}
+        onClose={() => setQuotaDetail(null)}
       />
 
       <Card className="mb-6">

@@ -139,6 +139,17 @@ export const authService = {
     return response.data
   },
 
+  async getGrowthSummary(limit = 50): Promise<{
+    total_registrations: number
+    s01_registrations: number
+    by_campaign: Array<{ utm_campaign: string; registrations: number }>
+  }> {
+    const response = await apiClient.get('/auth/admin/growth/summary', {
+      params: { limit },
+    })
+    return response.data
+  },
+
   async getBillingPlans(): Promise<BillingPlanDefinition[]> {
     const response = await apiClient.get<{ plans: BillingPlanDefinition[] }>('/auth/billing/plans')
     return response.data.plans
@@ -158,6 +169,13 @@ export const authService = {
 
   async createBillingPortalSession(): Promise<string> {
     const response = await apiClient.post<{ url: string }>('/auth/billing/customer-portal', {})
+    return response.data.url
+  },
+
+  async createCheckoutSession(plan: 'standard' | 'full'): Promise<string> {
+    const response = await apiClient.post<{ url: string }>('/auth/billing/checkout-session', {
+      plan,
+    })
     return response.data.url
   },
 

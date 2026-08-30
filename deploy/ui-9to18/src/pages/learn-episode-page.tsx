@@ -11,6 +11,7 @@ import {
   useLearnPost,
   useLearnPosts,
 } from '@/data/learn/use-learn-posts'
+import { useSiteLearnProgress } from '@/data/site/use-learn-progress'
 
 type LearnTab = 'theory' | 'lab' | 'cheatsheet'
 
@@ -24,9 +25,16 @@ export function LearnEpisodePage() {
   const { slug = '' } = useParams()
   const [searchParams] = useSearchParams()
   const isPreview = searchParams.get('preview') === '1'
-  const { post: episode, isReady } = useLearnPost(slug)
+  const { post: episode, isReady } = useLearnPost(slug, { preview: isPreview })
   const { posts } = useLearnPosts()
   const [activeTab, setActiveTab] = useState<LearnTab>('theory')
+  const {
+    completedSlugs,
+    isAuthed,
+    setCompleted,
+    isReady: progressReady,
+  } = useSiteLearnProgress()
+  const [progressBusy, setProgressBusy] = useState(false)
 
   useEffect(() => {
     setActiveTab('theory')
@@ -66,6 +74,19 @@ export function LearnEpisodePage() {
 
   const rubricTitle = rubricTitleById(episode.rubricId)
   const adjacent = getAdjacentPosts(getPublishedPosts(posts), episode.slug)
+  const isDone = completedSlugs.has(episode.slug)
+
+  async function toggleProgress() {
+    if (!isAuthed) {
+      return
+    }
+    setProgressBusy(true)
+    try {
+      await setCompleted(episode!.slug, !isDone)
+    } finally {
+      setProgressBusy(false)
+    }
+  }
 
   return (
     <PageShell>
@@ -85,6 +106,21 @@ export function LearnEpisodePage() {
             : `Превью · публикация ${formatPublishDate(episode.publishedAt)}`}
         </p>
         <p className="learn-admin-entry">
+          {isAuthed && progressReady ? (
+            <button
+              type="button"
+              className="learn-admin-btn learn-admin-btn-primary"
+              disabled={progressBusy}
+              onClick={() => void toggleProgress()}
+            >
+              {isDone ? 'Снять отметку «пройдено»' : 'Отметить пройденным'}
+            </button>
+          ) : (
+            <Link to="/login" className="learn-admin-link">
+              Войти, чтобы отмечать прогресс
+            </Link>
+          )}
+          {' · '}
           <Link to={`/game/learn/admin/${episode.slug}`} className="learn-admin-link">
             Редактировать
           </Link>
@@ -136,13 +172,26 @@ export function LearnEpisodePage() {
                 <ul>
                   {episode.links
                     .filter((link) => link.href !== '#')
-                    .map((link) => (
-                      <li key={link.href + link.label}>
-                        <a href={link.href} target="_blank" rel="noreferrer">
-                          {link.label}
-                        </a>
-                      </li>
-                    ))}
+                    .map((link) => {
+                      const isInternal =
+                        link.href.startsWith('/') && !link.href.startsWith('//')
+                      const isExternal = link.href.startsWith('http')
+                      return (
+                        <li key={link.href + link.label}>
+                          {isInternal ? (
+                            <Link to={link.href}>{link.label}</Link>
+                          ) : (
+                            <a
+                              href={link.href}
+                              target={isExternal ? '_blank' : undefined}
+                              rel={isExternal ? 'noreferrer' : undefined}
+                            >
+                              {link.label}
+                            </a>
+                          )}
+                        </li>
+                      )
+                    })}
                   {episode.links
                     .filter((link) => link.href === '#')
                     .map((link) => (

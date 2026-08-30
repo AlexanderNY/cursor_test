@@ -25,9 +25,17 @@ class Settings(BaseSettings):
     # Stripe (опционально; без STRIPE_WEBHOOK_SECRET вебхук отклоняется)
     STRIPE_SECRET_KEY: str = ""
     STRIPE_WEBHOOK_SECRET: str = ""
+    # Price IDs: STANDARD/FULL preferred; BASIC/PREMIUM — legacy aliases
+    STRIPE_PRICE_STANDARD: str = ""
+    STRIPE_PRICE_FULL: str = ""
     STRIPE_PRICE_BASIC: str = ""
     STRIPE_PRICE_PREMIUM: str = ""
+    # Reserved for future usage-based billing (not wired in v1)
+    STRIPE_METERED_AI_PRICE_ID: str = ""
+    STRIPE_METERED_POSTS_PRICE_ID: str = ""
     BILLING_PORTAL_RETURN_URL: str = "http://localhost:5173/profile?tab=billing"
+    BILLING_CHECKOUT_SUCCESS_URL: str = "http://localhost:5173/profile?tab=billing&checkout=success"
+    BILLING_CHECKOUT_CANCEL_URL: str = "http://localhost:5173/profile?tab=billing&checkout=cancel"
     
     class Config:
         env_file = ".env"

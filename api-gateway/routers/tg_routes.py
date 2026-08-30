@@ -206,6 +206,30 @@ async def get_tg_analytics_engagement(
     return await forward_to_core("/tg/analytics/engagement", request)
 
 
+@router.get("/analytics/health")
+async def get_tg_analytics_health(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    return await forward_to_core("/tg/analytics/health", request)
+
+
+@router.get("/analytics/export")
+async def export_tg_analytics(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    return await forward_to_core("/tg/analytics/export", request)
+
+
+@router.get("/digests")
+async def get_tg_digests(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    return await forward_to_core("/tg/digests", request)
+
+
 @router.post("/post/{post_id}/approve")
 async def approve_tg_post(
     post_id: int,

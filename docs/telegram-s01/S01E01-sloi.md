@@ -29,6 +29,7 @@ S01E01 · Слои · UI / API / БД / деплой
 
 ## Ссылки
 
+- CopyParse (регистрация, учебный контур): https://www.copyparse.ru/sign-up?utm_source=tg&utm_campaign=s01e01
 - Двенадцать факторов: процессы, конфиг, подключённые сервисы — https://12factor.net/ru/
 - HTTP как транспорт API (методы, статус-коды) — https://developer.mozilla.org/ru/docs/Web/HTTP/Overview
 - Как устроен стенд курса (когда дойдёте руками): docs/ARCHITECTURE.md в репозитории CopyParse

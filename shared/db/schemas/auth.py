@@ -16,9 +16,41 @@ CREATE TABLE IF NOT EXISTS users (
     billing_subscription_id VARCHAR(255),
     subscription_status VARCHAR(40),
     subscription_current_period_end TIMESTAMPTZ,
+    utm_source VARCHAR(64),
+    utm_medium VARCHAR(64),
+    utm_campaign VARCHAR(128),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
+"""
+
+CREATE_USERS_UTM_MIGRATION = """
+DO $$ BEGIN
+  ALTER TABLE users ADD COLUMN utm_source VARCHAR(64);
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE users ADD COLUMN utm_medium VARCHAR(64);
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE users ADD COLUMN utm_campaign VARCHAR(128);
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+"""
+
+CREATE_GROWTH_EVENTS_TABLE = """
+CREATE TABLE IF NOT EXISTS growth_events (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    event_type VARCHAR(64) NOT NULL,
+    utm_source VARCHAR(64),
+    utm_medium VARCHAR(64),
+    utm_campaign VARCHAR(128),
+    meta JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_growth_events_campaign
+    ON growth_events (utm_campaign, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_growth_events_type_created
+    ON growth_events (event_type, created_at DESC);
 """
 
 CREATE_REFRESH_TOKENS_TABLE = """
@@ -152,6 +184,7 @@ CREATE INDEX IF NOT EXISTS idx_admin_audit_log_admin_user_id ON admin_audit_log(
 
 ALL_TABLES: list[str] = [
     CREATE_USERS_TABLE,
+    CREATE_USERS_UTM_MIGRATION,
     CREATE_REFRESH_TOKENS_TABLE,
     CREATE_BLACKLISTED_TOKENS_TABLE,
     CREATE_PASSWORD_RESET_TOKENS_TABLE,
@@ -161,6 +194,7 @@ ALL_TABLES: list[str] = [
     CREATE_GROUP_MEMBERS_TABLE,
     CREATE_PLAN_DEFINITIONS_TABLE,
     CREATE_BILLING_EVENTS_TABLE,
+    CREATE_GROWTH_EVENTS_TABLE,
     CREATE_ADMIN_AUDIT_LOG_TABLE,
     CREATE_INDEXES,
 ]

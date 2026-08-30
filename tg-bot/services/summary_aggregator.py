@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-import json
 import logging
+import time
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 from database import get_db_connection, release_db_connection
-from telethon.client import TelegramClient
 
 from services.alert_service import parse_channel
 
@@ -18,6 +17,23 @@ try:
     from shared import ai_client
 except ImportError:
     ai_client = None  # type: ignore
+
+try:
+    from shared.ai_quota import AiQuotaExceeded, consume_ai_calls
+except ImportError:
+    AiQuotaExceeded = Exception  # type: ignore
+    consume_ai_calls = None  # type: ignore
+
+_digest_stats: Dict[str, Any] = {
+    "sent": 0,
+    "skipped_quota": 0,
+    "errors": 0,
+    "last_latency_ms": None,
+}
+
+
+def get_digest_stats() -> Dict[str, Any]:
+    return dict(_digest_stats)
 
 
 class SummaryAggregator:
@@ -45,7 +61,7 @@ class SummaryAggregator:
             for chat_id, texts in chat_groups.items():
                 if not texts:
                     continue
-                digest = await self._build_digest(texts, chat_id)
+                digest = await self._build_digest(texts, chat_id, user_id=user_id)
                 if not digest:
                     continue
                 await self._save_digest(user_id, chat_id, digest, len(texts))
@@ -57,7 +73,9 @@ class SummaryAggregator:
                             f"Дайджест канала {chat_id} ({len(texts)} сообщ.):\n\n{digest}",
                         )
                         digests_sent += 1
+                        _digest_stats["sent"] = int(_digest_stats["sent"]) + 1
                     except Exception as exc:
+                        _digest_stats["errors"] = int(_digest_stats["errors"]) + 1
                         logger.error("Failed to send digest for user %s: %s", user_id, exc)
 
         return digests_sent
@@ -114,7 +132,28 @@ class SummaryAggregator:
             logger.error("Failed to fetch posts for digest: %s", exc)
         return result
 
-    async def _build_digest(self, texts: List[str], chat_id: str) -> Optional[str]:
+    async def _build_digest(
+        self,
+        texts: List[str],
+        chat_id: str,
+        *,
+        user_id: Optional[int] = None,
+    ) -> Optional[str]:
+        if user_id is not None and consume_ai_calls is not None:
+            try:
+                await consume_ai_calls(
+                    int(user_id),
+                    units=1,
+                    acquire=get_db_connection,
+                    release=release_db_connection,
+                )
+            except AiQuotaExceeded:
+                _digest_stats["skipped_quota"] = int(_digest_stats["skipped_quota"]) + 1
+                logger.info("Digest skipped: AI quota exceeded user=%s", user_id)
+                return None
+            except Exception as exc:
+                logger.warning("AI quota check failed for digest, continuing: %s", exc)
+
         combined = "\n---\n".join(texts[:20])
         if len(combined) > 8000:
             combined = combined[:8000]
@@ -123,8 +162,16 @@ class SummaryAggregator:
             f"Выдели главные темы и факты:\n\n{combined}"
         )
         try:
-            return await ai_client.complete(prompt, system="Ты редактор дайджестов.", max_tokens=1024)
+            started = time.perf_counter()
+            result = await ai_client.complete(
+                prompt, system="Ты редактор дайджестов.", max_tokens=1024
+            )
+            _digest_stats["last_latency_ms"] = round(
+                (time.perf_counter() - started) * 1000, 1
+            )
+            return result
         except Exception as exc:
+            _digest_stats["errors"] = int(_digest_stats["errors"]) + 1
             logger.warning("Digest generation failed: %s", exc)
             return None
 
@@ -138,7 +185,12 @@ class SummaryAggregator:
                         INSERT INTO tg_digests (user_id, chat_id, digest_text, message_count)
                         VALUES (%s, %s, %s, %s)
                         """,
-                        (user_id, int(chat_id) if chat_id.lstrip("-").isdigit() else 0, digest_text, count),
+                        (
+                            user_id,
+                            int(chat_id) if chat_id.lstrip("-").isdigit() else 0,
+                            digest_text,
+                            count,
+                        ),
                     )
             finally:
                 await release_db_connection(conn)

@@ -145,6 +145,18 @@ async def add_member(
             role_in_group=body.role_in_group,
         )
         return member
+    except group_service.TeamSeatLimitError as e:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail={
+                "message": str(e),
+                "resource": e.resource,
+                "limit": e.limit,
+                "used": e.used,
+                "tariff": e.tariff,
+                "upgrade_url": "/pricing",
+            },
+        ) from e
     except PermissionError as e:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
     except ValueError as e:

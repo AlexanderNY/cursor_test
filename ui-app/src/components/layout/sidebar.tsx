@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { NavLink, Link, useLocation } from 'react-router-dom'
 import { useAuth } from '@/contexts/auth-context'
 import { useBrand } from '@/contexts/brand-context'
-import { navItems, groupNavItem, adminNavItems } from '@/config/nav'
+import { navItems, platformNavItems, groupNavItem, adminNavItems } from '@/config/nav'
+import { SettingsIcon } from '@/components/icons'
 import { smmService } from '@/services/smm-service'
 
 const iconClassName = 'h-5 w-5'
@@ -13,6 +14,9 @@ export function Sidebar() {
   const { selectedBrandId } = useBrand()
   const location = useLocation()
   const [newComments, setNewComments] = useState(0)
+  const [platformsOpen, setPlatformsOpen] = useState(() =>
+    platformNavItems.some((item) => location.pathname.startsWith(item.path)),
+  )
 
   const loadBadge = useCallback(async () => {
     if (!user) return
@@ -35,6 +39,12 @@ export function Sidebar() {
     const t = setInterval(() => void loadBadge(), INBOX_BADGE_POLL_MS)
     return () => clearInterval(t)
   }, [user, loadBadge])
+
+  useEffect(() => {
+    if (platformNavItems.some((item) => location.pathname.startsWith(item.path))) {
+      setPlatformsOpen(true)
+    }
+  }, [location.pathname])
 
   return (
     <aside className="w-56 lg:w-64 shrink-0 self-stretch bg-[var(--bg-secondary)] border-r border-[var(--border-color)] flex flex-col min-h-0">
@@ -78,6 +88,32 @@ export function Sidebar() {
             )}
           </NavLink>
         ))}
+
+        <div className="my-3 border-t border-[var(--border-color)]" />
+        <button
+          type="button"
+          className="nav-link w-full text-left"
+          onClick={() => setPlatformsOpen((v) => !v)}
+          aria-expanded={platformsOpen}
+        >
+          <SettingsIcon className={iconClassName} />
+          <span className="flex-1">Платформы</span>
+          <span className="text-[var(--text-muted)] text-xs">{platformsOpen ? '▾' : '▸'}</span>
+        </button>
+        {platformsOpen &&
+          platformNavItems.map((item) => (
+            <NavLink
+              key={item.path}
+              to={item.path}
+              className={({ isActive }) =>
+                `nav-link pl-8 ${isActive ? 'nav-link-active' : ''}`
+              }
+            >
+              <item.Icon className={iconClassName} />
+              <span>{item.label}</span>
+            </NavLink>
+          ))}
+
         {(user?.role === 'manager' ||
           user?.role === 'author' ||
           user?.role === 'admin' ||

@@ -9,13 +9,17 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    DATABASE_URL: str = "dbname=tester user=tester password=tester host=tester-db"
+    # Single-file SQLite inside Docker volume (no separate Postgres)
+    SQLITE_PATH: str = "/data/tester.db"
+    DATA_DIR: str = "/data"
     TESTER_SECRET_KEY: str = ""
-    TARGET_UI_URL: str = "http://ui:8100"
-    TARGET_API_URL: str = "http://gateway:8000"
+    TARGET_UI_URL: str = "https://www.copyparse.ru"
+    TARGET_API_URL: str = ""
     ARTIFACTS_DIR: str = "/data/artifacts"
-    DB_POOL_MINSIZE: int = 1
-    DB_POOL_MAXSIZE: int = 4
+
+    @property
+    def sqlite_path(self) -> Path:
+        return Path(self.SQLITE_PATH)
 
     @property
     def artifacts_path(self) -> Path:

@@ -1,35 +1,22 @@
 # E2E Tester
 
-On-demand сервис для браузерных E2E против уже запущенного основного стека.
-Своя Postgres хранит только сценарии, креды и отчёты. Chromium ходит на `ui:8100` через `edge_net`.
+Локальный on-demand сервис браузерных E2E в **одном Docker-контейнере**.
 
-## Требования
+- Данные: **SQLite** (`/data/tester.db`) + скриншоты в volume `tester_data`
+- Отдельный Postgres **не нужен** (не использует `db_bot` / `db_9to18`)
+- Панель: [http://127.0.0.1:8300](http://127.0.0.1:8300)
 
-1. Сеть `edge_net` существует.
-2. Основной `docker compose` поднят (`ui` и `gateway` на `edge_net`).
-
-```bash
-# один раз
-docker network create edge_net
-
-# основной стек (из корня репозитория)
-docker compose up -d
-```
-
-## Запуск тестера
+## Запуск
 
 ```bash
 cp deploy/e2e-tester/.env.example deploy/e2e-tester/.env
-# Сгенерируйте Fernet-ключ:
 python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-# Впишите в TESTER_SECRET_KEY=
+# → TESTER_SECRET_KEY=...
 
 docker compose -f deploy/e2e-tester/docker-compose.yml --env-file deploy/e2e-tester/.env up -d --build
-# или:
+# или из корня:
 docker compose -f docker-compose.tester.yml --env-file deploy/e2e-tester/.env up -d --build
 ```
-
-Панель: [http://127.0.0.1:8300](http://127.0.0.1:8300) — вкладка **Справка** с полной инструкцией.
 
 Остановка:
 
@@ -37,55 +24,69 @@ docker compose -f docker-compose.tester.yml --env-file deploy/e2e-tester/.env up
 docker compose -f deploy/e2e-tester/docker-compose.yml --env-file deploy/e2e-tester/.env down
 ```
 
-Тома `tester_pg_data` / `tester_artifacts` сохраняются до `down -v`.
+Данные сохраняются в volume `tester_data` до `down -v`.
 
-## Использование
+### Куда ходит Chromium
 
-1. **Credentials** — логин/пароль пользователя продукта или JWT (`access_token` / `refresh_token`). Секреты шифруются Fernet и не отдаются в API-списках.
-2. **Scenarios** — YAML/JSON шаги или `.py` Playwright-скрипт. Примеры: `deploy/e2e-tester/examples/`.
-3. **Runs** — Start → live-логи → скриншоты при ошибках.
+| Цель | `TARGET_UI_URL` |
+|------|-----------------|
+| Публичный сайт | `https://www.copyparse.ru` |
+| Сайт на этом ПК | `http://host.docker.internal:8100` |
 
-### Готовые наборы (каталог UI E2E)
+`host.docker.internal` уже проброшен через `extra_hosts` в compose.
 
-| Файл | ID | Креды | Покрытие |
-|------|-----|-------|----------|
-| `suite_smoke.yaml` | S00, S01, S02, S10–S12, S20, S27 | admin | login, nav, Checks health, Brands/Channels/Posts, Telegram, Custom URL |
-| `suite_platforms.yaml` | S20–S27 | любой пользователь | TG, VK, IG, Threads, WP, Dzen, Twitter, Custom URL |
-| `suite_checks.yaml` | S02, S30–S36 | admin | Administration, Polls, Collector/Processor/Scheduler/AI, posting diag |
+## Быстрый старт: smoke на copyparse.ru
 
-Также: `login_smoke.yaml` / `login_smoke.py` — минимальный логин.
+1. Панель → **Sites**: seed `copyparse` → `https://www.copyparse.ru`.
+2. **Builder** или **Scenarios → Upload** JSON.
+3. **Credentials** → логин/пароль (только в UI).
+4. **Runs** → Start → HTML/ZIP отчёт.
 
-JWT: перед сценарием токены кладутся в `localStorage` (`access_token` / `refresh_token`), как в `ui-app`.
+## Пример: VK Create Post
 
-Password: удобный шаг `login_form` или ручные `fill` / `click`.
+[`examples/copyparse_vk_create_post.json`](examples/copyparse_vk_create_post.json) — login → home → VKontakte → Create Post `ТЕСТ` → Posts → Refresh → assert.
 
-## YAML actions
+## Discovery
+
+Рекурсивный обход same-origin: **Discovery** → отметить links/buttons → **В Builder** / **Создать сценарий**.
+
+## Builder
+
+`POST /api/scenarios/from-config` — base URL, login, pages[], buttons[].  
+`POST /api/scenarios/upload` — свой JSON/YAML/.py.
+
+## JSON schema v2
+
+`sections` → `subsections` → `on_enter` / `actions`. Fail-soft по дереву. Flat YAML v1 совместим.
+
+### Actions
 
 | action | поля |
 |--------|------|
 | `goto` | `path` или `url` |
-| `fill` | `selector`, `value` или `value_from` (`credentials.username` / `password` / `access_token` / `refresh_token`) |
+| `fill` | `selector`, `value` / `value_from` |
+| `type` | TipTap/contenteditable; `clear` |
 | `click` | `selector` |
 | `wait` | `ms` |
-| `wait_url` | `contains`, опционально `timeout_ms` |
+| `wait_url` | `contains`, `timeout_ms` |
 | `assert_text` | `selector`, `contains` |
 | `assert_url` | `contains` |
 | `screenshot` | `name` |
-| `login_form` | использует password-креды и форму `/sign-in` |
+| `login_form` | `sites.meta.login` / `defaults.login` |
 
-## Playwright `.py`
+## API
 
-Скрипт должен объявить:
-
-```python
-async def run(page, base_url, credentials, log):
-    ...
-```
-
-Запрещены импорты `os`, `subprocess`, `socket`, `httpx` и т.п., а также `eval` / `exec` / `open`.
+| Method | Path |
+|--------|------|
+| GET/POST | `/api/sites` |
+| GET/POST | `/api/credentials` |
+| GET/POST | `/api/scenarios`, `/upload`, `/from-config` |
+| GET/POST | `/api/runs`, `…/report.html`, `…/report.zip` |
+| GET/POST | `/api/discoveries`, `…/to-scenario` |
+| GET | `/api/health` |
 
 ## Важно
 
-- Тесты мутируют данные staging/prod-like окружения. Используйте отдельные учётки и cleanup-шаги.
-- Порт панели только на `127.0.0.1:8300`.
-- Health: `GET /api/health`.
+- Не коммитьте пароли в examples / `.env`.
+- Порт панели: `127.0.0.1:8300`.
+- Хранилище: SQLite в `/data/tester.db` внутри volume.

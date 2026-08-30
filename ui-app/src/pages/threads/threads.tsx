@@ -1,5 +1,5 @@
 import { useState, useEffect, FormEvent, useCallback } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -10,7 +10,6 @@ import { EmptyState } from '@/components/ui'
 import { threadsService } from '@/services/threads-service'
 import { getErrorMessage } from '@/services/api-client'
 import {
-  TargetSocialNetworksWidget,
   createDefaultTargets,
   EMPTY_SELECTED_BRAND_CHANNELS,
   type TargetSocialNetworks,
@@ -41,7 +40,7 @@ export function ThreadsPage() {
   const [searchParams, setSearchParams] = useSearchParams()
 
   const [activeTab, setActiveTab] = useState<'create' | 'posts' | 'profile' | 'processing' | 'auth'>(
-    () => (searchParams.get('auth') === '1' ? 'auth' : 'create')
+    () => (searchParams.get('auth') === '1' ? 'auth' : 'posts')
   )
 
   const [authStatus, setAuthStatus] = useState<ThreadsAuthStatus | null>(null)
@@ -75,7 +74,7 @@ export function ThreadsPage() {
   const [staticHtmlContent, setStaticHtmlContent] = useState('')
 
   const [postText, setPostText] = useState('')
-  const [postTargets, setPostTargets] = useState<TargetSocialNetworks>(() =>
+  const [postTargets] = useState<TargetSocialNetworks>(() =>
     createDefaultTargets('threads')
   )
   const [selectedChannels, setSelectedChannels] = useState<SelectedBrandChannels>({
@@ -451,12 +450,17 @@ export function ThreadsPage() {
   return (
     <PageContainer maxWidth="wide">
       <PageHeader title="Threads Integration" description="Manage your Threads posts and settings" />
+      <p className="mb-4 text-sm flex flex-wrap gap-4">
+        <Link to="/posts" className="text-primary-400 hover:underline">
+          Создать пост → /posts
+        </Link>
+      </p>
 
       {error && <Alert variant="error" className="animate-slide-down">{error}</Alert>}
       {success && <Alert variant="success" className="animate-slide-down">{success}</Alert>}
 
       <div className="flex border-b border-[var(--border-color)]">
-        {(['create', 'posts', 'profile', 'processing', 'auth'] as const).map((tab) => (
+        {(['posts', 'profile', 'processing', 'auth'] as const).map((tab) => (
           <button
             key={tab}
             className={`px-6 py-3 text-sm font-medium transition-all relative flex items-center gap-1.5 ${
@@ -466,17 +470,8 @@ export function ThreadsPage() {
                   ? 'text-amber-400 animate-pulse'
                   : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
             }`}
-            onClick={() => {
-              if (tab === 'create') {
-                setEditingPostId(null)
-                setPostText('')
-                setImageFile(null)
-                setImagePreview(null)
-              }
-              setActiveTab(tab)
-            }}
+            onClick={() => setActiveTab(tab)}
           >
-            {tab === 'create' && 'Create Post'}
             {tab === 'posts' && 'Posts'}
             {tab === 'profile' && 'Profile Settings'}
             {tab === 'processing' && 'Обработка'}
@@ -735,10 +730,19 @@ export function ThreadsPage() {
         </Card>
       )}
 
-      {activeTab === 'create' && (
+      {activeTab === 'create' && editingPostId === null && (
+        <Alert className="mt-4">
+          Создание постов — на странице{' '}
+          <Link to="/posts" className="text-primary-400 hover:underline">
+            Posts
+          </Link>
+        </Alert>
+      )}
+
+      {activeTab === 'create' && editingPostId !== null && (
         <Card className="animate-slide-up">
           <CardHeader>
-            <CardTitle>{editingPostId !== null ? 'Edit Threads Post' : 'Create Threads Post'}</CardTitle>
+            <CardTitle>Edit Threads Post</CardTitle>
             <CardDescription>Max {THREADS_TEXT_LIMIT} characters</CardDescription>
           </CardHeader>
           <CardContent>
@@ -770,17 +774,9 @@ export function ThreadsPage() {
                   </div>
                 )}
               </div>
-              {editingPostId === null && (
-                <TargetSocialNetworksWidget
-                  value={postTargets}
-                  onChange={setPostTargets}
-                  selectedChannels={selectedChannels}
-                  onSelectedChannelsChange={setSelectedChannels}
-                />
-              )}
               <CardFooter className="px-0">
                 <Button type="submit" isLoading={isCreatingPost} className="w-full sm:w-auto">
-                  {editingPostId !== null ? 'Update Post' : 'Create Post'}
+                  Update Post
                 </Button>
               </CardFooter>
             </form>

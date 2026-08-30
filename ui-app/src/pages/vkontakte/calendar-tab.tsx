@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { SkeletonCard } from '@/components/ui/skeleton'
@@ -10,6 +11,7 @@ import {
   toDatetimeLocalValue,
   fromDatetimeLocalValue,
 } from './vkontakte-helpers'
+import { useBrand } from '@/contexts/brand-context'
 
 export interface CalendarTabProps {
   posts: VKontaktePostListItem[]
@@ -41,9 +43,14 @@ export function CalendarTab({
   onWeekChange,
   onReschedule,
 }: CalendarTabProps) {
+  const { selectedBrandId } = useBrand()
   const [reschedulePostId, setReschedulePostId] = useState<number | null>(null)
   const [rescheduleValue, setRescheduleValue] = useState('')
   const [isRescheduling, setIsRescheduling] = useState(false)
+
+  const calendarHref = selectedBrandId
+    ? `/calendar?brand=${selectedBrandId}&network=vk`
+    : '/calendar?network=vk'
 
   const days = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(weekStart)
@@ -98,10 +105,10 @@ export function CalendarTab({
             Calendar
           </CardTitle>
           <CardDescription>
-            Week view — click a post to reschedule.{' '}
-            <a href="/calendar?network=vk" className="text-primary-400 hover:underline">
-              Open shared calendar →
-            </a>
+            Week view for VK posts (read-only overlay). Planning lives in the shared calendar.{' '}
+            <Link to={calendarHref} className="text-primary-400 hover:underline">
+              Open Content OS calendar →
+            </Link>
           </CardDescription>
         </div>
         <div className="flex items-center gap-2">

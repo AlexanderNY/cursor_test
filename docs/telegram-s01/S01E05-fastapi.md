@@ -32,6 +32,7 @@ API начинается не с базы, а с контракта: путь, �
 
 ## Ссылки
 
+- CopyParse (регистрация, учебный контур): https://www.copyparse.ru/sign-up?utm_source=tg&utm_campaign=s01e05
 - First Steps — https://fastapi.tiangolo.com/tutorial/first-steps/
 - Pydantic-модели в FastAPI — https://fastapi.tiangolo.com/tutorial/body/
 - Автодокументация OpenAPI / Swagger UI — https://fastapi.tiangolo.com/tutorial/metadata/

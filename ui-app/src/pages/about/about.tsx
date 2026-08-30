@@ -147,6 +147,30 @@ export function AboutPage() {
             footer={block.slug === 'howto' ? howtoFooter : undefined}
           />
         ))}
+
+      <Card className="mt-6" id="releases">
+        <CardHeader>
+          <CardTitle>Релизы продукта (трек C)</CardTitle>
+          <CardDescription>
+            Отдельно от учебного сезона S01E… — шаблон в docs/RELEASES.md
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="text-sm text-[var(--text-secondary)] space-y-2">
+          <p>
+            Короткие анонсы изменений CopyParse без лекций. CTA только на продукт, без склейки с
+            9to18.
+          </p>
+          <pre className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-tertiary)] p-3 text-xs overflow-x-auto whitespace-pre-wrap">{`CopyParse · Release YYYY-MM-DD
+
+Что изменилось:
+• …
+
+Попробовать: https://www.copyparse.ru/?utm_source=tg&utm_campaign=release_YYYYMMDD`}</pre>
+          <p>
+            Текущая версия UI: <strong>v{APP_VERSION}</strong>
+          </p>
+        </CardContent>
+      </Card>
     </PageContainer>
   )
 }

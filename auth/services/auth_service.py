@@ -28,8 +28,25 @@ from utils.exceptions import (
 from services.admin_audit_service import log_admin_audit
 
 
-async def register_user(username: str, email: str, password: str) -> Dict:
+async def register_user(
+    username: str,
+    email: str,
+    password: str,
+    utm_source: Optional[str] = None,
+    utm_medium: Optional[str] = None,
+    utm_campaign: Optional[str] = None,
+) -> Dict:
     """Регистрация нового пользователя."""
+    def _clean_utm(value: Optional[str], max_len: int) -> Optional[str]:
+        if value is None:
+            return None
+        cleaned = str(value).strip()[:max_len]
+        return cleaned or None
+
+    utm_source = _clean_utm(utm_source, 64)
+    utm_medium = _clean_utm(utm_medium, 64)
+    utm_campaign = _clean_utm(utm_campaign, 128)
+
     async with get_db_connection() as conn:
         async with conn.cursor() as cur:
             # Проверка существования пользователя
@@ -48,11 +65,14 @@ async def register_user(username: str, email: str, password: str) -> Dict:
             # Создание пользователя (роль по умолчанию 'guest', тариф по умолчанию 'free')
             await cur.execute(
                 """
-                INSERT INTO users (username, email, password_hash, role, tariff)
-                VALUES (%s, %s, %s, 'guest', 'free')
+                INSERT INTO users (
+                    username, email, password_hash, role, tariff,
+                    utm_source, utm_medium, utm_campaign
+                )
+                VALUES (%s, %s, %s, 'guest', 'free', %s, %s, %s)
                 RETURNING id, username, email, role, tariff, is_email_verified, created_at
                 """,
-                (username, email, password_hash)
+                (username, email, password_hash, utm_source, utm_medium, utm_campaign)
             )
             user_row = await cur.fetchone()
 
@@ -72,6 +92,22 @@ async def register_user(username: str, email: str, password: str) -> Dict:
             # Создание токена для верификации email
             email_verification_token = create_email_verification_token(user_id)
             await save_email_verification_token(user_id, email_verification_token)
+
+            await cur.execute(
+                """
+                INSERT INTO growth_events (
+                    user_id, event_type, utm_source, utm_medium, utm_campaign, meta
+                )
+                VALUES (%s, 'register', %s, %s, %s, %s::jsonb)
+                """,
+                (
+                    user_id,
+                    utm_source,
+                    utm_medium,
+                    utm_campaign,
+                    '{"via":"auth.register"}',
+                ),
+            )
             
             return {
                 "user_id": user_id,
@@ -80,7 +116,8 @@ async def register_user(username: str, email: str, password: str) -> Dict:
                 "role": user_role,
                 "access_token": access_token,
                 "refresh_token": refresh_token,
-                "email_verification_token": email_verification_token
+                "email_verification_token": email_verification_token,
+                "utm_campaign": utm_campaign,
             }
 
 
@@ -496,6 +533,73 @@ async def get_all_users(
                 }
                 for row in rows
             ]
+
+
+async def get_growth_registrations_summary(limit: int = 50) -> Dict:
+    """Сводка регистраций по utm_campaign (admin)."""
+    lim = max(1, min(int(limit or 50), 200))
+    async with get_db_connection() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                """
+                SELECT
+                    COALESCE(NULLIF(TRIM(utm_campaign), ''), '(none)') AS campaign,
+                    COUNT(*)::int AS registrations
+                FROM growth_events
+                WHERE event_type = 'register'
+                GROUP BY 1
+                ORDER BY registrations DESC, campaign ASC
+                LIMIT %s
+                """,
+                (lim,),
+            )
+            by_campaign = [
+                {"utm_campaign": row[0], "registrations": row[1]}
+                for row in await cur.fetchall()
+            ]
+            await cur.execute(
+                """
+                SELECT COUNT(*)::int
+                FROM growth_events
+                WHERE event_type = 'register'
+                  AND utm_campaign ILIKE 's01%%'
+                """
+            )
+            s01_row = await cur.fetchone()
+            await cur.execute(
+                """
+                SELECT COUNT(*)::int
+                FROM growth_events
+                WHERE event_type = 'register'
+                """
+            )
+            total_row = await cur.fetchone()
+            return {
+                "total_registrations": int(total_row[0] if total_row else 0),
+                "s01_registrations": int(s01_row[0] if s01_row else 0),
+                "by_campaign": by_campaign,
+            }
+
+
+async def get_user_attribution(user_id: int) -> Dict:
+    """UTM attribution for a user (shared DB; used by core demo seed)."""
+    async with get_db_connection() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                """
+                SELECT utm_source, utm_medium, utm_campaign
+                FROM users WHERE id = %s
+                """,
+                (user_id,),
+            )
+            row = await cur.fetchone()
+            if not row:
+                return {"utm_source": None, "utm_medium": None, "utm_campaign": None}
+            return {
+                "utm_source": row[0],
+                "utm_medium": row[1],
+                "utm_campaign": row[2],
+            }
 
 
 def export_users_csv_rows(users: list[Dict]) -> str:

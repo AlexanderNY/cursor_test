@@ -1,13 +1,22 @@
-import { useState, FormEvent } from 'react'
-import { Link } from 'react-router-dom'
+import { FormEvent, useMemo, useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useAuth } from '@/contexts/auth-context'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
 
+function pickUtm(search: URLSearchParams) {
+  const utm_source = search.get('utm_source')?.trim() || undefined
+  const utm_medium = search.get('utm_medium')?.trim() || undefined
+  const utm_campaign = search.get('utm_campaign')?.trim() || undefined
+  return { utm_source, utm_medium, utm_campaign }
+}
+
 export function SignUpPage() {
   const { register, error, clearError, isLoading } = useAuth()
+  const [searchParams] = useSearchParams()
+  const utm = useMemo(() => pickUtm(searchParams), [searchParams])
   const [username, setUsername] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -18,25 +27,31 @@ export function SignUpPage() {
     e.preventDefault()
     clearError()
     setValidationError('')
-    
+
     if (password !== confirmPassword) {
       setValidationError('Passwords do not match')
       return
     }
-    
+
     if (password.length < 8) {
       setValidationError('Password must be at least 8 characters')
       return
     }
-    
+
     try {
-      await register({ username, email, password })
+      await register({
+        username,
+        email,
+        password,
+        ...utm,
+      })
     } catch {
       // Error is handled by context
     }
   }
 
   const displayError = validationError || error
+  const fromSeason = Boolean(utm.utm_campaign?.toLowerCase().startsWith('s01'))
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-[var(--bg-primary)] via-[var(--bg-secondary)] to-[var(--bg-primary)]">
@@ -44,20 +59,31 @@ export function SignUpPage() {
         <div className="absolute top-1/3 right-1/4 w-96 h-96 bg-accent-500/10 rounded-full blur-3xl animate-pulse-subtle"></div>
         <div className="absolute bottom-1/3 left-1/4 w-96 h-96 bg-primary-500/10 rounded-full blur-3xl animate-pulse-subtle" style={{ animationDelay: '1s' }}></div>
       </div>
-      
+
       <Card variant="glass" className="w-full max-w-md relative animate-fade-in">
         <CardHeader className="text-center">
           <CardTitle className="text-3xl font-bold text-gradient">Create Account</CardTitle>
-          <CardDescription>Join us and start managing your services</CardDescription>
+          <CardDescription>
+            {fromSeason
+              ? 'Сезон S01 → учебный контур CopyParse после регистрации'
+              : 'Join us and start managing your services'}
+          </CardDescription>
         </CardHeader>
-        
+
         <CardContent>
+          {fromSeason && (
+            <Alert variant="info" className="mb-6">
+              Кампания <code className="text-xs">{utm.utm_campaign}</code>: после входа создадим демо-бренд
+              (без публикации в прод).
+            </Alert>
+          )}
+
           {displayError && (
             <Alert variant="error" className="mb-6 animate-slide-down">
               {displayError}
             </Alert>
           )}
-          
+
           <form onSubmit={handleSubmit} className="space-y-5">
             <Input
               label="Username"
@@ -72,7 +98,7 @@ export function SignUpPage() {
                 </svg>
               }
             />
-            
+
             <Input
               label="Email"
               type="email"
@@ -86,7 +112,7 @@ export function SignUpPage() {
                 </svg>
               }
             />
-            
+
             <Input
               label="Password"
               type="password"
@@ -100,7 +126,7 @@ export function SignUpPage() {
                 </svg>
               }
             />
-            
+
             <Input
               label="Confirm Password"
               type="password"
@@ -114,13 +140,13 @@ export function SignUpPage() {
                 </svg>
               }
             />
-            
+
             <Button type="submit" className="w-full" isLoading={isLoading}>
               Create Account
             </Button>
           </form>
         </CardContent>
-        
+
         <CardFooter className="justify-center flex-col gap-2">
           <p className="text-[var(--text-secondary)]">
             Already have an account?{' '}
@@ -138,5 +164,3 @@ export function SignUpPage() {
     </div>
   )
 }
-
-

@@ -1,5 +1,5 @@
 import { useState, FormEvent, useEffect, type ReactNode } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -7,6 +7,7 @@ import { Alert } from '@/components/ui/alert'
 import { PageHeader, PageContainer } from '@/components/ui'
 import { TipTapEditor } from '@/components/ui/tiptap-editor'
 import { AiAssistPanel } from '@/components/ai/AiAssistPanel'
+import { LibraryPicker } from '@/components/library/LibraryPicker'
 import { createPostService } from '@/services/create-post-service'
 import { coreService } from '@/services/core-service'
 import { smmService } from '@/services/smm-service'
@@ -18,10 +19,10 @@ import {
   type TargetSocialNetworks,
   type SelectedBrandChannels,
 } from '@/components/target-social-networks'
-import type { CpostPostListItem } from '@/types/create-post'
 import type { PostRow } from '@/types/core'
-import type { PlatformStatusResponse } from '@/types/smm'
+import type { PublishJob } from '@/types/smm'
 import { formatDateTime } from '@/utils/date'
+import { getErrorMessage } from '@/services/api-client'
 
 const TEXT_MAX_LENGTH = 150000
 const POST_PREVIEW_LENGTH = 80
@@ -89,7 +90,8 @@ function fromDatetimeLocal(value: string): string {
 type TabId = 'create' | 'posts' | 'posts-review' | 'profile'
 
 export function CreatePostPage() {
-  const { selectedBrandId, selectedBrand, ownChannels } = useBrand()
+  const { selectedBrandId, selectedBrand, connectedPublishChannels, ownChannels } = useBrand()
+  const [searchParams] = useSearchParams()
   const [activeTab, setActiveTab] = useState<TabId>('create')
 
   const [socialNetworks, setSocialNetworks] = useState<TargetSocialNetworks>({
@@ -114,20 +116,22 @@ export function CreatePostPage() {
   const [views, setViews] = useState<number | ''>('')
   const [isAd, setIsAd] = useState(false)
   const [status, setStatus] = useState('collected')
-  const [selectedChannelIds, setSelectedChannelIds] = useState<number[]>([])
+  const [selectedChannelId, setSelectedChannelId] = useState<number | null>(null)
   const [smmPublishAt, setSmmPublishAt] = useState('')
   const [aiBusy, setAiBusy] = useState(false)
   const [csvResult, setCsvResult] = useState('')
   const [adaptPreview, setAdaptPreview] = useState<Record<string, string> | null>(null)
-  const [platformStatus, setPlatformStatus] = useState<PlatformStatusResponse | null>(null)
+  const [adaptLimits, setAdaptLimits] = useState<Record<string, number> | null>(null)
   const [requireApproval, setRequireApproval] = useState(false)
   const [planFeatures, setPlanFeatures] = useState<Record<string, boolean>>({})
+  const [horizonDays, setHorizonDays] = useState(7)
+  const [bestSlots, setBestSlots] = useState<{ weekday: number; hour: number; score: number }[]>([])
 
   const [editingPostId, setEditingPostId] = useState<number | null>(null)
-  const [posts, setPosts] = useState<CpostPostListItem[]>([])
+  const [editingSource, setEditingSource] = useState<'cpost' | 'pipeline'>('cpost')
+  const [publishJobs, setPublishJobs] = useState<PublishJob[]>([])
   const [isLoadingPosts, setIsLoadingPosts] = useState(false)
   const [hasLoadedPosts, setHasLoadedPosts] = useState(false)
-  const [deletingPostId, setDeletingPostId] = useState<number | null>(null)
 
   const [postsReviewList, setPostsReviewList] = useState<PostRow[]>([])
   const [isLoadingPostsReview, setIsLoadingPostsReview] = useState(false)
@@ -141,12 +145,23 @@ export function CreatePostPage() {
   useEffect(() => {
     void smmService.getPlan().then((p) => {
       setPlanFeatures((p.limits?.features || {}) as Record<string, boolean>)
+      if (p.limits?.schedule_horizon_days != null) {
+        setHorizonDays(Number(p.limits.schedule_horizon_days))
+      }
     }).catch(() => undefined)
   }, [])
 
   useEffect(() => {
-    void smmService.platformStatus().then(setPlatformStatus).catch(() => setPlatformStatus(null))
-  }, [])
+    const fromQuery = Number(searchParams.get('channelId') || '')
+    if (fromQuery && connectedPublishChannels.some((c) => c.id === fromQuery)) {
+      setSelectedChannelId(fromQuery)
+      return
+    }
+    setSelectedChannelId((prev) => {
+      if (prev != null && connectedPublishChannels.some((c) => c.id === prev)) return prev
+      return connectedPublishChannels[0]?.id ?? null
+    })
+  }, [connectedPublishChannels, searchParams])
 
   useEffect(() => {
     async function loadProfile() {
@@ -175,17 +190,19 @@ export function CreatePostPage() {
   }, [])
 
   useEffect(() => {
-    if (activeTab === 'posts' && !hasLoadedPosts) {
-      loadPosts()
+    if (activeTab === 'posts') {
+      void loadPosts()
     }
-  }, [activeTab, hasLoadedPosts])
+  }, [activeTab, selectedBrandId])
 
   async function loadPosts() {
     setIsLoadingPosts(true)
     setError('')
     try {
-      const data = await createPostService.getPosts()
-      setPosts(data)
+      const data = await smmService.listJobs({
+        brand_id: selectedBrandId ?? undefined,
+      })
+      setPublishJobs(data)
       setHasLoadedPosts(true)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load posts')
@@ -194,58 +211,57 @@ export function CreatePostPage() {
     }
   }
 
-  async function handleEditPost(postId: number) {
-    setError('')
-    try {
-      const post = await createPostService.getPost(postId)
-      setPostTitle(post.title ?? '')
-      setPostContent(post.post_text ?? '')
-      setDomain(post.domain ?? '')
-      setUrl(post.url ?? '')
-      setAuthor(post.author ?? '')
-      setAvatar(post.avatar ?? '')
-      setPostDate(toDatetimeLocal(post.post_date))
-      setScreenshot(post.screenshot ?? '')
-      const imgs = post.images
-      setImagesText(
-        Array.isArray(imgs) ? imgs.filter(Boolean).join('\n') : typeof imgs === 'string' ? imgs : ''
-      )
-      setImageOverText(post.image_over_text ?? '')
-      setComments(post.comments ?? '')
-      setReposts(post.reposts ?? '')
-      setLikes(post.likes ?? '')
-      setViews(post.views ?? '')
-      setIsAd(post.is_ad ?? false)
-      setStatus(post.status ?? 'collected')
-      setSocialNetworks({
-        ...EMPTY_TARGET_SOCIAL_NETWORKS,
-        tg: post.to_tg ?? false,
-        tw: post.to_tw ?? false,
-        vk: post.to_vk ?? false,
-        wp: post.to_wp ?? false,
-        threads: post.to_threads ?? false,
-        instagram: post.to_instagram ?? false,
-        dzen: post.to_dzen ?? false,
-      })
-      setEditingPostId(postId)
-      setActiveTab('create')
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load post')
-    }
+  function fillFormFromPipelinePost(post: PostRow) {
+    setPostTitle(post.title ?? '')
+    setPostContent(post.post_text ?? '')
+    setDomain(post.domain ?? '')
+    setUrl(post.url ?? '')
+    setAuthor(post.author ?? '')
+    setAvatar(post.avatar ?? '')
+    setPostDate(toDatetimeLocal(post.post_date))
+    setScreenshot(post.screenshot ?? '')
+    const imgs = post.images
+    setImagesText(
+      Array.isArray(imgs)
+        ? imgs.filter((x): x is string => typeof x === 'string' && Boolean(x)).join('\n')
+        : typeof imgs === 'string'
+          ? imgs
+          : ''
+    )
+    setImageOverText(post.image_over_text ?? '')
+    setComments(post.comments ?? '')
+    setReposts(post.reposts ?? '')
+    setLikes(post.likes ?? '')
+    setViews(post.views ?? '')
+    setIsAd(post.is_ad ?? false)
+    setStatus(post.status ?? 'review')
+    setSocialNetworks({
+      ...EMPTY_TARGET_SOCIAL_NETWORKS,
+      tg: post.to_tg ?? false,
+      tw: post.to_tw ?? false,
+      vk: post.to_vk ?? false,
+      wp: post.to_wp ?? false,
+      threads: post.to_threads ?? false,
+      instagram: post.to_instagram ?? false,
+      dzen: post.to_dzen ?? false,
+    })
+    setEditingPostId(post.id)
+    setEditingSource('pipeline')
+    setActiveTab('create')
   }
 
-  async function handleDeletePost(postId: number) {
-    if (deletingPostId !== null) return
-    setDeletingPostId(postId)
+  async function handleEditPipelinePost(post: PostRow) {
     setError('')
     try {
-      await createPostService.deletePost(postId)
-      setPosts((prev) => prev.filter((p) => p.id !== postId))
-      setSuccess('Post deleted')
+      // Prefer fresh fetch; fall back to list row if endpoint unavailable.
+      try {
+        const fresh = await coreService.getPipelinePost(post.id)
+        fillFormFromPipelinePost(fresh)
+      } catch {
+        fillFormFromPipelinePost(post)
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete post')
-    } finally {
-      setDeletingPostId(null)
+      setError(err instanceof Error ? err.message : 'Failed to load post')
     }
   }
 
@@ -339,29 +355,6 @@ export function CreatePostPage() {
 
     const plainText = htmlToPlainText(postContent)
 
-    if (!Object.values(socialNetworks).some(Boolean)) {
-      setError('Please select at least one social network')
-      setIsCreating(false)
-      return
-    }
-
-    if (socialNetworks.tg && !platformStatus?.tg?.can_publish_text) {
-      setError('Connect Telegram before publishing (Profile → Telegram)')
-      setIsCreating(false)
-      return
-    }
-    if (socialNetworks.vk && !platformStatus?.vk?.can_publish_text) {
-      setError('Connect VK before publishing (Profile → VKontakte)')
-      setIsCreating(false)
-      return
-    }
-    const hasImages = imagesText.split('\n').some((s) => s.trim())
-    if (socialNetworks.vk && hasImages && !platformStatus?.vk?.can_publish_media) {
-      setError('VK posts with media require user OAuth token')
-      setIsCreating(false)
-      return
-    }
-
     if (plainText.length > TEXT_MAX_LENGTH) {
       setError(`Post text cannot exceed ${TEXT_MAX_LENGTH} characters`)
       setIsCreating(false)
@@ -412,7 +405,11 @@ export function CreatePostPage() {
     try {
       if (editingPostId !== null) {
         const id = editingPostId
-        await createPostService.updatePost(id, basePayload)
+        if (editingSource === 'pipeline') {
+          await coreService.updatePipelinePost(id, basePayload)
+        } else {
+          await createPostService.updatePost(id, basePayload)
+        }
         setSuccess(
           effectiveStatus === 'ready'
             ? 'Post updated and set to ready for distribution'
@@ -438,74 +435,69 @@ export function CreatePostPage() {
         setIsAd(false)
         setStatus('collected')
         setEditingPostId(null)
-        setPosts((prev) =>
-          prev.map((p) =>
-            p.id === id
-              ? {
-                  ...p,
-                  title: basePayload.title ?? null,
-                  post_text: plainText,
-                  domain: basePayload.domain ?? null,
-                  url: basePayload.url ?? null,
-                  author: basePayload.author ?? null,
-                  avatar: basePayload.avatar ?? null,
-                  post_date: basePayload.post_date ?? null,
-                  screenshot: basePayload.screenshot ?? null,
-                  images: basePayload.images ?? [],
-                  image_over_text: basePayload.image_over_text ?? null,
-                  comments: basePayload.comments ?? 0,
-                  reposts: basePayload.reposts ?? 0,
-                  likes: basePayload.likes ?? 0,
-                  views: basePayload.views ?? 0,
-                  is_ad: basePayload.is_ad,
-                  status: basePayload.status ?? null,
-                  to_tg: socialNetworks.tg,
-                  to_tw: socialNetworks.tw,
-                  to_wp: socialNetworks.wp,
-                  to_vk: socialNetworks.vk,
-                  to_threads: socialNetworks.threads,
-                  to_dzen: socialNetworks.dzen,
-                  to_instagram: socialNetworks.instagram,
-                }
-              : p
-          )
-        )
+        setEditingSource('cpost')
       } else {
-        const {
-          to_tg: _tg,
-          to_tw: _tw,
-          to_wp: _wp,
-          to_vk: _vk,
-          to_threads: _threads,
-          to_dzen: _dz,
-          to_instagram: _ig,
-          ...createFields
-        } = basePayload
-        await createPostService.createPost({
-          social_networks: socialNetworks,
-          ...createFields,
+        if (!selectedBrandId) {
+          setError('Выберите бренд в шапке')
+          setIsCreating(false)
+          return
+        }
+        const channel = connectedPublishChannels.find((c) => c.id === selectedChannelId)
+        if (!channel) {
+          setError(
+            'Выберите один канал с подтверждёнными правами (Channels → Recheck / Connect)',
+          )
+          setIsCreating(false)
+          return
+        }
+        if (smmPublishAt) {
+          const picked = new Date(smmPublishAt)
+          const max = new Date()
+          max.setDate(max.getDate() + horizonDays)
+          if (picked > max) {
+            setError(
+              `Schedule outside plan horizon (${horizonDays} days). Pick an earlier slot or upgrade.`,
+            )
+            setIsCreating(false)
+            return
+          }
+        }
+        const overrides = adaptPreview
+          ? Object.fromEntries(
+              Object.entries(adaptPreview).map(([net, t]) => [net, { text: t }]),
+            )
+          : undefined
+        let jobStatus: string = smmPublishAt ? 'scheduled' : 'ready'
+        if (requireApproval && planFeatures.approval_workflow) {
+          jobStatus = 'pending_approval'
+        }
+        await smmService.createJob({
+          brand_id: selectedBrandId,
+          text: postContent,
+          media_urls: imagesList,
+          targets: [{ network: channel.network, external_id: channel.external_id }],
+          publish_at: smmPublishAt ? fromDatetimeLocal(smmPublishAt) : null,
+          adapt: true,
+          status: jobStatus,
+          adapter_overrides: overrides,
         })
-        setSuccess('Post created successfully')
+        setSuccess(
+          jobStatus === 'pending_approval'
+            ? 'Пост отправлен на согласование'
+            : smmPublishAt
+              ? `Запланировано в ${channel.network}: ${channel.title || channel.external_id}`
+              : `Отправлено в ${channel.network}: ${channel.title || channel.external_id}`,
+        )
         setPostTitle('')
         setPostContent('')
-        setDomain('')
-        setUrl('')
-        setAuthor('')
-        setAvatar('')
-        setPostDate('')
-        setScreenshot('')
         setImagesText('')
-        setImageOverText('')
-        setComments('')
-        setReposts('')
-        setLikes('')
-        setViews('')
-        setIsAd(false)
-        setStatus('collected')
-        setSelectedChannels({ ...EMPTY_SELECTED_BRAND_CHANNELS })
-        const list = await createPostService.getPosts()
-        setPosts(list)
-        setHasLoadedPosts(true)
+        setSmmPublishAt('')
+        setAdaptPreview(null)
+        setAdaptLimits(null)
+        setHasLoadedPosts(false)
+        if (activeTab === 'posts') {
+          await loadPosts()
+        }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save post')
@@ -516,7 +508,10 @@ export function CreatePostPage() {
 
   return (
     <PageContainer maxWidth="wide">
-      <PageHeader title="Posts" description="Create and manage universal posts for social networks" />
+      <PageHeader
+        title="Posts"
+        description="Создайте пост и отправьте в один канал с подтверждёнными правами"
+      />
 
       {error && (
         <Alert variant="error" className="animate-slide-down">
@@ -541,6 +536,7 @@ export function CreatePostPage() {
           }`}
           onClick={() => {
             setEditingPostId(null)
+            setEditingSource('cpost')
             setPostTitle('')
             setPostContent('')
             setDomain('')
@@ -610,13 +606,13 @@ export function CreatePostPage() {
       </div>
 
       {/* Tab: Create Post */}
-      {platformStatus && activeTab === 'create' && (!platformStatus.tg.connected || !platformStatus.vk.connected) && (
+      {activeTab === 'create' && connectedPublishChannels.length === 0 && editingPostId === null && (
         <Alert variant="info" className="mb-4">
-          Platform auth: TG {platformStatus.tg.connected ? '✓' : '—'}{' '}
-          <Link to="/telegram" className="underline">connect</Link>
-          {' · '}
-          VK {platformStatus.vk.connected ? '✓' : '—'}{' '}
-          <Link to="/vkontakte" className="underline">connect</Link>
+          Нет каналов с подтверждёнными правами публикации. Подключите канал в{' '}
+          <Link to="/channels" className="underline">
+            Channels
+          </Link>{' '}
+          и нажмите Recheck / Connect.
         </Alert>
       )}
       {activeTab === 'create' && (
@@ -642,7 +638,7 @@ export function CreatePostPage() {
             <CardDescription>
               {editingPostId !== null
                 ? 'Edit the post and save changes'
-                : 'Create a universal post and send it to any selected social network'}
+                : 'Текст → один канал с confirmed access → отправка'}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -724,12 +720,41 @@ export function CreatePostPage() {
                 <p className="text-xs text-[var(--text-muted)] mt-2">
                   Plain text length: {htmlToPlainText(postContent).length} / {TEXT_MAX_LENGTH} characters
                 </p>
+                <LibraryPicker
+                  className="mt-3"
+                  brandId={selectedBrandId}
+                  onApplyText={(text, meta) => {
+                    if (meta.mode === 'replace') {
+                      setPostContent(plainTextToHtml(text))
+                    } else {
+                      const current = htmlToPlainText(postContent)
+                      const next = current ? `${current}\n\n${text}` : text
+                      setPostContent(plainTextToHtml(next))
+                    }
+                    setSuccess(`Из библиотеки: ${meta.title}`)
+                  }}
+                  onApplyPrompt={(note) => {
+                    setSuccess(`Промпт из библиотеки: ${note.slice(0, 80)}`)
+                  }}
+                  onApplyMedia={(keys, caption) => {
+                    if (caption) {
+                      const current = htmlToPlainText(postContent)
+                      if (!current) setPostContent(plainTextToHtml(caption))
+                    }
+                    setSuccess(
+                      keys.length
+                        ? `Медиа из библиотеки: ${keys.length} файл(ов). Добавьте URL вручную при публикации: ${keys.slice(0, 2).join(', ')}`
+                        : 'Медиа-пакет пуст',
+                    )
+                  }}
+                />
               </div>
 
+              {editingPostId === null && (
               <div className="rounded-xl border border-[var(--border-color)] p-4 space-y-3 bg-[var(--bg-tertiary)]/40">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <h4 className="font-medium text-[var(--text-primary)]">
-                    SMM multi-channel
+                    Канал публикации
                     {selectedBrand && (
                       <span className="ml-2 text-sm text-[var(--text-muted)]">
                         · {selectedBrand.name}
@@ -740,21 +765,33 @@ export function CreatePostPage() {
                     type="button"
                     size="sm"
                     variant="secondary"
-                    disabled={aiBusy || !htmlToPlainText(postContent)}
+                    disabled={aiBusy || !htmlToPlainText(postContent) || selectedChannelId == null}
                     onClick={async () => {
                       setAiBusy(true)
+                      setError('')
                       try {
-                        const res = await smmService.aiAdapt(htmlToPlainText(postContent), ['tg', 'vk'])
+                        const channel = connectedPublishChannels.find(
+                          (c) => c.id === selectedChannelId,
+                        )
+                        const targets = channel ? [channel.network] : ['tg']
+                        const res = await smmService.aiAdapt(
+                          htmlToPlainText(postContent),
+                          targets,
+                          { brand_id: selectedBrandId },
+                        )
                         setAdaptPreview(res.variants)
-                        setSuccess('Network adapt preview ready')
+                        setAdaptLimits(res.limits ?? null)
+                        setSuccess(
+                          `Preview для ${Object.keys(res.variants).length} сетей готов`,
+                        )
                       } catch (err) {
-                        setError(err instanceof Error ? err.message : 'Adapt failed')
+                        setError(getErrorMessage(err))
                       } finally {
                         setAiBusy(false)
                       }
                     }}
                   >
-                    Adapt TG/VK
+                    {aiBusy ? 'Adapt…' : 'Adapt preview'}
                   </Button>
                 </div>
 
@@ -762,6 +799,13 @@ export function CreatePostPage() {
                   sourceText={htmlToPlainText(postContent)}
                   source="post"
                   sourceId={editingPostId ?? undefined}
+                  brandId={selectedBrandId}
+                  brandToneHint={
+                    [selectedBrand?.tone_of_voice, selectedBrand?.style_notes]
+                      .filter(Boolean)
+                      .join(' · ') || null
+                  }
+                  promptSnippets={selectedBrand?.prompt_snippets}
                   allowedActions={['summarize', 'categorize', 'rewrite']}
                   defaultAction="summarize"
                   onApply={(text, meta) => {
@@ -776,37 +820,51 @@ export function CreatePostPage() {
 
                 {adaptPreview && (
                   <div className="grid gap-2 sm:grid-cols-2 text-xs">
-                    {Object.entries(adaptPreview).map(([net, text]) => (
-                      <div key={net} className="rounded border border-[var(--border-color)] p-2">
-                        <p className="uppercase text-[var(--text-muted)] mb-1">{net} override</p>
-                        <textarea
-                          value={text}
-                          rows={4}
-                          className="w-full bg-transparent whitespace-pre-wrap text-[var(--text-primary)] border border-[var(--border-color)] rounded p-1"
-                          onChange={(e) =>
-                            setAdaptPreview((prev) =>
-                              prev ? { ...prev, [net]: e.target.value } : prev,
-                            )
-                          }
-                        />
-                      </div>
-                    ))}
+                    {Object.entries(adaptPreview).map(([net, text]) => {
+                      const limit = adaptLimits?.[net]
+                      return (
+                        <div key={net} className="rounded border border-[var(--border-color)] p-2">
+                          <p className="uppercase text-[var(--text-muted)] mb-1 flex justify-between gap-2">
+                            <span>{net} override</span>
+                            <span
+                              className={
+                                limit && text.length > limit
+                                  ? 'text-amber-400'
+                                  : 'text-[var(--text-muted)]'
+                              }
+                            >
+                              {text.length}
+                              {limit != null ? ` / ${limit}` : ''}
+                            </span>
+                          </p>
+                          <textarea
+                            value={text}
+                            rows={4}
+                            className="w-full bg-transparent whitespace-pre-wrap text-[var(--text-primary)] border border-[var(--border-color)] rounded p-1"
+                            onChange={(e) =>
+                              setAdaptPreview((prev) =>
+                                prev ? { ...prev, [net]: e.target.value } : prev,
+                              )
+                            }
+                          />
+                        </div>
+                      )
+                    })}
                   </div>
                 )}
 
                 <div>
-                  <p className="text-sm text-[var(--text-secondary)] mb-2">Brand channels</p>
-                  <div className="space-y-1 max-h-36 overflow-y-auto">
-                    {ownChannels.map((c) => (
-                      <label key={c.id} className="flex items-center gap-2 text-sm">
+                  <p className="text-sm text-[var(--text-secondary)] mb-2">
+                    Выберите один канал (только connected)
+                  </p>
+                  <div className="space-y-1 max-h-48 overflow-y-auto">
+                    {connectedPublishChannels.map((c) => (
+                      <label key={c.id} className="flex items-center gap-2 text-sm cursor-pointer">
                         <input
-                          type="checkbox"
-                          checked={selectedChannelIds.includes(c.id)}
-                          onChange={() =>
-                            setSelectedChannelIds((prev) =>
-                              prev.includes(c.id) ? prev.filter((x) => x !== c.id) : [...prev, c.id],
-                            )
-                          }
+                          type="radio"
+                          name="publish-channel"
+                          checked={selectedChannelId === c.id}
+                          onChange={() => setSelectedChannelId(c.id)}
                         />
                         <span
                           className="h-2 w-2 rounded-full"
@@ -816,12 +874,15 @@ export function CreatePostPage() {
                         {c.title || c.external_id}
                       </label>
                     ))}
-                    {ownChannels.length === 0 && (
+                    {connectedPublishChannels.length === 0 && (
                       <p className="text-xs text-[var(--text-muted)]">
-                        Нет own-каналов — добавьте в{' '}
+                        Нет подтверждённых каналов —{' '}
                         <Link to="/channels" className="text-primary-400 hover:underline">
                           Channels
                         </Link>
+                        {ownChannels.length > 0
+                          ? ` (${ownChannels.length} own без confirmed access)`
+                          : ''}
                       </p>
                     )}
                   </div>
@@ -829,14 +890,77 @@ export function CreatePostPage() {
 
                   <div className="flex flex-wrap items-end gap-3">
                   <div>
-                    <label className="text-sm text-[var(--text-secondary)]">Schedule (SMM)</label>
+                    <label className="text-sm text-[var(--text-secondary)]">Schedule</label>
                     <input
                       type="datetime-local"
                       value={smmPublishAt}
-                      onChange={(e) => setSmmPublishAt(e.target.value)}
+                      max={(() => {
+                        const d = new Date()
+                        d.setDate(d.getDate() + horizonDays)
+                        const pad = (n: number) => String(n).padStart(2, '0')
+                        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T23:59`
+                      })()}
+                      onChange={(e) => {
+                        setSmmPublishAt(e.target.value)
+                        if (e.target.value) {
+                          const picked = new Date(e.target.value)
+                          const max = new Date()
+                          max.setDate(max.getDate() + horizonDays)
+                          if (picked > max) {
+                            setError(
+                              `Schedule outside plan horizon (${horizonDays} days). Pick an earlier slot or upgrade.`,
+                            )
+                          }
+                        }
+                      }}
                       className="block mt-1 px-3 py-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)]"
                     />
+                    <p className="text-xs text-[var(--text-muted)] mt-1">
+                      Plan horizon: {horizonDays} days
+                    </p>
                   </div>
+                  {planFeatures.best_times && (
+                    <div className="self-center space-y-1">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        onClick={async () => {
+                          try {
+                            const res = await smmService.bestTimes(selectedBrandId)
+                            setBestSlots(res.slots ?? [])
+                          } catch (err) {
+                            setError(err instanceof Error ? err.message : 'Best times failed')
+                          }
+                        }}
+                      >
+                        Suggest best time
+                      </Button>
+                      {bestSlots.slice(0, 4).map((s, i) => {
+                        const daysAhead = (s.weekday - new Date().getDay() + 7) % 7 || 7
+                        const d = new Date()
+                        d.setDate(d.getDate() + daysAhead)
+                        d.setHours(s.hour, 0, 0, 0)
+                        if (d <= new Date()) d.setDate(d.getDate() + 7)
+                        const max = new Date()
+                        max.setDate(max.getDate() + horizonDays)
+                        if (d > max) return null
+                        const pad = (n: number) => String(n).padStart(2, '0')
+                        const local = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:00`
+                        return (
+                          <button
+                            key={i}
+                            type="button"
+                            className="block text-xs text-primary-400 hover:underline"
+                            onClick={() => setSmmPublishAt(local)}
+                          >
+                            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][s.weekday]}{' '}
+                            {pad(s.hour)}:00 (score {s.score})
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
                   {planFeatures.approval_workflow && (
                     <label className="flex items-center gap-2 text-sm self-center">
                       <input
@@ -847,58 +971,6 @@ export function CreatePostPage() {
                       Require approval
                     </label>
                   )}
-                  <Button
-                    type="button"
-                    onClick={async () => {
-                      const text = htmlToPlainText(postContent)
-                      if (!text) {
-                        setError('Content required for SMM job')
-                        return
-                      }
-                      const targets = ownChannels
-                        .filter((c) => selectedChannelIds.includes(c.id))
-                        .map((c) => ({ network: c.network, external_id: c.external_id }))
-                      try {
-                        const overrides = adaptPreview
-                          ? Object.fromEntries(
-                              Object.entries(adaptPreview).map(([net, t]) => [net, { text: t }]),
-                            )
-                          : undefined
-                        let status: string = smmPublishAt ? 'scheduled' : 'ready'
-                        if (requireApproval && planFeatures.approval_workflow) {
-                          status = 'pending_approval'
-                        }
-                        await smmService.createJob({
-                          brand_id: selectedBrandId,
-                          text: postContent,
-                          media_urls: imagesText
-                            .split('\n')
-                            .map((s) => s.trim())
-                            .filter(Boolean),
-                          targets,
-                          publish_at: smmPublishAt ? fromDatetimeLocal(smmPublishAt) : null,
-                          adapt: true,
-                          status,
-                          adapter_overrides: overrides,
-                        })
-                        setSuccess(
-                          status === 'pending_approval'
-                            ? 'SMM job awaiting approval — see Calendar'
-                            : smmPublishAt
-                              ? 'SMM job scheduled — see Calendar'
-                              : 'SMM job created for selected channels',
-                        )
-                      } catch (err) {
-                        setError(err instanceof Error ? err.message : 'SMM job failed')
-                      }
-                    }}
-                  >
-                    {requireApproval
-                      ? 'Submit for approval'
-                      : smmPublishAt
-                        ? 'Schedule to calendar'
-                        : 'Send to brand channels'}
-                  </Button>
                   <label className="text-sm cursor-pointer underline text-primary-400">
                     Import CSV
                     <input
@@ -910,8 +982,19 @@ export function CreatePostPage() {
                         if (!file) return
                         try {
                           const res = await smmService.importCsv(file, selectedBrandId)
-                          setCsvResult(`Created ${res.created} drafts` + (res.errors.length ? `, errors: ${res.errors.length}` : ''))
-                          setSuccess('CSV imported (no media)')
+                          const queue =
+                            res.status === 'pending_approval'
+                              ? ' → review queue on Calendar'
+                              : ' as drafts'
+                          setCsvResult(
+                            `Created ${res.created}${queue}` +
+                              (res.errors.length ? `, errors: ${res.errors.length}` : ''),
+                          )
+                          setSuccess(
+                            res.status === 'pending_approval'
+                              ? 'CSV imported into approval queue'
+                              : 'CSV imported (no media)',
+                          )
                         } catch (err) {
                           setError(err instanceof Error ? err.message : 'CSV import failed')
                         }
@@ -922,6 +1005,7 @@ export function CreatePostPage() {
                   {csvResult && <span className="text-xs text-[var(--text-muted)]">{csvResult}</span>}
                 </div>
               </div>
+              )}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Input
@@ -1027,15 +1111,25 @@ export function CreatePostPage() {
                 </div>
               </div>
 
-              <TargetSocialNetworksWidget
-                value={socialNetworks}
-                onChange={setSocialNetworks}
-                selectedChannels={selectedChannels}
-                onSelectedChannelsChange={setSelectedChannels}
-              />
+              {editingPostId !== null && (
+                <TargetSocialNetworksWidget
+                  value={socialNetworks}
+                  onChange={setSocialNetworks}
+                  selectedChannels={selectedChannels}
+                  onSelectedChannelsChange={setSelectedChannels}
+                />
+              )}
 
               <CardFooter className="px-0">
-                <Button type="submit" isLoading={isCreating} className="w-full sm:w-auto">
+                <Button
+                  type="submit"
+                  isLoading={isCreating}
+                  className="w-full sm:w-auto"
+                  disabled={
+                    editingPostId === null &&
+                    (selectedChannelId == null || connectedPublishChannels.length === 0)
+                  }
+                >
                   {editingPostId !== null ? (
                     <>
                       <svg
@@ -1054,24 +1148,12 @@ export function CreatePostPage() {
                       </svg>
                       Update Post
                     </>
+                  ) : requireApproval ? (
+                    'Отправить на согласование'
+                  ) : smmPublishAt ? (
+                    'Запланировать в канал'
                   ) : (
-                    <>
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        className="h-5 w-5 mr-2"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
-                        />
-                      </svg>
-                      Create Post
-                    </>
+                    'Отправить в выбранный канал'
                   )}
                 </Button>
               </CardFooter>
@@ -1080,7 +1162,7 @@ export function CreatePostPage() {
         </Card>
       )}
 
-      {/* Tab: Posts list */}
+      {/* Tab: Posts (SMM publish jobs) */}
       {activeTab === 'posts' && (
         <Card className="animate-slide-up">
           <CardHeader className="flex flex-row items-center justify-between gap-2">
@@ -1102,141 +1184,94 @@ export function CreatePostPage() {
                 </svg>
                 Posts
               </CardTitle>
-              <CardDescription>All your manual posts from the posts table</CardDescription>
+              <CardDescription>
+                Отправки в каналы (SMM jobs)
+                {selectedBrand ? ` · ${selectedBrand.name}` : ''}
+              </CardDescription>
             </div>
             <Button
               type="button"
               variant="secondary"
               size="sm"
-              onClick={loadPosts}
+              onClick={() => void loadPosts()}
               disabled={isLoadingPosts}
             >
               Refresh
             </Button>
           </CardHeader>
           <CardContent>
-            {isLoadingPosts && posts.length === 0 && (
+            {isLoadingPosts && publishJobs.length === 0 && (
               <div className="text-center py-8 text-[var(--text-muted)]">Loading posts...</div>
             )}
-            {!isLoadingPosts && posts.length === 0 && hasLoadedPosts && (
-              <div className="text-center py-8 text-[var(--text-muted)]">No posts yet.</div>
+            {!isLoadingPosts && publishJobs.length === 0 && hasLoadedPosts && (
+              <div className="text-center py-8 text-[var(--text-muted)]">
+                Пока нет отправок. Создайте пост на вкладке Create Post.
+              </div>
             )}
-            {!isLoadingPosts && posts.length > 0 && (
+            {!isLoadingPosts && publishJobs.length > 0 && (
               <div className="overflow-x-auto">
-                <table className="min-w-full text-sm whitespace-nowrap">
+                <table className="min-w-full text-sm">
                   <thead>
                     <tr className="border-b border-[var(--border-color)] text-left text-[var(--text-secondary)]">
-                      <th className="py-2 pr-2 font-medium">id</th>
-                      <th className="py-2 pr-2 font-medium">user_id</th>
-                      <th className="py-2 pr-2 font-medium">domain</th>
-                      <th className="py-2 pr-2 font-medium">url</th>
-                      <th className="py-2 pr-2 font-medium">title</th>
-                      <th className="py-2 pr-2 font-medium">author</th>
-                      <th className="py-2 pr-2 font-medium">avatar</th>
-                      <th className="py-2 pr-2 font-medium">post_date</th>
-                      <th className="py-2 pr-2 font-medium">post_text</th>
-                      <th className="py-2 pr-2 font-medium">screenshot</th>
-                      <th className="py-2 pr-2 font-medium">images</th>
-                      <th className="py-2 pr-2 font-medium">image_over_text</th>
-                      <th className="py-2 pr-2 font-medium">comments</th>
-                      <th className="py-2 pr-2 font-medium">reposts</th>
-                      <th className="py-2 pr-2 font-medium">likes</th>
-                      <th className="py-2 pr-2 font-medium">views</th>
-                      <th className="py-2 pr-2 font-medium">is_ad</th>
-                      <th className="py-2 pr-2 font-medium">status</th>
-                      <th className="py-2 pr-2 font-medium">post_type</th>
-                      <th className="py-2 pr-2 font-medium">to_tg</th>
-                      <th className="py-2 pr-2 font-medium">to_tw</th>
-                      <th className="py-2 pr-2 font-medium">to_wp</th>
-                      <th className="py-2 pr-2 font-medium">to_vk</th>
-                      <th className="py-2 pr-2 font-medium">to_threads</th>
-                      <th className="py-2 pr-2 font-medium">to_dzen</th>
-                      <th className="py-2 pr-2 font-medium">to_instagram</th>
-                      <th className="py-2 pr-2 font-medium">created_at</th>
-                      <th className="py-2 pr-2 font-medium">updated_at</th>
-                      <th className="py-2 pr-2 font-medium w-32 text-right">Actions</th>
+                      <th className="py-2 pr-3 font-medium">ID</th>
+                      <th className="py-2 pr-3 font-medium">Status</th>
+                      <th className="py-2 pr-3 font-medium">Channel</th>
+                      <th className="py-2 pr-3 font-medium">Text</th>
+                      <th className="py-2 pr-3 font-medium">Schedule</th>
+                      <th className="py-2 pr-3 font-medium">Created</th>
+                      <th className="py-2 pr-3 font-medium">Error</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {posts.map((post) => (
-                      <tr
-                        key={post.id}
-                        className="border-b border-[var(--border-color)] text-[var(--text-primary)]"
-                      >
-                        <td className="py-2 pr-2">{cellValue(post.id)}</td>
-                        <td className="py-2 pr-2">{cellValue(post.user_id)}</td>
-                        <td className="py-2 pr-2 max-w-[120px] truncate" title={post.domain ?? undefined}>
-                          {cellValue(post.domain, 40)}
-                        </td>
-                        <td className="py-2 pr-2 max-w-[120px] truncate" title={post.url ?? undefined}>
-                          {cellValue(post.url, 40)}
-                        </td>
-                        <td className="py-2 pr-2 max-w-[140px] truncate" title={post.title ?? undefined}>
-                          {cellValue(post.title, 50)}
-                        </td>
-                        <td className="py-2 pr-2 max-w-[100px] truncate" title={post.author ?? undefined}>
-                          {cellValue(post.author, 30)}
-                        </td>
-                        <td className="py-2 pr-2 max-w-[100px] truncate" title={post.avatar ?? undefined}>
-                          {cellValue(post.avatar, 30)}
-                        </td>
-                        <td className="py-2 pr-2 text-[var(--text-muted)]">
-                          {formatDate(post.post_date)}
-                        </td>
-                        <td className="py-2 pr-2 max-w-[180px] truncate" title={post.post_text ?? undefined}>
-                          {cellValue(post.post_text, POST_PREVIEW_LENGTH)}
-                        </td>
-                        <td className="py-2 pr-2 max-w-[80px] truncate" title={post.screenshot ?? undefined}>
-                          {cellValue(post.screenshot, 30)}
-                        </td>
-                        <td className="py-2 pr-2">{cellValue(post.images)}</td>
-                        <td className="py-2 pr-2 max-w-[80px] truncate" title={post.image_over_text ?? undefined}>
-                          {cellValue(post.image_over_text, 30)}
-                        </td>
-                        <td className="py-2 pr-2">{cellValue(post.comments)}</td>
-                        <td className="py-2 pr-2">{cellValue(post.reposts)}</td>
-                        <td className="py-2 pr-2">{cellValue(post.likes)}</td>
-                        <td className="py-2 pr-2">{cellValue(post.views)}</td>
-                        <td className="py-2 pr-2">{cellValue(post.is_ad)}</td>
-                        <td className="py-2 pr-2">{cellValue(post.status)}</td>
-                        <td className="py-2 pr-2">{cellValue(post.post_type)}</td>
-                        <td className="py-2 pr-2">{cellValue(post.to_tg)}</td>
-                        <td className="py-2 pr-2">{cellValue(post.to_tw)}</td>
-                        <td className="py-2 pr-2">{cellValue(post.to_wp)}</td>
-                        <td className="py-2 pr-2">{cellValue(post.to_vk)}</td>
-                        <td className="py-2 pr-2">{cellValue(post.to_threads)}</td>
-                        <td className="py-2 pr-2">{cellValue(post.to_dzen)}</td>
-                        <td className="py-2 pr-2">{cellValue(post.to_instagram)}</td>
-                        <td className="py-2 pr-2 text-[var(--text-muted)]">
-                          {formatDate(post.created_at)}
-                        </td>
-                        <td className="py-2 pr-2 text-[var(--text-muted)]">
-                          {formatDate(post.updated_at)}
-                        </td>
-                        <td className="py-2 pr-2 text-right">
-                          <div className="flex items-center justify-end gap-2">
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleEditPost(post.id)}
+                    {publishJobs.map((job) => {
+                      const plain = htmlToPlainText(job.source_text || '')
+                      const targets = (job.targets || [])
+                        .map((t) => `${t.network}:${t.external_id}`)
+                        .join(', ')
+                      return (
+                        <tr
+                          key={job.id}
+                          className="border-b border-[var(--border-color)] text-[var(--text-primary)]"
+                        >
+                          <td className="py-2 pr-3 whitespace-nowrap">{job.id}</td>
+                          <td className="py-2 pr-3 whitespace-nowrap">
+                            <span
+                              className={
+                                job.status === 'published'
+                                  ? 'text-emerald-400'
+                                  : job.status === 'failed' || job.status === 'partial'
+                                    ? 'text-amber-400'
+                                    : 'text-[var(--text-secondary)]'
+                              }
                             >
-                              Edit
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              className="text-red-400 hover:text-red-300"
-                              onClick={() => handleDeletePost(post.id)}
-                              disabled={deletingPostId === post.id}
-                            >
-                              {deletingPostId === post.id ? 'Deleting…' : 'Delete'}
-                            </Button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
+                              {job.status}
+                            </span>
+                          </td>
+                          <td
+                            className="py-2 pr-3 max-w-[200px] truncate whitespace-nowrap"
+                            title={targets}
+                          >
+                            {targets || '—'}
+                          </td>
+                          <td className="py-2 pr-3 max-w-[280px] truncate" title={plain}>
+                            {plain.slice(0, POST_PREVIEW_LENGTH) || '—'}
+                            {plain.length > POST_PREVIEW_LENGTH ? '…' : ''}
+                          </td>
+                          <td className="py-2 pr-3 text-[var(--text-muted)] whitespace-nowrap">
+                            {job.publish_at ? formatDate(job.publish_at) : '—'}
+                          </td>
+                          <td className="py-2 pr-3 text-[var(--text-muted)] whitespace-nowrap">
+                            {formatDate(job.created_at)}
+                          </td>
+                          <td
+                            className="py-2 pr-3 max-w-[200px] truncate text-amber-400"
+                            title={job.last_error || undefined}
+                          >
+                            {job.last_error || '—'}
+                          </td>
+                        </tr>
+                      )
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -1294,7 +1329,7 @@ export function CreatePostPage() {
                             type="button"
                             variant="secondary"
                             size="sm"
-                            onClick={() => handleEditPost(post.id)}
+                            onClick={() => handleEditPipelinePost(post)}
                           >
                             Редактировать
                           </Button>

@@ -35,6 +35,8 @@ export interface BillingPlanDefinition {
   max_brands?: number
   max_targets_per_job?: number
   max_automations?: number
+  max_team_seats?: number
+  ai_calls_month?: number
   features: Record<string, boolean>
   sort_order: number
 }
@@ -48,6 +50,7 @@ export interface BillingMeResponse {
   subscription_status?: string | null
   subscription_current_period_end?: string | null
   stripe_portal_available: boolean
+  stripe_checkout_available?: boolean
 }
 
 export interface BillingEventRow {
@@ -101,6 +104,9 @@ export interface RegisterCredentials {
   username: string
   email: string
   password: string
+  utm_source?: string
+  utm_medium?: string
+  utm_campaign?: string
 }
 
 export interface ProfileUpdate {

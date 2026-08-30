@@ -8,6 +8,9 @@ class UserRegister(BaseModel):
     username: str = Field(..., min_length=3, max_length=50)
     email: EmailStr
     password: str = Field(..., min_length=8)
+    utm_source: Optional[str] = Field(None, max_length=64)
+    utm_medium: Optional[str] = Field(None, max_length=64)
+    utm_campaign: Optional[str] = Field(None, max_length=128)
 
 
 class UserLogin(BaseModel):
@@ -225,4 +228,9 @@ class RoleTariffHistoryEntry(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class CheckoutSessionRequest(BaseModel):
+    """Self-serve Stripe Checkout: Standard или Full."""
+    plan: Literal["standard", "full"]
 

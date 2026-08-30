@@ -11,6 +11,8 @@ import type {
   TgAnalyticsTimelinePoint,
   TgAnalyticsSentimentBreakdown,
   TgAnalyticsEngagement,
+  TgAnalyticsHealth,
+  TgDigestItem,
   TgPostTemplate,
 } from '@/types/telegram'
 import type { TargetSocialNetworks } from '@/components/target-social-networks'
@@ -294,55 +296,102 @@ export const telegramService = {
     return response.data
   },
 
-  async getAnalyticsOverview(period = '7d'): Promise<TgAnalyticsOverview> {
-    const response = await apiClient.get<TgAnalyticsOverview>(
-      `/tg/analytics/overview?period=${period}`,
-    )
+  async getAnalyticsOverview(period = '7d', chatId?: string): Promise<TgAnalyticsOverview> {
+    const q = new URLSearchParams({ period })
+    if (chatId) q.set('chat_id', chatId)
+    const response = await apiClient.get<TgAnalyticsOverview>(`/tg/analytics/overview?${q}`)
     return response.data
   },
 
-  async getAnalyticsChannels(period = '7d', limit = 10): Promise<TgAnalyticsChannelItem[]> {
-    const response = await apiClient.get<TgAnalyticsChannelItem[]>(
-      `/tg/analytics/channels?period=${period}&limit=${limit}`,
-    )
+  async getAnalyticsChannels(
+    period = '7d',
+    limit = 10,
+    chatId?: string,
+  ): Promise<TgAnalyticsChannelItem[]> {
+    const q = new URLSearchParams({ period, limit: String(limit) })
+    if (chatId) q.set('chat_id', chatId)
+    const response = await apiClient.get<TgAnalyticsChannelItem[]>(`/tg/analytics/channels?${q}`)
     return response.data
   },
 
-  async getAnalyticsKeywords(period = '7d', limit = 20): Promise<TgAnalyticsKeywordItem[]> {
-    const response = await apiClient.get<TgAnalyticsKeywordItem[]>(
-      `/tg/analytics/keywords?period=${period}&limit=${limit}`,
-    )
+  async getAnalyticsKeywords(
+    period = '7d',
+    limit = 20,
+    chatId?: string,
+  ): Promise<TgAnalyticsKeywordItem[]> {
+    const q = new URLSearchParams({ period, limit: String(limit) })
+    if (chatId) q.set('chat_id', chatId)
+    const response = await apiClient.get<TgAnalyticsKeywordItem[]>(`/tg/analytics/keywords?${q}`)
     return response.data
   },
 
-  async getAnalyticsAlerts(period = '7d', limit = 10): Promise<TgAnalyticsAlertItem[]> {
-    const response = await apiClient.get<TgAnalyticsAlertItem[]>(
-      `/tg/analytics/alerts?period=${period}&limit=${limit}`,
-    )
+  async getAnalyticsAlerts(
+    period = '7d',
+    limit = 10,
+    chatId?: string,
+  ): Promise<TgAnalyticsAlertItem[]> {
+    const q = new URLSearchParams({ period, limit: String(limit) })
+    if (chatId) q.set('chat_id', chatId)
+    const response = await apiClient.get<TgAnalyticsAlertItem[]>(`/tg/analytics/alerts?${q}`)
     return response.data
   },
 
   async getAnalyticsTimeline(
     period = '7d',
     granularity = 'hour',
+    chatId?: string,
   ): Promise<TgAnalyticsTimelinePoint[]> {
+    const q = new URLSearchParams({ period, granularity })
+    if (chatId) q.set('chat_id', chatId)
     const response = await apiClient.get<TgAnalyticsTimelinePoint[]>(
-      `/tg/analytics/timeline?period=${period}&granularity=${granularity}`,
+      `/tg/analytics/timeline?${q}`,
     )
     return response.data
   },
 
-  async getAnalyticsSentiment(period = '7d'): Promise<TgAnalyticsSentimentBreakdown> {
+  async getAnalyticsSentiment(
+    period = '7d',
+    chatId?: string,
+  ): Promise<TgAnalyticsSentimentBreakdown> {
+    const q = new URLSearchParams({ period })
+    if (chatId) q.set('chat_id', chatId)
     const response = await apiClient.get<TgAnalyticsSentimentBreakdown>(
-      `/tg/analytics/sentiment?period=${period}`,
+      `/tg/analytics/sentiment?${q}`,
     )
     return response.data
   },
 
-  async getAnalyticsEngagement(period = '7d', limit = 10): Promise<TgAnalyticsEngagement> {
-    const response = await apiClient.get<TgAnalyticsEngagement>(
-      `/tg/analytics/engagement?period=${period}&limit=${limit}`,
+  async getAnalyticsEngagement(
+    period = '7d',
+    limit = 10,
+    chatId?: string,
+  ): Promise<TgAnalyticsEngagement> {
+    const q = new URLSearchParams({ period, limit: String(limit) })
+    if (chatId) q.set('chat_id', chatId)
+    const response = await apiClient.get<TgAnalyticsEngagement>(`/tg/analytics/engagement?${q}`)
+    return response.data
+  },
+
+  async getAnalyticsHealth(period = '24h'): Promise<TgAnalyticsHealth> {
+    const response = await apiClient.get<TgAnalyticsHealth>(
+      `/tg/analytics/health?period=${period}`,
     )
+    return response.data
+  },
+
+  async exportAnalyticsCsv(period = '7d', chatId?: string): Promise<Blob> {
+    const q = new URLSearchParams({ period })
+    if (chatId) q.set('chat_id', chatId)
+    const response = await apiClient.get(`/tg/analytics/export?${q}`, {
+      responseType: 'blob',
+    })
+    return response.data as Blob
+  },
+
+  async getDigests(limit = 5, chatId?: string): Promise<TgDigestItem[]> {
+    const q = new URLSearchParams({ limit: String(limit) })
+    if (chatId) q.set('chat_id', chatId)
+    const response = await apiClient.get<TgDigestItem[]>(`/tg/digests?${q}`)
     return response.data
   },
 }

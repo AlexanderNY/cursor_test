@@ -12,6 +12,7 @@
 Интернет :80 / :443 ──── ui-edge (nginx)
                          │
                          └─ www.9to18.ru ──────→ ui-9to18:8200
+                                                   └─ /api/learn|auth → gateway:8000
 ```
 
 ## Структура
@@ -62,6 +63,8 @@ docker compose exec ui-edge nginx -t
 HTTP и HTTPS. Сертификаты: `certs/9to18/fullchain.pem`, `privkey.pem`.
 
 Приложение: отдельный стек [`deploy/ui-9to18/`](../ui-9to18/).
+
+API на этом host: только `/api/learn/*` и `/api/auth/*` → gateway (без SMM/ботов CopyParse).
 
 ## copyparse.ru
 

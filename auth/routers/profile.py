@@ -14,6 +14,7 @@ from services.auth_service import (
     update_user_role_tariff,
     get_user_role_tariff_history,
     export_users_csv_rows,
+    get_growth_registrations_summary,
 )
 from services.admin_audit_service import get_admin_audit_log
 from services import group_service
@@ -169,4 +170,14 @@ async def admin_audit_log(
         )
         for r in rows
     ]
+
+
+@router.get("/admin/growth/summary")
+async def admin_growth_summary(
+    admin_user: Dict = Depends(get_admin_user),
+    limit: int = Query(50, ge=1, le=200),
+) -> Dict:
+    """Сводка регистраций по utm_campaign (воронка S01 / релизы)."""
+    _ = admin_user
+    return await get_growth_registrations_summary(limit=limit)
 

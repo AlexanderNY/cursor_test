@@ -88,6 +88,7 @@ async def get_tg_profile(x_user_id: Optional[str] = Header(None)):
         "digest_channel": None,
         "classification_enabled": False,
         "classification_categories": ["новости", "реклама", "технологии", "финансы", "другое"],
+        "batch_enrichment_enabled": False,
     }
 
 
@@ -384,66 +385,124 @@ async def get_tg_upload(filename: str):
 @router.get("/analytics/overview")
 async def get_tg_analytics_overview(
     period: str = "7d",
+    chat_id: Optional[str] = None,
     x_user_id: Optional[str] = Header(None),
 ):
     user_id = get_user_id_from_header(x_user_id)
-    return await tg_analytics_service.get_overview(user_id, period)
+    return await tg_analytics_service.get_overview(user_id, period, chat_id=chat_id)
 
 
 @router.get("/analytics/channels")
 async def get_tg_analytics_channels(
     period: str = "7d",
     limit: int = 10,
+    chat_id: Optional[str] = None,
     x_user_id: Optional[str] = Header(None),
 ):
     user_id = get_user_id_from_header(x_user_id)
-    return await tg_analytics_service.get_channels(user_id, period, limit)
+    return await tg_analytics_service.get_channels(user_id, period, limit, chat_id=chat_id)
 
 
 @router.get("/analytics/keywords")
 async def get_tg_analytics_keywords(
     period: str = "7d",
     limit: int = 20,
+    chat_id: Optional[str] = None,
     x_user_id: Optional[str] = Header(None),
 ):
     user_id = get_user_id_from_header(x_user_id)
-    return await tg_analytics_service.get_keywords(user_id, period, limit)
+    return await tg_analytics_service.get_keywords(user_id, period, limit, chat_id=chat_id)
 
 
 @router.get("/analytics/alerts")
 async def get_tg_analytics_alerts(
     period: str = "7d",
     limit: int = 50,
+    chat_id: Optional[str] = None,
     x_user_id: Optional[str] = Header(None),
 ):
     user_id = get_user_id_from_header(x_user_id)
-    return await tg_analytics_service.get_alerts(user_id, period, limit)
+    return await tg_analytics_service.get_alerts(user_id, period, limit, chat_id=chat_id)
 
 
 @router.get("/analytics/timeline")
 async def get_tg_analytics_timeline(
     period: str = "7d",
     granularity: str = "hour",
+    chat_id: Optional[str] = None,
     x_user_id: Optional[str] = Header(None),
 ):
     user_id = get_user_id_from_header(x_user_id)
-    return await tg_analytics_service.get_timeline(user_id, period, granularity)
+    return await tg_analytics_service.get_timeline(
+        user_id, period, granularity, chat_id=chat_id
+    )
 
 
 @router.get("/analytics/sentiment")
 async def get_tg_analytics_sentiment(
     period: str = "7d",
+    chat_id: Optional[str] = None,
     x_user_id: Optional[str] = Header(None),
 ):
     user_id = get_user_id_from_header(x_user_id)
-    return await tg_analytics_service.get_sentiment_breakdown(user_id, period)
+    return await tg_analytics_service.get_sentiment_breakdown(
+        user_id, period, chat_id=chat_id
+    )
 
 
 @router.get("/analytics/engagement")
 async def get_tg_analytics_engagement(
     period: str = "7d",
     limit: int = 10,
+    chat_id: Optional[str] = None,
     x_user_id: Optional[str] = Header(None),
 ):
     user_id = get_user_id_from_header(x_user_id)
-    return await tg_analytics_service.get_engagement(user_id, period, limit)
+    return await tg_analytics_service.get_engagement(
+        user_id, period, limit, chat_id=chat_id
+    )
+
+
+@router.get("/analytics/health")
+async def get_tg_analytics_health(
+    period: str = "24h",
+    x_user_id: Optional[str] = Header(None),
+):
+    user_id = get_user_id_from_header(x_user_id)
+    return await tg_analytics_service.get_health(user_id, period)
+
+
+@router.get("/analytics/export")
+async def export_tg_analytics_csv(
+    period: str = "7d",
+    chat_id: Optional[str] = None,
+    x_user_id: Optional[str] = Header(None),
+):
+    from fastapi.responses import Response
+
+    user_id = get_user_id_from_header(x_user_id)
+    overview = await tg_analytics_service.get_overview(user_id, period, chat_id=chat_id)
+    channels = await tg_analytics_service.get_channels(
+        user_id, period, 50, chat_id=chat_id
+    )
+    keywords = await tg_analytics_service.get_keywords(
+        user_id, period, 50, chat_id=chat_id
+    )
+    csv_body = tg_analytics_service.export_overview_csv(overview, channels, keywords)
+    return Response(
+        content=csv_body,
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="tg-analytics-{period}.csv"'},
+    )
+
+
+@router.get("/digests")
+async def get_tg_digests(
+    limit: int = 5,
+    chat_id: Optional[str] = None,
+    x_user_id: Optional[str] = Header(None),
+):
+    user_id = get_user_id_from_header(x_user_id)
+    return await tg_analytics_service.get_recent_digests(
+        user_id, limit=min(limit, 20), chat_id=chat_id
+    )

@@ -1,5 +1,5 @@
 import { useState, FormEvent, useEffect, useCallback } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -7,13 +7,6 @@ import { Alert } from '@/components/ui/alert'
 import { PageHeader, PageContainer } from '@/components/ui'
 import { apiClient } from '@/services/api-client'
 import { twitterService } from '@/services/twitter-service'
-import {
-  TargetSocialNetworksWidget,
-  createDefaultTargets,
-  EMPTY_SELECTED_BRAND_CHANNELS,
-  type TargetSocialNetworks,
-  type SelectedBrandChannels,
-} from '@/components/target-social-networks'
 import type { TwitterProfile, TwitterScheduleType, TwPostRow, TwitterFollowingUser } from '@/types/twitter'
 import { formatDateTime } from '@/utils/date'
 
@@ -30,7 +23,7 @@ function screenshotUrl(path: string): string {
 
 export function TwitterPage() {
   const [searchParams, setSearchParams] = useSearchParams()
-  const [activeTab, setActiveTab] = useState<'create' | 'auth' | 'posts' | 'profile'>('create')
+  const [activeTab, setActiveTab] = useState<'create' | 'auth' | 'posts' | 'profile'>('posts')
 
   const [publishEnabled, setPublishEnabled] = useState(false)
   const [collectEnabled, setCollectEnabled] = useState(false)
@@ -50,21 +43,12 @@ export function TwitterPage() {
   const [twitterConnected, setTwitterConnected] = useState(false)
   const [twitterRestId, setTwitterRestId] = useState<string | null>(null)
 
-  const [postText, setPostText] = useState('')
-  const [postTargets, setPostTargets] = useState<TargetSocialNetworks>(() =>
-    createDefaultTargets('tw')
-  )
-  const [selectedChannels, setSelectedChannels] = useState<SelectedBrandChannels>({
-    ...EMPTY_SELECTED_BRAND_CHANNELS,
-  })
-
   const [posts, setPosts] = useState<TwPostRow[]>([])
   const [isLoadingPosts, setIsLoadingPosts] = useState(false)
   const [hasLoadedPosts, setHasLoadedPosts] = useState(false)
 
   const [isLoading, setIsLoading] = useState(false)
   const [isLoadingProfile, setIsLoadingProfile] = useState(true)
-  const [isCreatingPost, setIsCreatingPost] = useState(false)
   const [isConnectingOAuth, setIsConnectingOAuth] = useState(false)
   const [followingUsers, setFollowingUsers] = useState<TwitterFollowingUser[]>([])
   const [followingNextToken, setFollowingNextToken] = useState<string | null>(null)
@@ -315,45 +299,14 @@ export function TwitterPage() {
     }
   }
 
-  async function handleCreatePost(e: FormEvent) {
-    e.preventDefault()
-    setError('')
-    setSuccess('')
-    setIsCreatingPost(true)
-
-    if (postText.length > 280) {
-      setError('Post text cannot exceed 280 characters')
-      setIsCreatingPost(false)
-      return
-    }
-
-    try {
-      await twitterService.createPost({
-        text: postText,
-        to_tg: postTargets.tg,
-        to_tw: postTargets.tw,
-        to_wp: postTargets.wp,
-        to_vk: postTargets.vk,
-        to_threads: postTargets.threads,
-        to_dzen: postTargets.dzen,
-        to_instagram: postTargets.instagram,
-        target_channels: selectedChannels.tg,
-        target_groups: selectedChannels.vk,
-      })
-      setSuccess('Post queued successfully')
-      setPostText('')
-      setSelectedChannels({ ...EMPTY_SELECTED_BRAND_CHANNELS })
-      setHasLoadedPosts(false)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create post')
-    } finally {
-      setIsCreatingPost(false)
-    }
-  }
-
   return (
     <PageContainer maxWidth="wide">
       <PageHeader title="Twitter / X Integration" description="Connect X, manage posting and feed collection" />
+      <p className="mb-4 text-sm flex flex-wrap gap-4">
+        <Link to="/posts" className="text-primary-400 hover:underline">
+          Создать пост → /posts
+        </Link>
+      </p>
 
       {error && (
         <Alert variant="error" className="animate-slide-down">
@@ -368,19 +321,6 @@ export function TwitterPage() {
       )}
 
       <div className="flex border-b border-[var(--border-color)]">
-        <button
-          className={`px-6 py-3 text-sm font-medium transition-all relative ${
-            activeTab === 'create'
-              ? 'text-primary-400'
-              : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-          }`}
-          onClick={() => setActiveTab('create')}
-        >
-          Create Post
-          {activeTab === 'create' && (
-            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-500" />
-          )}
-        </button>
         <button
           className={`px-6 py-3 text-sm font-medium transition-all relative ${
             activeTab === 'auth'
@@ -423,72 +363,12 @@ export function TwitterPage() {
       </div>
 
       {activeTab === 'create' && (
-        <Card className="animate-slide-up">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="h-6 w-6 text-primary-400"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
-                />
-              </svg>
-              Create post
-            </CardTitle>
-            <CardDescription>Creates a row in tw_posts for the pipeline (max 280 characters)</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleCreatePost} className="space-y-6">
-              <div>
-                <label className="text-sm font-medium text-[var(--text-secondary)] block mb-2">Post text</label>
-                <textarea
-                  value={postText}
-                  onChange={(e) => setPostText(e.target.value)}
-                  maxLength={280}
-                  rows={6}
-                  className="w-full px-4 py-3 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-xl text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500 transition-all"
-                  placeholder="Enter your post..."
-                  required
-                />
-                <p className="text-xs text-[var(--text-muted)] mt-2">
-                  {postText.length} / 280 characters
-                </p>
-              </div>
-              <TargetSocialNetworksWidget
-                value={postTargets}
-                onChange={setPostTargets}
-                selectedChannels={selectedChannels}
-                onSelectedChannelsChange={setSelectedChannels}
-              />
-              <CardFooter className="px-0">
-                <Button type="submit" isLoading={isCreatingPost} className="w-full sm:w-auto">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    className="h-5 w-5 mr-2"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
-                    />
-                  </svg>
-                  Queue post
-                </Button>
-              </CardFooter>
-            </form>
-          </CardContent>
-        </Card>
+        <Alert className="mt-4">
+          Создание постов — на странице{' '}
+          <Link to="/posts" className="text-primary-400 hover:underline">
+            Posts
+          </Link>
+        </Alert>
       )}
 
       {activeTab === 'auth' && (

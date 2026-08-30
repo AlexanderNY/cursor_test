@@ -371,21 +371,41 @@ async def rewrite(
     text: str,
     tone: Optional[str] = None,
     network: Optional[str] = None,
+    *,
+    max_length: Optional[int] = None,
 ) -> str:
     if not text:
         return text
     parts = ["Перепиши следующий текст"]
     if tone:
         parts.append(f"в тоне «{tone}»")
-    if network == "tg":
+    net = (network or "").strip().lower()
+    if net in ("tg", "telegram"):
         parts.append("для Telegram (можно HTML, spoiler)")
-    elif network == "vk":
+    elif net in ("vk", "vkontakte"):
         parts.append("для ВКонтакте (plain text без HTML)")
+    elif net in ("tw", "twitter", "x"):
+        parts.append("для Twitter/X (коротко, без HTML, до 280 символов)")
+    elif net == "threads":
+        parts.append("для Threads (короткий plain text, до 500 символов)")
+    elif net in ("instagram", "ig", "insta"):
+        parts.append("для Instagram (caption, plain text, до 2200 символов)")
+    elif net in ("dzen", "zen"):
+        parts.append("для Яндекс Дзен (читабельный текст, до 1500 символов)")
+    elif net in ("wp", "wordpress"):
+        parts.append("для WordPress (можно HTML, развёрнутый пост)")
+    if max_length and max_length > 0:
+        parts.append(f"уложись примерно в {max_length} символов")
     prompt = f"{' '.join(parts)}:\n\n{text}"
     try:
-        return await _chat_completion(prompt, REWRITE_SYSTEM, max_tokens=1024)
+        result = await _chat_completion(prompt, REWRITE_SYSTEM, max_tokens=1024)
+        if max_length and max_length > 0 and len(result) > max_length:
+            return result[:max_length]
+        return result
     except Exception as exc:
         logger.warning("Rewrite fallback: %s", exc)
+        if max_length and max_length > 0 and len(text) > max_length:
+            return text[:max_length]
         return text
 
 
@@ -402,10 +422,21 @@ async def reply_draft(
     parts = ["Напиши короткий ответ на следующее входящее сообщение"]
     if tone:
         parts.append(f"в тоне «{tone}»")
-    if network == "tg":
+    net = (network or "").strip().lower()
+    if net in ("tg", "telegram"):
         parts.append("для Telegram")
-    elif network == "vk":
+    elif net in ("vk", "vkontakte"):
         parts.append("для ВКонтакте")
+    elif net in ("tw", "twitter", "x"):
+        parts.append("для Twitter/X")
+    elif net == "threads":
+        parts.append("для Threads")
+    elif net in ("instagram", "ig", "insta"):
+        parts.append("для Instagram")
+    elif net in ("dzen", "zen"):
+        parts.append("для Яндекс Дзен")
+    elif net in ("wp", "wordpress"):
+        parts.append("для WordPress")
     if note:
         parts.append(f"Уточнение: {note}")
     prompt = f"{' '.join(parts)}:\n\n{text}"

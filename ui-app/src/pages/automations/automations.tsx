@@ -92,7 +92,7 @@ export function AutomationsPage() {
     <PageContainer>
       <PageHeader
         title="Automations"
-        description="RSS, repost из TG-каналов, мониторинг упоминаний"
+        description="RSS → review queue (pending_approval on Standard+), repost, mentions"
       />
       {error && <Alert variant="error">{error}</Alert>}
 
@@ -192,6 +192,24 @@ export function AutomationsPage() {
                   <Button size="sm" variant="secondary" onClick={() => void toggleEnabled(r)}>
                     Toggle
                   </Button>
+                  {r.type === 'rss' && (
+                    <Button
+                      size="sm"
+                      onClick={async () => {
+                        try {
+                          const res = await smmService.runAutomation(r.id)
+                          setError('')
+                          alert(
+                            `Created ${res.created} jobs (${res.status}). Open Calendar to review.`,
+                          )
+                        } catch (err) {
+                          setError(getErrorMessage(err))
+                        }
+                      }}
+                    >
+                      Run now
+                    </Button>
+                  )}
                   <Button size="sm" variant="ghost" onClick={() => void remove(r)}>
                     Delete
                   </Button>

@@ -32,7 +32,7 @@ import { platformStatusCell, platformTableStatusColumns } from '@/pages/checks/c
 import { formatDateTime } from '@/utils/date'
 
 type AdminTab = 'users' | 'notifications' | 'feedback' | 'guide' | 'posts-tables' | 'runtime-location' | 'storage'
-type UsersSubTab = 'management' | 'groups' | 'audit' | 'statistics'
+type UsersSubTab = 'management' | 'groups' | 'audit' | 'statistics' | 'growth'
 
 const ADMIN_TABS: AdminTab[] = [
   'users',
@@ -49,6 +49,7 @@ const USERS_SUB_TABS: { id: UsersSubTab; label: string }[] = [
   { id: 'groups', label: 'Groups' },
   { id: 'audit', label: 'Audit Log' },
   { id: 'statistics', label: 'Statistics' },
+  { id: 'growth', label: 'Growth / UTM' },
 ]
 
 export function AdministrationPage() {
@@ -85,6 +86,13 @@ export function AdministrationPage() {
   const [isLoadingAudit, setIsLoadingAudit] = useState(false)
   const [auditError, setAuditError] = useState('')
   const [statisticsError, setStatisticsError] = useState('')
+  const [growthSummary, setGrowthSummary] = useState<{
+    total_registrations: number
+    s01_registrations: number
+    by_campaign: Array<{ utm_campaign: string; registrations: number }>
+  } | null>(null)
+  const [isLoadingGrowth, setIsLoadingGrowth] = useState(false)
+  const [growthError, setGrowthError] = useState('')
 
   // Notifications state
   const [notificationMessage, setNotificationMessage] = useState('')
@@ -180,6 +188,20 @@ export function AdministrationPage() {
       setAuditLog([])
     } finally {
       setIsLoadingAudit(false)
+    }
+  }
+
+  async function handleLoadGrowthSummary() {
+    setGrowthError('')
+    setIsLoadingGrowth(true)
+    try {
+      const data = await authService.getGrowthSummary(50)
+      setGrowthSummary(data)
+    } catch (error) {
+      setGrowthError(error instanceof Error ? error.message : 'Failed to load growth summary')
+      setGrowthSummary(null)
+    } finally {
+      setIsLoadingGrowth(false)
     }
   }
 
@@ -1104,6 +1126,60 @@ export function AdministrationPage() {
             )}
             {auditLog.length === 0 && !isLoadingAudit && !auditError && (
               <EmptyState title="No entries" description='Click "Load audit log" to fetch records.' />
+            )}
+          </CardContent>
+        </Card>
+          )}
+
+          {usersSubTab === 'growth' && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Growth / UTM</CardTitle>
+            <CardDescription>
+              Регистрации по utm_campaign (воронка S01 → CopyParse)
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Button onClick={handleLoadGrowthSummary} isLoading={isLoadingGrowth} className="w-full sm:w-auto">
+              Load growth summary
+            </Button>
+            {growthError && (
+              <Alert variant="error" className="animate-slide-down">
+                {growthError}
+              </Alert>
+            )}
+            {growthSummary && (
+              <div className="space-y-3">
+                <p className="text-sm text-[var(--text-secondary)]">
+                  Всего регистраций: <strong>{growthSummary.total_registrations}</strong>
+                  {' · '}
+                  из S01 (campaign s01*): <strong>{growthSummary.s01_registrations}</strong>
+                </p>
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse text-sm">
+                    <thead>
+                      <tr className="border-b border-[var(--border-color)]">
+                        <th className="text-left py-2 px-3">utm_campaign</th>
+                        <th className="text-left py-2 px-3">Registrations</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {growthSummary.by_campaign.map((row) => (
+                        <tr key={row.utm_campaign} className="border-b border-[var(--border-color)]">
+                          <td className="py-2 px-3 font-mono text-xs">{row.utm_campaign}</td>
+                          <td className="py-2 px-3">{row.registrations}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+            {!growthSummary && !isLoadingGrowth && !growthError && (
+              <EmptyState
+                title="No data loaded"
+                description='Click "Load growth summary" to fetch UTM registration stats.'
+              />
             )}
           </CardContent>
         </Card>

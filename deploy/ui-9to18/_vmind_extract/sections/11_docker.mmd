@@ -1,0 +1,134 @@
+mindmap
+root((docker))
+  Контейнирезация
+    Система контейнеризации — это метод автоматизации…
+      Изоляция ресурсов
+      Портативность
+      Эффективность
+      Масштабируемость и оркестровка
+      Декларативная конфигурация
+      Сложность
+      Безопасность
+  dockerfile
+    Инструкция не чувствительна к регистру. Тем не ме…
+      Когда образ загружается из удалённого репозитория…
+    # Comment
+    # directive=value
+      директива
+        # escape=\ (backslash)
+        Подтема
+    ENV
+      Переменные окружения заданы командой ENV foo /bar…
+        ENV abc=hello / ENV abc=bye def=$abc #hello / ENV…
+    LABEL
+      Описывает метаданные. Например — сведения о том,…
+    FROM
+      Из какого образа начать сборку / FROM должен быть…
+        FROM # / FROM : # / FROM @
+    COPY
+      копирует в контейнер файлы и папки / символ разры…
+        Можно исключить ненужные файлы из контекста добав…
+    ADD
+      копирует файлы и папки в контейнер, может распако…
+    RUN
+      Выполняет команду и создаёт слой образа. Использу…
+        shell
+        exec
+        для установки нескольких пакетов можно поступить…
+    CMD
+      Описывает команду с аргументами, которую нужно вы…
+        Аргументы командной строки, передаваемые docker r…
+        Если вы знаете, что при запуске контейнера вам по…
+    ENTRYPOINT
+      предоставляет команду с аргументами для вызова во…
+        Если при каждом запуске контейнера нужно выполнят…
+        Если контейнер будет использоваться в роли прилож…
+        argparse
+    WORKDIR
+      задаёт рабочую директорию для следующей инструкции
+    ARG
+      переменные для передачи Docker во время сборки об…
+    EXPOSE
+      указывает на необходимость открыть порт
+        Эта инструкция не открывает порты
+    VOLUME
+      создаёт точку монтирования для работы с постоянны…
+    Каждая инструкция выполняется независимо и создае…
+    USER
+    STOPSIGNAL
+    ONBUILD
+    HEALTHCHECK
+    SHELL
+  console
+    docker build
+      создает образ из Dockerfile и контекста. Контекст…
+        Создание образа запускается Docker демоном, а не…
+        Не используйте вашу корневую директорию, /, поско…
+      docker build -f /path/to/a/Dockerfile .
+        Dockerfile размещается к корне контекста. Использ…
+      docker build -t shykes/myapp .
+        указать репозиторий и тег что бы сохранить образ…
+    docker pull
+      docker pull httpd
+        получить образ Docker httpd из Dockerhub
+    docker images
+      Перечень всех образов
+    docker run
+      docker run -it -d httpd
+    docker ps
+      docker ps -a
+        Перечисляет все контейнеры Docker, которые были з…
+    docker exec
+      docker exec -it 09ca6feb6efc bash
+        запустить команды внутри контейнера
+    docker rm
+      docker rm 9b6343d3b5a0
+        удалить контейнер Docker, указав идентификатор ко…
+    docker rmi
+      docker rmi fce289e99eb9
+        удалить образ Docker, указав идентификатор образа
+    docker restart
+      docker restart 09ca6feb6efc
+        перезапустить контейнер Docker, указав идентифика…
+    docker stop
+      docker stop 09ca6feb6efc
+        остановить контейнер Docker, указав идентификатор…
+    docker kill
+      docker kill 09ca6feb6efc
+        моментально прекращает работу контейнера Docker,…
+    docker start
+      docker start 09ca6feb6efc
+    docker commit
+      docker commit 09ca6feb6efc geekflare/httpd_image
+        сохранить новый образ Docker в локальной системе,…
+    docker push
+      docker push geekflare/httpd_image
+        загрузить образ Docker в Dockerhub, указав имя об…
+    docker network
+      docker network ls
+        получить всю сетевую информацию в рамках кластера
+      connect
+        Connect a container to a network
+      create
+        Create a network
+      disconnect
+        Disconnect a container from a network
+      inspect
+        Display detailed information on one or more netwo…
+      prune
+        Remove all unused networks
+      rm
+        Remove one or more networks
+    docker search
+      docker search hadoop
+    docker logs
+      docker logs 09ca6feb6efc
+        собрать логи контейнера Docker, указав идентифика…
+    docker history
+      docker history httpd
+        посмотреть историю образа Docker, указав имя обра…
+    docker cp
+      sudo docker cp 09ca6feb6efc:/usr/local/apache2/lo…
+        скопировать файл из контейнера Docker в локальную…
+  Docker Compose
+    предназначено для решения задач, связанных с разв…

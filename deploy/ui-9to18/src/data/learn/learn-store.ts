@@ -1,7 +1,15 @@
 import type { LearnEpisode, LearnLink, LearnRubricId } from '@/data/learn/types'
 import { learnEpisodes } from '@/data/learn/episodes'
-
-const STORAGE_KEY = 'nine-to-eighteen-learn-v1'
+import {
+  apiDeletePost,
+  apiGetPublishedPost,
+  apiListAdminPosts,
+  apiListPublishedPosts,
+  apiResetToSeed,
+  apiSavePost,
+  apiScheduleAll,
+} from '@/data/learn/learn-api'
+import { canEditLearn, getLearnAuthSession } from '@/data/learn/learn-auth'
 
 export type LearnContentFormat = 'markdown' | 'html'
 
@@ -32,12 +40,12 @@ export type LearnPostInput = {
 }
 
 function seedPublishedAt(order: number, baseMs: number): string {
-  // Seed already visible: staggered 1 day apart ending today.
   const offsetDays = Math.max(0, learnEpisodes.length - order)
   return new Date(baseMs - offsetDays * 24 * 60 * 60 * 1000).toISOString()
 }
 
-function seedPosts(): LearnPost[] {
+/** Offline / empty-API fallback for local UI-only work. */
+export function seedPostsLocal(): LearnPost[] {
   const now = Date.now()
   const updatedAt = new Date(now).toISOString()
   return learnEpisodes.map((episode) => ({
@@ -50,117 +58,66 @@ function seedPosts(): LearnPost[] {
   }))
 }
 
-function isBrowser(): boolean {
-  return typeof window !== 'undefined' && typeof window.localStorage !== 'undefined'
-}
-
-function normalizePost(raw: Partial<LearnPost> & LearnEpisode): LearnPost {
-  const fallbackPublished = raw.updatedAt || new Date().toISOString()
-  return {
-    ...raw,
-    theoryFormat: raw.theoryFormat === 'html' ? 'html' : 'markdown',
-    labFormat: raw.labFormat === 'html' ? 'html' : 'markdown',
-    cheatsheetFormat: raw.cheatsheetFormat === 'html' ? 'html' : 'markdown',
-    publishedAt: raw.publishedAt || fallbackPublished,
-    updatedAt: raw.updatedAt || new Date().toISOString(),
-    links: Array.isArray(raw.links) ? raw.links : [],
-  }
-}
-
-function readRaw(): { posts: LearnPost[]; needsMigration: boolean } | null {
-  if (!isBrowser()) {
-    return null
-  }
-  const raw = window.localStorage.getItem(STORAGE_KEY)
-  if (!raw) {
-    return null
-  }
+export async function loadLearnPosts(opts?: { admin?: boolean }): Promise<LearnPost[]> {
+  const admin = Boolean(opts?.admin && canEditLearn())
   try {
-    const parsed = JSON.parse(raw) as Array<Partial<LearnPost> & LearnEpisode>
-    if (!Array.isArray(parsed)) {
-      return null
+    if (admin) {
+      return await apiListAdminPosts()
     }
-    const needsMigration = parsed.some((item) => !item.publishedAt)
-    return {
-      posts: parsed.map((item) => normalizePost(item)),
-      needsMigration,
+    return await apiListPublishedPosts()
+  } catch (error) {
+    console.warn('Learn API unavailable, using local seed fallback', error)
+    return seedPostsLocal()
+  }
+}
+
+export async function getLearnPostBySlug(
+  slug: string,
+  opts?: { admin?: boolean; preview?: boolean },
+): Promise<LearnPost | undefined> {
+  const admin = Boolean(opts?.admin && canEditLearn())
+  const preview = Boolean(opts?.preview && canEditLearn())
+  try {
+    if (admin) {
+      const posts = await apiListAdminPosts()
+      return posts.find((post) => post.slug === slug)
     }
-  } catch {
-    return null
+    return await apiGetPublishedPost(slug, { preview })
+  } catch (error) {
+    console.warn('Learn API unavailable, using local seed fallback', error)
+    return seedPostsLocal().find((post) => post.slug === slug)
   }
 }
 
-function writeRaw(posts: LearnPost[]): void {
-  if (!isBrowser()) {
-    return
+export async function saveLearnPost(input: LearnPostInput): Promise<LearnPost> {
+  if (!getLearnAuthSession() || !canEditLearn()) {
+    throw new Error('Требуется вход с ролью admin или author')
   }
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(posts))
+  return apiSavePost(input)
 }
 
-export function loadLearnPosts(): LearnPost[] {
-  const stored = readRaw()
-  if (stored && stored.posts.length > 0) {
-    const normalized = [...stored.posts].sort((a, b) => a.order - b.order)
-    if (stored.needsMigration) {
-      writeRaw(normalized)
-    }
-    return normalized
+export async function deleteLearnPost(slug: string): Promise<void> {
+  if (!getLearnAuthSession() || !canEditLearn()) {
+    throw new Error('Требуется вход с ролью admin или author')
   }
-  const seeded = seedPosts()
-  writeRaw(seeded)
-  return seeded
+  await apiDeletePost(slug)
 }
 
-export function getLearnPostBySlug(slug: string): LearnPost | undefined {
-  return loadLearnPosts().find((post) => post.slug === slug)
-}
-
-export function saveLearnPost(input: LearnPostInput): LearnPost {
-  const posts = loadLearnPosts()
-  const updatedAt = new Date().toISOString()
-  const next: LearnPost = {
-    ...input,
-    publishedAt: new Date(input.publishedAt).toISOString(),
-    updatedAt,
+export async function resetLearnPostsToSeed(): Promise<LearnPost[]> {
+  if (!getLearnAuthSession() || !canEditLearn()) {
+    throw new Error('Требуется вход с ролью admin или author')
   }
-  const index = posts.findIndex((post) => post.slug === input.slug)
-  if (index >= 0) {
-    posts[index] = next
-  } else {
-    posts.push(next)
+  return apiResetToSeed()
+}
+
+export async function scheduleAllLearnPosts(
+  startIso: string,
+  intervalDays: number,
+): Promise<LearnPost[]> {
+  if (!getLearnAuthSession() || !canEditLearn()) {
+    throw new Error('Требуется вход с ролью admin или author')
   }
-  writeRaw(posts.sort((a, b) => a.order - b.order))
-  return next
-}
-
-export function deleteLearnPost(slug: string): void {
-  const posts = loadLearnPosts().filter((post) => post.slug !== slug)
-  writeRaw(posts)
-}
-
-export function resetLearnPostsToSeed(): LearnPost[] {
-  const seeded = seedPosts()
-  writeRaw(seeded)
-  return seeded
-}
-
-/** Assign publishedAt for all posts by order: start + (index * intervalDays). */
-export function scheduleAllLearnPosts(startIso: string, intervalDays: number): LearnPost[] {
-  const startMs = new Date(startIso).getTime()
-  if (Number.isNaN(startMs)) {
-    throw new Error('Некорректная дата начала')
-  }
-  const step = Math.max(0, intervalDays) * 24 * 60 * 60 * 1000
-  const updatedAt = new Date().toISOString()
-  const posts = loadLearnPosts()
-    .sort((a, b) => a.order - b.order)
-    .map((post, index) => ({
-      ...post,
-      publishedAt: new Date(startMs + index * step).toISOString(),
-      updatedAt,
-    }))
-  writeRaw(posts)
-  return posts
+  return apiScheduleAll(startIso, intervalDays)
 }
 
 export function isPostPublished(post: Pick<LearnPost, 'publishedAt'>, now = Date.now()): boolean {

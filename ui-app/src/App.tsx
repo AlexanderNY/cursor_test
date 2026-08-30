@@ -15,6 +15,7 @@ import { InstagramPage } from '@/pages/stubs/instagram'
 import { CustomURLPage } from '@/pages/stubs/custom-url'
 import { CustomUrlFlowPage } from '@/pages/stubs/custom-url-flow'
 import { CreatePostPage } from '@/pages/create-post'
+import { LibraryPage } from '@/pages/library/library'
 import { AdministrationPage } from '@/pages/administration'
 import { PollsPage, PollsIndexRedirect, PollsContentSection, PollsDiagnosticsSection, PollsRatingPage, PollsOrdersPage } from '@/pages/polls'
 import { ChecksPage, ChecksIndexRedirect, AiCheckSection, ServicesStatusSection, ProcessorSection, CollectorSection, SchedulerSection, PostingDiagnosticsSection } from '@/pages/checks'
@@ -27,6 +28,7 @@ import { CalendarPage } from '@/pages/calendar/calendar'
 import { PlatformSetupPage } from '@/pages/onboarding/platform-setup'
 import { PlatformSetupGuard } from '@/hooks/use-platform-readiness'
 import { SmmAnalyticsPage } from '@/pages/smm-analytics/analytics'
+import { CompetitorsPage } from '@/pages/competitors/competitors'
 import { AutomationsPage } from '@/pages/automations/automations'
 import { FigmaPreviewPage } from '@/pages/figma-preview'
 import { AboutPage } from '@/pages/about/about'
@@ -107,6 +109,7 @@ function App() {
         <Route path="calendar" element={<CalendarPage />} />
         <Route path="onboarding" element={<PlatformSetupPage />} />
         <Route path="analytics" element={<SmmAnalyticsPage />} />
+        <Route path="competitors" element={<CompetitorsPage />} />
         <Route path="automations" element={<AutomationsPage />} />
         <Route path="telegram" element={<TelegramPage />} />
         <Route path="threads" element={<ThreadsPage />} />
@@ -119,6 +122,7 @@ function App() {
         <Route path="custom-url/:configId" element={<CustomUrlFlowPage />} />
         <Route path="posts" element={<PlatformSetupGuard><CreatePostPage /></PlatformSetupGuard>} />
         <Route path="create-post" element={<Navigate to="/posts" replace />} />
+        <Route path="library" element={<LibraryPage />} />
         <Route path="team" element={<TeamPage />} />
         <Route path="group" element={<Navigate to="/team" replace />} />
         <Route path="administration" element={<AdminRoute><AdministrationPage /></AdminRoute>} />

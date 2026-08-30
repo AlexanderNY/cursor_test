@@ -21,6 +21,8 @@ interface BrandContextValue {
   ownChannels: BrandChannel[]
   /** own + publish_enabled (для выбора в Target Social Networks) */
   publishableChannels: BrandChannel[]
+  /** own + connected + publish_enabled — единственный источник для отправки с Posts */
+  connectedPublishChannels: BrandChannel[]
   isLoading: boolean
   setSelectedBrandId: (id: number | null) => void
   refreshBrands: () => Promise<void>
@@ -110,6 +112,18 @@ export function BrandProvider({ children }: { children: ReactNode }) {
     [ownChannels],
   )
 
+  const connectedPublishChannels = useMemo(
+    () =>
+      ownChannels.filter(
+        (c) =>
+          c.network !== 'url' &&
+          c.publish_enabled !== false &&
+          c.auth_status === 'connected' &&
+          !String(c.external_id || '').startsWith('demo-'),
+      ),
+    [ownChannels],
+  )
+
   const value = useMemo(
     () => ({
       brands,
@@ -118,6 +132,7 @@ export function BrandProvider({ children }: { children: ReactNode }) {
       channels,
       ownChannels,
       publishableChannels,
+      connectedPublishChannels,
       isLoading,
       setSelectedBrandId,
       refreshBrands,
@@ -130,6 +145,7 @@ export function BrandProvider({ children }: { children: ReactNode }) {
       channels,
       ownChannels,
       publishableChannels,
+      connectedPublishChannels,
       isLoading,
       setSelectedBrandId,
       refreshBrands,

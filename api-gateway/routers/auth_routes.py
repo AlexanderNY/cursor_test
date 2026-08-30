@@ -201,6 +201,15 @@ async def admin_audit_log(
     return await forward_to_auth("/admin/audit-log", request)
 
 
+@router.get("/admin/growth/summary")
+async def admin_growth_summary(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    """Сводка регистраций по UTM (admin)."""
+    return await forward_to_auth("/admin/growth/summary", request)
+
+
 @router.get("/billing/plans")
 async def billing_plans(request: Request) -> Response:
     """Матрица тарифов (публично)."""
@@ -214,6 +223,15 @@ async def billing_me(
 ) -> Response:
     """Текущий план и подписка."""
     return await forward_to_auth("/billing/me", request)
+
+
+@router.post("/billing/checkout-session")
+async def billing_checkout_session(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    """Self-serve Stripe Checkout Session."""
+    return await forward_to_auth("/billing/checkout-session", request)
 
 
 @router.post("/billing/customer-portal")
@@ -240,6 +258,19 @@ async def stripe_webhook(request: Request) -> Response:
     return await forward_to_auth("/billing/webhooks/stripe", request)
 
 
+@router.api_route("/groups", methods=["GET", "POST", "PATCH", "PUT", "DELETE"])
+async def groups_root_proxy(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    """Проксирование /auth/groups без trailing slash.
+
+    Без явного маршрута FastAPI отдаёт 307 на /auth/groups/ с internal host (gateway:8000),
+    и браузер через Vite proxy получает Network Error.
+    """
+    return await forward_to_auth("/groups", request)
+
+
 @router.api_route("/groups/{path:path}", methods=["GET", "POST", "PATCH", "PUT", "DELETE"])
 async def groups_proxy(
     request: Request,
@@ -248,10 +279,9 @@ async def groups_proxy(
 ) -> Response:
     """Проксирование запросов к группам на auth сервис.
 
-    GET/POST /api/auth/groups, /api/auth/groups/my, /api/auth/groups/{id}/members и т.д.
+    GET/POST /api/auth/groups/my, /api/auth/groups/{id}/members и т.д.
     Требует JWT аутентификации.
     """
-    target_path = f"/groups/{path}" if path.strip() else "/groups"
-    return await forward_to_auth(target_path, request)
+    return await forward_to_auth(f"/groups/{path}", request)
 
 

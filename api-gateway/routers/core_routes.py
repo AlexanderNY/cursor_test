@@ -9,12 +9,17 @@ from middleware.jwt_validator import get_current_user
 router = APIRouter(prefix="/core", tags=["Core"])
 
 
-async def forward_to_core(target_path: str, request: Request) -> Response:
+async def forward_to_core(
+    target_path: str,
+    request: Request,
+    timeout: float | None = None,
+) -> Response:
     """Перенаправляет запрос на core сервис.
     
     Args:
         target_path: Путь на core сервисе
         request: FastAPI Request объект
+        timeout: Таймаут upstream-запроса в секундах (по умолчанию 30)
     
     Returns:
         Response от core сервиса
@@ -25,7 +30,8 @@ async def forward_to_core(target_path: str, request: Request) -> Response:
     return await proxy_service.forward_request(
         target_url=target_url,
         method=request.method,
-        request=request
+        request=request,
+        timeout=timeout,
     )
 
 
@@ -147,6 +153,32 @@ async def get_admin_posts(
     return await forward_to_core("/admin/posts", request)
 
 
+@router.get("/admin/posts/{post_id}")
+async def get_admin_post(
+    post_id: int,
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+) -> Response:
+    """Один пост из таблицы posts.
+
+    GET /core/admin/posts/{id} -> GET /admin/posts/{id} на core.
+    """
+    return await forward_to_core(f"/admin/posts/{post_id}", request)
+
+
+@router.put("/admin/posts/{post_id}")
+async def update_admin_post(
+    post_id: int,
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+) -> Response:
+    """Обновляет пост в таблице posts (Posts Review).
+
+    PUT /core/admin/posts/{id} -> PUT /admin/posts/{id} на core.
+    """
+    return await forward_to_core(f"/admin/posts/{post_id}", request)
+
+
 @router.get("/admin/posting-diagnostics")
 async def get_posting_diagnostics(
     request: Request,
@@ -226,7 +258,7 @@ async def run_admin_ai_check(
 
     POST /core/admin/checks/ai -> POST /admin/checks/ai на core сервисе.
     """
-    return await forward_to_core("/admin/checks/ai", request)
+    return await forward_to_core("/admin/checks/ai", request, timeout=120.0)
 
 
 @router.get("/admin/ai-settings")

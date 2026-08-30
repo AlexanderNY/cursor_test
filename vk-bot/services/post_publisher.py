@@ -33,22 +33,37 @@ def _log_action(msg: str, *args, **kwargs) -> None:
 
 
 def _parse_group_to_post(value: Optional[str]) -> Optional[int]:
-    """Преобразует group_to_post в owner_id (отрицательное число). Поддерживает числовой id и формат club123456."""
+    """Преобразует group_to_post / target_groups item в owner_id (отрицательное число)."""
     if value is None:
         return None
     s = str(value).strip()
     if not s:
         return None
-    # Формат "club236672543" или "236672543"
     if s.lower().startswith("club"):
         s = s[4:].strip()
+    elif s.lower().startswith("public"):
+        s = s[6:].strip()
     try:
         n = int(s)
-        if n <= 0:
+        if n == 0:
             return None
-        return -n
+        return -abs(n)
     except ValueError:
         return None
+
+
+def _parse_json_list(raw: Any) -> List[Any]:
+    if raw is None:
+        return []
+    if isinstance(raw, list):
+        return raw
+    if isinstance(raw, str):
+        try:
+            data = json.loads(raw)
+            return data if isinstance(data, list) else []
+        except (json.JSONDecodeError, TypeError):
+            return []
+    return []
 
 
 def _parse_attachments_raw(raw: Any) -> List[Dict[str, str]]:
@@ -130,11 +145,21 @@ class PostPublisher:
             async with conn.cursor() as cur:
                 try:
                     await cur.execute("BEGIN")
+                    # Unstick posts left in publishing after crash / failed wall.post.
+                    await cur.execute(
+                        """
+                        UPDATE vk_posts
+                        SET status = 'ready', updated_at = CURRENT_TIMESTAMP
+                        WHERE status = 'publishing'
+                          AND updated_at < CURRENT_TIMESTAMP - INTERVAL '5 minutes'
+                        """
+                    )
                     await cur.execute(
                         """
                         SELECT p.id, p.user_id, p.post_text, p.images, p.attachments,
+                               p.target_groups,
                                pr.group_to_post, pr.access_token, pr.user_access_token, pr.from_group,
-                               pr.post_to_own_wall
+                               pr.post_to_own_wall, pr.publish_enabled
                         FROM vk_posts p
                         JOIN vk_profiles pr ON p.user_id = pr.user_id
                         WHERE p.status = 'ready'
@@ -143,7 +168,9 @@ class PostPublisher:
                             OR (pr.user_access_token IS NOT NULL AND pr.user_access_token != '')
                           )
                           AND (
-                            (pr.group_to_post IS NOT NULL AND pr.group_to_post != '')
+                            (p.target_groups IS NOT NULL
+                              AND p.target_groups::text NOT IN ('[]', 'null'))
+                            OR (pr.group_to_post IS NOT NULL AND pr.group_to_post != '')
                             OR pr.post_to_own_wall = TRUE
                           )
                         ORDER BY p.created_at ASC
@@ -178,13 +205,24 @@ class PostPublisher:
             await release_db_connection(conn)
 
     def _get_owner_ids(self, post: Dict, vk_user_id: Optional[int]) -> List[int]:
-        """Формирует список owner_id для публикации: личная стена (если post_to_own_wall) и/или группа."""
+        """Приоритет: target_groups поста → group_to_post профиля → личная стена."""
         owner_ids: List[int] = []
+        seen: set[int] = set()
+
+        def _add(oid: Optional[int]) -> None:
+            if oid is None or oid in seen:
+                return
+            seen.add(oid)
+            owner_ids.append(oid)
+
+        for item in _parse_json_list(post.get("target_groups")):
+            _add(_parse_group_to_post(str(item) if item is not None else None))
+        if owner_ids:
+            return owner_ids
+
+        _add(_parse_group_to_post(post.get("group_to_post")))
         if post.get("post_to_own_wall") and vk_user_id is not None:
-            owner_ids.append(vk_user_id)
-        group_owner = _parse_group_to_post(post.get("group_to_post"))
-        if group_owner is not None:
-            owner_ids.append(group_owner)
+            _add(int(vk_user_id))
         return owner_ids
 
     def _vk_client_for_wall_post(
@@ -382,7 +420,7 @@ class PostPublisher:
         raw_uat = post.get("user_access_token")
         token = (raw_at or "").strip() or None
         user_access_token = (raw_uat or "").strip() or None
-        from_group = bool(post.get("from_group", True))
+        from_group = bool(post.get("from_group")) if post.get("from_group") is not None else True
 
         if not token and not user_access_token:
             logger.warning("Post %s: missing access_token and user_access_token", post_id)
@@ -415,6 +453,14 @@ class PostPublisher:
         last_vk_post_id: Optional[int] = None
         last_owner_id: Optional[int] = None
         for owner_id in owner_ids:
+            # Сообщество: всегда from_group=1 при публикации community-токеном
+            use_from_group = True if owner_id < 0 else False
+            if owner_id < 0 and not from_group:
+                logger.info(
+                    "Post %s: profile from_group=false ignored for community wall (owner_id=%s) — posting as group",
+                    post_id,
+                    owner_id,
+                )
             wall_client = self._vk_client_for_wall_post(
                 token, user_access_token, owner_id, post_id
             )
@@ -434,7 +480,7 @@ class PostPublisher:
             new_post_id = await wall_client.wall_post(
                 owner_id=owner_id,
                 message=text,
-                from_group=from_group and owner_id < 0,
+                from_group=use_from_group,
                 attachments=attachments_str,
             )
             if new_post_id is not None:
@@ -509,8 +555,22 @@ class PostPublisher:
             return 0
         published = 0
         for post in posts:
-            if await self.publish_post(post):
+            post_id = post.get("id")
+            try:
+                ok = await self.publish_post(post)
+            except Exception as exc:
+                logger.error("Error publishing vk post %s: %s", post_id, exc, exc_info=True)
+                ok = False
+            if ok:
                 published += 1
+            elif post_id is not None:
+                # Do not leave forever in publishing (invisible to next claim).
+                await self._update_post_status(int(post_id), "review")
+                logger.warning(
+                    "Post %s moved to review after failed publish "
+                    "(check community token / Group to post / Enable publishing)",
+                    post_id,
+                )
             await asyncio.sleep(2)
         _log_action("publish_ready_posts: published %d of %d", published, len(posts))
         return published

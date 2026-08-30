@@ -51,9 +51,23 @@ _reload_task = None
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint."""
+    """Health check endpoint with Telegram intelligence counters."""
     from datetime import datetime
-    return {"status": "ok", "service": "tg-bot", "server_time": datetime.utcnow().isoformat() + "Z"}
+
+    payload = {
+        "status": "ok",
+        "service": "tg-bot",
+        "server_time": datetime.utcnow().isoformat() + "Z",
+    }
+    try:
+        from services.post_enrichment import get_enrichment_stats
+        from services.summary_aggregator import get_digest_stats
+
+        payload["enrichment"] = get_enrichment_stats()
+        payload["digests"] = get_digest_stats()
+    except Exception:
+        pass
+    return payload
 
 
 @app.post("/tg/reload")

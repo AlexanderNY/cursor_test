@@ -3,6 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
 import { coreService } from '@/services/core-service'
+import { getErrorMessage } from '@/services/api-client'
 import type { AiSettingsResponse } from '@/types/core'
 
 export function AiCheckSection() {
@@ -29,7 +30,7 @@ export function AiCheckSection() {
         if (!cancelled) setAiSettings(settings)
       } catch (e) {
         if (!cancelled) {
-          setSettingsError(e instanceof Error ? e.message : 'Не удалось загрузить настройки AI')
+          setSettingsError(getErrorMessage(e))
         }
       } finally {
         if (!cancelled) setIsLoadingSettings(false)
@@ -53,7 +54,7 @@ export function AiCheckSection() {
           : 'Нейросеть отключена — вызовы Ollama пропускаются (фолбэки без AI).'
       )
     } catch (e) {
-      setSettingsError(e instanceof Error ? e.message : 'Не удалось сохранить настройку AI')
+      setSettingsError(getErrorMessage(e))
     } finally {
       setIsSavingSettings(false)
     }
@@ -78,8 +79,9 @@ export function AiCheckSection() {
       setReply(result.reply)
       setModel(result.model)
       setLatencyMs(result.latency_ms)
+      setSettingsError('')
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Не удалось выполнить запрос к AI')
+      setError(getErrorMessage(e))
     } finally {
       setIsRunning(false)
     }
