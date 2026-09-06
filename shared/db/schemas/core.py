@@ -272,6 +272,7 @@ CREATE TABLE IF NOT EXISTS smm_publish_jobs (
     last_error TEXT,
     assigned_to INTEGER,
     rejection_comment TEXT,
+    created_by_user_id INTEGER,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
@@ -290,6 +291,18 @@ CREATE INDEX IF NOT EXISTS idx_smm_jobs_assigned_to
     WHERE assigned_to IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_smm_jobs_user_status
     ON smm_publish_jobs(user_id, status);
+"""
+
+SMM_JOBS_CREATED_BY_MIGRATION = """
+DO $$ BEGIN
+  ALTER TABLE smm_publish_jobs ADD COLUMN created_by_user_id INTEGER;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+UPDATE smm_publish_jobs
+SET created_by_user_id = COALESCE(assigned_to, user_id)
+WHERE created_by_user_id IS NULL;
+CREATE INDEX IF NOT EXISTS idx_smm_jobs_created_by
+    ON smm_publish_jobs(created_by_user_id)
+    WHERE created_by_user_id IS NOT NULL;
 """
 
 SMM_AUTOMATIONS_TABLE = """
@@ -534,6 +547,7 @@ ALL_TABLES: list[str] = [
     SMM_INBOX_TABLE,
     SMM_JOBS_TABLE,
     SMM_JOBS_APPROVAL_MIGRATION,
+    SMM_JOBS_CREATED_BY_MIGRATION,
     SMM_AUTOMATIONS_TABLE,
     SMM_COMPETITOR_SNAPSHOTS_TABLE,
     SMM_INDEXES,

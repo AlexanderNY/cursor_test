@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 _NETWORK_TO_SERVICE = {
     "tg": "telegram",
     "vk": "vkontakte",
+    "wp": "wordpress",
 }
 
 

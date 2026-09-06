@@ -1,5 +1,5 @@
 import { useState, FormEvent, useEffect, useMemo, useCallback } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, Navigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '@/contexts/auth-context'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -10,15 +10,15 @@ import { SkeletonCard } from '@/components/ui/skeleton'
 import { useToast } from '@/contexts/toast-context'
 import { authService } from '@/services/auth-service'
 import { decodeJwt, formatTokenDate, getTimeUntilExpiry } from '@/utils/jwt-utils'
-import { StatisticsTabContent } from '@/pages/stubs/statistics'
 import { BillingTabContent } from '@/pages/billing/billing'
 import { formatDateTime } from '@/utils/date'
+import { roleLabel } from '@/types/smm'
 
-type ProfileTab = 'main' | 'billing' | 'statistics' | 'group'
+type ProfileTab = 'main' | 'billing'
 
 function profileTabFromSearch(searchParams: URLSearchParams): ProfileTab {
   const t = searchParams.get('tab')
-  if (t === 'billing' || t === 'statistics' || t === 'group') return t
+  if (t === 'billing') return t
   return 'main'
 }
 
@@ -196,6 +196,13 @@ export function ProfilePage() {
     }
   }
 
+  if (searchParams.get('tab') === 'statistics') {
+    return <Navigate to="/analytics" replace />
+  }
+  if (searchParams.get('tab') === 'group') {
+    return <Navigate to="/team" replace />
+  }
+
   if (!user) {
     return (
       <PageContainer>
@@ -209,7 +216,7 @@ export function ProfilePage() {
   }
 
   return (
-    <PageContainer maxWidth={activeTab === 'statistics' ? 'wide' : 'default'}>
+    <PageContainer>
       <PageHeader title="Profile" description="Manage your account settings and preferences" />
 
       <div className="flex flex-wrap gap-1 border-b border-[var(--border-color)] mb-4">
@@ -234,28 +241,6 @@ export function ProfilePage() {
           }`}
         >
           Billing
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab('statistics')}
-          className={`px-4 py-2 font-medium text-sm transition-colors ${
-            activeTab === 'statistics'
-              ? 'text-primary-400 border-b-2 border-primary-400 -mb-px'
-              : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-          }`}
-        >
-          Statistics
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab('group')}
-          className={`px-4 py-2 font-medium text-sm transition-colors ${
-            activeTab === 'group'
-              ? 'text-primary-400 border-b-2 border-primary-400 -mb-px'
-              : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-          }`}
-        >
-          Group
         </button>
       </div>
 
@@ -353,13 +338,13 @@ export function ProfilePage() {
             <CardContent className="space-y-3">
               <div className="flex justify-between items-center py-3 border-b border-[var(--border-color)]">
                 <span className="text-[var(--text-secondary)]">Группа</span>
-                <Link to="/group" className="font-medium text-primary-400 hover:text-primary-300 hover:underline">
+                <Link to="/team" className="font-medium text-primary-400 hover:text-primary-300 hover:underline">
                   {user?.group_name ?? `ID ${user?.group_id}`}
                 </Link>
               </div>
               <div className="flex justify-between items-center py-3">
                 <span className="text-[var(--text-secondary)]">Роль в группе</span>
-                <span className="font-medium">{user?.role_in_group === 'manager' ? 'Менеджер' : user?.role_in_group === 'author' ? 'Автор' : '—'}</span>
+                <span className="font-medium">{roleLabel(user?.role_in_group)}</span>
               </div>
             </CardContent>
           </Card>
@@ -488,20 +473,6 @@ export function ProfilePage() {
       )}
 
       {activeTab === 'billing' && <BillingTabContent />}
-
-      {activeTab === 'statistics' && <StatisticsTabContent />}
-
-      {activeTab === 'group' && (
-        <Card className="animate-slide-up">
-          <CardHeader>
-            <CardTitle>Group</CardTitle>
-            <CardDescription>Раздел в разработке</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p className="text-[var(--text-muted)]">Скоро здесь появятся настройки группы.</p>
-          </CardContent>
-        </Card>
-      )}
     </PageContainer>
   )
 }

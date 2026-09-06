@@ -5,7 +5,7 @@ interface CardProps extends HTMLAttributes<HTMLDivElement> {
 }
 
 export function Card({ className = '', variant = 'default', children, ...props }: CardProps) {
-  const baseStyles = 'rounded-2xl p-6'
+  const baseStyles = 'rounded-2xl p-4 sm:p-6 min-w-0'
   
   const variantStyles = {
     default: 'bg-[var(--bg-secondary)] border border-[var(--border-color)]',
@@ -23,7 +23,7 @@ interface CardHeaderProps extends HTMLAttributes<HTMLDivElement> {}
 
 export function CardHeader({ className = '', children, ...props }: CardHeaderProps) {
   return (
-    <div className={`mb-6 ${className}`} {...props}>
+    <div className={`mb-4 sm:mb-6 ${className}`} {...props}>
       {children}
     </div>
   )
@@ -33,7 +33,7 @@ interface CardTitleProps extends HTMLAttributes<HTMLHeadingElement> {}
 
 export function CardTitle({ className = '', children, ...props }: CardTitleProps) {
   return (
-    <h2 className={`text-2xl font-semibold text-[var(--text-primary)] ${className}`} {...props}>
+    <h2 className={`text-lg sm:text-2xl font-semibold text-[var(--text-primary)] ${className}`} {...props}>
       {children}
     </h2>
   )

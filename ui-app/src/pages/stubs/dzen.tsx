@@ -15,6 +15,8 @@ import {
 import { dzenService } from '@/services/dzen-service'
 import { getErrorMessage } from '@/services/api-client'
 import { formatDateTime } from '@/utils/date'
+import { useAuth } from '@/contexts/auth-context'
+import { canManagePlatformAuth } from '@/types/smm'
 import type {
   DzenProfile,
   DzenPostListItem,
@@ -71,6 +73,9 @@ function sleep(ms: number): Promise<void> {
 }
 
 export function DzenPage() {
+  const { user } = useAuth()
+  const hasTeam = Boolean(user?.group_id || user?.role_in_group)
+  const canAuth = canManagePlatformAuth(user?.role_in_group, hasTeam)
   const [activeTab, setActiveTab] = useState<'create' | 'posts' | 'profile' | 'auth'>('posts')
 
   const [publishEnabled, setPublishEnabled] = useState(false)
@@ -116,10 +121,13 @@ export function DzenPage() {
   const [verifyDiagImageUrl, setVerifyDiagImageUrl] = useState<string | null>(null)
   const [diagImageLoadError, setDiagImageLoadError] = useState(false)
   const [isRefreshingDiag, setIsRefreshingDiag] = useState(false)
+  const [isLiveDiag, setIsLiveDiag] = useState(false)
+  const [liveDiagFrameId, setLiveDiagFrameId] = useState(0)
   const [isCreatingPost, setIsCreatingPost] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
-  const diagPollAbortRef = useRef(false)
+  const liveDiagActiveRef = useRef(false)
+  const liveDiagGenerationRef = useRef(0)
 
   const loadProfile = useCallback(async () => {
     setIsLoadingProfile(true)
@@ -180,6 +188,13 @@ export function DzenPage() {
       }
     }
   }, [activeTab])
+
+  useEffect(() => {
+    return () => {
+      liveDiagActiveRef.current = false
+      liveDiagGenerationRef.current += 1
+    }
+  }, [])
 
   async function loadPosts() {
     setIsLoadingPosts(true)
@@ -350,6 +365,7 @@ export function DzenPage() {
       writeStoredDiagUrl(url)
       setVerifyDiagImageUrl(url)
       setDiagImageLoadError(false)
+      setLiveDiagFrameId((n) => n + 1)
       return
     }
     if (clearOnSuccess) {
@@ -359,24 +375,53 @@ export function DzenPage() {
     }
   }
 
-  async function refreshPendingDiagScreenshot(
-    pollMs = 0,
-    options?: { silent?: boolean }
-  ): Promise<boolean> {
-    const silent = options?.silent ?? false
-    if (!silent) {
-      setIsRefreshingDiag(true)
-    }
+  function stopLiveDiagStream(): void {
+    liveDiagActiveRef.current = false
+    liveDiagGenerationRef.current += 1
+    setIsLiveDiag(false)
+  }
+
+  function startLiveDiagStream(): void {
+    const generation = liveDiagGenerationRef.current + 1
+    liveDiagGenerationRef.current = generation
+    liveDiagActiveRef.current = true
+    setIsLiveDiag(true)
+
+    void (async () => {
+      while (liveDiagActiveRef.current && liveDiagGenerationRef.current === generation) {
+        try {
+          const diag = await dzenService.fetchVerifyPendingDiag()
+          if (!liveDiagActiveRef.current || liveDiagGenerationRef.current !== generation) {
+            break
+          }
+          if (diag.need_push_code) {
+            setNeedPushCode(true)
+            setVerifyInfoMessage(diag.message ?? 'Введите код из пуш-уведомления.')
+          }
+          if (diag.diag_image_url) {
+            setDiagFromResponse(diag.diag_image_url, false)
+          }
+        } catch {
+          /* keep polling every 3s */
+        }
+        await sleep(3000)
+      }
+      if (liveDiagGenerationRef.current === generation) {
+        setIsLiveDiag(false)
+      }
+    })()
+  }
+
+  async function refreshPendingDiagScreenshot(pollMs = 0): Promise<boolean> {
+    setIsRefreshingDiag(true)
     const deadline = Date.now() + pollMs
     let lastError: string | null = null
     let first = true
+    let gotImage = false
     try {
       while (first || Date.now() < deadline) {
-        if (diagPollAbortRef.current && silent) {
-          return false
-        }
         if (!first) {
-          await sleep(2500)
+          await sleep(3000)
         }
         first = false
         try {
@@ -387,9 +432,11 @@ export function DzenPage() {
           }
           if (diag.diag_image_url) {
             setDiagFromResponse(diag.diag_image_url, false)
-            return true
-          }
-          if (diag.error) {
+            gotImage = true
+            if (pollMs <= 0) {
+              return true
+            }
+          } else if (diag.error) {
             lastError = diag.error
           }
         } catch (err) {
@@ -399,27 +446,16 @@ export function DzenPage() {
           break
         }
       }
-      if (lastError && !silent) {
+      if (!gotImage && lastError) {
         setError((prev) => {
-          const suffix = lastError as string
-          if (!prev) return suffix
-          if (prev.includes(suffix)) return prev
-          return `${prev} ${suffix}`
+          if (!prev) return lastError as string
+          if (prev.includes(lastError as string)) return prev
+          return `${prev} ${lastError}`
         })
       }
-      return false
+      return gotImage
     } finally {
-      if (!silent) {
-        setIsRefreshingDiag(false)
-      }
-    }
-  }
-
-  async function pollDiagWhilePending(): Promise<void> {
-    await sleep(3000)
-    while (!diagPollAbortRef.current) {
-      await refreshPendingDiagScreenshot(0, { silent: true })
-      await sleep(4000)
+      setIsRefreshingDiag(false)
     }
   }
 
@@ -451,33 +487,34 @@ export function DzenPage() {
     setVerifyInfoMessage(null)
     setNeedPushCode(false)
     setPushCode('')
+    setVerifySubscriptions([])
     setIsVerifyingAuth(true)
-    diagPollAbortRef.current = false
-    void pollDiagWhilePending()
+    startLiveDiagStream()
     try {
       const res = await dzenService.verifyYandexStart()
-      diagPollAbortRef.current = true
       await loadProfile()
       if (res.ok && res.need_push_code) {
         setNeedPushCode(true)
         setVerifyInfoMessage(res.message ?? 'Введите код из пуш-уведомления.')
         setDiagFromResponse(res.diag_image_url, false)
+        // live-стрим продолжает показывать экран пуш-кода каждые 3 с
         return
       }
+      stopLiveDiagStream()
       applyVerifyResponse(res)
     } catch (err) {
       setVerifySubscriptions([])
       if (isTimeoutError(err)) {
         setError(
-          'Превышен таймаут ожидания ответа. Проверка на сервере может ещё выполняться — обновляем скрин…'
+          'Превышен таймаут ожидания ответа. На экране — live-снимок браузера бота (обновление каждые 3 с).'
         )
-        await refreshPendingDiagScreenshot(60_000)
       } else {
         setError(getErrorMessage(err) || 'Ошибка проверки авторизации')
-        await refreshPendingDiagScreenshot(15_000)
+        // ещё немного крутим live, затем останавливаем
+        await sleep(12_000)
+        stopLiveDiagStream()
       }
     } finally {
-      diagPollAbortRef.current = true
       setIsVerifyingAuth(false)
     }
   }
@@ -491,15 +528,16 @@ export function DzenPage() {
     setError('')
     setSuccess('')
     setIsVerifyingAuth(true)
-    diagPollAbortRef.current = false
-    void pollDiagWhilePending()
+    if (!liveDiagActiveRef.current) {
+      startLiveDiagStream()
+    }
     try {
       const res = await dzenService.verifyYandexPushCode(code)
-      diagPollAbortRef.current = true
       await loadProfile()
       if (res.ok) {
         setNeedPushCode(false)
         setPushCode('')
+        stopLiveDiagStream()
         applyVerifyResponse(res)
         return
       }
@@ -510,19 +548,17 @@ export function DzenPage() {
         return
       }
       setNeedPushCode(false)
+      stopLiveDiagStream()
       applyVerifyResponse(res)
     } catch (err) {
       if (isTimeoutError(err)) {
         setError(
-          'Превышен таймаут после отправки кода. Бот мог продолжить вход — обновляем скрин с текущего экрана…'
+          'Превышен таймаут после отправки кода. Live-скрин бота продолжает обновляться каждые 3 с.'
         )
-        await refreshPendingDiagScreenshot(60_000)
       } else {
         setError(getErrorMessage(err) || 'Ошибка отправки кода')
-        await refreshPendingDiagScreenshot(15_000)
       }
     } finally {
-      diagPollAbortRef.current = true
       setIsVerifyingAuth(false)
     }
   }
@@ -581,7 +617,9 @@ export function DzenPage() {
           { key: 'posts' as const, label: 'Посты' },
           { key: 'profile' as const, label: 'Настройки' },
           { key: 'auth' as const, label: 'Авторизация' },
-        ].map(({ key, label }) => (
+        ]
+          .filter(({ key }) => key !== 'auth' || canAuth)
+          .map(({ key, label }) => (
           <button
             key={key}
             className={`px-6 py-3 text-sm font-medium transition-all relative ${
@@ -868,7 +906,7 @@ export function DzenPage() {
         </Card>
       )}
 
-      {activeTab === 'auth' && (
+      {activeTab === 'auth' && canAuth && (
         <Card className="animate-slide-up">
           <CardHeader>
             <CardTitle>Авторизация Яндекс</CardTitle>
@@ -917,17 +955,23 @@ export function DzenPage() {
                     >
                       Обновить скрин
                     </Button>
+                    {(isLiveDiag || needPushCode) && (
+                      <Button type="button" variant="ghost" onClick={() => stopLiveDiagStream()}>
+                        Остановить трансляцию
+                      </Button>
+                    )}
                   </div>
                 </form>
-                {(verifyDiagImageUrl || isRefreshingDiag) && (
+                {(verifyDiagImageUrl || isRefreshingDiag || isLiveDiag || isVerifyingAuth) && (
                   <div className="space-y-2">
                     <p className="text-xs text-[var(--text-muted)]">
-                      {isRefreshingDiag && !verifyDiagImageUrl
-                        ? 'Ожидаем снимок экрана с сервера…'
+                      {isLiveDiag || isVerifyingAuth
+                        ? 'Live: экран браузера бота (обновление каждые 3 секунды)'
                         : 'Снимок экрана для диагностики (страница в браузере бота):'}
                     </p>
                     {verifyDiagImageUrl && !diagImageLoadError ? (
                       <img
+                        key={liveDiagFrameId}
                         src={verifyDiagImageUrl}
                         alt="Диагностика Selenium"
                         className="max-w-full rounded-xl border border-[var(--border-color)] max-h-96 object-contain bg-[var(--bg-secondary)]"
@@ -939,7 +983,7 @@ export function DzenPage() {
                         Не удалось показать скрин. Нажмите «Обновить скрин».
                       </p>
                     ) : (
-                      <p className="text-sm text-[var(--text-secondary)]">Запрашиваем снимок…</p>
+                      <p className="text-sm text-[var(--text-secondary)]">Ожидаем первый кадр с бота…</p>
                     )}
                   </div>
                 )}

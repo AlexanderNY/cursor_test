@@ -6,7 +6,7 @@ import logging
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Dict, Optional
+from typing import TYPE_CHECKING, Callable, Dict, Optional
 
 from config import settings
 
@@ -19,6 +19,10 @@ _lock = threading.RLock()
 _store: Dict[int, "PendingSession"] = {}
 # Последний JPEG data URL по user_id — отдаём в UI, даже если HTTP-ответ проверки уже отвалился по таймауту.
 _last_diag_url: Dict[int, str] = {}
+_live_stop: Dict[int, threading.Event] = {}
+_live_threads: Dict[int, threading.Thread] = {}
+
+LIVE_SCREENCAP_INTERVAL_SEC = 3.0
 
 
 @dataclass
@@ -65,10 +69,61 @@ def cleanup_stale_unlocked() -> None:
     t = _ttl()
     stale = [uid for uid, s in _store.items() if now - s.created_at > t]
     for uid in stale:
+        _stop_live_unlocked(uid)
         s = _store.pop(uid, None)
         if s:
             _quit_driver_safe(s.driver)
             logger.info("Pending dzen session expired user_id=%s", uid)
+
+
+def _stop_live_unlocked(user_id: int) -> None:
+    ev = _live_stop.pop(user_id, None)
+    if ev:
+        ev.set()
+    _live_threads.pop(user_id, None)
+
+
+def stop_live_screencap(user_id: int) -> None:
+    with _lock:
+        _stop_live_unlocked(user_id)
+
+
+def start_live_screencap(
+    user_id: int,
+    capture_fn: Callable[[int], None],
+    *,
+    interval_sec: float = LIVE_SCREENCAP_INTERVAL_SEC,
+) -> None:
+    """Фоновый захват экрана каждые interval_sec, пока сессия жива."""
+    with _lock:
+        _stop_live_unlocked(user_id)
+        stop_ev = threading.Event()
+        _live_stop[user_id] = stop_ev
+
+        def _loop() -> None:
+            # Первая пауза — дать Chrome стартовать
+            if stop_ev.wait(1.0):
+                return
+            while not stop_ev.is_set():
+                try:
+                    with _lock:
+                        alive = user_id in _store
+                    if not alive:
+                        break
+                    capture_fn(user_id)
+                except Exception as e:
+                    logger.debug("live screencap user_id=%s: %s", user_id, e)
+                if stop_ev.wait(max(1.0, float(interval_sec))):
+                    break
+
+        th = threading.Thread(
+            target=_loop,
+            name=f"dzen-live-diag-{user_id}",
+            daemon=True,
+        )
+        _live_threads[user_id] = th
+        th.start()
+        logger.info("Live screencap started user_id=%s interval=%.1fs", user_id, interval_sec)
 
 
 def put_session(
@@ -104,6 +159,22 @@ def put_session(
         )
 
 
+def update_session_flags(
+    user_id: int,
+    *,
+    awaiting_push: Optional[bool] = None,
+    in_progress: Optional[bool] = None,
+) -> None:
+    with _lock:
+        s = _store.get(user_id)
+        if not s:
+            return
+        if awaiting_push is not None:
+            s.awaiting_push = awaiting_push
+        if in_progress is not None:
+            s.in_progress = in_progress
+
+
 def get_session(user_id: int) -> Optional[PendingSession]:
     with _lock:
         cleanup_stale_unlocked()
@@ -111,6 +182,7 @@ def get_session(user_id: int) -> Optional[PendingSession]:
         if not s:
             return None
         if time.time() - s.created_at > _ttl():
+            _stop_live_unlocked(user_id)
             _store.pop(user_id, None)
             _quit_driver_safe(s.driver)
             return None
@@ -120,6 +192,7 @@ def get_session(user_id: int) -> Optional[PendingSession]:
 def take_session_and_remove(user_id: int) -> Optional[PendingSession]:
     with _lock:
         cleanup_stale_unlocked()
+        _stop_live_unlocked(user_id)
         s = _store.pop(user_id, None)
         if s and time.time() - s.created_at > _ttl():
             _quit_driver_safe(s.driver)
@@ -129,6 +202,7 @@ def take_session_and_remove(user_id: int) -> Optional[PendingSession]:
 
 def pop_and_quit(user_id: int) -> None:
     with _lock:
+        _stop_live_unlocked(user_id)
         s = _store.pop(user_id, None)
         if s:
             _quit_driver_safe(s.driver)

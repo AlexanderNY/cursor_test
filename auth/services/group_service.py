@@ -493,3 +493,267 @@ async def get_all_groups_with_members() -> List[Dict]:
             )
 
     return list(groups_by_id.values())
+
+
+def _invite_row_to_dict(row) -> Dict:
+    return {
+        "id": row[0],
+        "group_id": row[1],
+        "email": row[2],
+        "role_in_group": row[3],
+        "token": row[4],
+        "invited_by_user_id": row[5],
+        "status": row[6],
+        "accepted_by_user_id": row[7],
+        "expires_at": row[8],
+        "accepted_at": row[9],
+        "created_at": row[10],
+        "group_name": row[11] if len(row) > 11 else None,
+    }
+
+
+async def _assert_can_manage_invites(
+    group_id: int, requested_by_user_id: int, requested_by_role: str
+) -> None:
+    if requested_by_role == "admin":
+        return
+    membership = await get_membership_in_group(requested_by_user_id, group_id)
+    if not membership or not _is_group_admin(membership.get("role_in_group")):
+        raise PermissionError("Only team admin can manage invites")
+
+
+async def create_invite(
+    group_id: int,
+    requested_by_user_id: int,
+    requested_by_role: str,
+    *,
+    email: Optional[str] = None,
+    role_in_group: str = "editor",
+    expires_days: int = 7,
+) -> Dict:
+    """
+    Создаёт invite-ссылку.
+    Если email уже зарегистрирован и пользователь не в команде — добавляем сразу
+    (status=added). Иначе — pending invite с token.
+    """
+    import secrets
+    from datetime import datetime, timedelta, timezone
+
+    role_in_group = _normalize_role_in_group(role_in_group)
+    await _assert_can_manage_invites(group_id, requested_by_user_id, requested_by_role)
+
+    group = await get_group_by_id(group_id, include_members=False)
+    if not group:
+        raise ValueError("Group not found")
+
+    clean_email = (email or "").strip().lower() or None
+    if role_in_group == "admin" and await _count_managers_in_group(group_id) >= 1:
+        raise ValueError("This group already has an admin")
+
+    n_members = await _count_group_members(group_id)
+    seat_limit, seat_tariff = await _seat_budget_for_group(group_id)
+    if n_members >= seat_limit:
+        raise TeamSeatLimitError(limit=seat_limit, used=n_members, tariff=seat_tariff)
+
+    if clean_email:
+        async with get_db_connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "SELECT id, username, email, tariff FROM users WHERE lower(email) = %s",
+                    (clean_email,),
+                )
+                user_row = await cur.fetchone()
+        if user_row:
+            try:
+                member = await add_member_by_email(
+                    group_id,
+                    clean_email,
+                    requested_by_user_id,
+                    requested_by_role,
+                    role_in_group=role_in_group,
+                )
+                return {
+                    "status": "added",
+                    "member": member,
+                    "invite": None,
+                    "group_name": group["name"],
+                }
+            except ValueError as exc:
+                if "already in this group" in str(exc).lower():
+                    raise
+                # fall through to invite if add failed for other reasons
+                pass
+
+    token = secrets.token_urlsafe(32)[:64]
+    expires_at = datetime.now(timezone.utc) + timedelta(days=max(1, min(expires_days, 30)))
+
+    async with get_db_connection() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                """
+                INSERT INTO group_invites (
+                    group_id, email, role_in_group, token,
+                    invited_by_user_id, status, expires_at
+                )
+                VALUES (%s, %s, %s, %s, %s, 'pending', %s)
+                RETURNING id, group_id, email, role_in_group, token,
+                          invited_by_user_id, status, accepted_by_user_id,
+                          expires_at, accepted_at, created_at
+                """,
+                (
+                    group_id,
+                    clean_email,
+                    role_in_group,
+                    token,
+                    requested_by_user_id,
+                    expires_at,
+                ),
+            )
+            row = await cur.fetchone()
+
+    invite = _invite_row_to_dict((*row, group["name"]))
+    return {
+        "status": "invited",
+        "member": None,
+        "invite": invite,
+        "group_name": group["name"],
+    }
+
+
+async def list_pending_invites(
+    group_id: int, requested_by_user_id: int, requested_by_role: str
+) -> List[Dict]:
+    await _assert_can_manage_invites(group_id, requested_by_user_id, requested_by_role)
+    async with get_db_connection() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                """
+                SELECT i.id, i.group_id, i.email, i.role_in_group, i.token,
+                       i.invited_by_user_id, i.status, i.accepted_by_user_id,
+                       i.expires_at, i.accepted_at, i.created_at, g.name
+                FROM group_invites i
+                JOIN groups g ON g.id = i.group_id
+                WHERE i.group_id = %s AND i.status = 'pending' AND i.expires_at > NOW()
+                ORDER BY i.created_at DESC
+                """,
+                (group_id,),
+            )
+            rows = await cur.fetchall()
+    return [_invite_row_to_dict(r) for r in rows]
+
+
+async def revoke_invite(
+    group_id: int, invite_id: int, requested_by_user_id: int, requested_by_role: str
+) -> None:
+    await _assert_can_manage_invites(group_id, requested_by_user_id, requested_by_role)
+    async with get_db_connection() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                """
+                UPDATE group_invites SET status = 'revoked'
+                WHERE id = %s AND group_id = %s AND status = 'pending'
+                """,
+                (invite_id, group_id),
+            )
+            if cur.rowcount == 0:
+                raise ValueError("Invite not found or already used")
+
+
+async def get_invite_by_token(token: str) -> Optional[Dict]:
+    token = (token or "").strip()
+    if not token:
+        return None
+    async with get_db_connection() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                """
+                SELECT i.id, i.group_id, i.email, i.role_in_group, i.token,
+                       i.invited_by_user_id, i.status, i.accepted_by_user_id,
+                       i.expires_at, i.accepted_at, i.created_at, g.name
+                FROM group_invites i
+                JOIN groups g ON g.id = i.group_id
+                WHERE i.token = %s
+                """,
+                (token,),
+            )
+            row = await cur.fetchone()
+    if not row:
+        return None
+    invite = _invite_row_to_dict(row)
+    from datetime import datetime, timezone
+
+    exp = invite.get("expires_at")
+    if invite["status"] == "pending" and exp is not None:
+        now = datetime.now(timezone.utc)
+        exp_aware = exp if getattr(exp, "tzinfo", None) else exp.replace(tzinfo=timezone.utc)
+        if exp_aware < now:
+            invite["status"] = "expired"
+    return invite
+
+
+async def accept_invite(token: str, user_id: int, user_email: Optional[str] = None) -> Dict:
+    """Принимает invite: добавляет пользователя в группу."""
+    invite = await get_invite_by_token(token)
+    if not invite:
+        raise ValueError("Invite not found")
+    if invite["status"] != "pending":
+        raise ValueError(f"Invite is {invite['status']}")
+
+    group_id = int(invite["group_id"])
+    role_in_group = _normalize_role_in_group(invite["role_in_group"])
+
+    if invite.get("email") and user_email:
+        if invite["email"].strip().lower() != user_email.strip().lower():
+            raise ValueError("This invite was issued for a different email")
+
+    existing = await get_membership_in_group(user_id, group_id)
+    if existing:
+        async with get_db_connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    UPDATE group_invites
+                    SET status = 'accepted', accepted_by_user_id = %s, accepted_at = NOW()
+                    WHERE id = %s AND status = 'pending'
+                    """,
+                    (user_id, invite["id"]),
+                )
+        return {
+            "group_id": group_id,
+            "group_name": invite.get("group_name"),
+            "role_in_group": existing["role_in_group"],
+            "already_member": True,
+        }
+
+    n_members = await _count_group_members(group_id)
+    seat_limit, seat_tariff = await _seat_budget_for_group(group_id)
+    if n_members >= seat_limit:
+        raise TeamSeatLimitError(limit=seat_limit, used=n_members, tariff=seat_tariff)
+    if role_in_group == "admin" and await _count_managers_in_group(group_id) >= 1:
+        raise ValueError("This group already has an admin")
+
+    async with get_db_connection() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                """
+                INSERT INTO group_members (group_id, user_id, role_in_group)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (group_id, user_id) DO NOTHING
+                """,
+                (group_id, user_id, role_in_group),
+            )
+            await cur.execute(
+                """
+                UPDATE group_invites
+                SET status = 'accepted', accepted_by_user_id = %s, accepted_at = NOW()
+                WHERE id = %s AND status = 'pending'
+                """,
+                (user_id, invite["id"]),
+            )
+
+    return {
+        "group_id": group_id,
+        "group_name": invite.get("group_name"),
+        "role_in_group": role_in_group,
+        "already_member": False,
+    }

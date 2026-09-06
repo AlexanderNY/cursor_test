@@ -43,14 +43,14 @@ export function DataTable<T>({
   }
 
   return (
-    <div className="w-full max-w-full min-w-0 overflow-x-auto rounded-xl border border-[var(--border-color)]">
-      <table className="w-full border-collapse table-auto">
+    <div className="w-full max-w-full min-w-0 overflow-x-auto overscroll-x-contain rounded-xl border border-[var(--border-color)]">
+      <table className="w-full min-w-[720px] border-collapse table-auto">
         <thead>
           <tr className="border-b border-[var(--border-color)]">
             {columns.map((col) => (
               <th
                 key={col.key}
-                className="text-left py-3 px-4 text-sm font-semibold text-[var(--text-primary)] whitespace-nowrap"
+                className="text-left py-2 px-2 sm:py-3 sm:px-4 text-xs sm:text-sm font-semibold text-[var(--text-primary)] whitespace-nowrap"
               >
                 {col.header}
               </th>
@@ -71,7 +71,7 @@ export function DataTable<T>({
                   const value = (row as Record<string, unknown>)[col.key]
                   const content = col.render ? col.render(value, row) : (value as ReactNode)
                   return (
-                    <td key={col.key} className="py-3 px-4 text-[var(--text-secondary)]">
+                    <td key={col.key} className="py-2 px-2 sm:py-3 sm:px-4 text-sm text-[var(--text-secondary)]">
                       {content ?? '—'}
                     </td>
                   )

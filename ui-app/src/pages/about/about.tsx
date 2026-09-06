@@ -115,7 +115,7 @@ export function AboutPage() {
   ) : null
 
   return (
-    <PageContainer>
+    <PageContainer maxWidth="default">
       <PageHeader
         title={intro?.title || 'Справка'}
         description={

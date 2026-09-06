@@ -8,9 +8,9 @@ import { PageHeader, PageContainer } from '@/components/ui'
 import { SkeletonCard } from '@/components/ui/skeleton'
 import { authService } from '@/services/auth-service'
 import { coreService } from '@/services/core-service'
-import type { GroupResponse, GroupMemberResponse } from '@/types/auth'
+import type { GroupResponse, GroupMemberResponse, GroupInviteResponse } from '@/types/auth'
 import type { UserStatisticsItem } from '@/types/core'
-import { isGroupAdmin, roleLabel, type GroupRole } from '@/types/smm'
+import { isGroupAdmin, roleLabel, canManagePlatformAuth, type GroupRole } from '@/types/smm'
 import { parseQuotaError, type QuotaErrorDetail } from '@/lib/quota'
 import { QuotaUpgradeModal } from '@/components/billing/QuotaUpgradeModal'
 import { getErrorMessage } from '@/services/api-client'
@@ -33,9 +33,14 @@ export function TeamPage() {
   const [isLoadingStats, setIsLoadingStats] = useState(false)
   const [statsError, setStatsError] = useState('')
   const [quotaDetail, setQuotaDetail] = useState<QuotaErrorDetail | null>(null)
+  const [invites, setInvites] = useState<GroupInviteResponse[]>([])
+  const [lastInviteUrl, setLastInviteUrl] = useState('')
+  const [inviteInfo, setInviteInfo] = useState('')
 
   const roleInGroup = group?.role_in_group ?? user?.role_in_group
   const isAdmin = isGroupAdmin(roleInGroup) || user?.role === 'admin'
+  const hasTeam = Boolean(group?.id || user?.group_id || user?.role_in_group)
+  const canSeeAuthHint = canManagePlatformAuth(roleInGroup, hasTeam)
   const canAccess =
     user?.role === 'manager' ||
     user?.role === 'author' ||
@@ -97,17 +102,44 @@ export function TeamPage() {
     }
   }
 
+  async function loadInvites(groupId: number) {
+    try {
+      setInvites(await authService.listGroupInvites(groupId))
+    } catch {
+      setInvites([])
+    }
+  }
+
   async function handleAddMember(e: FormEvent) {
     e.preventDefault()
-    if (!group || !addEmail.trim()) return
+    if (!group) return
     setAddError('')
+    setInviteInfo('')
+    setLastInviteUrl('')
     setIsAddingMember(true)
     try {
-      await authService.addGroupMember(group.id, addEmail.trim(), addRole)
-      const updated = await authService.getMyGroup()
-      setGroup(updated)
-      setAddEmail('')
-      if (isAdmin) await loadStats()
+      const result = await authService.createGroupInvite(group.id, {
+        email: addEmail.trim() || undefined,
+        role_in_group: addRole,
+      })
+      if (result.status === 'added') {
+        const updated = await authService.getMyGroup()
+        setGroup(updated)
+        setAddEmail('')
+        setInviteInfo('Пользователь добавлен в команду')
+        if (isAdmin) await loadStats()
+      } else if (result.invite) {
+        const path = result.invite.invite_path || `/invite/${result.invite.token}`
+        const url = `${window.location.origin}${path}`
+        setLastInviteUrl(url)
+        setAddEmail('')
+        setInviteInfo(
+          result.invite.email
+            ? `Ссылка для ${result.invite.email} (аккаунт ещё не создан)`
+            : 'Ссылка-приглашение создана',
+        )
+        await loadInvites(group.id)
+      }
     } catch (e) {
       const q = parseQuotaError(e)
       if (q) {
@@ -118,6 +150,25 @@ export function TeamPage() {
       }
     } finally {
       setIsAddingMember(false)
+    }
+  }
+
+  async function handleCopyInvite(url: string) {
+    try {
+      await navigator.clipboard.writeText(url)
+      setInviteInfo('Ссылка скопирована')
+    } catch {
+      setInviteInfo(url)
+    }
+  }
+
+  async function handleRevokeInvite(inviteId: number) {
+    if (!group) return
+    try {
+      await authService.revokeGroupInvite(group.id, inviteId)
+      await loadInvites(group.id)
+    } catch (e) {
+      setAddError(getErrorMessage(e))
     }
   }
 
@@ -149,7 +200,10 @@ export function TeamPage() {
   }
 
   useEffect(() => {
-    if (group && isAdmin) void loadStats()
+    if (group && isAdmin) {
+      void loadStats()
+      void loadInvites(group.id)
+    }
   }, [group?.id, isAdmin])
 
   if (!canAccess) {
@@ -180,11 +234,13 @@ export function TeamPage() {
   if (!group && (user?.role === 'manager' || user?.role === 'admin')) {
     return (
       <PageContainer>
-        <PageHeader title="Team" description="Создайте команду с ролями Admin / Editor / Analyst" />
+        <PageHeader title="Team" description="Создайте команду: Admin подключает платформы, участники публикуют" />
         <Card>
           <CardHeader>
             <CardTitle>Create team</CardTitle>
-            <CardDescription>Вы станете Admin без передачи паролей участникам</CardDescription>
+            <CardDescription>
+              Вы станете Admin. Участники смогут постить без доступа к авторизации и статистике.
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleCreateGroup} className="space-y-4">
@@ -204,7 +260,9 @@ export function TeamPage() {
     return (
       <PageContainer>
         <PageHeader title="Team" description="Вас ещё не добавили в команду" />
-        <p className="text-[var(--text-muted)]">Ожидайте приглашения по email.</p>
+        <p className="text-[var(--text-muted)]">
+          Откройте ссылку-приглашение от администратора или дождитесь добавления по email.
+        </p>
       </PageContainer>
     )
   }
@@ -213,7 +271,7 @@ export function TeamPage() {
     <PageContainer>
       <PageHeader
         title="Team"
-        description={`Роль: ${roleLabel(roleInGroup)} · доступы без передачи паролей`}
+        description={`Роль: ${roleLabel(roleInGroup)} · общие бренды без передачи паролей`}
       />
       <QuotaUpgradeModal
         open={quotaDetail != null}
@@ -225,7 +283,7 @@ export function TeamPage() {
         <CardHeader>
           <CardTitle>{group.name}</CardTitle>
           <CardDescription>
-            Admin — полный доступ · Editor — публикация · Analyst — только аналитика/инбокс (read)
+            Admin — авторизация платформ, статистика, управление командой · Member — публикация постов
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -241,10 +299,10 @@ export function TeamPage() {
           {isAdmin && (
             <form onSubmit={handleAddMember} className="flex flex-wrap items-end gap-2">
               <Input
-                label="Invite by email"
+                label="Invite by email (optional)"
                 value={addEmail}
                 onChange={(e) => setAddEmail(e.target.value)}
-                placeholder="user@example.com"
+                placeholder="user@example.com — или пусто для ссылки"
               />
               <div>
                 <label className="text-sm text-[var(--text-secondary)]">Role</label>
@@ -253,18 +311,62 @@ export function TeamPage() {
                   value={addRole}
                   onChange={(e) => setAddRole(e.target.value as GroupRole)}
                 >
-                  <option value="editor">Editor</option>
-                  <option value="analyst">Analyst</option>
+                  <option value="editor">Member</option>
                   <option value="admin">Admin</option>
                 </select>
               </div>
-              <Button type="submit" disabled={isAddingMember || !addEmail.trim()}>
-                Invite
+              <Button type="submit" disabled={isAddingMember}>
+                {isAddingMember ? '…' : addEmail.trim() ? 'Invite' : 'Create link'}
               </Button>
               {addError && <Alert variant="error">{addError}</Alert>}
+              {inviteInfo && <Alert variant="success">{inviteInfo}</Alert>}
+              {lastInviteUrl && (
+                <div className="w-full flex flex-wrap items-center gap-2 text-sm">
+                  <code className="break-all text-[var(--text-muted)]">{lastInviteUrl}</code>
+                  <Button type="button" size="sm" variant="secondary" onClick={() => void handleCopyInvite(lastInviteUrl)}>
+                    Copy
+                  </Button>
+                </div>
+              )}
             </form>
           )}
 
+          {isAdmin && invites.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-sm font-medium">Pending invites</p>
+              <ul className="divide-y divide-[var(--border-color)] text-sm">
+                {invites.map((inv) => {
+                  const path = inv.invite_path || `/invite/${inv.token}`
+                  const url = `${window.location.origin}${path}`
+                  return (
+                    <li key={inv.id} className="flex flex-wrap justify-between items-center gap-2 py-2">
+                      <div>
+                        <p>{inv.email || 'Link-only invite'}</p>
+                        <p className="text-[var(--text-muted)]">
+                          {roleLabel(inv.role_in_group)} · до {new Date(inv.expires_at).toLocaleDateString()}
+                        </p>
+                      </div>
+                      <div className="flex gap-1">
+                        <Button size="sm" variant="secondary" onClick={() => void handleCopyInvite(url)}>
+                          Copy
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => void handleRevokeInvite(inv.id)}>
+                          Revoke
+                        </Button>
+                      </div>
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
+          )}
+
+          {!isAdmin && !canSeeAuthHint && (
+            <Alert variant="info">
+              Авторизация соцсетей и аналитика доступны только администратору команды. Вы можете создавать и
+              публиковать посты в общих брендах.
+            </Alert>
+          )}
           <ul className="divide-y divide-[var(--border-color)]">
             {group.members?.map((m) => (
               <li key={m.user_id} className="flex justify-between items-center py-3 text-sm">

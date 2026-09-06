@@ -28,6 +28,8 @@ PLAN_DEFINITIONS: list[dict[str, Any]] = [
         "schedule_horizon_days": 7,
         "stats_retention_days": 7,
         "csv_import_rows": 20,
+        "price_monthly": 0,
+        "currency": "RUB",
         "features": {
             "ai_processing": False,
             "review_queue": True,
@@ -67,6 +69,8 @@ PLAN_DEFINITIONS: list[dict[str, Any]] = [
         "schedule_horizon_days": 30,
         "stats_retention_days": 90,
         "csv_import_rows": 200,
+        "price_monthly": 2990,
+        "currency": "RUB",
         "features": {
             "ai_processing": True,
             "review_queue": True,
@@ -106,6 +110,8 @@ PLAN_DEFINITIONS: list[dict[str, Any]] = [
         "schedule_horizon_days": 90,
         "stats_retention_days": 365,
         "csv_import_rows": 2000,
+        "price_monthly": 7990,
+        "currency": "RUB",
         "features": {
             "ai_processing": True,
             "review_queue": True,

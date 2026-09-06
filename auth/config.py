@@ -36,6 +36,17 @@ class Settings(BaseSettings):
     BILLING_PORTAL_RETURN_URL: str = "http://localhost:5173/profile?tab=billing"
     BILLING_CHECKOUT_SUCCESS_URL: str = "http://localhost:5173/profile?tab=billing&checkout=success"
     BILLING_CHECKOUT_CANCEL_URL: str = "http://localhost:5173/profile?tab=billing&checkout=cancel"
+
+    # Invoice email (optional). Without SMTP, invoice is stored and returned as preview.
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM: str = ""
+    SMTP_STARTTLS: bool = True
+    BILLING_INVOICE_SELLER: str = "CopyParse"
+    BILLING_PAYMENT_INSTRUCTIONS: str = ""
+    FRONTEND_URL: str = "http://localhost:8100"
     
     class Config:
         env_file = ".env"

@@ -445,6 +445,14 @@ async def list_brands(x_user_id: Optional[str] = Header(None)):
 @router.post("/brands")
 async def create_brand(body: BrandCreate, x_user_id: Optional[str] = Header(None)):
     user_id = get_user_id(x_user_id)
+    from services.team_access import list_memberships, is_admin_role
+
+    memberships = await list_memberships(user_id)
+    if memberships and not any(is_admin_role(m["role_in_group"]) for m in memberships):
+        raise HTTPException(
+            status_code=403,
+            detail="Only team admin can create brands",
+        )
     try:
         return await smm_service.create_brand(
             user_id,
@@ -955,6 +963,16 @@ async def run_automation(
 
 # ---------- Analytics ----------
 
+async def _require_analytics_access(user_id: int) -> None:
+    from services.team_access import can_view_team_stats
+
+    if not await can_view_team_stats(user_id):
+        raise HTTPException(
+            status_code=403,
+            detail="Only team admin can view analytics",
+        )
+
+
 @router.get("/analytics/overview")
 async def analytics_overview(
     brand_id: Optional[int] = None,
@@ -963,6 +981,7 @@ async def analytics_overview(
     x_user_id: Optional[str] = Header(None),
 ):
     user_id = get_user_id(x_user_id)
+    await _require_analytics_access(user_id)
     return await smm_service.analytics_overview(user_id, brand_id, period, channel_id)
 
 
@@ -975,6 +994,7 @@ async def analytics_posts(
     x_user_id: Optional[str] = Header(None),
 ):
     user_id = get_user_id(x_user_id)
+    await _require_analytics_access(user_id)
     return {"posts": await smm_service.analytics_posts(user_id, brand_id, sort, limit, channel_id)}
 
 
@@ -983,6 +1003,7 @@ async def analytics_growth(
     brand_id: Optional[int] = None, x_user_id: Optional[str] = Header(None)
 ):
     user_id = get_user_id(x_user_id)
+    await _require_analytics_access(user_id)
     return await smm_service.analytics_growth(user_id, brand_id)
 
 
@@ -994,6 +1015,7 @@ async def best_times(
     x_user_id: Optional[str] = Header(None),
 ):
     user_id = get_user_id(x_user_id)
+    await _require_analytics_access(user_id)
     if not plan_feature(await get_user_tariff(user_id), "best_times"):
         raise HTTPException(status_code=402, detail="best_times requires Standard or Full plan")
     return await smm_service.best_times(user_id, brand_id, channel_id, horizon_days)
@@ -1006,12 +1028,11 @@ async def channel_stats(
     x_user_id: Optional[str] = Header(None),
 ):
     user_id = get_user_id(x_user_id)
+    await _require_analytics_access(user_id)
     if not plan_feature(await get_user_tariff(user_id), "channel_stats"):
         raise HTTPException(status_code=402, detail="channel_stats requires an active plan")
-    return {
-        "channels": await smm_service.channel_stats(user_id, brand_id, period),
-        "period": period,
-    }
+    payload = await smm_service.channel_stats(user_id, brand_id, period)
+    return payload
 
 
 @router.get("/analytics/messages")
@@ -1023,6 +1044,7 @@ async def analytics_messages(
     x_user_id: Optional[str] = Header(None),
 ):
     user_id = get_user_id(x_user_id)
+    await _require_analytics_access(user_id)
     return await smm_service.analytics_messages(
         user_id, brand_id, period, channel_id, limit
     )
@@ -1339,22 +1361,53 @@ async def ai_adapt(body: AiAdaptRequest, x_user_id: Optional[str] = Header(None)
             )
     except Exception as exc:
         logger.warning("AI adapt fallback: %s", exc)
-        import re
+        from shared.post_adapt import adapt_for_networks as _shared_adapt
 
-        plain = re.sub(r"<[^>]+>", "", body.text).strip()
+        adapters = await _shared_adapt(
+            body.text,
+            media=[],
+            networks=targets,
+            prefer_summarize=False,
+        )
         for net in targets:
             limit = network_text_limit(net) or 4096
             limits[net] = limit
-            base = body.text if net == "tg" else plain
-            variants[net] = base[:limit] if len(base) > limit else base
+            payload = adapters.get(net) or {}
+            variants[net] = str(payload.get("text") or "")
         return {"variants": variants, "limits": limits, "fallback": True}
     return {"variants": variants, "limits": limits}
 
 
 @router.get("/platform-status")
 async def platform_status(x_user_id: Optional[str] = Header(None)):
+    """Read-only platform readiness. Credential writes stay on auth tabs (admin-only in UI/API)."""
     user_id = get_user_id(x_user_id)
-    return await platform_auth_service.get_all_platform_status(user_id)
+    from services.team_access import can_manage_platform_auth
+
+    # Non-admin members see status of brand-owner credentials for shared brands.
+    if await can_manage_platform_auth(user_id):
+        return await platform_auth_service.get_all_platform_status(user_id)
+
+    brands = await smm_service.list_brands(user_id)
+    owner_ids = {int(b["user_id"]) for b in brands if b.get("user_id")}
+    if not owner_ids:
+        return await platform_auth_service.get_all_platform_status(user_id)
+    # Prefer credentials of shared brand owners (usually the team admin).
+    owner_id = next(iter(owner_ids))
+    status = await platform_auth_service.get_all_platform_status(owner_id)
+    status["credential_user_id"] = owner_id
+    status["read_only"] = True
+    return status
+
+
+async def _require_platform_auth_admin(user_id: int) -> None:
+    from services.team_access import can_manage_platform_auth
+
+    if not await can_manage_platform_auth(user_id):
+        raise HTTPException(
+            status_code=403,
+            detail="Only team admin can manage platform authorization",
+        )
 
 
 @router.get("/channels/{channel_id}/auth")
@@ -1390,6 +1443,7 @@ async def bind_channel(
 ):
     """Bind channel.external_id to profile handle (or explicit id) and recheck auth."""
     user_id = get_user_id(x_user_id)
+    await _require_platform_auth_admin(user_id)
     try:
         return await smm_service.bind_channel_profile(
             user_id,
@@ -1407,6 +1461,7 @@ async def bind_channel(
 @router.post("/channels/{channel_id}/auth/recheck")
 async def recheck_channel_auth(channel_id: int, x_user_id: Optional[str] = Header(None)):
     user_id = get_user_id(x_user_id)
+    await _require_platform_auth_admin(user_id)
     try:
         return await platform_auth_service.recheck_channel_auth(user_id, channel_id)
     except ValueError as exc:

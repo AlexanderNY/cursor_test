@@ -199,14 +199,6 @@ export function AuthTab({
               <Link to="/channels">
                 <Button size="sm">Перейти в Channels →</Button>
               </Link>
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={onCheckChannels}
-                isLoading={isCheckingChannels}
-              >
-                Показать доступные каналы TG
-              </Button>
             </div>
           </div>
         )}

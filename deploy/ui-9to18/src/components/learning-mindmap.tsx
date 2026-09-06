@@ -13,7 +13,10 @@ import { LeafDetailPanel } from '@/components/leaf-detail-panel'
 import {
   collectAnkiCards,
   downloadAnkiDeck,
+  type AnkiCard,
 } from '@/data/learning-map/anki-cards'
+import { siteReviewAnkiCard } from '@/data/site/site-api'
+import { getSiteAuthSession } from '@/data/site/site-auth'
 import {
   loadHiddenBranchIds,
   saveHiddenBranchIds,
@@ -1055,6 +1058,20 @@ export function LearningMindmap({ root, branchCount, nodeCount }: LearningMindma
           }
           initialTags={activeTags}
           onClose={() => setAnkiOpen(false)}
+          onReview={(card: AnkiCard, ease) => {
+            if (!getSiteAuthSession()?.accessToken) {
+              return
+            }
+            void siteReviewAnkiCard({
+              card_id: card.id,
+              front: card.front,
+              back: card.back,
+              source_key: card.learn?.slug
+                ? `learn/${card.learn.slug}`
+                : `map/${card.branchId || 'root'}`,
+              ease,
+            }).catch(() => undefined)
+          }}
         />
       ) : null}
     </div>

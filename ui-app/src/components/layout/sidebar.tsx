@@ -5,6 +5,7 @@ import { useBrand } from '@/contexts/brand-context'
 import { navItems, platformNavItems, groupNavItem, adminNavItems } from '@/config/nav'
 import { SettingsIcon } from '@/components/icons'
 import { smmService } from '@/services/smm-service'
+import { canViewTeamAnalytics } from '@/types/smm'
 
 const iconClassName = 'h-5 w-5'
 const INBOX_BADGE_POLL_MS = 25_000
@@ -16,6 +17,16 @@ export function Sidebar() {
   const [newComments, setNewComments] = useState(0)
   const [platformsOpen, setPlatformsOpen] = useState(() =>
     platformNavItems.some((item) => location.pathname.startsWith(item.path)),
+  )
+
+  const hasTeam = Boolean(user?.group_id || user?.role_in_group)
+  const showAnalytics = canViewTeamAnalytics(
+    user?.role_in_group,
+    hasTeam,
+    user?.role,
+  )
+  const visibleNavItems = navItems.filter(
+    (item) => item.path !== '/analytics' || showAnalytics,
   )
 
   const loadBadge = useCallback(async () => {
@@ -71,7 +82,7 @@ export function Sidebar() {
       )}
 
       <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto min-h-0">
-        {navItems.map((item) => (
+        {visibleNavItems.map((item) => (
           <NavLink
             key={item.path}
             to={item.path === '/inbox' ? '/inbox?mode=comments' : item.path}

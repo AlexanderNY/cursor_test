@@ -103,6 +103,42 @@ CREATE TABLE IF NOT EXISTS site_password_resets (
 CREATE INDEX IF NOT EXISTS idx_site_password_resets_user ON site_password_resets (user_id);
 """
 
+SITE_QUIZ_ATTEMPTS_TABLE = """
+CREATE TABLE IF NOT EXISTS site_quiz_attempts (
+    id SERIAL PRIMARY KEY,
+    user_id INT NOT NULL REFERENCES site_users(id) ON DELETE CASCADE,
+    source_type VARCHAR(32) NOT NULL DEFAULT 'post'
+        CHECK (source_type IN ('post', 'learn', 'quiz_page')),
+    source_key VARCHAR(255) NOT NULL,
+    score INT NOT NULL DEFAULT 0,
+    total INT NOT NULL DEFAULT 0,
+    answers JSONB NOT NULL DEFAULT '[]'::jsonb,
+    finished_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_site_quiz_attempts_user
+    ON site_quiz_attempts (user_id, finished_at DESC);
+CREATE INDEX IF NOT EXISTS idx_site_quiz_attempts_source
+    ON site_quiz_attempts (user_id, source_key);
+"""
+
+SITE_ANKI_CARDS_TABLE = """
+CREATE TABLE IF NOT EXISTS site_anki_cards (
+    user_id INT NOT NULL REFERENCES site_users(id) ON DELETE CASCADE,
+    card_id VARCHAR(255) NOT NULL,
+    front TEXT NOT NULL DEFAULT '',
+    back TEXT NOT NULL DEFAULT '',
+    source_key VARCHAR(255) NOT NULL DEFAULT '',
+    ease SMALLINT NOT NULL DEFAULT 0,
+    interval_days INT NOT NULL DEFAULT 0,
+    repetitions INT NOT NULL DEFAULT 0,
+    due_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id, card_id)
+);
+CREATE INDEX IF NOT EXISTS idx_site_anki_cards_due
+    ON site_anki_cards (user_id, due_at);
+"""
+
 # Idempotent patches for already-created DBs (run AFTER CREATE TABLE IF NOT EXISTS)
 SITE_SCHEMA_PATCHES: list[str] = [
     """
@@ -123,4 +159,6 @@ SITE_ALL_TABLES: list[str] = [
     SITE_CONTACTS_TABLE,
     SITE_LEARN_PROGRESS_TABLE,
     SITE_PASSWORD_RESET_TABLE,
+    SITE_QUIZ_ATTEMPTS_TABLE,
+    SITE_ANKI_CARDS_TABLE,
 ]

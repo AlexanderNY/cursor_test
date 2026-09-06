@@ -407,3 +407,92 @@ export async function siteSetLearnProgress(
     body: JSON.stringify({ slug, completed }),
   })
 }
+
+export type SiteLatestPost = {
+  appSlug: string
+  postSlug: string
+  title: string
+  excerpt: string
+  publishedAt: string
+  appTitle: string
+  emoji: string
+  accent: string
+  href: string
+}
+
+export async function siteListLatestPosts(limit = 5): Promise<SiteLatestPost[]> {
+  const data = await request<{ items: SiteLatestPost[] }>(
+    `/site/posts/latest?limit=${encodeURIComponent(String(limit))}`,
+    {},
+    { auth: false },
+  )
+  return data.items || []
+}
+
+export type SiteStudySummary = {
+  quiz: {
+    attempts: number
+    scoreSum: number
+    totalSum: number
+    avgPercent: number
+    lastAt: string | null
+    recent: Array<{
+      sourceKey: string
+      score: number
+      total: number
+      finishedAt: string
+    }>
+  }
+  anki: {
+    cards: number
+    due: number
+    learning: number
+  }
+}
+
+export async function siteGetStudySummary(): Promise<SiteStudySummary> {
+  return request('/site/study/summary')
+}
+
+export async function siteSubmitQuizAttempt(input: {
+  source_type: 'post' | 'learn' | 'quiz_page'
+  source_key: string
+  score: number
+  total: number
+  answers?: unknown[]
+}): Promise<{ id: number; score: number; total: number; finishedAt: string }> {
+  return request('/site/study/quiz', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  })
+}
+
+export type SiteAnkiCardState = {
+  cardId: string
+  front: string
+  back: string
+  sourceKey: string
+  ease: number
+  intervalDays: number
+  repetitions: number
+  dueAt: string
+  updatedAt: string
+}
+
+export async function siteListAnkiCards(): Promise<SiteAnkiCardState[]> {
+  const data = await request<{ cards: SiteAnkiCardState[] }>('/site/study/anki')
+  return data.cards || []
+}
+
+export async function siteReviewAnkiCard(input: {
+  card_id: string
+  front?: string
+  back?: string
+  source_key?: string
+  ease: 1 | 2 | 3 | 4
+}): Promise<{ cardId: string; dueAt: string; intervalDays: number; repetitions: number }> {
+  return request('/site/study/anki', {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  })
+}

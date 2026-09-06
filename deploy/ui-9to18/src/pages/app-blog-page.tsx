@@ -2,12 +2,14 @@ import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { PageShell } from '@/components/page-shell'
 import { LearnContent } from '@/components/learn-content'
+import { StructuredPostView } from '@/components/structured-post-view'
 import {
   siteGetApp,
   siteListPosts,
   type SiteApp,
   type SitePost,
 } from '@/data/site/site-api'
+import { parsePostBody } from '@/data/site/structured-post'
 import { canManageApp, isSuperAdmin } from '@/data/site/site-auth'
 
 export function AppBlogPage() {
@@ -55,10 +57,15 @@ export function AppBlogPage() {
           <header className="learn-header">
             <p className="learn-eyebrow">
               {app.emoji ? `${app.emoji} ` : ''}
-              Блог приложения
+              Страница сервиса
             </p>
             <h1 className="learn-title">{app.title}</h1>
-            <p className="learn-lead">{app.description || app.subtitle}</p>
+            <p className="learn-lead">{app.subtitle}</p>
+            {app.description ? (
+              <div className="app-description">
+                <LearnContent content={app.description} format="markdown" />
+              </div>
+            ) : null}
             <div className="learn-admin-actions">
               {app.appPath ? (
                 <Link to={app.appPath} className="learn-admin-btn learn-admin-btn-primary">
@@ -77,7 +84,7 @@ export function AppBlogPage() {
               ) : null}
               {canManageApp(app.slug) ? (
                 <Link to={`/admin/apps/${app.slug}`} className="learn-admin-btn">
-                  {isSuperAdmin() ? 'Супер-админ · правка' : 'Админ сервиса'}
+                  {isSuperAdmin() ? 'Супер-админ · правка' : 'Кабинет владельца'}
                 </Link>
               ) : null}
             </div>
@@ -85,22 +92,31 @@ export function AppBlogPage() {
 
           <section aria-labelledby="app-blog-list">
             <h2 id="app-blog-list" className="learn-section-title">
-              Записи блога
+              Блог сервиса
             </h2>
             {posts.length === 0 ? (
               <p className="learn-section-note">Пока нет опубликованных записей.</p>
             ) : (
               <ul className="learn-episode-list">
-                {posts.map((post) => (
-                  <li key={post.id}>
-                    <Link
-                      to={`/app/${app.slug}/${post.slug}`}
-                      className="learn-episode-card"
-                    >
-                      <span className="learn-episode-title">{post.title}</span>
-                    </Link>
-                  </li>
-                ))}
+                {posts.map((post) => {
+                  const { structured } = parsePostBody(post.body)
+                  const excerpt = structured
+                    ? structured.intro.slice(0, 160)
+                    : post.body.replace(/[#*_`>\-\[\]()]/g, ' ').slice(0, 160)
+                  return (
+                    <li key={post.id}>
+                      <Link
+                        to={`/app/${app.slug}/${post.slug}`}
+                        className="learn-episode-card"
+                      >
+                        <span className="learn-episode-title">{post.title}</span>
+                        {excerpt ? (
+                          <span className="learn-section-note">{excerpt.trim()}…</span>
+                        ) : null}
+                      </Link>
+                    </li>
+                  )
+                })}
               </ul>
             )}
           </section>
@@ -141,10 +157,12 @@ export function AppPostPage() {
     }
   }, [slug, postSlug])
 
+  const parsed = post ? parsePostBody(post.body) : null
+
   return (
     <PageShell>
       <Link to={`/app/${slug}`} className="back-link">
-        ← К блогу {app?.title || slug}
+        ← К сервису {app?.title || slug}
       </Link>
       {!ready ? (
         <p className="learn-section-note">Загрузка…</p>
@@ -156,7 +174,15 @@ export function AppPostPage() {
             <p className="learn-eyebrow">{app?.title}</p>
             <h1 className="learn-title">{post.title}</h1>
           </header>
-          <LearnContent content={post.body} format="markdown" />
+          {parsed?.structured ? (
+            <StructuredPostView
+              post={parsed.structured}
+              appSlug={slug}
+              postSlug={post.slug}
+            />
+          ) : (
+            <LearnContent content={parsed?.legacyMarkdown || post.body} format="markdown" />
+          )}
         </>
       )}
     </PageShell>

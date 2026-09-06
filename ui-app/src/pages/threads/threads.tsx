@@ -16,6 +16,7 @@ import {
   type SelectedBrandChannels,
 } from '@/components/target-social-networks'
 import { useAuth } from '@/contexts/auth-context'
+import { canManagePlatformAuth } from '@/types/smm'
 import { formatDateTime } from '@/utils/date'
 import type { ThreadsConfig, ThreadsPostListItem, TimeInterval, PublishScheduleType } from '@/types/threads'
 import type {
@@ -37,6 +38,8 @@ type ScheduleMinute = (typeof SCHEDULE_MINUTES)[number]
 
 export function ThreadsPage() {
   const { user } = useAuth()
+  const hasTeam = Boolean(user?.group_id || user?.role_in_group)
+  const canAuth = canManagePlatformAuth(user?.role_in_group, hasTeam)
   const [searchParams, setSearchParams] = useSearchParams()
 
   const [activeTab, setActiveTab] = useState<'create' | 'posts' | 'profile' | 'processing' | 'auth'>(
@@ -460,7 +463,9 @@ export function ThreadsPage() {
       {success && <Alert variant="success" className="animate-slide-down">{success}</Alert>}
 
       <div className="flex border-b border-[var(--border-color)]">
-        {(['posts', 'profile', 'processing', 'auth'] as const).map((tab) => (
+        {(['posts', 'profile', 'processing', 'auth'] as const)
+          .filter((tab) => tab !== 'auth' || canAuth)
+          .map((tab) => (
           <button
             key={tab}
             className={`px-6 py-3 text-sm font-medium transition-all relative flex items-center gap-1.5 ${
@@ -491,7 +496,7 @@ export function ThreadsPage() {
         ))}
       </div>
 
-      {activeTab === 'auth' && (
+      {activeTab === 'auth' && canAuth && (
         <Card className="animate-slide-up border-amber-500/30">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-amber-400">Threads авторизация</CardTitle>

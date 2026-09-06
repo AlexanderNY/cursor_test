@@ -98,11 +98,29 @@ def _upload_png_to_s3(key: str, png: bytes) -> Optional[str]:
     return key
 
 
+def capture_live_jpeg_for_ui(
+    driver: Optional["WebDriver"],
+    *,
+    max_width: int = 720,
+    quality: int = 60,
+) -> Optional[str]:
+    """Лёгкий JPEG data URL для live-опроса (без S3)."""
+    if driver is None:
+        return None
+    try:
+        png = driver.get_screenshot_as_png()
+    except Exception as e:
+        logger.debug("selenium_diag: live screenshot failed: %s", e)
+        return None
+    return _png_to_jpeg_data_url(png, max_width=max_width, quality=quality)
+
+
 def capture_diag_for_ui(
     driver: Optional["WebDriver"],
     label: str,
     *,
     user_id: Optional[int] = None,
+    upload_s3: bool = True,
 ) -> dict[str, Any]:
     """
     Диагностика для verify-yandex: архив PNG в S3 + inline JPEG data URL для UI.
@@ -118,7 +136,7 @@ def capture_diag_for_ui(
         return {"diag_image_url": None, "diag_s3_key": None}
 
     jpeg_url = _png_to_jpeg_data_url(png)
-    s3_key = _upload_png_to_s3(_build_diag_s3_key(label, user_id), png)
+    s3_key = _upload_png_to_s3(_build_diag_s3_key(label, user_id), png) if upload_s3 else None
     return {"diag_image_url": jpeg_url, "diag_s3_key": s3_key}
 
 

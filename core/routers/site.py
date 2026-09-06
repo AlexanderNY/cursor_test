@@ -289,7 +289,7 @@ class AppsReorderIn(BaseModel):
 class PostIn(BaseModel):
     slug: str = Field(..., min_length=1, max_length=128)
     title: str = Field(..., min_length=1, max_length=512)
-    body: str = Field(default="", max_length=50000)
+    body: str = Field(default="", max_length=120000)
     is_published: bool = True
 
 
@@ -354,6 +354,22 @@ class PasswordResetIn(BaseModel):
 class LearnProgressIn(BaseModel):
     slug: str = Field(..., min_length=1, max_length=128)
     completed: bool = True
+
+
+class QuizAttemptIn(BaseModel):
+    source_type: str = Field(default="post", pattern=r"^(post|learn|quiz_page)$")
+    source_key: str = Field(..., min_length=1, max_length=255)
+    score: int = Field(..., ge=0, le=500)
+    total: int = Field(..., ge=0, le=500)
+    answers: list[Any] = Field(default_factory=list)
+
+
+class AnkiReviewIn(BaseModel):
+    card_id: str = Field(..., min_length=1, max_length=255)
+    front: str = Field(default="", max_length=2000)
+    back: str = Field(default="", max_length=8000)
+    source_key: str = Field(default="", max_length=255)
+    ease: int = Field(..., ge=1, le=4)  # 1 again, 2 hard, 3 good, 4 easy
 
 
 def _secret() -> str:
@@ -1287,9 +1303,33 @@ SPOTLIGHT_LIMIT = 5
 SPOTLIGHT_EXCERPT_LEN = 220
 
 
+def _plain_from_post_body(text: str) -> str:
+    """Extract plain text from legacy markdown or structured JSON body."""
+    raw = (text or "").strip()
+    if raw.startswith("{"):
+        try:
+            data = json.loads(raw)
+            if isinstance(data, dict) and int(data.get("version") or 0) == 1:
+                intro = str(data.get("intro") or "").strip()
+                if intro:
+                    return intro
+                sections = data.get("sections") or []
+                if isinstance(sections, list) and sections:
+                    first = sections[0] if isinstance(sections[0], dict) else {}
+                    body = str(first.get("body") or "").strip()
+                    if body:
+                        return body
+                summary = data.get("summary") or []
+                if isinstance(summary, list) and summary:
+                    return str(summary[0] or "")
+        except (json.JSONDecodeError, TypeError, ValueError):
+            pass
+    return raw
+
+
 def _crop_excerpt(text: str, max_len: int = SPOTLIGHT_EXCERPT_LEN) -> str:
-    """Короткий кроп из markdown/plain текста для карусели спотлайта."""
-    raw = (text or "").replace("\r\n", "\n")
+    """Короткий кроп из markdown/plain/structured JSON для ленты и спотлайта."""
+    raw = _plain_from_post_body(text).replace("\r\n", "\n")
     raw = re.sub(r"```[\s\S]*?```", " ", raw)
     raw = re.sub(r"`([^`]+)`", r"\1", raw)
     raw = re.sub(r"!\[([^\]]*)\]\([^)]+\)", r"\1", raw)
@@ -1392,6 +1432,15 @@ def _normalize_curated_keys(raw: Any) -> list[str]:
         if len(out) >= SPOTLIGHT_LIMIT:
             break
     return out
+
+
+@router.get("/posts/latest")
+async def list_latest_posts(limit: int = 5) -> dict[str, Any]:
+    """Пять самых свежих опубликованных статей из всех блогов витрины."""
+    await ensure_site_seeded()
+    safe_limit = max(1, min(int(limit or 5), 20))
+    items = await _spotlight_items(limit=safe_limit, curated_keys=None)
+    return {"items": items}
 
 
 @router.get("/promo")
@@ -2021,3 +2070,242 @@ async def put_learn_progress(
             return {"slug": slug, "completedAt": None, "completed": False}
     finally:
         await release_site_db_connection(conn)
+
+
+def _anki_next_interval(ease: int, prev_interval: int, repetitions: int) -> tuple[int, int]:
+    """Simplified SM-2-ish: returns (interval_days, next_repetitions)."""
+    if ease <= 1:
+        return 0, 0
+    if repetitions <= 0:
+        return (1 if ease == 2 else 3 if ease == 3 else 4), 1
+    if repetitions == 1:
+        return (3 if ease == 2 else 7 if ease == 3 else 10), 2
+    factor = 1.3 if ease == 2 else 2.0 if ease == 3 else 2.5
+    nxt = max(1, int(round(max(prev_interval, 1) * factor)))
+    return nxt, repetitions + 1
+
+
+@router.get("/study/summary")
+async def get_study_summary(authorization: Optional[str] = Header(None)) -> dict[str, Any]:
+    """Сводка для кабинета учащегося: тесты и anki."""
+    user = await _require_user(authorization)
+    conn = await get_site_db_connection()
+    try:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                """
+                SELECT COUNT(*)::int,
+                       COALESCE(SUM(score), 0)::int,
+                       COALESCE(SUM(total), 0)::int,
+                       MAX(finished_at)
+                FROM site_quiz_attempts
+                WHERE user_id = %s
+                """,
+                (user["user_id"],),
+            )
+            quiz_row = await cur.fetchone()
+            await cur.execute(
+                """
+                SELECT source_key, score, total, finished_at
+                FROM site_quiz_attempts
+                WHERE user_id = %s
+                ORDER BY finished_at DESC
+                LIMIT 8
+                """,
+                (user["user_id"],),
+            )
+            recent_quiz = await cur.fetchall()
+            await cur.execute(
+                """
+                SELECT COUNT(*)::int,
+                       COUNT(*) FILTER (WHERE due_at <= CURRENT_TIMESTAMP)::int,
+                       COUNT(*) FILTER (WHERE repetitions > 0)::int
+                FROM site_anki_cards
+                WHERE user_id = %s
+                """,
+                (user["user_id"],),
+            )
+            anki_row = await cur.fetchone()
+    finally:
+        await release_site_db_connection(conn)
+
+    quiz_attempts = int(quiz_row[0] or 0) if quiz_row else 0
+    quiz_score_sum = int(quiz_row[1] or 0) if quiz_row else 0
+    quiz_total_sum = int(quiz_row[2] or 0) if quiz_row else 0
+    last_quiz_at = None
+    if quiz_row and quiz_row[3] is not None:
+        last_quiz_at = (
+            quiz_row[3].isoformat() if hasattr(quiz_row[3], "isoformat") else str(quiz_row[3])
+        )
+
+    return {
+        "quiz": {
+            "attempts": quiz_attempts,
+            "scoreSum": quiz_score_sum,
+            "totalSum": quiz_total_sum,
+            "avgPercent": round((quiz_score_sum / quiz_total_sum) * 100) if quiz_total_sum else 0,
+            "lastAt": last_quiz_at,
+            "recent": [
+                {
+                    "sourceKey": str(row[0]),
+                    "score": int(row[1] or 0),
+                    "total": int(row[2] or 0),
+                    "finishedAt": row[3].isoformat()
+                    if hasattr(row[3], "isoformat")
+                    else str(row[3]),
+                }
+                for row in recent_quiz
+            ],
+        },
+        "anki": {
+            "cards": int(anki_row[0] or 0) if anki_row else 0,
+            "due": int(anki_row[1] or 0) if anki_row else 0,
+            "learning": int(anki_row[2] or 0) if anki_row else 0,
+        },
+    }
+
+
+@router.post("/study/quiz")
+async def post_quiz_attempt(
+    body: QuizAttemptIn,
+    authorization: Optional[str] = Header(None),
+) -> dict[str, Any]:
+    user = await _require_user(authorization)
+    source_key = body.source_key.strip()
+    if not source_key:
+        raise HTTPException(status_code=400, detail="source_key required")
+    total = max(body.total, 0)
+    score = min(max(body.score, 0), total if total else body.score)
+    answers_json = json.dumps(body.answers if isinstance(body.answers, list) else [])
+    conn = await get_site_db_connection()
+    try:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                """
+                INSERT INTO site_quiz_attempts
+                    (user_id, source_type, source_key, score, total, answers, finished_at)
+                VALUES (%s, %s, %s, %s, %s, %s::jsonb, CURRENT_TIMESTAMP)
+                RETURNING id, finished_at
+                """,
+                (user["user_id"], body.source_type, source_key, score, total, answers_json),
+            )
+            row = await cur.fetchone()
+    finally:
+        await release_site_db_connection(conn)
+    return {
+        "id": int(row[0]),
+        "sourceType": body.source_type,
+        "sourceKey": source_key,
+        "score": score,
+        "total": total,
+        "finishedAt": row[1].isoformat() if hasattr(row[1], "isoformat") else str(row[1]),
+    }
+
+
+@router.get("/study/anki")
+async def get_anki_cards(authorization: Optional[str] = Header(None)) -> dict[str, Any]:
+    user = await _require_user(authorization)
+    conn = await get_site_db_connection()
+    try:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                """
+                SELECT card_id, front, back, source_key, ease, interval_days,
+                       repetitions, due_at, updated_at
+                FROM site_anki_cards
+                WHERE user_id = %s
+                ORDER BY due_at ASC, updated_at DESC
+                """,
+                (user["user_id"],),
+            )
+            rows = await cur.fetchall()
+    finally:
+        await release_site_db_connection(conn)
+    return {
+        "cards": [
+            {
+                "cardId": str(row[0]),
+                "front": str(row[1] or ""),
+                "back": str(row[2] or ""),
+                "sourceKey": str(row[3] or ""),
+                "ease": int(row[4] or 0),
+                "intervalDays": int(row[5] or 0),
+                "repetitions": int(row[6] or 0),
+                "dueAt": row[7].isoformat() if hasattr(row[7], "isoformat") else str(row[7]),
+                "updatedAt": row[8].isoformat() if hasattr(row[8], "isoformat") else str(row[8]),
+                "isDue": True,
+            }
+            for row in rows
+        ]
+    }
+
+
+@router.put("/study/anki")
+async def put_anki_review(
+    body: AnkiReviewIn,
+    authorization: Optional[str] = Header(None),
+) -> dict[str, Any]:
+    user = await _require_user(authorization)
+    card_id = body.card_id.strip()
+    if not card_id:
+        raise HTTPException(status_code=400, detail="card_id required")
+    conn = await get_site_db_connection()
+    try:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                """
+                SELECT interval_days, repetitions
+                FROM site_anki_cards
+                WHERE user_id = %s AND card_id = %s
+                """,
+                (user["user_id"], card_id),
+            )
+            existing = await cur.fetchone()
+            prev_interval = int(existing[0] or 0) if existing else 0
+            prev_reps = int(existing[1] or 0) if existing else 0
+            interval_days, repetitions = _anki_next_interval(body.ease, prev_interval, prev_reps)
+            await cur.execute(
+                """
+                INSERT INTO site_anki_cards (
+                    user_id, card_id, front, back, source_key,
+                    ease, interval_days, repetitions, due_at, updated_at
+                )
+                VALUES (
+                    %s, %s, %s, %s, %s,
+                    %s, %s, %s,
+                    CURRENT_TIMESTAMP + (%s || ' days')::interval,
+                    CURRENT_TIMESTAMP
+                )
+                ON CONFLICT (user_id, card_id) DO UPDATE
+                SET front = EXCLUDED.front,
+                    back = EXCLUDED.back,
+                    source_key = COALESCE(NULLIF(EXCLUDED.source_key, ''), site_anki_cards.source_key),
+                    ease = EXCLUDED.ease,
+                    interval_days = EXCLUDED.interval_days,
+                    repetitions = EXCLUDED.repetitions,
+                    due_at = EXCLUDED.due_at,
+                    updated_at = CURRENT_TIMESTAMP
+                RETURNING card_id, due_at, interval_days, repetitions
+                """,
+                (
+                    user["user_id"],
+                    card_id,
+                    body.front[:2000],
+                    body.back[:8000],
+                    body.source_key.strip(),
+                    body.ease,
+                    interval_days,
+                    repetitions,
+                    str(interval_days),
+                ),
+            )
+            row = await cur.fetchone()
+    finally:
+        await release_site_db_connection(conn)
+    return {
+        "cardId": str(row[0]),
+        "dueAt": row[1].isoformat() if hasattr(row[1], "isoformat") else str(row[1]),
+        "intervalDays": int(row[2] or 0),
+        "repetitions": int(row[3] or 0),
+        "ease": body.ease,
+    }

@@ -42,7 +42,7 @@ export function Alert({ className = '', variant = 'info', children, ...props }: 
       {...props}
     >
       <span className="flex-shrink-0">{icons[variant]}</span>
-      <div className="flex-1">{children}</div>
+      <div className="flex-1 min-w-0 break-words">{children}</div>
     </div>
   )
 }

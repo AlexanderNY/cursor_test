@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { useAuth } from '@/contexts/auth-context'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Alert } from '@/components/ui/alert'
 import { QuotaBanner } from '@/components/billing/QuotaBanner'
 import { authService } from '@/services/auth-service'
@@ -12,6 +13,7 @@ import type { UsageSummary } from '@/types/smm'
 import { quotaResourceLabel } from '@/lib/quota'
 import { formatDateTime } from '@/utils/date'
 import { getErrorMessage } from '@/services/api-client'
+import { formatRub, PLAN_REQUEST_STATUS_LABEL } from '@/lib/billing'
 
 export function BillingTabContent() {
   const { user } = useAuth()
@@ -22,6 +24,8 @@ export function BillingTabContent() {
   const [loading, setLoading] = useState(true)
   const [portalLoading, setPortalLoading] = useState(false)
   const [checkoutPlan, setCheckoutPlan] = useState<'standard' | 'full' | null>(null)
+  const [requestingPlan, setRequestingPlan] = useState<'standard' | 'full' | null>(null)
+  const [promoCode, setPromoCode] = useState('')
   const [error, setError] = useState('')
 
   const checkoutFlash = searchParams.get('checkout')
@@ -78,6 +82,19 @@ export function BillingTabContent() {
     }
   }
 
+  async function requestPlan(plan: 'standard' | 'full') {
+    setRequestingPlan(plan)
+    setError('')
+    try {
+      const req = await authService.createPlanRequest(plan, promoCode.trim() || undefined)
+      setMe((prev) => (prev ? { ...prev, pending_request: req } : prev))
+    } catch (e) {
+      setError(getErrorMessage(e))
+    } finally {
+      setRequestingPlan(null)
+    }
+  }
+
   const plan = me?.plan
   const tariff = (me?.tariff ?? user?.tariff ?? 'free').toLowerCase()
   const showUpgrade = tariff === 'free' || tariff === 'standard' || tariff === 'basic'
@@ -86,7 +103,7 @@ export function BillingTabContent() {
     <Card className="animate-slide-up">
       <CardHeader>
         <CardTitle>Current plan</CardTitle>
-        <CardDescription>Tariff, usage vs limits, and subscription</CardDescription>
+        <CardDescription>Тариф, заявки на смену плана и использование лимитов</CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
         {loading && <p className="text-sm text-[var(--text-muted)]">Loading…</p>}
@@ -99,6 +116,16 @@ export function BillingTabContent() {
         )}
         {checkoutFlash === 'cancel' && (
           <Alert variant="info">Checkout cancelled. You can try again anytime.</Alert>
+        )}
+
+        {me?.pending_request && (
+          <Alert variant="info">
+            Заявка #{me.pending_request.id}: {me.pending_request.current_tariff} →{' '}
+            {me.pending_request.requested_tariff},{' '}
+            {formatRub(me.pending_request.final_price, me.pending_request.currency)}
+            {me.pending_request.promo_code ? ` · промокод ${me.pending_request.promo_code}` : ''}. Статус:{' '}
+            {PLAN_REQUEST_STATUS_LABEL[me.pending_request.status] ?? me.pending_request.status}.
+          </Alert>
         )}
 
         <div className="flex justify-between items-center py-3 border-b border-[var(--border-color)]">
@@ -168,39 +195,67 @@ export function BillingTabContent() {
           )}
         </div>
 
-        <div className="flex flex-wrap gap-3">
-          {showUpgrade && (me?.stripe_checkout_available !== false) && (
+        <div className="space-y-3 border-t border-[var(--border-color)] pt-4">
+          {showUpgrade && (
             <>
+              <Input
+                label="Промокод"
+                value={promoCode}
+                onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
+                placeholder="Необязательно"
+              />
+              <div className="flex flex-wrap gap-3">
+                {(tariff === 'free' || tariff === 'basic') && (
+                  <Button
+                    type="button"
+                    onClick={() => void requestPlan('standard')}
+                    isLoading={requestingPlan === 'standard'}
+                    disabled={requestingPlan != null}
+                  >
+                    Запросить Standard
+                  </Button>
+                )}
+                <Button
+                  type="button"
+                  variant={tariff === 'standard' ? 'primary' : 'secondary'}
+                  onClick={() => void requestPlan('full')}
+                  isLoading={requestingPlan === 'full'}
+                  disabled={requestingPlan != null}
+                >
+                  Запросить Full
+                </Button>
+              </div>
+            </>
+          )}
+          {me?.stripe_checkout_available && showUpgrade && (
+            <div className="flex flex-wrap gap-3">
               {(tariff === 'free' || tariff === 'basic') && (
                 <Button
                   type="button"
+                  variant="secondary"
                   onClick={() => void startCheckout('standard')}
                   isLoading={checkoutPlan === 'standard'}
                   disabled={checkoutPlan != null}
                 >
-                  Upgrade to Standard
+                  Оплатить картой Standard
                 </Button>
               )}
               <Button
                 type="button"
-                variant={tariff === 'standard' ? 'primary' : 'secondary'}
+                variant="secondary"
                 onClick={() => void startCheckout('full')}
                 isLoading={checkoutPlan === 'full'}
                 disabled={checkoutPlan != null}
               >
-                Upgrade to Full
+                Оплатить картой Full
               </Button>
-            </>
+            </div>
           )}
           {me?.stripe_portal_available ? (
             <Button type="button" variant="secondary" onClick={openPortal} isLoading={portalLoading}>
               Manage subscription
             </Button>
-          ) : (
-            <p className="text-xs text-[var(--text-muted)] self-center">
-              Portal opens after the first successful checkout links a Stripe customer.
-            </p>
-          )}
+          ) : null}
           <Link
             to="/pricing"
             className="inline-flex items-center justify-center font-medium rounded-xl px-6 py-3 text-sm bg-[var(--bg-tertiary)] border border-[var(--border-color)] text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] hover:border-primary-500/50"

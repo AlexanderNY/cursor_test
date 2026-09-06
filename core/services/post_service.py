@@ -7,19 +7,16 @@ from database import get_db_connection, release_db_connection
 from services.quota_service import ensure_monthly_post_quota
 
 
+from shared.post_adapt import NETWORK_TEXT_LIMITS as _SHARED_NETWORK_TEXT_LIMITS
+
+
 class PostService:
     """Сервис для создания и управления постами."""
-    
-    # Лимиты символов для разных платформ
+
+    # Re-export shared limits; cpost uses wp ceiling for manual multi-target
     PLATFORM_LIMITS = {
-        "tg": 4096,
-        "tw": 280,
-        "wp": 150000,
-        "vk": 15985,
-        "cpost": 150000,
-        "threads": 500,
-        "dzen": 1500,
-        "instagram": 2200,
+        **_SHARED_NETWORK_TEXT_LIMITS,
+        "cpost": _SHARED_NETWORK_TEXT_LIMITS["wp"],
     }
     
     async def create_post(
@@ -128,26 +125,25 @@ class PostService:
         to_instagram: bool = False,
         target_channels: Optional[List[str]] = None,
         target_groups: Optional[List[str]] = None,
+        status: str = "ready",
+        skip_quota: bool = False,
     ) -> Dict:
         """Создает пост WordPress в таблице wp_posts.
-        
-        Args:
-            user_id: ID пользователя
-            text: Текст поста (HTML, до 150000 символов)
-            title: Заголовок поста
-            to_*: цели дублирования
-        
-        Returns:
-            Созданный пост из таблицы wp_posts
+
+        Outbound publish uses status=ready (default). Collected/inbound posts
+        are inserted by wp-bot collect with status=collected.
         """
-        # Проверка лимита символов для WordPress
         limit = self.PLATFORM_LIMITS.get("wp", 150000)
         if len(text) > limit:
             raise ValueError(f"Text exceeds wp limit of {limit} characters")
 
+        allowed_status = {"ready", "collected", "draft", "pending_approval"}
+        post_status = status if status in allowed_status else "ready"
+
         conn = await get_db_connection()
         try:
-            await ensure_monthly_post_quota(user_id, conn=conn)
+            if not skip_quota:
+                await ensure_monthly_post_quota(user_id, conn=conn)
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
@@ -160,7 +156,7 @@ class PostService:
                     ) VALUES (
                         %s, %s, %s, NULL, NULL, NULL, NULL,
                         NULL, NULL, '[]', NULL,
-                        0, 0, 0, 0, FALSE, 'collected',
+                        0, 0, 0, 0, FALSE, %s,
                         'wp', %s, %s, %s, %s, %s, %s, %s,
                         %s::jsonb, %s::jsonb
                     )
@@ -170,6 +166,7 @@ class PostService:
                         user_id,
                         text,
                         title,
+                        post_status,
                         to_tg,
                         to_tw,
                         to_wp,

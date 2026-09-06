@@ -73,12 +73,7 @@ async def get_users_statistics(
 
 @router.get("/group-statistics", response_model=UserStatisticsResponse)
 async def get_group_statistics(request: Request, current_user: Dict = Depends(get_current_user)):
-    """Получает статистику только по пользователям своей группы. Только менеджер группы или admin."""
-    if current_user.get("role") not in ("manager", "admin"):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only group manager or admin can view group statistics",
-        )
+    """Статистика по участникам команды. Только admin команды (role_in_group) или platform admin."""
     authorization = request.headers.get("Authorization", "")
     headers = {"Authorization": authorization} if authorization else {}
     try:
@@ -94,6 +89,13 @@ async def get_group_statistics(request: Request, current_user: Dict = Depends(ge
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Cannot load group",
         )
+    role_in_group = group.get("role_in_group")
+    is_platform_admin = current_user.get("role") == "admin"
+    if role_in_group not in ("admin", "manager") and not is_platform_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only team admin can view group statistics",
+        )
     members = group.get("members") or []
     if not members:
         return {"users": []}
@@ -101,7 +103,7 @@ async def get_group_statistics(request: Request, current_user: Dict = Depends(ge
     users_dict = {m["user_id"]: m for m in members}
     for u in users_dict.values():
         if "role" not in u:
-            u["role"] = u.get("role_in_group", "author")
+            u["role"] = u.get("role_in_group", "editor")
     posts_stats = await statistics_service.get_users_statistics(user_ids=user_ids)
     result = _merge_users_with_stats(posts_stats, users_dict)
     return {"users": result}

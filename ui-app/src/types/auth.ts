@@ -39,6 +39,8 @@ export interface BillingPlanDefinition {
   ai_calls_month?: number
   features: Record<string, boolean>
   sort_order: number
+  price_monthly?: number
+  currency?: string
 }
 
 export interface BillingMeResponse {
@@ -51,6 +53,46 @@ export interface BillingMeResponse {
   subscription_current_period_end?: string | null
   stripe_portal_available: boolean
   stripe_checkout_available?: boolean
+  pending_request?: BillingPlanRequest | null
+}
+
+export type BillingPlanRequestStatus = 'pending' | 'invoiced' | 'applied' | 'rejected' | 'cancelled'
+
+export interface BillingPlanRequest {
+  id: number
+  user_id: number
+  username?: string
+  email?: string
+  current_tariff: string
+  requested_tariff: string
+  promo_code?: string | null
+  list_price: number
+  discount_amount: number
+  final_price: number
+  currency: string
+  status: BillingPlanRequestStatus
+  invoice_sent_at?: string | null
+  invoice_smtp_sent?: boolean
+  invoice_body?: string | null
+  admin_comment?: string | null
+  smtp_configured?: boolean
+  created_at: string
+  updated_at?: string
+}
+
+export interface PromoCode {
+  id: number
+  code: string
+  description?: string | null
+  discount_percent?: number | null
+  discount_amount?: number | null
+  applies_to_tariff?: string | null
+  max_redemptions?: number | null
+  redeemed_count: number
+  valid_from?: string | null
+  valid_until?: string | null
+  is_active: boolean
+  created_at?: string
 }
 
 export interface BillingEventRow {
@@ -89,6 +131,42 @@ export interface GroupResponse {
   members?: GroupMemberResponse[] | null
 }
 
+export interface GroupInviteResponse {
+  id: number
+  group_id: number
+  email?: string | null
+  role_in_group: string
+  token: string
+  invited_by_user_id: number
+  status: string
+  expires_at: string
+  created_at: string
+  group_name?: string | null
+  invite_path?: string | null
+}
+
+export interface InviteActionResponse {
+  status: 'added' | 'invited'
+  group_name?: string | null
+  member?: GroupMemberResponse | null
+  invite?: GroupInviteResponse | null
+}
+
+export interface InvitePeekResponse {
+  group_name: string
+  email?: string | null
+  role_in_group: string
+  status: string
+  expires_at: string
+}
+
+export interface AcceptInviteResponse {
+  group_id: number
+  group_name?: string | null
+  role_in_group: string
+  already_member: boolean
+}
+
 export interface TokenResponse {
   access_token: string
   refresh_token: string
@@ -107,6 +185,7 @@ export interface RegisterCredentials {
   utm_source?: string
   utm_medium?: string
   utm_campaign?: string
+  invite_token?: string
 }
 
 export interface ProfileUpdate {

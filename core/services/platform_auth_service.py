@@ -258,14 +258,24 @@ class PlatformAuthService:
             return self._missing_status("wp", "WordPress profile not configured")
         site = (profile.get("site_url") or "").strip()
         user = (profile.get("username") or "").strip()
-        connected = bool(site and user)
+        password = (profile.get("app_password") or "").strip()
+        connected = bool(site and user and password)
+        soft_connected = bool(site and user)
         return {
-            "connected": connected,
-            "state": "authorized" if connected else "missing",
+            "connected": soft_connected,
+            "state": "authorized" if soft_connected else "missing",
             "username": user or site,
             "site_url": site,
-            "message": "WordPress connected" if connected else "Configure WP site + app password",
-            "can_collect": False,
+            "message": (
+                "WordPress connected"
+                if connected
+                else (
+                    "Configure WP application password"
+                    if soft_connected
+                    else "Configure WP site + app password"
+                )
+            ),
+            "can_collect": connected,
             "can_publish_text": connected,
             "can_publish_media": connected,
             "setup_url": SETUP_URLS["wp"],

@@ -17,8 +17,16 @@ _POST_COLUMNS = list(POST_BASE_COLUMNS)
 # Все флаги to_* для проверки
 _TARGET_FLAGS = list(TARGET_TABLES.keys())
 
-# Ключи в platform_texts (из processor) для каждой целевой платформы
-_PLATFORM_TEXT_KEYS = {"tg": "telegram", "wp": "wordpress", "vk": "vkontakte", "dzen": "dzen", "instagram": "instagram"}
+# Ключи в platform_texts (из processor / shared.post_adapt) для каждой целевой платформы
+_PLATFORM_TEXT_KEYS = {
+    "tg": "telegram",
+    "wp": "wordpress",
+    "vk": "vkontakte",
+    "dzen": "dzen",
+    "instagram": "instagram",
+    "tw": "twitter",
+    "threads": "threads",
+}
 
 _SOURCE_TABLE_BY_PLATFORM = {item["platform"]: item["table"] for item in SOURCE_TABLES}
 

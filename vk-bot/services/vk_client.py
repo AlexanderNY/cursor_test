@@ -9,8 +9,11 @@ from vk_api import VkUpload
 
 from shared.circuit_breaker import get_breaker
 from shared.retry import retry_async
+from shared.post_adapt import NETWORK_TEXT_LIMITS
 
 logger = logging.getLogger(__name__)
+
+_VK_MESSAGE_LIMIT = NETWORK_TEXT_LIMITS["vk"]
 
 try:
     from vk_api.exceptions import ApiError as VkApiError
@@ -94,7 +97,7 @@ def _wall_post_sync(
     post_as_group = owner_id < 0 and from_group
     params = {
         "owner_id": owner_id,
-        "message": message[:16384] if message else "",
+        "message": message[:_VK_MESSAGE_LIMIT] if message else "",
         "from_group": 1 if post_as_group else 0,
     }
     if attachments:

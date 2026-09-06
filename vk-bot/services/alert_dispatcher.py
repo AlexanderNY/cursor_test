@@ -9,11 +9,12 @@ from typing import Any, Dict, List, Optional
 
 from database import get_db_connection, release_db_connection
 from shared.text_conditions import evaluate_text_conditions
+from shared.post_adapt import NETWORK_TEXT_LIMITS
 
 logger = logging.getLogger(__name__)
 
-TG_MESSAGE_LIMIT = 4096
-VK_MESSAGE_LIMIT = 16384
+TG_MESSAGE_LIMIT = NETWORK_TEXT_LIMITS["tg"]
+VK_MESSAGE_LIMIT = NETWORK_TEXT_LIMITS["vk"]
 
 
 def build_alert_body(

@@ -23,6 +23,10 @@ import type { PostRow } from '@/types/core'
 import type { PublishJob } from '@/types/smm'
 import { formatDateTime } from '@/utils/date'
 import { getErrorMessage } from '@/services/api-client'
+import {
+  CSV_POSTS_COLUMNS,
+  downloadPostsCsvTemplate,
+} from '@/utils/csv-posts-template'
 
 const TEXT_MAX_LENGTH = 150000
 const POST_PREVIEW_LENGTH = 80
@@ -120,6 +124,7 @@ export function CreatePostPage() {
   const [smmPublishAt, setSmmPublishAt] = useState('')
   const [aiBusy, setAiBusy] = useState(false)
   const [csvResult, setCsvResult] = useState('')
+  const [csvErrors, setCsvErrors] = useState<{ line: number; error: string }[]>([])
   const [adaptPreview, setAdaptPreview] = useState<Record<string, string> | null>(null)
   const [adaptLimits, setAdaptLimits] = useState<Record<string, number> | null>(null)
   const [requireApproval, setRequireApproval] = useState(false)
@@ -971,38 +976,74 @@ export function CreatePostPage() {
                       Require approval
                     </label>
                   )}
-                  <label className="text-sm cursor-pointer underline text-primary-400">
-                    Import CSV
-                    <input
-                      type="file"
-                      accept=".csv,text/csv"
-                      className="hidden"
-                      onChange={async (e) => {
-                        const file = e.target.files?.[0]
-                        if (!file) return
-                        try {
-                          const res = await smmService.importCsv(file, selectedBrandId)
-                          const queue =
-                            res.status === 'pending_approval'
-                              ? ' → review queue on Calendar'
-                              : ' as drafts'
-                          setCsvResult(
-                            `Created ${res.created}${queue}` +
-                              (res.errors.length ? `, errors: ${res.errors.length}` : ''),
-                          )
-                          setSuccess(
-                            res.status === 'pending_approval'
-                              ? 'CSV imported into approval queue'
-                              : 'CSV imported (no media)',
-                          )
-                        } catch (err) {
-                          setError(err instanceof Error ? err.message : 'CSV import failed')
-                        }
-                        e.target.value = ''
-                      }}
-                    />
-                  </label>
-                  {csvResult && <span className="text-xs text-[var(--text-muted)]">{csvResult}</span>}
+                  <div className="flex flex-col gap-2 sm:col-span-2 w-full">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <button
+                        type="button"
+                        className="text-sm underline text-primary-400"
+                        onClick={() => downloadPostsCsvTemplate()}
+                      >
+                        Download CSV template
+                      </button>
+                      <label className="text-sm cursor-pointer underline text-primary-400">
+                        Import CSV
+                        <input
+                          type="file"
+                          accept=".csv,text/csv"
+                          className="hidden"
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0]
+                            if (!file) return
+                            setCsvErrors([])
+                            setCsvResult('')
+                            try {
+                              const res = await smmService.importCsv(file, selectedBrandId)
+                              const queue =
+                                res.status === 'pending_approval'
+                                  ? ' → review queue on Calendar'
+                                  : ' as drafts'
+                              setCsvResult(
+                                `Created ${res.created}${queue}` +
+                                  (res.errors.length ? `, errors: ${res.errors.length}` : ''),
+                              )
+                              setCsvErrors(res.errors.slice(0, 20))
+                              setSuccess(
+                                res.status === 'pending_approval'
+                                  ? 'CSV imported into approval queue'
+                                  : 'CSV imported (no media)',
+                              )
+                              if (res.errors.length) {
+                                setError(
+                                  `CSV: ${res.errors.length} row(s) failed (see details below)`,
+                                )
+                              }
+                            } catch (err) {
+                              setError(err instanceof Error ? err.message : 'CSV import failed')
+                            }
+                            e.target.value = ''
+                          }}
+                        />
+                      </label>
+                    </div>
+                    <p className="text-xs text-[var(--text-muted)]">
+                      Columns: {CSV_POSTS_COLUMNS.map((c) => c.key).join(', ')}. Dates in UTC
+                      (ISO or DD.MM.YYYY HH:MM). Comma or semicolon delimiter. With approval
+                      workflow each row needs network+channel; without channel jobs stay drafts
+                      only when approval is off. Media is not imported.
+                    </p>
+                    {csvResult && (
+                      <span className="text-xs text-[var(--text-muted)]">{csvResult}</span>
+                    )}
+                    {csvErrors.length > 0 && (
+                      <ul className="text-xs text-red-400 list-disc pl-4 space-y-0.5 max-h-32 overflow-y-auto">
+                        {csvErrors.map((err) => (
+                          <li key={`${err.line}-${err.error}`}>
+                            Line {err.line}: {err.error}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
                 </div>
               </div>
               )}

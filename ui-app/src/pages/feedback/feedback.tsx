@@ -51,7 +51,7 @@ export function FeedbackPage() {
   }
 
   return (
-    <PageContainer>
+    <PageContainer maxWidth="default">
       <PageHeader
         title="Обратная связь"
         description="Сообщите об ошибке, предложите доработку или свяжитесь с автором"

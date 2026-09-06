@@ -16,7 +16,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from config import settings
 from database import get_db_connection, release_db_connection
 
-from .selenium_diag import capture_diag_for_ui, capture_selenium_error_to_s3
+from .selenium_diag import capture_diag_for_ui, capture_live_jpeg_for_ui, capture_selenium_error_to_s3
 from .selenium_driver import create_chrome_driver
 from .selenium_errors import format_selenium_exception
 from .pending_yandex_session import (
@@ -26,6 +26,8 @@ from .pending_yandex_session import (
     pop_and_quit,
     put_session,
     set_last_diag_url,
+    start_live_screencap,
+    update_session_flags,
 )
 from .yandex_auth import PushCodeRequiredError, YandexAuthError, ensure_dzen_session, dismiss_passport_overlays
 from .yandex_dzen_flow import (
@@ -48,9 +50,39 @@ def _diag_url(driver: Optional[WebDriver], label: str, user_id: Optional[int]) -
     return url
 
 
+def _live_capture_tick(user_id: int) -> None:
+    """Один кадр live-стрима: лёгкий JPEG без S3."""
+    s = get_session(user_id)
+    if not s:
+        return
+    # Во время активного сценария Selenium не держит op_lock — снимаем best-effort.
+    if s.in_progress:
+        try:
+            url = capture_live_jpeg_for_ui(s.driver)
+            if url:
+                set_last_diag_url(user_id, url)
+        except Exception:
+            pass
+        return
+    acquired = s.op_lock.acquire(blocking=False)
+    if not acquired:
+        return
+    try:
+        url = capture_live_jpeg_for_ui(s.driver)
+        if url:
+            set_last_diag_url(user_id, url)
+    finally:
+        s.op_lock.release()
+
+
+def _ensure_live_screencap(user_id: int) -> None:
+    start_live_screencap(user_id, _live_capture_tick, interval_sec=3.0)
+
+
 def _push_code_start_response(driver: WebDriver, user_id: int, label: str) -> Dict[str, Any]:
     diag_url = _diag_url(driver, label, user_id)
     put_session(user_id, driver, awaiting_push=True, in_progress=False)
+    _ensure_live_screencap(user_id)
     return {
         "ok": True,
         "need_push_code": True,
@@ -227,6 +259,7 @@ def verify_yandex_start_sync(user_id: int, login: str, password: str) -> Dict[st
     try:
         driver = create_chrome_driver()
         put_session(user_id, driver, awaiting_push=False, in_progress=True)
+        _ensure_live_screencap(user_id)
         _diag_url(driver, "verify_yandex_start_chrome", user_id)
         rflow = dzen_entry_run_until_push_or_ok(
             driver,
@@ -304,6 +337,7 @@ def verify_yandex_push_code_sync(
             "message": None,
             "diag_image_url": None,
         }
+    update_session_flags(user_id, awaiting_push=True, in_progress=True)
     with s.op_lock:
         driver = s.driver
         try:
@@ -311,6 +345,7 @@ def verify_yandex_push_code_sync(
             complete_auth_after_push_code(driver, password or "")
             if page_indicates_push_code(driver):
                 du = _diag_url(driver, "push_code_retry", user_id)
+                update_session_flags(user_id, awaiting_push=True, in_progress=False)
                 return {
                     "ok": False,
                     "need_push_code": True,
@@ -336,6 +371,7 @@ def verify_yandex_push_code_sync(
             )
             du = _diag_url(driver, "push_code_stale", user_id)
             logger.warning("verify_yandex_push_code stale: %s", e)
+            update_session_flags(user_id, awaiting_push=True, in_progress=False)
             return {
                 "ok": False,
                 "need_push_code": True,
@@ -346,6 +382,7 @@ def verify_yandex_push_code_sync(
             }
         except YandexAuthError as e:
             du = _diag_url(driver, "push_code_error", user_id)
+            update_session_flags(user_id, awaiting_push=True, in_progress=False)
             return {
                 "ok": False,
                 "need_push_code": True,
@@ -357,6 +394,7 @@ def verify_yandex_push_code_sync(
         except Exception as e:
             friendly = format_selenium_exception(e)
             du = _diag_url(driver, "push_code_exception", user_id)
+            update_session_flags(user_id, awaiting_push=True, in_progress=False)
             return {
                 "ok": False,
                 "need_push_code": True,
@@ -368,46 +406,45 @@ def verify_yandex_push_code_sync(
 
 
 def verify_yandex_pending_diag_sync(user_id: int) -> Dict[str, Any]:
-    """Снимок текущего экрана или последний кэш (для UI при таймауте проверки)."""
-    cached = get_last_diag_url(user_id)
+    """Актуальный кадр live-стрима (кэш обновляется каждые ~3 с) или свежий снимок."""
     s = get_session(user_id)
     need_push = bool(s and s.awaiting_push)
     message = _PUSH_MESSAGE if need_push else None
 
+    # Если драйвер свободен — снимем свежий кадр сразу.
     if s and not s.in_progress:
         acquired = s.op_lock.acquire(blocking=False)
         if acquired:
             try:
-                url = _diag_url(s.driver, "pending_diag_refresh", user_id)
-                shown = url or cached
-                return {
-                    "diag_image_url": shown,
-                    "error": None if shown else "Не удалось снять экран Selenium.",
-                    "need_push_code": need_push,
-                    "message": message,
-                }
+                url = capture_live_jpeg_for_ui(s.driver)
+                if url:
+                    set_last_diag_url(user_id, url)
             finally:
                 s.op_lock.release()
 
+    cached = get_last_diag_url(user_id)
     if cached:
         return {
             "diag_image_url": cached,
             "error": None,
             "need_push_code": need_push,
             "message": message,
+            "live": True,
         }
     if s:
         return {
             "diag_image_url": None,
-            "error": "Проверка ещё выполняется — снимок появится через несколько секунд.",
+            "error": "Проверка ещё выполняется — первый снимок появится через несколько секунд.",
             "need_push_code": need_push,
             "message": message,
+            "live": True,
         }
     return {
         "diag_image_url": None,
         "error": "Нет активного скрина. Браузер ещё не открылся либо сессия уже закрыта.",
         "need_push_code": False,
         "message": None,
+        "live": False,
     }
 
 

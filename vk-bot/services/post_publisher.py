@@ -18,11 +18,12 @@ from config import settings
 from storage_helper import get_storage
 from .vk_client import VkClient
 from .channel_counter import bump_channel_counter
+from shared.post_adapt import NETWORK_TEXT_LIMITS
 
 
 logger = logging.getLogger(__name__)
 
-VK_MESSAGE_LIMIT = 16384
+VK_MESSAGE_LIMIT = NETWORK_TEXT_LIMITS["vk"]
 
 
 def _log_action(msg: str, *args, **kwargs) -> None:

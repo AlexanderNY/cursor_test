@@ -15,6 +15,8 @@ _NETWORK_TO_SERVICE = {
     "telegram": "telegram",
     "vk": "vkontakte",
     "vkontakte": "vkontakte",
+    "wp": "wordpress",
+    "wordpress": "wordpress",
 }
 
 
@@ -153,6 +155,7 @@ def publish_targets_to_destination_fields(targets: List[Dict[str, Any]]) -> Dict
     """Map resolved targets → to_* flags + target_channels / target_groups."""
     tg_ids: List[str] = []
     vk_ids: List[str] = []
+    wp_ids: List[str] = []
     services: List[str] = []
     flags = {
         "to_tg": False,
@@ -177,11 +180,14 @@ def publish_targets_to_destination_fields(targets: List[Dict[str, Any]]) -> Dict
         elif net in ("vk", "vkontakte"):
             vk_ids.append(ext)
             flags["to_vk"] = True
+        elif net in ("wp", "wordpress"):
+            wp_ids.append(ext)
+            flags["to_wp"] = True
         if svc and svc not in services:
             services.append(svc)
     return {
         **flags,
-        "target_channels": tg_ids,
+        "target_channels": [*tg_ids, *wp_ids],
         "target_groups": vk_ids,
         "process_services": services,
     }

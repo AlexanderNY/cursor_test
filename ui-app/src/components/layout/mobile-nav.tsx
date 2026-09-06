@@ -5,6 +5,7 @@ import { useTheme } from '@/contexts/theme-context'
 import { Button } from '@/components/ui'
 import { MenuIcon, CloseIcon, SunIcon, MoonIcon, LogOutIcon } from '@/components/icons'
 import { navItems, topNavItems, groupNavItem, adminNavItems } from '@/config/nav'
+import { canViewTeamAnalytics } from '@/types/smm'
 
 const iconClassName = 'h-5 w-5'
 
@@ -14,6 +15,15 @@ export function MobileNav() {
   const { isDarkMode, toggleTheme } = useTheme()
   const location = useLocation()
 
+  const hasTeam = Boolean(user?.group_id || user?.role_in_group)
+  const showAnalytics = canViewTeamAnalytics(
+    user?.role_in_group,
+    hasTeam,
+    user?.role,
+  )
+  const visibleNavItems = navItems.filter(
+    (item) => item.path !== '/analytics' || showAnalytics,
+  )
   return (
     <>
       <header className="md:hidden fixed top-0 left-0 right-0 h-16 bg-[var(--bg-secondary)] border-b border-[var(--border-color)] flex items-center justify-between px-4 z-40">
@@ -95,7 +105,7 @@ export function MobileNav() {
             )
           })}
           <div className="my-3 border-t border-[var(--border-color)]" />
-          {navItems.map((item) => (
+          {visibleNavItems.map((item) => (
             <NavLink
               key={item.path}
               to={item.path === '/inbox' ? '/inbox?mode=comments' : item.path}

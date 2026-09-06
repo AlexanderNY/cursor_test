@@ -4,6 +4,14 @@ from __future__ import annotations
 
 from typing import FrozenSet
 
+from shared.post_adapt import (
+    ADAPT_NETWORKS,
+    NETWORK_KEY_ALIASES,
+    NETWORK_TEXT_LIMITS,
+    network_text_limit as _shared_network_text_limit,
+    normalize_network as _shared_normalize_network,
+)
+
 # Stored in smm_brand_channels.network / inbox / job targets
 CANONICAL_NETWORKS: FrozenSet[str] = frozenset(
     {
@@ -21,16 +29,8 @@ CANONICAL_NETWORKS: FrozenSet[str] = frozenset(
 # Inbox ingest currently wired for TG/VK; others accepted for API/UI filters
 INBOX_NETWORKS: FrozenSet[str] = CANONICAL_NETWORKS - {"url"}
 
-NETWORK_ALIASES: dict[str, str] = {
-    "telegram": "tg",
-    "vkontakte": "vk",
-    "twitter": "tw",
-    "x": "tw",
-    "wordpress": "wp",
-    "insta": "instagram",
-    "ig": "instagram",
-    "zen": "dzen",
-}
+# Re-export shared aliases + limits (single source of truth in shared.post_adapt)
+NETWORK_ALIASES: dict[str, str] = dict(NETWORK_KEY_ALIASES)
 
 SETUP_URLS: dict[str, str] = {
     "tg": "/telegram",
@@ -65,25 +65,8 @@ NETWORK_TO_FLAG: dict[str, str] = {
     "instagram": "to_instagram",
 }
 
-# Soft length caps for AI adapt / preview (aligned with platform_formatter defaults)
-NETWORK_TEXT_LIMITS: dict[str, int] = {
-    "tg": 4096,
-    "vk": 15985,
-    "tw": 280,
-    "threads": 500,
-    "instagram": 2200,
-    "dzen": 1500,
-    "wp": 150000,
-}
-
-ADAPT_NETWORKS: FrozenSet[str] = frozenset(NETWORK_TEXT_LIMITS.keys())
-
-
 def normalize_network(raw: str | None) -> str:
-    value = (raw or "").lower().strip()
-    if not value:
-        return ""
-    return NETWORK_ALIASES.get(value, value)
+    return _shared_normalize_network(raw)
 
 
 def is_allowed_network(raw: str | None) -> bool:
@@ -105,8 +88,7 @@ def setup_url(raw: str | None) -> str:
 
 
 def network_text_limit(raw: str | None) -> int | None:
-    net = normalize_network(raw)
-    return NETWORK_TEXT_LIMITS.get(net)
+    return _shared_network_text_limit(raw)
 
 
 def is_adapt_network(raw: str | None) -> bool:

@@ -2,11 +2,15 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Alert } from '@/components/ui/alert'
 import { PageHeader, PageContainer } from '@/components/ui'
 import { useAuth } from '@/contexts/auth-context'
+import { useToast } from '@/contexts/toast-context'
 import { authService } from '@/services/auth-service'
-import type { BillingPlanDefinition } from '@/types/auth'
+import type { BillingPlanDefinition, BillingPlanRequest } from '@/types/auth'
 import { getErrorMessage } from '@/services/api-client'
+import { formatRub } from '@/lib/billing'
 
 const HIGHLIGHT_FEATURES: Record<string, string[]> = {
   free: ['1 brand', '3 own channels', 'Inbox read', 'AI = 0'],
@@ -26,11 +30,17 @@ type PlanExtra = BillingPlanDefinition & {
 }
 
 export function PricingPage() {
-  const { isAuthenticated } = useAuth()
+  const { isAuthenticated, user } = useAuth()
+  const { addToast } = useToast()
   const [plans, setPlans] = useState<PlanExtra[]>([])
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
-  const [checkoutPlan, setCheckoutPlan] = useState<string | null>(null)
+  const [requestingPlan, setRequestingPlan] = useState<string | null>(null)
+  const [promoCode, setPromoCode] = useState('')
+  const [promoHint, setPromoHint] = useState('')
+  const [pending, setPending] = useState<BillingPlanRequest | null>(null)
+
+  const currentTariff = (user?.tariff ?? 'free').toLowerCase()
 
   useEffect(() => {
     let cancelled = false
@@ -39,6 +49,10 @@ export function PricingPage() {
       try {
         const data = await authService.getBillingPlans()
         if (!cancelled) setPlans(data as PlanExtra[])
+        if (isAuthenticated) {
+          const me = await authService.getBillingMe().catch(() => null)
+          if (!cancelled) setPending(me?.pending_request ?? null)
+        }
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : 'Failed to load plans')
       } finally {
@@ -48,46 +62,91 @@ export function PricingPage() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [isAuthenticated])
 
-  async function startCheckout(code: string) {
+  async function applyPromoPreview(plan: string) {
+    const code = promoCode.trim()
+    if (!code || !isAuthenticated) {
+      setPromoHint('')
+      return
+    }
+    try {
+      const preview = await authService.previewPromo(code, plan)
+      setPromoHint(
+        `Промокод ${preview.code}: ${formatRub(preview.list_price, preview.currency)} → ${formatRub(preview.final_price, preview.currency)}`,
+      )
+    } catch (e) {
+      setPromoHint(getErrorMessage(e))
+    }
+  }
+
+  async function requestPlan(code: string) {
     if (code !== 'standard' && code !== 'full') return
     if (!isAuthenticated) {
       window.location.href = `/sign-in?next=${encodeURIComponent('/pricing')}`
       return
     }
-    setCheckoutPlan(code)
+    setRequestingPlan(code)
     setError('')
     try {
-      const url = await authService.createCheckoutSession(code)
-      window.location.href = url
+      const req = await authService.createPlanRequest(code, promoCode.trim() || undefined)
+      setPending(req)
+      addToast(`Заявка на ${code} создана. Администратор отправит счёт или включит тариф.`)
     } catch (e) {
       setError(getErrorMessage(e))
-      setCheckoutPlan(null)
+    } finally {
+      setRequestingPlan(null)
     }
   }
 
   const sorted = [...plans].sort((a, b) => a.sort_order - b.sort_order)
 
   return (
-    <PageContainer>
+    <PageContainer maxWidth="wide">
       <PageHeader
         title="Pricing"
-        description="Free / Standard / Full — оформите подписку напрямую с сайта."
+        description="Free / Standard / Full — оставьте заявку, счёт придёт на почту. Можно указать промокод."
       />
 
       {loading && <p className="text-sm text-[var(--text-muted)]">Loading plans…</p>}
-      {error && <p className="text-sm text-red-400">{error}</p>}
+      {error && <Alert variant="error">{error}</Alert>}
+      {pending && (
+        <Alert variant="info">
+          Открытая заявка: {pending.current_tariff} → {pending.requested_tariff},{' '}
+          {formatRub(pending.final_price, pending.currency)} · статус {pending.status}.{' '}
+          <Link to="/profile?tab=billing" className="underline">
+            Биллинг
+          </Link>
+        </Alert>
+      )}
+
+      {isAuthenticated && (
+        <div className="max-w-md">
+          <Input
+            label="Промокод"
+            value={promoCode}
+            onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
+            onBlur={() => void applyPromoPreview('standard')}
+            placeholder="SUMMER20"
+          />
+          {promoHint && <p className="text-xs text-[var(--text-muted)] mt-1">{promoHint}</p>}
+        </div>
+      )}
 
       <div className="grid gap-6 md:grid-cols-3">
         {sorted.map((p) => {
           const highlights = HIGHLIGHT_FEATURES[p.code] || []
-          const canCheckout = p.code === 'standard' || p.code === 'full'
+          const canRequest = p.code === 'standard' || p.code === 'full'
+          const isCurrent = currentTariff === p.code || (currentTariff === 'basic' && p.code === 'standard')
+          const price = p.price_monthly ?? 0
           return (
             <Card key={p.code} className="animate-slide-up flex flex-col">
               <CardHeader>
                 <CardTitle className="text-xl">{p.display_name}</CardTitle>
                 <CardDescription>{p.description}</CardDescription>
+                <p className="text-2xl font-semibold text-[var(--text-primary)] pt-2">
+                  {price > 0 ? `${formatRub(price, p.currency)} / мес` : 'Бесплатно'}
+                </p>
               </CardHeader>
               <CardContent className="flex-1 space-y-3 text-sm text-[var(--text-secondary)]">
                 <ul className="space-y-1.5">
@@ -135,22 +194,29 @@ export function PricingPage() {
                 </div>
 
                 <div className="pt-4 mt-auto">
-                  {canCheckout ? (
+                  {isCurrent ? (
+                    <Link
+                      to="/profile?tab=billing"
+                      className="inline-flex w-full items-center justify-center font-medium rounded-xl px-6 py-3 text-sm bg-[var(--bg-tertiary)] border border-[var(--border-color)] text-[var(--text-primary)] hover:border-primary-500/50"
+                    >
+                      Текущий план
+                    </Link>
+                  ) : canRequest ? (
                     <Button
                       type="button"
                       className="w-full"
-                      isLoading={checkoutPlan === p.code}
-                      disabled={checkoutPlan != null}
-                      onClick={() => void startCheckout(p.code)}
+                      isLoading={requestingPlan === p.code}
+                      disabled={requestingPlan != null}
+                      onClick={() => void requestPlan(p.code)}
                     >
-                      Оформить
+                      Запросить тариф
                     </Button>
                   ) : (
                     <Link
                       to={isAuthenticated ? '/profile?tab=billing' : '/sign-up'}
                       className="inline-flex w-full items-center justify-center font-medium rounded-xl px-6 py-3 text-sm bg-[var(--bg-tertiary)] border border-[var(--border-color)] text-[var(--text-primary)] hover:border-primary-500/50"
                     >
-                      {isAuthenticated ? 'Текущий план' : 'Начать бесплатно'}
+                      {isAuthenticated ? 'Остаться на Free' : 'Начать бесплатно'}
                     </Link>
                   )}
                 </div>

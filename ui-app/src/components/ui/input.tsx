@@ -12,7 +12,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
     const isPassword = type === 'password'
     
     return (
-      <div className="w-full">
+      <div className="w-full min-w-0">
         {label && (
           <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">
             {label}
@@ -28,8 +28,8 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
             ref={ref}
             type={isPassword && showPassword ? 'text' : type}
             className={`
-              w-full px-4 py-3 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-xl
-              text-[var(--text-primary)] placeholder-[var(--text-muted)]
+              w-full h-11 px-3 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-xl
+              text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]
               focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500
               transition-all duration-200
               ${icon ? 'pl-12' : ''}

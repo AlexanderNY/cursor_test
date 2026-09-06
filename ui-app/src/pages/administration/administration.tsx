@@ -1,4 +1,4 @@
-import { useState, FormEvent, Fragment, useEffect, type ReactNode } from 'react'
+import { useState, FormEvent, Fragment, useEffect, useRef, type ReactNode } from 'react'
 import { useSearchParams, Navigate } from 'react-router-dom'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -13,6 +13,7 @@ import { coreService } from '@/services/core-service'
 import { notificationsService } from '@/services/notifications-service'
 import { feedbackService } from '@/services/feedback-service'
 import { GuideBlocksAdmin } from '@/pages/administration/guide-blocks-admin'
+import { AdministrationBillingPanel } from '@/pages/administration/administration-billing'
 import { Input } from '@/components/ui/input'
 import type { User, RoleTariffHistoryEntry, GroupResponse, AdminAuditLogEntry } from '@/types/auth'
 import type {
@@ -32,7 +33,7 @@ import { platformStatusCell, platformTableStatusColumns } from '@/pages/checks/c
 import { formatDateTime } from '@/utils/date'
 
 type AdminTab = 'users' | 'notifications' | 'feedback' | 'guide' | 'posts-tables' | 'runtime-location' | 'storage'
-type UsersSubTab = 'management' | 'groups' | 'audit' | 'statistics' | 'growth'
+type UsersSubTab = 'management' | 'billing' | 'groups' | 'audit' | 'statistics' | 'growth'
 
 const ADMIN_TABS: AdminTab[] = [
   'users',
@@ -46,6 +47,7 @@ const ADMIN_TABS: AdminTab[] = [
 
 const USERS_SUB_TABS: { id: UsersSubTab; label: string }[] = [
   { id: 'management', label: 'Users Management' },
+  { id: 'billing', label: 'Billing' },
   { id: 'groups', label: 'Groups' },
   { id: 'audit', label: 'Audit Log' },
   { id: 'statistics', label: 'Statistics' },
@@ -65,6 +67,8 @@ export function AdministrationPage() {
   const [savingUserId, setSavingUserId] = useState<number | null>(null)
   const [blockingUserId, setBlockingUserId] = useState<number | null>(null)
   const [userUpdateError, setUserUpdateError] = useState('')
+  const [userUpdateNotice, setUserUpdateNotice] = useState('')
+  const savedTariffsRef = useRef<Record<number, string>>({})
   const [expandedHistoryUserId, setExpandedHistoryUserId] = useState<number | null>(null)
   const [historyList, setHistoryList] = useState<RoleTariffHistoryEntry[]>([])
   const [isLoadingHistory, setIsLoadingHistory] = useState(false)
@@ -157,6 +161,11 @@ export function AdministrationPage() {
         subscription_status: userFilterSubscriptionStatus || undefined,
       })
       setUsers(data)
+      savedTariffsRef.current = Object.fromEntries(
+        data
+          .filter((u) => u.id != null)
+          .map((u) => [u.id as number, (u.tariff ?? 'free').toLowerCase()]),
+      )
     } catch (error) {
       setUsersError(error instanceof Error ? error.message : 'Failed to fetch users')
       setUsers([])
@@ -291,15 +300,33 @@ export function AdministrationPage() {
   async function handleSaveUser(user: User) {
     if (user.id == null) return
     setUserUpdateError('')
+    setUserUpdateNotice('')
     setSavingUserId(user.id)
     try {
+      const baseline = savedTariffsRef.current[user.id] ?? 'free'
+      const nextTariff = (user.tariff ?? 'free').toLowerCase()
       const updated = await authService.updateUser(user.id, {
         role: user.role,
-        tariff: user.tariff ?? 'free',
       })
+      if (nextTariff !== baseline) {
+        if (nextTariff !== 'free' && nextTariff !== 'standard' && nextTariff !== 'full') {
+          throw new Error('Неизвестный тариф')
+        }
+        await authService.adminCreatePlanRequest(user.id, nextTariff)
+        setUsers((prev) =>
+          prev.map((u) =>
+            u.id === user.id ? { ...u, ...updated, tariff: baseline } : u
+          )
+        )
+        setUserUpdateNotice(
+          `Заявка на тариф ${nextTariff} создана. Счёт или включение тарифа — во вкладке Billing.`,
+        )
+        return
+      }
       setUsers((prev) =>
         prev.map((u) => (u.id === user.id ? { ...u, ...updated } : u))
       )
+      setUserUpdateNotice('Роль сохранена')
     } catch (error) {
       setUserUpdateError(error instanceof Error ? error.message : 'Failed to update user')
     } finally {
@@ -564,7 +591,7 @@ export function AdministrationPage() {
     if (tabParam === 'schedule') {
       return
     }
-    if (tabParam === 'audit' || tabParam === 'groups' || tabParam === 'statistics') {
+    if (tabParam === 'audit' || tabParam === 'groups' || tabParam === 'statistics' || tabParam === 'billing') {
       setActiveTab('users')
       setUsersSubTab(tabParam)
       return
@@ -575,6 +602,7 @@ export function AdministrationPage() {
     const subParam = searchParams.get('sub')
     if (
       subParam === 'management' ||
+      subParam === 'billing' ||
       subParam === 'groups' ||
       subParam === 'audit' ||
       subParam === 'statistics'
@@ -813,6 +841,8 @@ export function AdministrationPage() {
             ))}
           </div>
 
+          {usersSubTab === 'billing' && <AdministrationBillingPanel />}
+
           {usersSubTab === 'management' && (
         <Card>
           <CardHeader>
@@ -822,7 +852,9 @@ export function AdministrationPage() {
               </svg>
               Users Management
             </CardTitle>
-            <CardDescription>View and manage all registered users</CardDescription>
+            <CardDescription>
+              Роль сохраняется сразу. Смена тарифа создаёт заявку — счёт или включение во вкладке Billing.
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
@@ -877,6 +909,11 @@ export function AdministrationPage() {
             {userUpdateError && (
               <Alert variant="error" className="animate-slide-down">
                 {userUpdateError}
+              </Alert>
+            )}
+            {userUpdateNotice && (
+              <Alert variant="success" className="animate-slide-down">
+                {userUpdateNotice}
               </Alert>
             )}
 

@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { PageContainer, PageHeader } from '@/components/ui'
+import { PageContainer, PageHeader, Select } from '@/components/ui'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -463,7 +463,7 @@ export function ChannelsPage() {
               : row.external_id
           const key = `row-${row.id}`
           return (
-            <div className="flex items-start gap-1.5 max-w-[12rem] sm:max-w-[16rem]">
+            <div className="flex items-start gap-1.5 max-w-[10rem] sm:max-w-[18rem] lg:max-w-[24rem]">
               <code className="text-xs text-[var(--text-primary)] break-all flex-1 min-w-0">{display}</code>
               <button
                 type="button"
@@ -660,7 +660,7 @@ export function ChannelsPage() {
         header: '',
         render: (_v, row) => (
           <div className="flex items-center gap-2 justify-end whitespace-nowrap">
-            <Link to={`/channels/${row.id}`}>
+            <Link to={`/channels/${row.id}`} className="shrink-0">
               <Button size="sm" variant="secondary">
                 Настроить
               </Button>
@@ -676,7 +676,7 @@ export function ChannelsPage() {
   )
 
   return (
-    <PageContainer maxWidth="wide">
+    <PageContainer maxWidth="full">
       <PageHeader
         title="Channels"
         description="Единый хаб каналов · Brand → Channels → поток → Analytics"
@@ -750,7 +750,7 @@ export function ChannelsPage() {
       ) : (
         <>
           <Card className="mb-4">
-            <CardContent className="py-3 flex flex-wrap gap-4 text-sm">
+            <CardContent className="py-3 flex flex-wrap gap-x-4 gap-y-2 text-sm">
               <span className="text-emerald-400">Brand ✓</span>
               <span className={channels.length ? 'text-emerald-400' : 'text-[var(--text-muted)]'}>
                 Channels {channels.length ? '✓' : '· добавьте канал'}
@@ -758,13 +758,13 @@ export function ChannelsPage() {
               <span className={hasReadyChannel ? 'text-emerald-400' : 'text-[var(--text-muted)]'}>
                 Ready {hasReadyChannel ? `✓ ${readyCount}` : '· Publish / Collect+Review / Alert'}
               </span>
-              <Link to="/analytics" className="text-primary-400 hover:underline ml-auto">
+              <Link to="/analytics" className="text-primary-400 hover:underline sm:ml-auto">
                 Analytics →
               </Link>
             </CardContent>
           </Card>
 
-          <div className="flex flex-wrap gap-3 mb-4 text-sm text-[var(--text-secondary)]">
+          <div className="flex flex-wrap gap-x-3 gap-y-1 mb-4 text-sm text-[var(--text-secondary)]">
             <span>
               Own: {ownCount}
               {limits.max_own_channels != null ? ` / ${limits.max_own_channels}` : ''}
@@ -800,50 +800,48 @@ export function ChannelsPage() {
             <CardContent>
               <form
                 onSubmit={handleAdd}
-                className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6 items-end"
+                className="grid gap-3 grid-cols-1 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.4fr)_minmax(0,1.2fr)_minmax(0,0.9fr)_auto] items-end"
               >
-                <div>
-                  <label className="text-sm text-[var(--text-secondary)]">Brand</label>
-                  <select
-                    className="w-full mt-1 rounded-md border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-sm"
-                    value={brandId ?? ''}
-                    onChange={(e) => {
-                      const id = e.target.value ? Number(e.target.value) : null
-                      setBrandId(id)
-                      if (id) setSelectedBrandId(id)
-                    }}
-                  >
-                    {brands.map((b) => (
-                      <option key={b.id} value={b.id}>
-                        {b.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-sm text-[var(--text-secondary)]">Сеть</label>
-                  <select
-                    className="w-full mt-1 rounded-md border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-sm"
-                    value={network}
-                    onChange={(e) => {
-                      const next = e.target.value as BrandNetwork
-                      setNetwork(next)
-                      if (next === 'url') setRole('source')
-                    }}
-                  >
-                    {BRAND_NETWORKS.map((net) => (
-                      <option key={net} value={net}>
-                        {NETWORK_LABELS[net]}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                <Select
+                  label="Brand"
+                  value={brandId ?? ''}
+                  onChange={(e) => {
+                    const id = e.target.value ? Number(e.target.value) : null
+                    setBrandId(id)
+                    if (id) setSelectedBrandId(id)
+                  }}
+                >
+                  {brands.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name}
+                    </option>
+                  ))}
+                </Select>
+                <Select
+                  label="Сеть"
+                  value={network}
+                  onChange={(e) => {
+                    const next = e.target.value as BrandNetwork
+                    setNetwork(next)
+                    if (next === 'url') setRole('source')
+                  }}
+                >
+                  {BRAND_NETWORKS.map((net) => (
+                    <option key={net} value={net}>
+                      {NETWORK_LABELS[net]}
+                    </option>
+                  ))}
+                </Select>
                 {network !== 'url' ? (
-                  <div>
-                    <label className="text-sm text-[var(--text-secondary)]">
-                      {network === 'tg' || network === 'vk' ? 'ID канала' : 'Handle / ID'}
+                  <div className="min-w-0">
+                    <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">
+                      {network === 'tg' || network === 'vk'
+                        ? 'ID канала'
+                        : network === 'wp'
+                          ? 'Site URL'
+                          : 'Handle / ID'}
                     </label>
-                    <div className="mt-1 flex gap-2">
+                    <div className="flex gap-2 items-stretch">
                       <input
                         value={externalId}
                         onChange={(e) => setExternalId(e.target.value)}
@@ -852,14 +850,16 @@ export function ChannelsPage() {
                             ? '-100…'
                             : network === 'vk'
                               ? '236… / club… / onlinestudies'
-                              : '@username / site'
+                              : network === 'wp'
+                                ? 'https://example.com'
+                                : '@username / site'
                         }
-                        className="flex-1 rounded-md border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-sm text-[var(--text-primary)]"
+                        className="input-field min-w-0 flex-1"
                       />
                       <Button
                         type="button"
                         variant="secondary"
-                        size="sm"
+                        className="h-11 shrink-0 px-3"
                         disabled={!externalId.trim()}
                         onClick={() => void copyText(externalId, 'form-id')}
                         title="Скопировать ID"
@@ -869,20 +869,22 @@ export function ChannelsPage() {
                     </div>
                   </div>
                 ) : (
-                  <div>
-                    <label className="text-sm text-[var(--text-secondary)]">URL страницы</label>
-                    <div className="mt-1 flex gap-2">
+                  <div className="min-w-0">
+                    <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">
+                      URL страницы
+                    </label>
+                    <div className="flex gap-2 items-stretch">
                       <input
                         type="url"
                         value={sourceUrl}
                         onChange={(e) => setSourceUrl(e.target.value)}
                         placeholder="https://example.com/news"
-                        className="flex-1 rounded-md border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-sm text-[var(--text-primary)]"
+                        className="input-field min-w-0 flex-1"
                       />
                       <Button
                         type="button"
                         variant="secondary"
-                        size="sm"
+                        className="h-11 shrink-0 px-3"
                         disabled={!sourceUrl.trim()}
                         onClick={() => void copyText(sourceUrl, 'form-url')}
                         title="Скопировать URL"
@@ -898,20 +900,17 @@ export function ChannelsPage() {
                   onChange={(e) => setTitle(e.target.value)}
                   placeholder={network === 'url' ? 'Smart-Lab map' : undefined}
                 />
-                <div>
-                  <label className="text-sm text-[var(--text-secondary)]">Тип</label>
-                  <select
-                    className="w-full mt-1 rounded-md border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-sm"
-                    value={network === 'url' ? 'source' : role}
-                    disabled={network === 'url'}
-                    onChange={(e) => setRole(e.target.value as ChannelRole)}
-                  >
-                    <option value="own">own</option>
-                    <option value="source">source</option>
-                    <option value="competitor">competitor</option>
-                  </select>
-                </div>
-                <Button type="submit" disabled={saving || !brandId}>
+                <Select
+                  label="Тип"
+                  value={network === 'url' ? 'source' : role}
+                  disabled={network === 'url'}
+                  onChange={(e) => setRole(e.target.value as ChannelRole)}
+                >
+                  <option value="own">own</option>
+                  <option value="source">source</option>
+                  <option value="competitor">competitor</option>
+                </Select>
+                <Button type="submit" className="h-11 w-full xl:w-auto px-6" disabled={saving || !brandId}>
                   {saving ? 'Adding…' : 'Add'}
                 </Button>
               </form>
@@ -930,8 +929,8 @@ export function ChannelsPage() {
             </CardContent>
           </Card>
 
-          <div className="flex flex-wrap gap-3 mb-3 items-end">
-            <div className="min-w-[180px] flex-1">
+          <div className="flex flex-col sm:flex-row sm:flex-wrap gap-3 mb-3 items-stretch sm:items-end">
+            <div className="min-w-0 w-full sm:min-w-[180px] sm:flex-1">
               <Input
                 label="Filter by title"
                 value={filterTitle}
@@ -939,10 +938,9 @@ export function ChannelsPage() {
                 placeholder="Title / id / brand"
               />
             </div>
-            <div>
-              <label className="text-sm text-[var(--text-secondary)]">Network</label>
-              <select
-                className="block mt-1 rounded-md border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-sm"
+            <div className="w-full sm:w-44 shrink-0">
+              <Select
+                label="Network"
                 value={filterNetwork}
                 onChange={(e) =>
                   setFilterNetwork(e.target.value as 'all' | BrandNetwork)
@@ -954,62 +952,64 @@ export function ChannelsPage() {
                     {NETWORK_LABELS[net]}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              disabled={filtered.length === 0}
-              onClick={downloadChannelsCsv}
-              title="Скачать текущую таблицу (с учётом фильтра) в CSV — без вложенных настроек"
-            >
-              Download CSV
-            </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              disabled={exporting || channels.length === 0}
-              onClick={() => void downloadChannelsJson()}
-              title={
-                selectedBrandId || brandId
-                  ? 'Скачать JSON выбранного бренда: Collect/Alert/условия/targets'
-                  : 'Скачать JSON всех брендов (импорт потом — в выбранный бренд)'
-              }
-            >
-              {exporting ? 'Export…' : 'Download JSON'}
-            </Button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="application/json,.json"
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0]
-                if (f) void handleImportFile(f)
-              }}
-            />
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              disabled={importing || !(selectedBrandId ?? brandId)}
-              onClick={() => fileInputRef.current?.click()}
-              title="Загрузить JSON в выбранный бренд (создаёт / обновляет по network+id), затем проверка доступа"
-            >
-              {importing ? 'Import…' : 'Upload JSON'}
-            </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              disabled={validating || !(selectedBrandId ?? brandId) || channels.length === 0}
-              onClick={() => void runValidation()}
-              title="Recheck доступа и проверка Collect/Alert/Publish/targets для бренда"
-            >
-              {validating ? 'Validate…' : 'Validate'}
-            </Button>
+            <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+              <Button
+                type="button"
+                variant="secondary"
+                className="h-11"
+                disabled={filtered.length === 0}
+                onClick={downloadChannelsCsv}
+                title="Скачать текущую таблицу (с учётом фильтра) в CSV — без вложенных настроек"
+              >
+                Download CSV
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                className="h-11"
+                disabled={exporting || channels.length === 0}
+                onClick={() => void downloadChannelsJson()}
+                title={
+                  selectedBrandId || brandId
+                    ? 'Скачать JSON выбранного бренда: Collect/Alert/условия/targets'
+                    : 'Скачать JSON всех брендов (импорт потом — в выбранный бренд)'
+                }
+              >
+                {exporting ? 'Export…' : 'Download JSON'}
+              </Button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="application/json,.json"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0]
+                  if (f) void handleImportFile(f)
+                }}
+              />
+              <Button
+                type="button"
+                variant="secondary"
+                className="h-11"
+                disabled={importing || !(selectedBrandId ?? brandId)}
+                onClick={() => fileInputRef.current?.click()}
+                title="Загрузить JSON в выбранный бренд (создаёт / обновляет по network+id), затем проверка доступа"
+              >
+                {importing ? 'Import…' : 'Upload JSON'}
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                className="h-11"
+                disabled={validating || !(selectedBrandId ?? brandId) || channels.length === 0}
+                onClick={() => void runValidation()}
+                title="Recheck доступа и проверка Collect/Alert/Publish/targets для бренда"
+              >
+                {validating ? 'Validate…' : 'Validate'}
+              </Button>
+            </div>
           </div>
 
           {validationReport && (

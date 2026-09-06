@@ -2,6 +2,7 @@ import { useState, FormEvent, useEffect, useCallback } from 'react'
 import { Link, useSearchParams, useNavigate } from 'react-router-dom'
 import { Alert } from '@/components/ui/alert'
 import { PageHeader, PageContainer } from '@/components/ui'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   createDefaultTargets,
   EMPTY_SELECTED_BRAND_CHANNELS,
@@ -11,6 +12,7 @@ import {
 import { apiClient } from '@/services/api-client'
 import { vkontakteService } from '@/services/vkontakte-service'
 import { useAuth } from '@/contexts/auth-context'
+import { useBrand } from '@/contexts/brand-context'
 import type {
   VKontakteProfile,
   VKontaktePostListItem,
@@ -29,28 +31,90 @@ import {
   getWeekRange,
   type DynamicField,
 } from './vkontakte-helpers'
-import { CreatePostTab } from './create-post-tab'
-import { PostsTab } from './posts-tab'
-import { CalendarTab } from './calendar-tab'
-import { ProfileSettingsTab } from './profile-settings-tab'
-import { ProcessingTab } from './processing-tab'
 import { AuthTab } from './auth-tab'
+import { canManagePlatformAuth } from '@/types/smm'
 
-const TAB_ORDER: { id: VKontakteTab; label: string; accent?: boolean }[] = [
-  { id: 'posts', label: 'Posts' },
-  { id: 'calendar', label: 'Calendar' },
-  { id: 'profile', label: 'Profile Settings' },
-  { id: 'processing', label: 'Обработка' },
-  { id: 'auth', label: 'Авторизация', accent: true },
-]
+const LEGACY_TAB_REDIRECT: Record<string, string> = {
+  posts: '/analytics',
+  create: '/posts',
+  calendar: '/calendar?network=vk',
+  profile: '/channels',
+  processing: '/channels',
+}
+
+function VkontakteHubMap() {
+  const { selectedBrandId } = useBrand()
+  const calendarHref = selectedBrandId
+    ? `/calendar?brand=${selectedBrandId}&network=vk`
+    : '/calendar?network=vk'
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-lg">Brand → Channel</CardTitle>
+        <CardDescription>
+          Здесь только OAuth и токены VK. Потоки, очередь и картина по бренду — в общих разделах.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <ul className="grid gap-3 sm:grid-cols-2 text-sm">
+          <li>
+            <Link to="/analytics" className="text-primary-400 hover:underline font-medium">
+              Posts → Analytics
+            </Link>
+            <p className="text-[var(--text-muted)] mt-0.5">
+              Лента и события по каналам бренда.
+            </p>
+          </li>
+          <li>
+            <Link to={calendarHref} className="text-primary-400 hover:underline font-medium">
+              Calendar → общий календарь
+            </Link>
+            <p className="text-[var(--text-muted)] mt-0.5">
+              Расписание публикаций всех сетей, фильтр network=vk.
+            </p>
+          </li>
+          <li>
+            <Link to="/channels" className="text-primary-400 hover:underline font-medium">
+              Profile Settings → Channels
+            </Link>
+            <p className="text-[var(--text-muted)] mt-0.5">
+              Collect / Publish / Alert и цели — в карточке канала, не в профиле VK.
+            </p>
+          </li>
+          <li>
+            <Link to="/channels" className="text-primary-400 hover:underline font-medium">
+              Обработка → канал
+            </Link>
+            <p className="text-[var(--text-muted)] mt-0.5">
+              Настроить → Обработка у конкретного канала.
+            </p>
+          </li>
+        </ul>
+        <p className="mt-4 text-sm">
+          Создать пост:{' '}
+          <Link to="/posts" className="text-primary-400 hover:underline">
+            Posts
+          </Link>
+          {' · '}
+          очередь:{' '}
+          <Link to="/inbox" className="text-primary-400 hover:underline">
+            Inbox
+          </Link>
+        </p>
+      </CardContent>
+    </Card>
+  )
+}
 
 export function VKontaktePage() {
   const { user } = useAuth()
+  const hasTeam = Boolean(user?.group_id || user?.role_in_group)
+  const canAuth = canManagePlatformAuth(user?.role_in_group, hasTeam)
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
-  const [activeTab, setActiveTab] = useState<VKontakteTab>(() =>
-    searchParams.get('auth') === '1' ? 'auth' : 'posts',
-  )
+  const [activeTab, setActiveTab] = useState<VKontakteTab>('auth')
+
   const [authStatus, setAuthStatus] = useState<VKAuthStatus | null>(null)
   const [subscriptions, setSubscriptions] = useState<VKSubscriptionItem[]>([])
   const [subscriptionsSource, setSubscriptionsSource] = useState<string | null>(null)
@@ -224,12 +288,17 @@ export function VKontaktePage() {
   }, [loadProfile])
 
   useEffect(() => {
+    const legacyTab = searchParams.get('tab')
+    if (legacyTab && LEGACY_TAB_REDIRECT[legacyTab]) {
+      navigate(LEGACY_TAB_REDIRECT[legacyTab], { replace: true })
+      return
+    }
     if (searchParams.get('auth') === '1') {
       setActiveTab('auth')
       searchParams.delete('auth')
       setSearchParams(searchParams, { replace: true })
     }
-  }, [searchParams, setSearchParams])
+  }, [searchParams, setSearchParams, navigate])
 
   useEffect(() => {
     if (searchParams.get('oauth') === 'success' || searchParams.get('oauth') === 'error') {
@@ -638,8 +707,6 @@ export function VKontaktePage() {
     return imagePreviewUrl(url, base, origin)
   }
 
-  const showAuthBlock =
-    authStatus != null && !authStatus.connected && !authStatus.community_connected
   const vkOAuthRedirectUri = `${vkPublicGatewayUrl.replace(/\/$/, '')}/vk/oauth/callback`
   const vkCallbackApiUrl = `${vkPublicGatewayUrl.replace(/\/$/, '')}/vk/callback`
 
@@ -740,17 +807,9 @@ export function VKontaktePage() {
   return (
     <PageContainer maxWidth="wide">
       <PageHeader
-        title="VKontakte Integration"
-        description="Configure your VKontakte account settings and post management"
+        title="VKontakte"
+        description="OAuth и токены для Collect / Publish / Alert. Потоки настраиваются в Channels."
       />
-      <p className="mb-4 text-sm flex flex-wrap gap-4">
-        <Link to="/posts" className="text-primary-400 hover:underline">
-          Создать пост → /posts
-        </Link>
-        <Link to="/channels" className="text-primary-400 hover:underline">
-          Управлять каналами → /channels
-        </Link>
-      </p>
 
       {error && (
         <Alert variant="error" className="animate-slide-down">
@@ -763,158 +822,9 @@ export function VKontaktePage() {
         </Alert>
       )}
 
-      <div className="flex border-b border-[var(--border-color)] overflow-x-auto">
-        {TAB_ORDER.map((tab) => {
-          const isActive = activeTab === tab.id
-          const isAuth = tab.id === 'auth'
-          const textClass = isAuth
-            ? isActive || showAuthBlock
-              ? 'text-amber-400'
-              : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-            : isActive
-              ? 'text-primary-400'
-              : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              className={`px-6 py-3 text-sm font-medium transition-all relative whitespace-nowrap flex items-center gap-1.5 ${textClass} ${isAuth && showAuthBlock && !isActive ? 'animate-pulse' : ''}`}
-              onClick={() => setActiveTab(tab.id)}
-            >
-              {isAuth && (
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                </svg>
-              )}
-              {tab.label}
-              {isAuth && showAuthBlock && <span className="inline-block w-2 h-2 bg-amber-400 rounded-full" />}
-              {isActive && (
-                <div className={`absolute bottom-0 left-0 right-0 h-0.5 ${isAuth ? 'bg-amber-500' : 'bg-primary-500'}`} />
-              )}
-            </button>
-          )
-        })}
-      </div>
+      <VkontakteHubMap />
 
-      {editingPostId !== null && (
-        <CreatePostTab
-          postContent={postContent}
-          onPostContentChange={setPostContent}
-          postImages={postImages}
-          onRemoveImage={(index) => setPostImages((prev) => prev.filter((_, i) => i !== index))}
-          onUploadImages={handleUploadImages}
-          uploadingImage={uploadingImage}
-          imagePreviewUrl={resolveImagePreview}
-          editingPostId={editingPostId}
-          publishAt={publishAt}
-          onPublishAtChange={setPublishAt}
-          targetGroupsText={targetGroupsText}
-          onTargetGroupsTextChange={setTargetGroupsText}
-          postTargets={postTargets}
-          onPostTargetsChange={setPostTargets}
-          selectedChannels={selectedChannels}
-          onSelectedChannelsChange={setSelectedChannels}
-          isCreatingPost={isCreatingPost}
-          onSubmit={handleCreatePost}
-        />
-      )}
-
-      {activeTab === 'posts' && (
-        <PostsTab
-          posts={posts}
-          isLoadingPosts={isLoadingPosts}
-          hasLoadedPosts={hasLoadedPosts}
-          deletingPostId={deletingPostId}
-          onRefresh={loadPosts}
-          onEdit={handleEditPost}
-          onDelete={handleDeletePost}
-        />
-      )}
-
-      {activeTab === 'calendar' && (
-        <CalendarTab
-          posts={calendarPosts}
-          weekStart={calendarWeekStart}
-          isLoading={isLoadingCalendar}
-          onWeekChange={setCalendarWeekStart}
-          onReschedule={handleReschedule}
-        />
-      )}
-
-      {activeTab === 'profile' && (
-        <ProfileSettingsTab
-          isLoadingProfile={isLoadingProfile}
-          isSavingProfile={isSavingProfile}
-          publishEnabled={publishEnabled}
-          onPublishEnabledChange={setPublishEnabled}
-          fromGroup={fromGroup}
-          onFromGroupChange={setFromGroup}
-          groupToPost={groupToPost}
-          onGroupToPostChange={setGroupToPost}
-          scheduleType={scheduleType}
-          onScheduleTypeChange={setScheduleType}
-          timeIntervals={timeIntervals}
-          onAddTimeInterval={() => {
-            if (timeIntervals.length < 5) {
-              setTimeIntervals((prev) => [...prev, { id: generateId(), start: '', end: '' }])
-            }
-          }}
-          onRemoveTimeInterval={(id) => {
-            if (timeIntervals.length > 1) {
-              setTimeIntervals((prev) => prev.filter((i) => i.id !== id))
-            }
-          }}
-          onUpdateTimeInterval={(id, field, value) => {
-            setTimeIntervals((prev) => prev.map((i) => (i.id === id ? { ...i, [field]: value } : i)))
-          }}
-          collectEnabled={collectEnabled}
-          onCollectEnabledChange={setCollectEnabled}
-          userOauthConnected={Boolean(authStatus?.connected)}
-          groupsToRead={groupsToRead}
-          onAddGroupToRead={() => setGroupsToRead((prev) => [...prev, { id: generateId(), value: '' }])}
-          onRemoveGroupToRead={(id) => {
-            if (groupsToRead.length > 1) setGroupsToRead((prev) => prev.filter((f) => f.id !== id))
-          }}
-          onUpdateGroupToRead={(id, value) => {
-            setGroupsToRead((prev) => prev.map((f) => (f.id === id ? { ...f, value } : f)))
-          }}
-          onSubmit={handleSaveProfile}
-        />
-      )}
-
-      {activeTab === 'processing' && (
-        <ProcessingTab
-          isLoadingProfile={isLoadingProfile}
-          isSavingProfile={isSavingProfile}
-          processEnabled={processEnabled}
-          onProcessEnabledChange={setProcessEnabled}
-          processingDescription={processingDescription}
-          onProcessingDescriptionChange={setProcessingDescription}
-          removeEmojis={removeEmojis}
-          onRemoveEmojisChange={setRemoveEmojis}
-          removeImages={removeImages}
-          onRemoveImagesChange={setRemoveImages}
-          cleanHtml={cleanHtml}
-          onCleanHtmlChange={setCleanHtml}
-          processServiceWordpress={processServiceWordpress}
-          onProcessServiceWordpressChange={setProcessServiceWordpress}
-          processServiceTelegram={processServiceTelegram}
-          onProcessServiceTelegramChange={setProcessServiceTelegram}
-          processServiceTwitter={processServiceTwitter}
-          onProcessServiceTwitterChange={setProcessServiceTwitter}
-          processServiceVkontakte={processServiceVkontakte}
-          onProcessServiceVkontakteChange={setProcessServiceVkontakte}
-          statusReviewAfterProcess={statusReviewAfterProcess}
-          onStatusReviewAfterProcessChange={setStatusReviewAfterProcess}
-          addStaticHtml={addStaticHtml}
-          onAddStaticHtmlChange={setAddStaticHtml}
-          staticHtmlContent={staticHtmlContent}
-          onStaticHtmlContentChange={setStaticHtmlContent}
-          onSubmit={handleSaveProcessing}
-        />
-      )}
-
-      {activeTab === 'auth' && (
+      {canAuth ? (
         <AuthTab
           authStatus={authStatus}
           groupToPost={groupToPost}
@@ -974,6 +884,13 @@ export function VKontaktePage() {
           loadingSeleniumVerify={loadingSeleniumVerify}
           onVerifySelenium={() => void verifySeleniumFallback()}
         />
+      ) : (
+        <Alert variant="info">
+          Подключать VK может владелец или админ команды.{' '}
+          <Link to="/channels" className="underline">
+            К каналам
+          </Link>
+        </Alert>
       )}
     </PageContainer>
   )

@@ -97,6 +97,8 @@
 - **to_tg**, **to_wp**, **to_vk**, **to_dzen**, **to_instagram**, **to_tw** — в какие платформы распределять пост при статусе **ready**.
 - **platform_texts** (JSONB) — тексты, подготовленные под каждую платформу (лимиты длины и т.д.); при distribute подставляются в целевые таблицы.
 
+Подгонка длины и формата (HTML для TG, plain для остальных) выполняется модулем **`shared/post_adapt.py`**. Его же вызывают SMM-адаптеры (`adapters_result` при create/execute job) и Processor (`prepare_platform_texts` → `platform_texts`). Лимиты символов объявлены в одном месте (`NETWORK_TEXT_LIMITS`).
+
 ---
 
 ## Где пост «живёт» после `posts`

@@ -204,7 +204,7 @@ export function ChannelFlowPage() {
     return brandChannels.filter(
       (c) =>
         c.role === 'own' &&
-        (c.network === 'tg' || c.network === 'vk') &&
+        (c.network === 'tg' || c.network === 'vk' || c.network === 'wp') &&
         c.id !== channel.id &&
         Boolean(c.external_id),
     )
@@ -232,7 +232,9 @@ export function ChannelFlowPage() {
       setError(
         channel.network === 'vk'
           ? 'Collect требует user OAuth VK (VKontakte → Авторизация → Подключить пользователя), затем Recheck на вкладке Auth.'
-          : 'Collect требует авторизацию Telegram (Telegram → Auth), затем Recheck на вкладке Auth.',
+          : channel.network === 'wp'
+            ? 'Collect требует WordPress site URL + Application Password (WordPress → Profile), затем Recheck на вкладке Auth.'
+            : 'Collect требует авторизацию Telegram (Telegram → Auth), затем Recheck на вкладке Auth.',
       )
       return
     }
@@ -514,7 +516,10 @@ export function ChannelFlowPage() {
     'Нужен user OAuth: VKontakte → Авторизация → блок 4 «Подключить пользователя». Токен сообщества не подходит для Collect/Alert.'
   const authHintTg =
     'Нужна сессия Telegram: Telegram → Auth. Затем Recheck на вкладке Auth этого канала.'
-  const collectAuthHint = channel.network === 'vk' ? authHintVk : authHintTg
+  const authHintWp =
+    'Нужны site URL и Application Password: WordPress → Profile. Затем Recheck на вкладке Auth этого канала.'
+  const collectAuthHint =
+    channel.network === 'vk' ? authHintVk : channel.network === 'wp' ? authHintWp : authHintTg
   const alertAuthHint = collectAuthHint
   const isUrl = channel.network === 'url'
   const setupHref = networkSetupUrl(channel.network)

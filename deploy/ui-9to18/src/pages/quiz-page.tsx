@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom'
 import { PageShell } from '@/components/page-shell'
 import { getPublishedPosts, useLearnPosts } from '@/data/learn/use-learn-posts'
 import type { LearnPost } from '@/data/learn/learn-store'
+import { siteSubmitQuizAttempt } from '@/data/site/site-api'
+import { getSiteAuthSession } from '@/data/site/site-auth'
 
 type QuizQuestion = {
   id: string
@@ -38,16 +40,44 @@ export function QuizPage() {
   const published = getPublishedPosts(posts)
   const questions = useMemo(
     () => (isReady ? buildQuestions(published) : []),
-    // rebuild once when posts ready
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional one-shot quiz set
     [isReady, published.length],
   )
   const [answers, setAnswers] = useState<Record<string, number>>({})
   const [submitted, setSubmitted] = useState(false)
+  const [saveNote, setSaveNote] = useState('')
 
   const score = questions.reduce((sum, q) => {
     return sum + (answers[q.id] === q.correctIndex ? 1 : 0)
   }, 0)
+
+  async function onSubmit() {
+    const nextScore = questions.reduce((sum, q) => {
+      return sum + (answers[q.id] === q.correctIndex ? 1 : 0)
+    }, 0)
+    setSubmitted(true)
+    setSaveNote('')
+    if (!getSiteAuthSession()?.accessToken) {
+      setSaveNote('Войдите в кабинет, чтобы сохранить результат.')
+      return
+    }
+    try {
+      await siteSubmitQuizAttempt({
+        source_type: 'quiz_page',
+        source_key: 'learn/quiz',
+        score: nextScore,
+        total: questions.length,
+        answers: questions.map((q) => ({
+          id: q.id,
+          selected: answers[q.id],
+          correct: q.correctIndex,
+        })),
+      })
+      setSaveNote('Результат сохранён в разделе «Учёба».')
+    } catch (err) {
+      setSaveNote(err instanceof Error ? err.message : 'Не удалось сохранить результат')
+    }
+  }
 
   return (
     <PageShell>
@@ -71,7 +101,7 @@ export function QuizPage() {
           className="learn-admin-form"
           onSubmit={(e) => {
             e.preventDefault()
-            setSubmitted(true)
+            void onSubmit()
           }}
         >
           {questions.map((q, qi) => (
@@ -88,7 +118,11 @@ export function QuizPage() {
                     key={`${q.id}-${oi}`}
                     className="learn-admin-field"
                     style={{
-                      color: isCorrect ? 'var(--ok, #16a34a)' : isWrong ? 'var(--err, #dc2626)' : undefined,
+                      color: isCorrect
+                        ? 'var(--ok, #16a34a)'
+                        : isWrong
+                          ? 'var(--err, #dc2626)'
+                          : undefined,
                     }}
                   >
                     <span>
@@ -124,12 +158,14 @@ export function QuizPage() {
                 onClick={() => {
                   setAnswers({})
                   setSubmitted(false)
+                  setSaveNote('')
                 }}
               >
                 Ещё раз
               </button>
             </p>
           )}
+          {saveNote ? <p className="learn-section-note">{saveNote}</p> : null}
         </form>
       )}
     </PageShell>

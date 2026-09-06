@@ -397,6 +397,11 @@ export function CalendarPage() {
                     onChange={() => toggleSelect(j.id)}
                   />
                   <span className="truncate">{j.source_text.slice(0, 80)}</span>
+                  {j.created_by_user_id != null && (
+                    <span className="text-xs text-[var(--text-muted)] shrink-0">
+                      by user {j.created_by_user_id}
+                    </span>
+                  )}
                   {j.assigned_to != null && (
                     <span className="text-xs text-[var(--text-muted)] shrink-0">
                       → user {j.assigned_to}

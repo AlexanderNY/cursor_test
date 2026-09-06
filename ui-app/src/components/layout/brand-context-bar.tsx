@@ -14,11 +14,11 @@ export function BrandContextBar({ className = '' }: BrandContextBarProps) {
   if (!selectedBrandId || !selectedBrand) {
     return (
       <div
-        className={`flex items-center gap-2 rounded-xl border border-dashed border-[var(--border-color)] bg-[var(--bg-tertiary)]/40 px-3 py-2 text-sm text-[var(--text-muted)] ${className}`}
+        className={`flex flex-wrap items-center gap-2 rounded-xl border border-dashed border-[var(--border-color)] bg-[var(--bg-tertiary)]/40 px-3 py-2 text-sm text-[var(--text-muted)] ${className}`}
         role="status"
       >
-        <span className="h-2.5 w-2.5 rounded-full bg-[var(--text-muted)]/50" aria-hidden />
-        <span>
+        <span className="h-2.5 w-2.5 rounded-full bg-[var(--text-muted)]/50 shrink-0" aria-hidden />
+        <span className="min-w-0">
           Brand не выбран — данные по всем брендам.{' '}
           <Link to="/brands" className="text-primary-400 hover:underline">
             Выбрать бренд
@@ -30,7 +30,7 @@ export function BrandContextBar({ className = '' }: BrandContextBarProps) {
 
   return (
     <div
-      className={`sticky top-0 z-10 flex items-center gap-3 rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)] px-3 py-2 shadow-sm ${className}`}
+      className={`sticky top-0 z-10 flex items-center gap-2 sm:gap-3 rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)] px-3 py-2 shadow-sm min-w-0 ${className}`}
       role="status"
       aria-label={`Работаем с брендом ${selectedBrand.name}`}
     >

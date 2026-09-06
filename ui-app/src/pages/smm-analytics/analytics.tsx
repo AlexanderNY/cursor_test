@@ -1,41 +1,62 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { PageContainer, PageHeader } from '@/components/ui'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { PageContainer, PageHeader, Select } from '@/components/ui'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Alert } from '@/components/ui/alert'
 import { useBrand } from '@/contexts/brand-context'
+import { useAuth } from '@/contexts/auth-context'
 import { smmService } from '@/services/smm-service'
-import type { AnalyticsOverview, AnalyticsPost, BrandChannel } from '@/types/smm'
+import type {
+  AnalyticsOverview,
+  AnalyticsPost,
+  BrandChannel,
+  ChannelOpsStat,
+  ChannelStatsResponse,
+  PipelineCounts,
+} from '@/types/smm'
+import { canViewTeamAnalytics } from '@/types/smm'
 import { getErrorMessage } from '@/services/api-client'
 import { formatDateTime } from '@/utils/date'
+import { networkLabel } from '@/lib/smm-networks'
 import { PlanGate } from '@/components/billing/PlanGate'
 import { TelegramAnalyticsPanel } from './telegram-analytics'
+
+const EMPTY_PIPELINE: PipelineCounts = {
+  collected: 0,
+  processed: 0,
+  sent: 0,
+  failed: 0,
+  alerts_sent: 0,
+}
+
+const EMPTY_CHANNEL_STATS: ChannelStatsResponse = {
+  period: '7d',
+  totals: EMPTY_PIPELINE,
+  by_network: [],
+  by_brand: [],
+  channels: [],
+}
+
+function formatCount(value: number | null | undefined): string {
+  if (value == null) return '—'
+  return value.toLocaleString('ru-RU')
+}
 
 type Tab = 'overview' | 'channels' | 'messages' | 'competitors' | 'telegram'
 
 export function SmmAnalyticsPage() {
-  const { selectedBrandId, setSelectedBrandId, channels, refreshChannels } = useBrand()
+  const { user } = useAuth()
+  const hasTeam = Boolean(user?.group_id || user?.role_in_group)
+  const canView = canViewTeamAnalytics(user?.role_in_group, hasTeam, user?.role)
+  const { selectedBrandId, setSelectedBrandId, selectedBrand, channels, refreshChannels } = useBrand()
   const [searchParams, setSearchParams] = useSearchParams()
   const [tab, setTab] = useState<Tab>('overview')
   const [period, setPeriod] = useState('7d')
   const [overview, setOverview] = useState<AnalyticsOverview | null>(null)
   const [posts, setPosts] = useState<AnalyticsPost[]>([])
-  const [channelStats, setChannelStats] = useState<
-    {
-      channel_id: number
-      network: string
-      external_id: string
-      title?: string
-      sent: number
-      received: number
-      failed: number
-      alerts_sent?: number
-      conversion_pct?: number
-      role?: string
-    }[]
-  >([])
+  const [pipeline, setPipeline] = useState<ChannelStatsResponse>(EMPTY_CHANNEL_STATS)
   const [messageEvents, setMessageEvents] = useState<
     { id: string; direction: string; network: string; created_at?: string; channel_title?: string; text?: string }[]
   >([])
@@ -57,25 +78,94 @@ export function SmmAnalyticsPage() {
     return Number.isFinite(n) && n > 0 ? n : null
   }, [searchParams])
 
-  const focusChannel = useMemo(
-    () => channels.find((c) => c.id === focusChannelId) || null,
-    [channels, focusChannelId],
-  )
+  const focusChannel = useMemo(() => {
+    const fromBrand = channels.find((c) => c.id === focusChannelId)
+    if (fromBrand) return fromBrand
+    const fromStats = pipeline.channels.find((c) => c.channel_id === focusChannelId)
+    if (!fromStats) return null
+    return {
+      id: fromStats.channel_id,
+      title: fromStats.title,
+      external_id: fromStats.external_id,
+      network: fromStats.network,
+      brand_name: fromStats.brand_name,
+    }
+  }, [channels, focusChannelId, pipeline.channels])
+
+  const focusNetwork = useMemo(() => {
+    const raw = (searchParams.get('network') || '').trim().toLowerCase()
+    return raw || null
+  }, [searchParams])
 
   const filterChannels = useMemo(() => {
-    const list = channels.filter((c) => c.role !== 'competitor')
-    if (focusChannel && !list.some((c) => c.id === focusChannel.id)) {
-      return [focusChannel, ...list]
+    const byId = new Map<
+      number,
+      { id: number; title?: string | null; external_id: string; network: string; brand_name?: string | null }
+    >()
+    for (const s of pipeline.channels) {
+      byId.set(s.channel_id, {
+        id: s.channel_id,
+        title: s.title,
+        external_id: s.external_id,
+        network: s.network,
+        brand_name: s.brand_name,
+      })
     }
-    return list
-  }, [channels, focusChannel])
+    for (const c of channels) {
+      if (c.role === 'competitor') continue
+      byId.set(c.id, {
+        id: c.id,
+        title: c.title,
+        external_id: c.external_id,
+        network: c.network,
+        brand_name: c.brand_name,
+      })
+    }
+    if (focusChannel && !byId.has(focusChannel.id)) {
+      byId.set(focusChannel.id, {
+        id: focusChannel.id,
+        title: focusChannel.title,
+        external_id: focusChannel.external_id,
+        network: focusChannel.network,
+        brand_name: focusChannel.brand_name,
+      })
+    }
+    let list = [...byId.values()]
+    if (focusNetwork) list = list.filter((c) => c.network === focusNetwork)
+    return list.sort((a, b) => (a.title || a.external_id).localeCompare(b.title || b.external_id))
+  }, [channels, focusChannel, focusNetwork, pipeline.channels])
+
+  const networkOptions = useMemo(() => {
+    const nets = new Set<string>()
+    for (const row of pipeline.by_network) {
+      if (row.network) nets.add(row.network)
+    }
+    for (const c of pipeline.channels) {
+      if (c.network) nets.add(c.network)
+    }
+    return [...nets].sort()
+  }, [pipeline.by_network, pipeline.channels])
+
+  function patchSearch(updates: Record<string, string | null>) {
+    const next = new URLSearchParams(searchParams)
+    for (const [key, value] of Object.entries(updates)) {
+      if (value) next.set(key, value)
+      else next.delete(key)
+    }
+    if (selectedBrandId) next.set('brand_id', String(selectedBrandId))
+    else next.delete('brand_id')
+    setSearchParams(next, { replace: true })
+  }
 
   function setChannelFilter(id: number | null) {
-    const next = new URLSearchParams(searchParams)
-    if (id) next.set('channel_id', String(id))
-    else next.delete('channel_id')
-    if (selectedBrandId) next.set('brand_id', String(selectedBrandId))
-    setSearchParams(next, { replace: true })
+    patchSearch({ channel_id: id ? String(id) : null })
+  }
+
+  function setNetworkFilter(network: string | null) {
+    patchSearch({
+      network,
+      channel_id: null,
+    })
   }
 
   useEffect(() => {
@@ -85,7 +175,10 @@ export function SmmAnalyticsPage() {
     }
   }, [searchParams])
 
+  const didApplyUrlBrand = useRef(false)
   useEffect(() => {
+    if (didApplyUrlBrand.current) return
+    didApplyUrlBrand.current = true
     const brandRaw = searchParams.get('brand_id')
     if (!brandRaw) return
     const brandId = Number(brandRaw)
@@ -93,6 +186,16 @@ export function SmmAnalyticsPage() {
       setSelectedBrandId(brandId)
     }
   }, [searchParams, selectedBrandId, setSelectedBrandId])
+
+  useEffect(() => {
+    const current = searchParams.get('brand_id')
+    const nextVal = selectedBrandId ? String(selectedBrandId) : null
+    if ((current || null) === nextVal) return
+    const next = new URLSearchParams(searchParams)
+    if (nextVal) next.set('brand_id', nextVal)
+    else next.delete('brand_id')
+    setSearchParams(next, { replace: true })
+  }, [selectedBrandId, searchParams, setSearchParams])
 
   useEffect(() => {
     if (!focusChannelId || channels.length === 0) return
@@ -105,12 +208,50 @@ export function SmmAnalyticsPage() {
   const competitors = channels.filter((c) => c.role === 'competitor')
 
   const visibleChannelStats = useMemo(() => {
-    if (!focusChannelId) return channelStats
-    return channelStats.filter((s) => s.channel_id === focusChannelId)
-  }, [channelStats, focusChannelId])
+    let list = pipeline.channels
+    if (focusNetwork) list = list.filter((s) => s.network === focusNetwork)
+    if (focusChannelId) list = list.filter((s) => s.channel_id === focusChannelId)
+    return list
+  }, [pipeline.channels, focusChannelId, focusNetwork])
+
+  const visibleNetworks = useMemo(() => {
+    if (!focusNetwork) return pipeline.by_network
+    return pipeline.by_network.filter((n) => n.network === focusNetwork)
+  }, [pipeline.by_network, focusNetwork])
+
+  const visibleBrands = useMemo(() => {
+    if (selectedBrandId) {
+      return pipeline.by_brand.filter((b) => b.brand_id === selectedBrandId)
+    }
+    if (focusChannelId) {
+      const row = visibleChannelStats[0]
+      if (!row) return []
+      return pipeline.by_brand.filter((b) => b.brand_id === row.brand_id)
+    }
+    return pipeline.by_brand
+  }, [pipeline.by_brand, selectedBrandId, focusChannelId, visibleChannelStats])
+
+  const kpi = useMemo((): PipelineCounts => {
+    if (focusChannelId) {
+      const row = visibleChannelStats[0]
+      return {
+        collected: row?.collected ?? row?.received ?? 0,
+        processed: null,
+        sent: row?.sent ?? 0,
+        failed: row?.failed ?? 0,
+        alerts_sent: row?.alerts_sent ?? 0,
+      }
+    }
+    if (focusNetwork) {
+      const row = visibleNetworks[0]
+      if (!row) return EMPTY_PIPELINE
+      return row
+    }
+    return pipeline.totals
+  }, [focusChannelId, focusNetwork, visibleChannelStats, visibleNetworks, pipeline.totals])
 
   useEffect(() => {
-    if (tab === 'telegram') return
+    if (!canView || tab === 'telegram') return
     void (async () => {
       setError('')
       try {
@@ -120,7 +261,10 @@ export function SmmAnalyticsPage() {
         const [ov, list, stats, messagesData, growth] = await Promise.all([
           smmService.analyticsOverview(selectedBrandId, period, focusChannelId),
           smmService.analyticsPosts(selectedBrandId, 'er', focusChannelId),
-          smmService.channelStats(selectedBrandId, period).catch(() => ({ channels: [] })),
+          smmService.channelStats(selectedBrandId, period).catch(() => ({
+            ...EMPTY_CHANNEL_STATS,
+            period,
+          })),
           smmService.analyticsMessages(selectedBrandId, period, focusChannelId).catch(() => ({
             posts: [],
             events: [],
@@ -129,14 +273,14 @@ export function SmmAnalyticsPage() {
         ])
         setOverview(ov)
         setPosts(list)
-        setChannelStats(stats.channels ?? [])
+        setPipeline(stats)
         setMessageEvents(messagesData.events ?? [])
         setGrowthPoints(growth.points ?? [])
       } catch (err) {
         setError(getErrorMessage(err))
       }
     })()
-  }, [selectedBrandId, period, tab, focusChannelId])
+  }, [canView, selectedBrandId, period, tab, focusChannelId])
 
   async function handleAddCompetitor() {
     if (!selectedBrandId) return
@@ -170,19 +314,33 @@ export function SmmAnalyticsPage() {
     }
   }
 
+  if (!canView) {
+    return (
+      <PageContainer>
+        <PageHeader title="Analytics" description="Статистика команды" />
+        <Alert variant="warning">
+          Аналитика доступна только администратору команды.
+        </Alert>
+      </PageContainer>
+    )
+  }
+
   return (
     <PageContainer>
       <PageHeader
         title="Analytics"
-        description="Сквозная сводка охватов, ER, конкуренты и аналитика по сетям"
+        description="Сводка пайплайна: собрано, обработано и отправлено — по бренду, соцсети и каналу"
       />
       {error && <Alert variant="error">{error}</Alert>}
       {focusChannel && (
         <Alert variant="info">
-          Фильтр по каналу: <strong>{focusChannel.title || focusChannel.external_id}</strong>
+          Канал: <strong>{focusChannel.title || focusChannel.external_id}</strong>
+          {' · '}
+          {networkLabel(focusChannel.network)}
+          {focusChannel.brand_name ? ` · ${focusChannel.brand_name}` : ''}
           {' · '}
           <button type="button" className="underline" onClick={() => setChannelFilter(null)}>
-            сбросить
+            сбросить канал
           </button>
           {' · '}
           <Link to={`/channels/${focusChannel.id}`} className="underline">
@@ -193,10 +351,10 @@ export function SmmAnalyticsPage() {
 
       <div className="flex flex-wrap gap-2 mb-4">
         <Button variant={tab === 'overview' ? 'primary' : 'secondary'} onClick={() => setTab('overview')}>
-          Overview
+          Сводка
         </Button>
         <Button variant={tab === 'channels' ? 'primary' : 'secondary'} onClick={() => setTab('channels')}>
-          Operations
+          Каналы
         </Button>
         <Button variant={tab === 'messages' ? 'primary' : 'secondary'} onClick={() => setTab('messages')}>
           Messages
@@ -220,28 +378,53 @@ export function SmmAnalyticsPage() {
       </div>
 
       {(tab === 'overview' || tab === 'channels' || tab === 'messages') && (
-        <div className="flex flex-wrap items-center gap-2 mb-4">
-          <select
-            className="rounded-md border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-sm"
+        <div className="grid gap-2 sm:grid-cols-3 lg:max-w-3xl mb-4">
+          <Select
             value={period}
             onChange={(e) => setPeriod(e.target.value)}
+            aria-label="Период"
           >
-            <option value="7d">7 days</option>
-            <option value="30d">30 days</option>
-          </select>
-          <select
-            className="rounded-md border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-sm min-w-[14rem]"
-            value={focusChannelId ?? ''}
-            onChange={(e) => setChannelFilter(e.target.value ? Number(e.target.value) : null)}
-            disabled={filterChannels.length === 0}
+            <option value="7d">7 дней</option>
+            <option value="30d">30 дней</option>
+            <option value="90d">90 дней</option>
+          </Select>
+          <Select
+            value={focusNetwork ?? ''}
+            onChange={(e) => setNetworkFilter(e.target.value || null)}
+            aria-label="Соцсеть"
           >
-            <option value="">All channels</option>
-            {filterChannels.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.title || c.external_id} · {c.network.toUpperCase()}
+            <option value="">Все соцсети</option>
+            {networkOptions.map((net) => (
+              <option key={net} value={net}>
+                {networkLabel(net)}
               </option>
             ))}
-          </select>
+          </Select>
+          <Select
+            value={focusChannelId != null ? String(focusChannelId) : ''}
+            onChange={(e) => {
+              const id = e.target.value ? Number(e.target.value) : null
+              if (!id) {
+                setChannelFilter(null)
+                return
+              }
+              const ch = filterChannels.find((c) => c.id === id)
+              patchSearch({
+                channel_id: String(id),
+                network: ch?.network || focusNetwork,
+              })
+            }}
+            disabled={filterChannels.length === 0}
+            aria-label="Канал"
+          >
+            <option value="">Все каналы</option>
+            {filterChannels.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.title || c.external_id} · {networkLabel(c.network)}
+                {!selectedBrandId && c.brand_name ? ` · ${c.brand_name}` : ''}
+              </option>
+            ))}
+          </Select>
         </div>
       )}
 
@@ -252,58 +435,21 @@ export function SmmAnalyticsPage() {
       {tab === 'channels' && (
         <Card className="mb-6">
           <CardHeader>
-            <CardTitle>Operations by channel</CardTitle>
+            <CardTitle>Каналы</CardTitle>
+            <CardDescription>
+              Собрано и отправлено — по счётчикам канала. Обработано на этом уровне не считается: у постов нет привязки к каналу.
+            </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left text-[var(--text-muted)] border-b border-[var(--border-color)]">
-                    <th className="py-2 pr-2">Channel</th>
-                    <th className="py-2 pr-2">Net</th>
-                    <th className="py-2 pr-2">Received</th>
-                    <th className="py-2 pr-2">Sent</th>
-                    <th className="py-2 pr-2">Alerts</th>
-                    <th className="py-2 pr-2">Failed</th>
-                    <th className="py-2">Conv. %</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {visibleChannelStats.map((c) => (
-                    <tr
-                      key={c.channel_id}
-                      className={`border-b border-[var(--border-color)] cursor-pointer ${
-                        focusChannelId === c.channel_id ? 'bg-[var(--bg-tertiary)]' : 'hover:bg-[var(--bg-tertiary)]/50'
-                      }`}
-                      onClick={() =>
-                        setChannelFilter(focusChannelId === c.channel_id ? null : c.channel_id)
-                      }
-                    >
-                      <td className="py-2 pr-2">{c.title || c.external_id}</td>
-                      <td className="py-2 pr-2 uppercase">{c.network}</td>
-                      <td className="py-2 pr-2">{c.received}</td>
-                      <td className="py-2 pr-2">{c.sent}</td>
-                      <td className="py-2 pr-2">{c.alerts_sent ?? 0}</td>
-                      <td className="py-2 pr-2">{c.failed}</td>
-                      <td className="py-2">
-                        <span>{c.conversion_pct ?? 0}%</span>
-                        {' · '}
-                        <Link
-                          to={`/analytics?channel_id=${c.channel_id}${selectedBrandId ? `&brand_id=${selectedBrandId}` : ''}`}
-                          className="text-primary-400 hover:underline text-xs"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          details
-                        </Link>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {visibleChannelStats.length === 0 && (
-                <p className="text-sm text-[var(--text-muted)] py-4">Нет данных за период</p>
-              )}
-            </div>
+            <PipelineChannelTable
+              rows={visibleChannelStats}
+              focusChannelId={focusChannelId}
+              selectedBrandId={selectedBrandId}
+              showBrand={!selectedBrandId}
+              onSelectChannel={(id) =>
+                setChannelFilter(focusChannelId === id ? null : id)
+              }
+            />
           </CardContent>
         </Card>
       )}
@@ -385,13 +531,146 @@ export function SmmAnalyticsPage() {
 
       {tab === 'overview' && (
         <>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5 mb-6">
+          <p className="text-sm text-[var(--text-muted)] -mt-2">
+            {selectedBrand ? `Бренд: ${selectedBrand.name}` : 'Все бренды (переключатель в шапке)'}
+            {pipeline.days != null ? ` · период ${pipeline.days} дн.` : ''}
+            {period === '90d' || period === '30d'
+              ? pipeline.days != null &&
+                pipeline.days < (period === '90d' ? 90 : 30)
+                ? ' (тариф ограничивает глубину статистики)'
+                : ''
+              : ''}
+          </p>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-2">
             {[
-              ['Reach', overview?.reach],
-              ['Engagement', overview?.engagement],
+              ['Собрано', kpi.collected, 'Вычитанные сообщения с каналов'],
+              ['Обработано', kpi.processed, 'Посты, прошедшие процессор (по соцсети)'],
+              ['Отправлено', kpi.sent, 'Публикации и исходящие'],
+              ['Ошибки', kpi.failed, 'Сбои сбора или отправки'],
+            ].map(([label, value, hint]) => (
+              <Card key={String(label)}>
+                <CardContent className="p-4">
+                  <p className="text-xs text-[var(--text-muted)]">{label}</p>
+                  <p className="text-2xl font-semibold">{formatCount(value as number | null)}</p>
+                  <p className="text-xs text-[var(--text-muted)] mt-1">{hint}</p>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+          <Alert variant="info">
+            Собрано и отправлено — из счётчиков каналов. Обработано берётся из хаба постов по соцсети,
+            поэтому в разрезе канала и бренда стоит прочерк.
+          </Alert>
+
+          <div className="grid gap-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>По соцсетям</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-[var(--text-muted)] border-b border-[var(--border-color)]">
+                        <th className="py-2 pr-2">Сеть</th>
+                        <th className="py-2 pr-2">Каналы</th>
+                        <th className="py-2 pr-2">Собрано</th>
+                        <th className="py-2 pr-2">Обработано</th>
+                        <th className="py-2">Отправлено</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {visibleNetworks.map((n) => (
+                        <tr
+                          key={n.network}
+                          className={`border-b border-[var(--border-color)] cursor-pointer ${
+                            focusNetwork === n.network ? 'bg-[var(--bg-tertiary)]' : 'hover:bg-[var(--bg-tertiary)]/50'
+                          }`}
+                          onClick={() =>
+                            setNetworkFilter(focusNetwork === n.network ? null : n.network)
+                          }
+                        >
+                          <td className="py-2 pr-2">{networkLabel(n.network)}</td>
+                          <td className="py-2 pr-2">{n.channels ?? '—'}</td>
+                          <td className="py-2 pr-2">{formatCount(n.collected)}</td>
+                          <td className="py-2 pr-2">{formatCount(n.processed)}</td>
+                          <td className="py-2">{formatCount(n.sent)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {visibleNetworks.length === 0 && (
+                    <p className="text-sm text-[var(--text-muted)] py-4">Нет данных за период</p>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>По брендам</CardTitle>
+                <CardDescription>
+                  {selectedBrandId
+                    ? 'Сейчас выбран один бренд в шапке — переключите на «All brands», чтобы сравнить все.'
+                    : 'Обработано по бренду недоступно: у постов нет brand_id.'}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-[var(--text-muted)] border-b border-[var(--border-color)]">
+                        <th className="py-2 pr-2">Бренд</th>
+                        <th className="py-2 pr-2">Каналы</th>
+                        <th className="py-2 pr-2">Собрано</th>
+                        <th className="py-2 pr-2">Обработано</th>
+                        <th className="py-2">Отправлено</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {visibleBrands.map((b) => (
+                        <tr key={b.brand_id ?? 'none'} className="border-b border-[var(--border-color)]">
+                          <td className="py-2 pr-2">{b.brand_name || '—'}</td>
+                          <td className="py-2 pr-2">{b.channels ?? '—'}</td>
+                          <td className="py-2 pr-2">{formatCount(b.collected)}</td>
+                          <td className="py-2 pr-2">{formatCount(b.processed)}</td>
+                          <td className="py-2">{formatCount(b.sent)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {visibleBrands.length === 0 && (
+                    <p className="text-sm text-[var(--text-muted)] py-4">Нет данных за период</p>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>По каналам</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <PipelineChannelTable
+                rows={visibleChannelStats}
+                focusChannelId={focusChannelId}
+                selectedBrandId={selectedBrandId}
+                showBrand={!selectedBrandId}
+                onSelectChannel={(id) =>
+                  setChannelFilter(focusChannelId === id ? null : id)
+                }
+              />
+            </CardContent>
+          </Card>
+
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+            {[
+              ['Охват', overview?.reach],
+              ['Вовлечённость', overview?.engagement],
               ['ER %', overview?.er],
-              ['Posts', overview?.posts],
-              ['Subscribers Δ', overview?.subscriber_growth],
+              ['Посты', overview?.posts],
+              ['Подписчики Δ', overview?.subscriber_growth],
             ].map(([label, value]) => (
               <Card key={String(label)}>
                 <CardContent className="p-4">
@@ -404,15 +683,15 @@ export function SmmAnalyticsPage() {
           {growthPoints.length > 0 && (
             <Card className="mb-6">
               <CardHeader>
-                <CardTitle>Subscriber growth</CardTitle>
+                <CardTitle>Рост подписчиков</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="text-left text-[var(--text-muted)] border-b border-[var(--border-color)]">
-                        <th className="py-2 pr-2">Date</th>
-                        <th className="py-2">Subscribers</th>
+                        <th className="py-2 pr-2">Дата</th>
+                        <th className="py-2">Подписчики</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -430,25 +709,25 @@ export function SmmAnalyticsPage() {
           )}
           <Card>
             <CardHeader>
-              <CardTitle>Best posts</CardTitle>
+              <CardTitle>Лучшие посты</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="text-left text-[var(--text-muted)] border-b border-[var(--border-color)]">
-                      <th className="py-2 pr-2">Net</th>
-                      <th className="py-2 pr-2">Channel ID</th>
-                      <th className="py-2 pr-2">Title</th>
-                      <th className="py-2 pr-2">Published</th>
-                      <th className="py-2 pr-2">Post</th>
+                      <th className="py-2 pr-2">Сеть</th>
+                      <th className="py-2 pr-2">Канал</th>
+                      <th className="py-2 pr-2">Название</th>
+                      <th className="py-2 pr-2">Опубликован</th>
+                      <th className="py-2 pr-2">Пост</th>
                       <th className="py-2">ER</th>
                     </tr>
                   </thead>
                   <tbody>
                     {posts.map((p) => (
                       <tr key={`${p.network}-${p.id}`} className="border-b border-[var(--border-color)] align-top">
-                        <td className="py-2 pr-2 uppercase text-[var(--text-muted)]">{p.network}</td>
+                        <td className="py-2 pr-2 text-[var(--text-muted)]">{networkLabel(p.network)}</td>
                         <td className="py-2 pr-2 whitespace-nowrap">
                           {p.channel_id ?? p.channel_external_id ?? '—'}
                         </td>
@@ -565,5 +844,71 @@ export function SmmAnalyticsPage() {
         </PlanGate>
       )}
     </PageContainer>
+  )
+}
+
+function PipelineChannelTable({
+  rows,
+  focusChannelId,
+  selectedBrandId,
+  showBrand,
+  onSelectChannel,
+}: {
+  rows: ChannelOpsStat[]
+  focusChannelId: number | null
+  selectedBrandId: number | null
+  showBrand: boolean
+  onSelectChannel: (id: number) => void
+}) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="text-left text-[var(--text-muted)] border-b border-[var(--border-color)]">
+            <th className="py-2 pr-2">Канал</th>
+            {showBrand && <th className="py-2 pr-2">Бренд</th>}
+            <th className="py-2 pr-2">Сеть</th>
+            <th className="py-2 pr-2">Собрано</th>
+            <th className="py-2 pr-2">Обработано</th>
+            <th className="py-2 pr-2">Отправлено</th>
+            <th className="py-2 pr-2">Ошибки</th>
+            <th className="py-2">Конв. %</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((c) => (
+            <tr
+              key={c.channel_id}
+              className={`border-b border-[var(--border-color)] cursor-pointer ${
+                focusChannelId === c.channel_id ? 'bg-[var(--bg-tertiary)]' : 'hover:bg-[var(--bg-tertiary)]/50'
+              }`}
+              onClick={() => onSelectChannel(c.channel_id)}
+            >
+              <td className="py-2 pr-2">{c.title || c.external_id}</td>
+              {showBrand && <td className="py-2 pr-2">{c.brand_name || '—'}</td>}
+              <td className="py-2 pr-2">{networkLabel(c.network)}</td>
+              <td className="py-2 pr-2">{formatCount(c.collected ?? c.received)}</td>
+              <td className="py-2 pr-2">{formatCount(c.processed)}</td>
+              <td className="py-2 pr-2">{formatCount(c.sent)}</td>
+              <td className="py-2 pr-2">{formatCount(c.failed)}</td>
+              <td className="py-2">
+                <span>{c.conversion_pct ?? 0}%</span>
+                {' · '}
+                <Link
+                  to={`/analytics?channel_id=${c.channel_id}${selectedBrandId ? `&brand_id=${selectedBrandId}` : ''}`}
+                  className="text-primary-400 hover:underline text-xs"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  детали
+                </Link>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {rows.length === 0 && (
+        <p className="text-sm text-[var(--text-muted)] py-4">Нет данных за период</p>
+      )}
+    </div>
   )
 }

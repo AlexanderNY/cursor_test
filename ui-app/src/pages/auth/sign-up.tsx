@@ -1,6 +1,7 @@
-import { FormEvent, useMemo, useState } from 'react'
+import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useAuth } from '@/contexts/auth-context'
+import { authService } from '@/services/auth-service'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -17,11 +18,26 @@ export function SignUpPage() {
   const { register, error, clearError, isLoading } = useAuth()
   const [searchParams] = useSearchParams()
   const utm = useMemo(() => pickUtm(searchParams), [searchParams])
+  const inviteToken = searchParams.get('invite')?.trim() || undefined
   const [username, setUsername] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [validationError, setValidationError] = useState('')
+  const [inviteHint, setInviteHint] = useState('')
+
+  useEffect(() => {
+    if (!inviteToken) return
+    void (async () => {
+      try {
+        const peek = await authService.peekInvite(inviteToken)
+        setInviteHint(`Приглашение в «${peek.group_name}»`)
+        if (peek.email) setEmail(peek.email)
+      } catch {
+        setInviteHint('')
+      }
+    })()
+  }, [inviteToken])
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -44,7 +60,16 @@ export function SignUpPage() {
         email,
         password,
         ...utm,
+        ...(inviteToken ? { invite_token: inviteToken } : {}),
       })
+      if (inviteToken) {
+        // Ensure membership even if register ignored token
+        try {
+          await authService.acceptInvite(inviteToken)
+        } catch {
+          /* already accepted during register */
+        }
+      }
     } catch {
       // Error is handled by context
     }
@@ -64,9 +89,11 @@ export function SignUpPage() {
         <CardHeader className="text-center">
           <CardTitle className="text-3xl font-bold text-gradient">Create Account</CardTitle>
           <CardDescription>
-            {fromSeason
-              ? 'Сезон S01 → учебный контур CopyParse после регистрации'
-              : 'Join us and start managing your services'}
+            {inviteHint
+              ? inviteHint
+              : fromSeason
+                ? 'Сезон S01 → учебный контур CopyParse после регистрации'
+                : 'Join us and start managing your services'}
           </CardDescription>
         </CardHeader>
 

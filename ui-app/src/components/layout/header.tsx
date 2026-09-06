@@ -54,7 +54,7 @@ export function Header() {
   }, [loadNewComments])
 
   return (
-    <header className="h-16 shrink-0 bg-[var(--bg-secondary)] border-b border-[var(--border-color)] flex items-center gap-3 px-4 md:px-6">
+    <header className="h-16 shrink-0 bg-[var(--bg-secondary)] border-b border-[var(--border-color)] flex items-center gap-2 md:gap-3 px-3 md:px-6 min-w-0 overflow-hidden">
       <div className="w-56 lg:w-64 shrink-0 flex items-center gap-2 min-w-0 pr-2 border-r border-[var(--border-color)]">
         <h1 className="text-base font-bold text-gradient truncate leading-tight">Control Panel</h1>
         {user && (
@@ -77,7 +77,7 @@ export function Header() {
             />
             <select
               aria-label="Brand switcher"
-              className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-tertiary)] px-2.5 py-1.5 text-sm text-[var(--text-primary)] max-w-[140px] lg:max-w-[180px] h-8"
+              className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-tertiary)] px-2.5 py-1.5 text-sm text-[var(--text-primary)] max-w-[110px] lg:max-w-[180px] h-8"
               value={selectedBrandId ?? ''}
               onChange={(e) =>
                 setSelectedBrandId(e.target.value ? Number(e.target.value) : null)

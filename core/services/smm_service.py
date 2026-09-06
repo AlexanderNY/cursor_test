@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import csv
 import hashlib
-import io
 import json
 import logging
 import re
@@ -445,6 +443,7 @@ def _row_job(r: tuple) -> dict[str, Any]:
         "last_error": None,
         "assigned_to": None,
         "rejection_comment": None,
+        "created_by_user_id": None,
     }
     if len(r) > 11:
         out["retry_count"] = int(r[11] or 0)
@@ -454,13 +453,15 @@ def _row_job(r: tuple) -> dict[str, Any]:
         out["assigned_to"] = r[13]
     if len(r) > 14:
         out["rejection_comment"] = r[14]
+    if len(r) > 15:
+        out["created_by_user_id"] = r[15]
     return out
 
 
 JOB_COLUMNS = """
 id, user_id, brand_id, source_text, media, targets, adapters_result,
 publish_at, status, created_at, updated_at, retry_count, last_error,
-assigned_to, rejection_comment
+assigned_to, rejection_comment, created_by_user_id
 """
 
 def _row_automation(r: tuple) -> dict[str, Any]:
@@ -477,47 +478,51 @@ def _row_automation(r: tuple) -> dict[str, Any]:
     }
 
 
-def adapt_for_networks(text: str, media: list[str], targets: list[dict]) -> dict[str, Any]:
-    """Network adapters: TG keeps formatting; others get plain text variants."""
-    networks = {normalize_network(t.get("network")) for t in targets}
-    result: dict[str, Any] = {}
-    plain = re.sub(r"<[^>]+>", "", text)
-    plain = plain.replace("&nbsp;", " ").strip()
-    if "tg" in networks:
-        result["tg"] = {
-            "text": text,
-            "parse_mode": "HTML",
-            "keep_spoiler": True,
-            "media": media,
-        }
-    if "vk" in networks:
-        result["vk"] = {
-            "text": plain,
-            "attachments_mode": "carousel" if len(media) > 1 else ("single" if media else "none"),
-            "media": media,
-            "poll_hint": False,
-        }
-    for net in ("instagram", "threads", "tw", "dzen", "wp"):
-        if net not in networks:
-            continue
-        result[net] = {
-            "text": plain,
-            "media": media,
-        }
-    return result
+async def adapt_for_networks(
+    text: str, media: list[str], targets: list[dict]
+) -> dict[str, Any]:
+    """Network adapters via shared.post_adapt (format + length fit)."""
+    from shared.post_adapt import adapt_for_networks as _shared_adapt
+
+    return await _shared_adapt(
+        text,
+        media,
+        targets=targets,
+        prefer_summarize=False,
+    )
 
 
 class SmmService:
     async def list_brands(self, user_id: int) -> list[dict]:
+        from services.team_access import brand_access_clause, default_admin_group_id
+
+        # Link orphan owned brands to the admin's team so members can see them.
+        admin_gid = await default_admin_group_id(user_id)
+        if admin_gid is not None:
+            conn = await get_db_connection()
+            try:
+                async with conn.cursor() as cur:
+                    await cur.execute(
+                        """
+                        UPDATE smm_brands
+                        SET group_id = %s, updated_at = CURRENT_TIMESTAMP
+                        WHERE user_id = %s AND group_id IS NULL
+                        """,
+                        (admin_gid, user_id),
+                    )
+            finally:
+                await release_db_connection(conn)
+
+        clause, params = await brand_access_clause(user_id, brand_alias=None)
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
                 await cur.execute(
                     f"""
                     SELECT {BRAND_SELECT}
-                    FROM smm_brands WHERE user_id = %s ORDER BY name
+                    FROM smm_brands WHERE {clause} ORDER BY name
                     """,
-                    (user_id,),
+                    params,
                 )
                 rows = await cur.fetchall()
                 return [_row_brand(r) for r in rows]
@@ -534,10 +539,15 @@ class SmmService:
         style_notes: Optional[str] = None,
         prompt_snippets: Optional[list] = None,
     ) -> dict:
+        from services.team_access import default_admin_group_id
+
         if not _HEX_RE.match(color):
             color = BRAND_PALETTE[0]
-        brands = await self.list_brands(user_id)
-        await ensure_smm_limit(user_id, "max_brands", len(brands), units=1)
+        # Quota counts only brands owned by this user (not shared team brands).
+        owned = [b for b in await self.list_brands(user_id) if int(b["user_id"]) == int(user_id)]
+        await ensure_smm_limit(user_id, "max_brands", len(owned), units=1)
+        if group_id is None:
+            group_id = await default_admin_group_id(user_id)
         tov = (tone_of_voice or "").strip()[:MAX_TONE_OF_VOICE] or None
         notes = (style_notes or "").strip()[:MAX_STYLE_NOTES] or None
         snippets = _sanitize_prompt_snippets(prompt_snippets)
@@ -569,15 +579,18 @@ class SmmService:
             await release_db_connection(conn)
 
     async def get_brand(self, user_id: int, brand_id: int) -> Optional[dict]:
+        from services.team_access import brand_access_clause
+
+        clause, params = await brand_access_clause(user_id, brand_alias=None)
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
                 await cur.execute(
                     f"""
                     SELECT {BRAND_SELECT}
-                    FROM smm_brands WHERE id = %s AND user_id = %s
+                    FROM smm_brands WHERE id = %s AND {clause}
                     """,
-                    (brand_id, user_id),
+                    [brand_id, *params],
                 )
                 row = await cur.fetchone()
                 return _row_brand(row) if row else None
@@ -598,9 +611,12 @@ class SmmService:
         clear_tone_of_voice: bool = False,
         clear_style_notes: bool = False,
     ) -> Optional[dict]:
+        from services.team_access import can_manage_brand
+
         brand = await self.get_brand(user_id, brand_id)
-        if not brand:
+        if not brand or not await can_manage_brand(user_id, brand):
             return None
+        owner_id = int(brand["user_id"])
         new_name = name.strip() if name else brand["name"]
         new_color = color if color and _HEX_RE.match(color) else brand["color"]
         new_group = group_id if group_id is not None else brand["group_id"]
@@ -641,7 +657,7 @@ class SmmService:
                         new_notes,
                         json.dumps(new_snippets, ensure_ascii=False),
                         brand_id,
-                        user_id,
+                        owner_id,
                     ),
                 )
                 row = await cur.fetchone()
@@ -650,12 +666,18 @@ class SmmService:
             await release_db_connection(conn)
 
     async def delete_brand(self, user_id: int, brand_id: int) -> bool:
+        from services.team_access import can_manage_brand
+
+        brand = await self.get_brand(user_id, brand_id)
+        if not brand or not await can_manage_brand(user_id, brand):
+            return False
+        owner_id = int(brand["user_id"])
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
                 await cur.execute(
                     "DELETE FROM smm_brands WHERE id = %s AND user_id = %s",
-                    (brand_id, user_id),
+                    (brand_id, owner_id),
                 )
                 return cur.rowcount > 0
         finally:
@@ -709,9 +731,15 @@ class SmmService:
         color_override: Optional[str] = None,
         initial_url: Optional[str] = None,
     ) -> dict:
+        from services.team_access import can_manage_brand, brand_credential_user_id
+
         brand = await self.get_brand(user_id, brand_id)
         if not brand:
             raise ValueError("Brand not found")
+        if not await can_manage_brand(user_id, brand):
+            raise ValueError("Only team admin can add channels")
+        # Quotas and platform profiles belong to the brand owner.
+        owner_id = brand_credential_user_id(brand)
         network = normalize_network(network)
         if not is_allowed_network(network):
             raise ValueError(
@@ -729,7 +757,7 @@ class SmmService:
                 role = "source"
             kind = "public"
             if role == "competitor":
-                await ensure_smm_feature(user_id, "competitors")
+                await ensure_smm_feature(owner_id, "competitors")
             ext = new_url_channel_external_id()
             page_url = (initial_url or "").strip()
             if not page_url and title and str(title).strip().lower().startswith(("http://", "https://")):
@@ -746,7 +774,7 @@ class SmmService:
                 except Exception:
                     display_title = page_url
             title = display_title
-            await ensure_curl_url_item(user_id, ext, title, initial_url=page_url)
+            await ensure_curl_url_item(owner_id, ext, title, initial_url=page_url)
         else:
             ext = str(external_id or "").strip()
             if not ext:
@@ -758,10 +786,10 @@ class SmmService:
                 if parsed_gid is not None:
                     ext = str(parsed_gid)
             if role == "own":
-                count = await self.count_own_channels(user_id)
-                await ensure_smm_limit(user_id, "max_own_channels", count, units=1)
+                count = await self.count_own_channels(owner_id)
+                await ensure_smm_limit(owner_id, "max_own_channels", count, units=1)
             if role == "competitor":
-                await ensure_smm_feature(user_id, "competitors")
+                await ensure_smm_feature(owner_id, "competitors")
             # Selenium / OAuth platforms: default kind for public pages
             if network in ("instagram", "threads", "tw", "dzen", "wp") and kind == "channel":
                 kind = "public"
@@ -805,7 +833,7 @@ class SmmService:
             auth_probe["auth_status"] = "not_required"
         else:
             auth_probe = await platform_auth_service.probe_channel_access(
-                user_id, network, ext, role, strict=False
+                owner_id, network, ext, role, strict=False
             )
             resolved = auth_probe.get("resolved_external_id")
             if network == "vk" and resolved:
@@ -867,6 +895,9 @@ class SmmService:
             await release_db_connection(conn)
 
     async def get_channel(self, user_id: int, channel_id: int) -> Optional[dict]:
+        from services.team_access import brand_access_clause
+
+        clause, params = await brand_access_clause(user_id, brand_alias="b")
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
@@ -878,12 +909,12 @@ class SmmService:
                            c.alert_enabled, c.save_conditions, c.processing, c.alert_delivery, c.alert_rules,
                            c.conditions_mode, c.publish_targets,
                            c.auth_status, c.auth_checked_at, c.auth_error, c.auth_capabilities,
-                           b.name AS brand_name, b.color AS brand_color
+                           b.name AS brand_name, b.color AS brand_color, b.user_id AS brand_user_id
                     FROM smm_brand_channels c
                     JOIN smm_brands b ON b.id = c.brand_id
-                    WHERE c.id = %s AND b.user_id = %s
+                    WHERE c.id = %s AND {clause}
                     """,
-                    (channel_id, user_id),
+                    [channel_id, *params],
                 )
                 row = await cur.fetchone()
                 if not row:
@@ -891,8 +922,10 @@ class SmmService:
                 ch = _row_channel(row[:CHANNEL_FIELD_COUNT])
                 ch["brand_name"] = row[CHANNEL_FIELD_COUNT]
                 ch["brand_color"] = row[CHANNEL_FIELD_COUNT + 1]
+                ch["brand_user_id"] = row[CHANNEL_FIELD_COUNT + 2]
+                cred_uid = int(ch.get("brand_user_id") or user_id)
                 if ch.get("network") == "url":
-                    item = await get_curl_url_item(user_id, str(ch.get("external_id") or ""))
+                    item = await get_curl_url_item(cred_uid, str(ch.get("external_id") or ""))
                     ch["url_config"] = item
                 return ch
         finally:
@@ -905,12 +938,17 @@ class SmmService:
         channel_id: int,
         **fields: Any,
     ) -> Optional[dict]:
+        from services.team_access import can_manage_brand, brand_credential_user_id
+
         brand = await self.get_brand(user_id, brand_id)
         if not brand:
             return None
+        if not await can_manage_brand(user_id, brand):
+            raise ValueError("Only team admin can update channels")
         existing = await self.get_channel(user_id, channel_id)
         if not existing:
             return None
+        owner_id = brand_credential_user_id(brand)
 
         from services.platform_auth_service import platform_auth_service
         from services.demo_seed_service import is_demo_external_id
@@ -930,7 +968,7 @@ class SmmService:
             if fields.get("role") not in (None, "source", "competitor"):
                 fields["role"] = "source"
             if fields.get("role") == "competitor":
-                await ensure_smm_feature(user_id, "competitors")
+                await ensure_smm_feature(owner_id, "competitors")
             if fields.get("publish_enabled") is True:
                 fields["publish_enabled"] = False
             # Competitor URL radar may use alert_enabled; sources keep alerts off
@@ -938,7 +976,7 @@ class SmmService:
                 if fields.get("alert_enabled") is True:
                     fields["alert_enabled"] = False
 
-        await platform_auth_service.validate_channel_update(user_id, existing, fields)
+        await platform_auth_service.validate_channel_update(owner_id, existing, fields)
 
         allowed = {
             "title",
@@ -1063,8 +1101,11 @@ class SmmService:
     async def list_all_channels(
         self, user_id: int, brand_id: Optional[int] = None
     ) -> list[dict]:
-        conditions = ["b.user_id = %s"]
-        params: list[Any] = [user_id]
+        from services.team_access import brand_access_clause
+
+        clause, access_params = await brand_access_clause(user_id, brand_alias="b")
+        conditions = [clause]
+        params: list[Any] = list(access_params)
         if brand_id is not None:
             conditions.append("c.brand_id = %s")
             params.append(brand_id)
@@ -1080,7 +1121,7 @@ class SmmService:
                            c.alert_enabled, c.save_conditions, c.processing, c.alert_delivery, c.alert_rules,
                            c.conditions_mode, c.publish_targets,
                            c.auth_status, c.auth_checked_at, c.auth_error, c.auth_capabilities,
-                           b.name AS brand_name, b.color AS brand_color
+                           b.name AS brand_name, b.color AS brand_color, b.user_id AS brand_user_id
                     FROM smm_brand_channels c
                     JOIN smm_brands b ON b.id = c.brand_id
                     WHERE {where}
@@ -1094,12 +1135,14 @@ class SmmService:
                     ch = _row_channel(r[:CHANNEL_FIELD_COUNT])
                     ch["brand_name"] = r[CHANNEL_FIELD_COUNT]
                     ch["brand_color"] = r[CHANNEL_FIELD_COUNT + 1]
+                    ch["brand_user_id"] = r[CHANNEL_FIELD_COUNT + 2]
                     result.append(ch)
                 # Attach url_config for URL channels (review flag / display)
                 for ch in result:
                     if ch.get("network") == "url":
+                        cred_uid = int(ch.get("brand_user_id") or user_id)
                         item = await get_curl_url_item(
-                            user_id, str(ch.get("external_id") or "")
+                            cred_uid, str(ch.get("external_id") or "")
                         )
                         ch["url_config"] = item
                 return result
@@ -1881,8 +1924,11 @@ class SmmService:
         limit: int = 50,
         cursor: Optional[int] = None,
     ) -> dict:
-        conditions = ["user_id = %s"]
-        params: list[Any] = [user_id]
+        from services.team_access import shared_brand_ids
+
+        brand_ids = await shared_brand_ids(user_id)
+        conditions = ["(user_id = %s OR brand_id = ANY(%s))"]
+        params: list[Any] = [user_id, brand_ids or [-1]]
         if brand_id is not None:
             conditions.append("brand_id = %s")
             params.append(brand_id)
@@ -1955,6 +2001,10 @@ class SmmService:
     ) -> Optional[dict]:
         if status not in ("new", "read", "replied", "archived", "reply_failed", "in_progress"):
             raise ValueError("invalid status")
+        item = await self.get_inbox_item(user_id, item_id)
+        if not item:
+            return None
+        owner_id = int(item["user_id"])
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
@@ -1965,7 +2015,7 @@ class SmmService:
                     RETURNING id, user_id, brand_id, network, channel_id, thread_id,
                               type, author, text, status, created_at, external_msg_id, edited_text, meta
                     """,
-                    (status, item_id, user_id),
+                    (status, item_id, owner_id),
                 )
                 row = await cur.fetchone()
                 return _row_inbox(row) if row else None
@@ -1977,10 +2027,12 @@ class SmmService:
         item = await self.get_inbox_item(user_id, item_id)
         if not item:
             return None
+        # Replies use brand-owner credentials / inbox row owner.
+        cred_user_id = int(item["user_id"])
 
         # Fast path: TG comment → direct Telethon reply_to (bypass publish jobs)
         if item.get("type") == "comment" and item.get("network") == "tg":
-            return await self._reply_tg_comment(user_id, item, text)
+            return await self._reply_tg_comment(cred_user_id, item, text)
 
         targets = []
         if item.get("channel_id"):
@@ -1994,7 +2046,7 @@ class SmmService:
                 raise ValueError("Cannot resolve reply target")
             targets = [{"network": item["network"], "external_id": thread}]
         job = await self.create_job(
-            user_id=user_id,
+            user_id=cred_user_id,
             brand_id=item.get("brand_id"),
             text=text,
             media=[],
@@ -2068,6 +2120,9 @@ class SmmService:
             return updated or item
 
     async def get_inbox_item(self, user_id: int, item_id: int) -> Optional[dict]:
+        from services.team_access import shared_brand_ids
+
+        brand_ids = await shared_brand_ids(user_id)
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
@@ -2075,9 +2130,10 @@ class SmmService:
                     """
                     SELECT id, user_id, brand_id, network, channel_id, thread_id,
                            type, author, text, status, created_at, external_msg_id, edited_text, meta
-                    FROM smm_inbox_items WHERE id = %s AND user_id = %s
+                    FROM smm_inbox_items
+                    WHERE id = %s AND (user_id = %s OR brand_id = ANY(%s))
                     """,
-                    (item_id, user_id),
+                    (item_id, user_id, brand_ids or [-1]),
                 )
                 row = await cur.fetchone()
                 return _row_inbox(row) if row else None
@@ -2087,6 +2143,10 @@ class SmmService:
     async def set_inbox_edited_text(
         self, user_id: int, item_id: int, edited_text: str
     ) -> Optional[dict]:
+        item = await self.get_inbox_item(user_id, item_id)
+        if not item:
+            return None
+        owner_id = int(item["user_id"])
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
@@ -2097,7 +2157,7 @@ class SmmService:
                     RETURNING id, user_id, brand_id, network, channel_id, thread_id,
                               type, author, text, status, created_at, external_msg_id, edited_text, meta
                     """,
-                    (edited_text, item_id, user_id),
+                    (edited_text, item_id, owner_id),
                 )
                 row = await cur.fetchone()
                 return _row_inbox(row) if row else None
@@ -2150,8 +2210,17 @@ class SmmService:
         media = media or []
         targets = targets or []
         from services.demo_seed_service import is_demo_external_id
+        from services.team_access import brand_credential_user_id
 
         brand = await self.get_brand(user_id, brand_id) if brand_id else None
+        # Jobs publish with brand-owner credentials; actor may be a team member.
+        actor_id = user_id
+        credential_user_id = (
+            brand_credential_user_id(brand) if brand else user_id
+        )
+        created_by_user_id = actor_id
+        if assigned_to is None and credential_user_id != actor_id:
+            assigned_to = actor_id
         is_demo_brand = bool(brand and brand.get("is_demo"))
         if is_demo_brand and status in ("ready", "scheduled", "publishing"):
             status = "draft"
@@ -2166,7 +2235,7 @@ class SmmService:
                     "Подключите свой канал в онбординге."
                 )
 
-        tariff = await get_user_tariff(user_id)
+        tariff = await get_user_tariff(credential_user_id)
         # Unified Posts flow: exactly one confirmed publish channel per job.
         if status in ("ready", "scheduled", "publishing", "pending_approval"):
             if len(targets) != 1:
@@ -2189,7 +2258,7 @@ class SmmService:
                 network = str(t.get("network") or "").strip()
                 external_id = str(t.get("external_id") or "").strip()
                 ch = await self.resolve_channel_by_external_id(
-                    user_id, network, external_id
+                    actor_id, network, external_id
                 )
                 if not ch:
                     raise ValueError(
@@ -2207,40 +2276,46 @@ class SmmService:
                 if ch.get("publish_enabled") is False:
                     raise ValueError("Публикация в этот канал отключена")
             await platform_auth_service.require_targets_auth(
-                user_id, targets, has_media=bool(media)
+                credential_user_id, targets, has_media=bool(media)
             )
         pub_at = None
         if publish_at:
             try:
                 pub_at = datetime.fromisoformat(publish_at.replace("Z", "+00:00"))
-            except ValueError:
-                pub_at = None
-            if pub_at:
-                if not plan_feature(tariff, "schedule", True):
-                    raise QuotaExceededError(
-                        resource="feature:schedule", limit=0, used=0
-                    )
-                horizon = plan_limit(tariff, "schedule_horizon_days", 7)
-                now = datetime.utcnow()
-                pub_naive = pub_at.replace(tzinfo=None) if pub_at.tzinfo else pub_at
-                if pub_naive > now + timedelta(days=horizon):
-                    raise QuotaExceededError(
-                        resource="schedule_horizon_days", limit=horizon, used=horizon + 1
-                    )
+            except ValueError as exc:
+                raise ValueError(f"invalid publish_at: {publish_at!r}") from exc
+            if not plan_feature(tariff, "schedule", True):
+                raise QuotaExceededError(
+                    resource="feature:schedule", limit=0, used=0
+                )
+            horizon = plan_limit(tariff, "schedule_horizon_days", 7)
+            now = datetime.utcnow()
+            pub_naive = pub_at.replace(tzinfo=None) if pub_at.tzinfo else pub_at
+            if pub_naive > now + timedelta(days=horizon):
+                raise QuotaExceededError(
+                    resource="schedule_horizon_days", limit=horizon, used=horizon + 1
+                )
         if pub_at and status == "ready":
             status = "scheduled"
         # Quota is charged on successful publish in execute_job (not at create)
         if charge_quota:
             units = max(1, len(targets)) if status != "draft" else 0
             if units:
-                await ensure_monthly_post_quota(user_id, units=units)
-        adapters = adapt_for_networks(text, media, targets) if adapt else {}
+                await ensure_monthly_post_quota(credential_user_id, units=units)
+        adapters = await adapt_for_networks(text, media, targets) if adapt else {}
         if adapter_overrides:
+            from shared.post_adapt import fit_text, normalize_network as _norm_net
+
             for net, payload in adapter_overrides.items():
                 if not isinstance(payload, dict):
                     continue
                 base = adapters.get(net) if isinstance(adapters.get(net), dict) else {}
-                adapters[net] = {**base, **payload}
+                merged = {**base, **payload}
+                if "text" in merged and isinstance(merged["text"], str):
+                    merged["text"] = await fit_text(
+                        merged["text"], _norm_net(net), prefer_summarize=False
+                    )
+                adapters[net] = merged
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
@@ -2248,12 +2323,12 @@ class SmmService:
                     f"""
                     INSERT INTO smm_publish_jobs
                         (user_id, brand_id, source_text, media, targets, adapters_result,
-                         publish_at, status, assigned_to)
-                    VALUES (%s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s, %s, %s)
+                         publish_at, status, assigned_to, created_by_user_id)
+                    VALUES (%s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s, %s, %s, %s)
                     RETURNING {JOB_COLUMNS}
                     """,
                     (
-                        user_id,
+                        credential_user_id,
                         brand_id,
                         text,
                         json.dumps(media),
@@ -2262,6 +2337,7 @@ class SmmService:
                         pub_at,
                         status,
                         assigned_to,
+                        created_by_user_id,
                     ),
                 )
                 row = await cur.fetchone()
@@ -2282,8 +2358,12 @@ class SmmService:
         assigned_to: Optional[int] = None,
         assigned_to_me: bool = False,
     ) -> list[dict]:
-        conditions = ["user_id = %s"]
-        params: list[Any] = [user_id]
+        from services.team_access import shared_brand_ids
+
+        brand_ids = await shared_brand_ids(user_id)
+        # Own jobs + jobs on shared team brands (owner credentials).
+        conditions = ["(user_id = %s OR brand_id = ANY(%s) OR assigned_to = %s)"]
+        params: list[Any] = [user_id, brand_ids or [-1], user_id]
         if brand_id is not None:
             conditions.append("brand_id = %s")
             params.append(brand_id)
@@ -2412,8 +2492,12 @@ class SmmService:
                 params.append(val)
         if not updates:
             return None
+        job = await self.get_job(user_id, job_id)
+        if not job:
+            return None
+        owner_id = int(job["user_id"])
         updates.append("updated_at = CURRENT_TIMESTAMP")
-        params.extend([job_id, user_id])
+        params.extend([job_id, owner_id])
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
@@ -2431,7 +2515,17 @@ class SmmService:
             await release_db_connection(conn)
 
     async def import_csv(self, user_id: int, brand_id: Optional[int], content: str) -> dict:
-        reader = csv.DictReader(io.StringIO(content))
+        from services.csv_posts_import import (
+            iter_csv_rows,
+            parse_publish_at,
+            row_assigned_to,
+            row_channel,
+            row_network,
+            row_publish_at_raw,
+            row_text,
+        )
+
+        rows, _delimiter = iter_csv_rows(content)
         created = []
         errors = []
         tariff = await get_user_tariff(user_id)
@@ -2439,16 +2533,29 @@ class SmmService:
         default_status = "pending_approval" if use_approval else "draft"
         if use_approval:
             await ensure_smm_feature(user_id, "approval_workflow")
-        for i, row in enumerate(reader, start=2):
-            text = (row.get("text") or row.get("post_text") or row.get("content") or "").strip()
+
+        candidate_count = sum(1 for row in rows if row_text(row))
+        if candidate_count:
+            await ensure_smm_limit(user_id, "csv_import_rows", 0, units=candidate_count)
+
+        for i, row in enumerate(rows, start=2):
+            text = row_text(row)
             if not text:
                 errors.append({"line": i, "error": "empty text"})
                 continue
-            publish_at = (row.get("publish_at") or row.get("scheduled_at") or "").strip() or None
-            network = (row.get("network") or "").strip().lower()
-            external_id = (row.get("channel") or row.get("external_id") or "").strip()
-            assigned_raw = (row.get("assigned_to") or "").strip()
-            assigned_to = int(assigned_raw) if assigned_raw.isdigit() else None
+
+            publish_raw = row_publish_at_raw(row)
+            publish_at: Optional[str] = None
+            if publish_raw:
+                try:
+                    publish_at = parse_publish_at(publish_raw)
+                except ValueError as exc:
+                    errors.append({"line": i, "error": str(exc)})
+                    continue
+
+            network = row_network(row)
+            external_id = row_channel(row)
+            assigned_to = row_assigned_to(row)
             targets = []
             if network in ("tg", "vk") and external_id:
                 targets = [{"network": network, "external_id": external_id}]
@@ -3586,64 +3693,195 @@ class SmmService:
 
     async def channel_stats(
         self, user_id: int, brand_id: Optional[int] = None, period: str = "7d"
-    ) -> list[dict]:
+    ) -> dict:
+        """Pipeline counters: collected / processed / sent, sliced by brand, network, channel."""
         tariff = await get_user_tariff(user_id)
         max_days = plan_limit(tariff, "stats_retention_days", 7)
         days = 7 if period == "7d" else (30 if period == "30d" else (90 if period == "90d" else 7))
         days = min(days, max_days)
-        since = (datetime.utcnow() - timedelta(days=days)).date()
-        channels = await self.list_all_channels(user_id, brand_id)
+        since_day = (datetime.utcnow() - timedelta(days=days)).date()
+        since_dt = datetime.utcnow() - timedelta(days=days)
+        channels = [
+            c
+            for c in await self.list_all_channels(user_id, brand_id)
+            if c.get("role") != "competitor"
+        ]
+        empty_totals = {
+            "collected": 0,
+            "processed": 0,
+            "sent": 0,
+            "failed": 0,
+            "alerts_sent": 0,
+        }
+        if not channels:
+            return {
+                "period": period,
+                "days": days,
+                "totals": dict(empty_totals),
+                "by_network": [],
+                "by_brand": [],
+                "channels": [],
+            }
+
+        channel_ids = [int(c["id"]) for c in channels]
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
-                result = []
-                for ch in channels:
+                await cur.execute(
+                    """
+                    SELECT channel_id,
+                           COALESCE(SUM(sent), 0),
+                           COALESCE(SUM(received), 0),
+                           COALESCE(SUM(failed), 0),
+                           COALESCE(SUM(alerts_sent), 0)
+                    FROM smm_channel_counters
+                    WHERE user_id = %s AND day >= %s AND channel_id = ANY(%s)
+                    GROUP BY channel_id
+                    """,
+                    (user_id, since_day, channel_ids),
+                )
+                counters = {
+                    int(r[0]): {
+                        "sent": int(r[1] or 0),
+                        "received": int(r[2] or 0),
+                        "failed": int(r[3] or 0),
+                        "alerts_sent": int(r[4] or 0),
+                    }
+                    for r in await cur.fetchall()
+                }
+
+                await cur.execute(
+                    """
+                    SELECT channel_id, COUNT(*)
+                    FROM smm_inbox_items
+                    WHERE user_id = %s AND created_at >= %s AND channel_id = ANY(%s)
+                    GROUP BY channel_id
+                    """,
+                    (user_id, since_dt, channel_ids),
+                )
+                inbox_by_channel = {int(r[0]): int(r[1] or 0) for r in await cur.fetchall()}
+
+                processed_by_network: dict[str, int] = {}
+                try:
                     await cur.execute(
                         """
-                        SELECT COALESCE(SUM(sent),0), COALESCE(SUM(received),0),
-                               COALESCE(SUM(failed),0), COALESCE(SUM(alerts_sent),0)
-                        FROM smm_channel_counters
-                        WHERE user_id = %s AND channel_id = %s AND day >= %s
+                        SELECT COALESCE(NULLIF(source_platform, ''), 'other') AS net,
+                               COUNT(*) FILTER (
+                                   WHERE status IN (
+                                       'processing', 'ready', 'review',
+                                       'publishing', 'distributed'
+                                   )
+                               )
+                        FROM posts
+                        WHERE user_id = %s AND created_at >= %s
+                        GROUP BY 1
                         """,
-                        (user_id, ch["id"], since),
+                        (user_id, since_dt),
                     )
-                    row = await cur.fetchone()
-                    sent = int(row[0] or 0) if row else 0
-                    received = int(row[1] or 0) if row else 0
-                    failed = int(row[2] or 0) if row else 0
-                    alerts_sent = int(row[3] or 0) if row else 0
-                    # Fallback: count inbox received for channel
-                    if received == 0:
-                        await cur.execute(
-                            """
-                            SELECT COUNT(*) FROM smm_inbox_items
-                            WHERE user_id = %s AND channel_id = %s AND created_at >= %s
-                            """,
-                            (user_id, ch["id"], datetime.utcnow() - timedelta(days=days)),
-                        )
-                        r2 = await cur.fetchone()
-                        received = int(r2[0] or 0) if r2 else 0
-                    result.append(
-                        {
-                            "channel_id": ch["id"],
-                            "brand_id": ch["brand_id"],
-                            "brand_name": ch.get("brand_name"),
-                            "network": ch["network"],
-                            "external_id": ch["external_id"],
-                            "title": ch.get("title"),
-                            "role": ch["role"],
-                            "sent": sent,
-                            "received": received,
-                            "failed": failed,
-                            "alerts_sent": alerts_sent,
-                            "conversion_pct": round(
-                                (sent / received * 100) if received else 0.0, 1
-                            ),
-                        }
-                    )
-                return result
+                    processed_by_network = {
+                        str(r[0] or "other"): int(r[1] or 0) for r in await cur.fetchall()
+                    }
+                except Exception:
+                    processed_by_network = {}
         finally:
             await release_db_connection(conn)
+
+        rows: list[dict] = []
+        for ch in channels:
+            cid = int(ch["id"])
+            c = counters.get(cid, {"sent": 0, "received": 0, "failed": 0, "alerts_sent": 0})
+            received = c["received"] or inbox_by_channel.get(cid, 0)
+            sent = c["sent"]
+            rows.append(
+                {
+                    "channel_id": cid,
+                    "brand_id": ch.get("brand_id"),
+                    "brand_name": ch.get("brand_name"),
+                    "network": ch.get("network"),
+                    "external_id": ch.get("external_id"),
+                    "title": ch.get("title"),
+                    "role": ch.get("role"),
+                    "sent": sent,
+                    "received": received,
+                    "collected": received,
+                    "processed": None,
+                    "failed": c["failed"],
+                    "alerts_sent": c["alerts_sent"],
+                    "conversion_pct": round((sent / received * 100) if received else 0.0, 1),
+                }
+            )
+
+        by_network_map: dict[str, dict] = {}
+        by_brand_map: dict[int, dict] = {}
+        totals = dict(empty_totals)
+        for row in rows:
+            net = str(row["network"] or "other")
+            n = by_network_map.setdefault(
+                net,
+                {
+                    "network": net,
+                    "collected": 0,
+                    "processed": 0,
+                    "sent": 0,
+                    "failed": 0,
+                    "alerts_sent": 0,
+                    "channels": 0,
+                },
+            )
+            n["collected"] += row["collected"]
+            n["sent"] += row["sent"]
+            n["failed"] += row["failed"]
+            n["alerts_sent"] += row["alerts_sent"]
+            n["channels"] += 1
+
+            bid = int(row["brand_id"] or 0)
+            b = by_brand_map.setdefault(
+                bid,
+                {
+                    "brand_id": bid or None,
+                    "brand_name": row.get("brand_name") or "—",
+                    "collected": 0,
+                    "processed": 0,
+                    "sent": 0,
+                    "failed": 0,
+                    "alerts_sent": 0,
+                    "channels": 0,
+                },
+            )
+            b["collected"] += row["collected"]
+            b["sent"] += row["sent"]
+            b["failed"] += row["failed"]
+            b["alerts_sent"] += row["alerts_sent"]
+            b["channels"] += 1
+
+            totals["collected"] += row["collected"]
+            totals["sent"] += row["sent"]
+            totals["failed"] += row["failed"]
+            totals["alerts_sent"] += row["alerts_sent"]
+
+        present_networks = set(by_network_map)
+        for net, processed in processed_by_network.items():
+            if net not in present_networks:
+                continue
+            by_network_map[net]["processed"] = processed
+            totals["processed"] += processed
+
+        # posts has source_platform, not brand_id — do not invent per-brand processed.
+        for brand_row in by_brand_map.values():
+            brand_row["processed"] = None
+
+        return {
+            "period": period,
+            "days": days,
+            "totals": totals,
+            "by_network": sorted(
+                by_network_map.values(), key=lambda x: x["collected"], reverse=True
+            ),
+            "by_brand": sorted(
+                by_brand_map.values(), key=lambda x: x["collected"], reverse=True
+            ),
+            "channels": rows,
+        }
 
     async def bump_channel_counter(
         self,
@@ -4057,13 +4295,26 @@ class SmmService:
                 fail += 1
                 continue
             try:
-                plain_default = re.sub(r"<[^>]+>", "", text).replace("&nbsp;", " ").strip()
+                from shared.post_adapt import adapt_for_networks as _shared_adapt
+                from shared.post_adapt import to_plain
+
+                plain_default = to_plain(text)
+                net_adapter = adapters.get(network)
+                if not isinstance(net_adapter, dict) or "text" not in net_adapter:
+                    fitted = await _shared_adapt(
+                        text,
+                        media,
+                        networks=[network],
+                        prefer_summarize=False,
+                    )
+                    net_adapter = fitted.get(network) or {"text": plain_default}
+                body_text = net_adapter.get("text", plain_default)
+
                 if network == "tg":
                     await ensure_monthly_post_quota(user_id, units=1)
-                    tg_text = (adapters.get("tg") or {}).get("text", text)
                     await post_service.create_tg_post_record(
                         user_id=user_id,
-                        text=tg_text,
+                        text=body_text,
                         images=media if media else None,
                         to_tg=True,
                         publish_at=None,
@@ -4072,55 +4323,51 @@ class SmmService:
                     )
                 elif network == "vk":
                     await ensure_monthly_post_quota(user_id, units=1)
-                    vk_payload = adapters.get("vk") or {}
-                    vk_text = vk_payload.get("text", plain_default)
                     await post_service.create_vk_post_record(
                         user_id=user_id,
-                        text=vk_text,
+                        text=body_text,
                         images=media,
                         to_vk=True,
                         target_groups=[external_id] if external_id else None,
                         skip_quota=True,
                     )
                 elif network == "tw":
-                    tw_text = (adapters.get("tw") or {}).get("text", plain_default)[:280]
                     await post_service.create_tw_post_record(
                         user_id=user_id,
-                        text=tw_text,
+                        text=body_text,
                         to_tw=True,
                         target_channels=[external_id] if external_id else None,
                     )
                 elif network == "wp":
-                    wp_text = (adapters.get("wp") or {}).get("text", text)
+                    await ensure_monthly_post_quota(user_id, units=1)
                     await post_service.create_wp_post_record(
                         user_id=user_id,
-                        text=wp_text,
+                        text=body_text,
                         to_wp=True,
                         target_channels=[external_id] if external_id else None,
+                        status="ready",
+                        skip_quota=True,
                     )
                 elif network == "threads":
-                    th_text = (adapters.get("threads") or {}).get("text", plain_default)[:500]
                     await post_service.create_threads_post_record(
                         user_id=user_id,
-                        text=th_text,
+                        text=body_text,
                         images=media if media else None,
                         to_threads=True,
                         target_channels=[external_id] if external_id else None,
                     )
                 elif network == "dzen":
-                    dz_text = (adapters.get("dzen") or {}).get("text", plain_default)
                     await post_service.create_dzen_post_record(
                         user_id=user_id,
-                        text=dz_text,
+                        text=body_text,
                         images=media if media else None,
                         to_dzen=True,
                         target_channels=[external_id] if external_id else None,
                     )
                 elif network == "instagram":
-                    ig_text = (adapters.get("instagram") or {}).get("text", plain_default)
                     await post_service.create_instagram_post_record(
                         user_id=user_id,
-                        caption=ig_text,
+                        caption=body_text,
                         images=media if media else None,
                         to_instagram=True,
                         target_channels=[external_id] if external_id else None,
@@ -4421,6 +4668,9 @@ class SmmService:
         return {"updated": len(updated), "job_ids": updated, "errors": errors}
 
     async def get_job(self, user_id: int, job_id: int) -> Optional[dict]:
+        from services.team_access import shared_brand_ids
+
+        brand_ids = await shared_brand_ids(user_id)
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
@@ -4428,9 +4678,10 @@ class SmmService:
                     f"""
                     SELECT {JOB_COLUMNS}
                     FROM smm_publish_jobs
-                    WHERE id = %s AND user_id = %s
+                    WHERE id = %s
+                      AND (user_id = %s OR brand_id = ANY(%s) OR assigned_to = %s)
                     """,
-                    (job_id, user_id),
+                    (job_id, user_id, brand_ids or [-1], user_id),
                 )
                 row = await cur.fetchone()
                 return _row_job(row) if row else None

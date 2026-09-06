@@ -32,7 +32,19 @@ async def register(user_data: UserRegister) -> TokenResponse:
             utm_medium=user_data.utm_medium,
             utm_campaign=user_data.utm_campaign,
         )
-        
+        if user_data.invite_token:
+            try:
+                from services import group_service
+
+                await group_service.accept_invite(
+                    user_data.invite_token,
+                    result["user_id"],
+                    user_email=user_data.email,
+                )
+            except Exception:
+                # Registration succeeded; invite can be accepted later via /invite/:token
+                pass
+
         return TokenResponse(
             access_token=result["access_token"],
             refresh_token=result["refresh_token"],

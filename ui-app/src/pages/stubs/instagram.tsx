@@ -19,6 +19,8 @@ import type {
   ScheduleType,
 } from '@/types/instagram'
 import { formatDateTime } from '@/utils/date'
+import { useAuth } from '@/contexts/auth-context'
+import { canManagePlatformAuth } from '@/types/smm'
 
 function generateId(): string {
   return Math.random().toString(36).substring(2, 9)
@@ -32,6 +34,9 @@ interface DynamicField {
 const INSTAGRAM_CAPTION_MAX = 2200
 
 export function InstagramPage() {
+  const { user } = useAuth()
+  const hasTeam = Boolean(user?.group_id || user?.role_in_group)
+  const canAuth = canManagePlatformAuth(user?.role_in_group, hasTeam)
   const [activeTab, setActiveTab] = useState<'auth' | 'create' | 'posts' | 'profile'>('posts')
 
   const [publishEnabled, setPublishEnabled] = useState(false)
@@ -370,7 +375,9 @@ export function InstagramPage() {
           { id: 'auth' as const, label: 'Авторизация' },
           { id: 'posts' as const, label: 'Posts' },
           { id: 'profile' as const, label: 'Profile' },
-        ].map((tab) => (
+        ]
+          .filter((tab) => tab.id !== 'auth' || canAuth)
+          .map((tab) => (
           <button
             key={tab.id}
             type="button"
@@ -386,7 +393,7 @@ export function InstagramPage() {
         ))}
       </div>
 
-      {activeTab === 'auth' && (
+      {activeTab === 'auth' && canAuth && (
         <Card className="mt-6">
           <CardHeader>
             <CardTitle>Авторизация Instagram</CardTitle>

@@ -6,7 +6,11 @@ import {
   getSeasonTracks,
   useLearnPosts,
 } from '@/data/learn/use-learn-posts'
-import { siteChangePassword } from '@/data/site/site-api'
+import {
+  siteChangePassword,
+  siteGetStudySummary,
+  type SiteStudySummary,
+} from '@/data/site/site-api'
 import {
   clearSiteAuthSession,
   describeSiteRole,
@@ -25,6 +29,7 @@ import { canEditLearn, getLearnAuthSession } from '@/data/learn/learn-auth'
 type AccountSectionId =
   | 'profile'
   | 'learn'
+  | 'study'
   | 'learning-map'
   | 'contact'
   | 'password'
@@ -41,13 +46,13 @@ type NavItem = {
 function roleFunctions(session: SiteAuthSession): string[] {
   const items = [
     'Чтение страниц и блогов всех сервисов на витрине',
-    'Личный кабинет, смена пароля и прогресс Learn',
+    'Личный кабинет учащегося: прогресс Learn, тесты и anki',
     'Форма связи с командой',
     'Карта обучения и материалы Learn',
   ]
   if (session.appAdmin.length > 0) {
     items.push(
-      `Админка сервисов: ${session.appAdmin.join(', ')} — плашка, страница и статьи`,
+      `Кабинет владельца: ${session.appAdmin.join(', ')} — описание, плашка и блог`,
     )
   }
   if (isSuperAdmin(session)) {
@@ -69,6 +74,8 @@ export function SiteAccountPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const { posts, isReady: postsReady } = useLearnPosts()
   const { completedSlugs, isReady: progressReady } = useSiteLearnProgress()
+  const [study, setStudy] = useState<SiteStudySummary | null>(null)
+  const [studyReady, setStudyReady] = useState(false)
   const published = getPublishedPosts(posts)
   const seasons = getSeasonTracks(posts)
   const learnSession = getLearnAuthSession()
@@ -98,6 +105,28 @@ export function SiteAccountPage() {
     }
   }, [])
 
+  useEffect(() => {
+    if (!getSiteAuthSession()?.accessToken) {
+      setStudy(null)
+      setStudyReady(true)
+      return
+    }
+    let cancelled = false
+    void siteGetStudySummary()
+      .then((next) => {
+        if (!cancelled) setStudy(next)
+      })
+      .catch(() => {
+        if (!cancelled) setStudy(null)
+      })
+      .finally(() => {
+        if (!cancelled) setStudyReady(true)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   const managed = session ? getManagedAppSlugs(session) : []
   const doneCount = published.filter((p) => completedSlugs.has(p.slug)).length
   const pct = progressPercent(doneCount, published.length)
@@ -108,6 +137,7 @@ export function SiteAccountPage() {
     }
     const items: NavItem[] = [
       { id: 'profile', label: 'Профиль', hint: 'Роль и возможности' },
+      { id: 'study', label: 'Учёба', hint: 'Тесты и anki' },
       { id: 'learn', label: 'Learn', hint: 'Теория и прогресс' },
       { id: 'learning-map', label: 'Карта обучения', hint: 'Mind map · собеседование' },
       { id: 'contact', label: 'Форма связи', hint: 'Написать команде' },
@@ -115,8 +145,8 @@ export function SiteAccountPage() {
     for (const slug of managed) {
       items.push({
         id: `app:${slug}`,
-        label: `Админ сервиса · ${slug}`,
-        hint: 'Плашка и статьи',
+        label: `Владелец · ${slug}`,
+        hint: 'Описание и блог',
       })
     }
     if (isSuperAdmin(session)) {
@@ -248,6 +278,67 @@ export function SiteAccountPage() {
             </div>
           ) : null}
 
+          {activeId === 'study' ? (
+            <div className="account-panel-body">
+              <p className="learn-section-note">
+                Кабинет учащегося: результаты тестов по статьям и прогресс anki-карточек.
+              </p>
+              {!studyReady ? (
+                <p className="learn-section-note">Загрузка…</p>
+              ) : !study ? (
+                <p className="learn-section-note">Пока нет сохранённых попыток.</p>
+              ) : (
+                <>
+                  <div className="account-study-grid">
+                    <div className="account-study-card">
+                      <h3 className="account-subheading">Тесты</h3>
+                      <p className="account-stat">
+                        {study.quiz.attempts} попыток · среднее {study.quiz.avgPercent}%
+                      </p>
+                      {study.quiz.recent.length > 0 ? (
+                        <ul className="account-feature-list">
+                          {study.quiz.recent.map((item) => (
+                            <li key={`${item.sourceKey}-${item.finishedAt}`}>
+                              {item.sourceKey}: {item.score}/{item.total}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="learn-section-note">Пройдите тест в статье блога.</p>
+                      )}
+                    </div>
+                    <div className="account-study-card">
+                      <h3 className="account-subheading">Anki</h3>
+                      <p className="account-stat">
+                        {study.anki.cards} карточек · due {study.anki.due} · в работе{' '}
+                        {study.anki.learning}
+                      </p>
+                      <p className="learn-section-note">
+                        Оценивайте карточки в конце статей — интервалы сохранятся здесь.
+                      </p>
+                    </div>
+                  </div>
+                  {!postsReady || !progressReady ? null : (
+                    <p className="learn-section-note">
+                      Learn-прогресс: {doneCount}/{published.length} выпусков ({pct}%).
+                    </p>
+                  )}
+                </>
+              )}
+              <div className="account-actions">
+                <Link to="/game/quiz" className="learn-admin-btn learn-admin-btn-primary">
+                  Quiz Learn
+                </Link>
+                <Link to="/game/learning-map" className="learn-admin-btn">
+                  Карта · Anki
+                </Link>
+                <Link to="/" className="learn-admin-btn">
+                  Свежие статьи
+                </Link>
+              </div>
+            </div>
+          ) : null}
+
           {activeId === 'learn' ? (
             <div className="account-panel-body">
               <p className="learn-section-note">
@@ -330,15 +421,18 @@ export function SiteAccountPage() {
                 return (
                   <>
                     <p className="learn-section-note">
-                      Вы админ сервиса <strong>{slug}</strong>: можете править плашку, страницу и
-                      статьи блога.
+                      Кабинет владельца сервиса <strong>{slug}</strong>: описание на витрине, кнопки
+                      приложения и блог в едином формате (введение, разделы, схемы, тест, anki).
                     </p>
                     <div className="account-actions">
                       <Link
                         to={`/admin/apps/${slug}`}
                         className="learn-admin-btn learn-admin-btn-primary"
                       >
-                        Открыть админку · {slug}
+                        Открыть кабинет владельца
+                      </Link>
+                      <Link to={`/app/${slug}`} className="learn-admin-btn">
+                        Публичная страница
                       </Link>
                     </div>
                   </>

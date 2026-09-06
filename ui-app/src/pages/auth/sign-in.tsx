@@ -1,5 +1,5 @@
 import { useState, FormEvent } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '@/contexts/auth-context'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -8,6 +8,9 @@ import { Alert } from '@/components/ui/alert'
 
 export function SignInPage() {
   const { login, error, clearError, isLoading } = useAuth()
+  const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
+  const inviteToken = searchParams.get('invite')?.trim()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
 
@@ -17,6 +20,9 @@ export function SignInPage() {
     
     try {
       await login({ username, password })
+      if (inviteToken) {
+        navigate(`/invite/${encodeURIComponent(inviteToken)}`, { replace: true })
+      }
     } catch {
       // Error is handled by context
     }

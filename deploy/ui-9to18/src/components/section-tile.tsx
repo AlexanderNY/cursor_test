@@ -25,10 +25,8 @@ function SectionTileContent({ section }: SectionTileProps) {
   )
 }
 
+/** Плашка на главной всегда ведёт на страницу описания сервиса. */
 function tileTarget(section: Section): string {
-  if (section.appPath) {
-    return section.appPath
-  }
   return `/app/${section.slug}`
 }
 
@@ -38,20 +36,6 @@ export function SectionTile({ section }: SectionTileProps) {
   const prefetchHandlers = {
     onMouseEnter: isBowl ? prefetchBowlRuntime : undefined,
     onFocus: isBowl ? prefetchBowlRuntime : undefined,
-  }
-
-  if (section.href?.startsWith('http')) {
-    return (
-      <a
-        href={section.href}
-        className="section-tile section-tile-external"
-        style={tileStyle}
-        target="_blank"
-        rel="noopener noreferrer"
-      >
-        <SectionTileContent section={section} />
-      </a>
-    )
   }
 
   return (

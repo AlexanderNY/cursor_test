@@ -27,6 +27,7 @@ export interface DzenPendingDiagResponse {
   error?: string | null
   need_push_code?: boolean
   message?: string | null
+  live?: boolean
 }
 
 export interface DzenProfile {

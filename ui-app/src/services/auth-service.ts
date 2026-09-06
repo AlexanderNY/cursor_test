@@ -11,6 +11,8 @@ import type {
   BillingPlanDefinition,
   BillingMeResponse,
   BillingEventRow,
+  BillingPlanRequest,
+  PromoCode,
   AdminAuditLogEntry,
 } from '@/types'
 
@@ -179,6 +181,99 @@ export const authService = {
     return response.data.url
   },
 
+  async createPlanRequest(plan: 'standard' | 'full', promoCode?: string): Promise<BillingPlanRequest> {
+    const { data } = await apiClient.post<BillingPlanRequest>('/auth/billing/requests', {
+      plan,
+      promo_code: promoCode || undefined,
+    })
+    return data
+  },
+
+  async listMyPlanRequests(): Promise<BillingPlanRequest[]> {
+    const { data } = await apiClient.get<{ requests: BillingPlanRequest[] }>('/auth/billing/requests')
+    return data.requests ?? []
+  },
+
+  async previewPromo(code: string, plan: string): Promise<{
+    code: string
+    discount_percent?: number | null
+    discount_amount: number
+    list_price: number
+    final_price: number
+    currency: string
+    description?: string | null
+  }> {
+    const { data } = await apiClient.get('/auth/billing/promo/preview', { params: { code, plan } })
+    return data
+  },
+
+  async adminCreatePlanRequest(
+    userId: number,
+    plan: 'free' | 'standard' | 'full',
+    promoCode?: string,
+  ): Promise<BillingPlanRequest> {
+    const { data } = await apiClient.post<BillingPlanRequest>('/auth/billing/admin/requests', {
+      user_id: userId,
+      plan,
+      promo_code: promoCode || undefined,
+    })
+    return data
+  },
+
+  async adminListPlanRequests(status?: string): Promise<BillingPlanRequest[]> {
+    const { data } = await apiClient.get<{ requests: BillingPlanRequest[] }>(
+      '/auth/billing/admin/requests',
+      { params: status ? { status } : undefined },
+    )
+    return data.requests ?? []
+  },
+
+  async adminSendInvoice(requestId: number, paymentNote?: string): Promise<BillingPlanRequest> {
+    const { data } = await apiClient.post<BillingPlanRequest>(
+      `/auth/billing/admin/requests/${requestId}/invoice`,
+      { payment_note: paymentNote || undefined },
+    )
+    return data
+  },
+
+  async adminApplyPlanRequest(requestId: number): Promise<BillingPlanRequest> {
+    const { data } = await apiClient.post<BillingPlanRequest>(
+      `/auth/billing/admin/requests/${requestId}/apply`,
+    )
+    return data
+  },
+
+  async adminRejectPlanRequest(requestId: number, comment?: string): Promise<BillingPlanRequest> {
+    const { data } = await apiClient.post<BillingPlanRequest>(
+      `/auth/billing/admin/requests/${requestId}/reject`,
+      { comment: comment || undefined },
+    )
+    return data
+  },
+
+  async adminListPromoCodes(): Promise<PromoCode[]> {
+    const { data } = await apiClient.get<{ promo_codes: PromoCode[] }>('/auth/billing/admin/promo-codes')
+    return data.promo_codes ?? []
+  },
+
+  async adminCreatePromoCode(payload: {
+    code: string
+    description?: string
+    discount_percent?: number
+    discount_amount?: number
+    applies_to_tariff?: string
+    max_redemptions?: number
+    is_active?: boolean
+  }): Promise<PromoCode> {
+    const { data } = await apiClient.post<PromoCode>('/auth/billing/admin/promo-codes', payload)
+    return data
+  },
+
+  async adminUpdatePromoCode(id: number, payload: Partial<PromoCode>): Promise<PromoCode> {
+    const { data } = await apiClient.patch<PromoCode>(`/auth/billing/admin/promo-codes/${id}`, payload)
+    return data
+  },
+
   async updateUser(
     userId: number,
     data: { role?: UserRole; tariff?: string; is_blocked?: boolean }
@@ -240,6 +335,41 @@ export const authService = {
     role_in_group: 'admin' | 'editor' | 'analyst' | 'manager' | 'author' = 'editor'
   ): Promise<void> {
     await apiClient.post(`/auth/groups/${groupId}/members`, { email, role_in_group })
+  },
+
+  async createGroupInvite(
+    groupId: number,
+    data: {
+      email?: string
+      role_in_group?: 'admin' | 'editor' | 'analyst' | 'manager' | 'author'
+      expires_days?: number
+    } = {}
+  ): Promise<import('@/types/auth').InviteActionResponse> {
+    const response = await apiClient.post(`/auth/groups/${groupId}/invites`, {
+      email: data.email?.trim() || undefined,
+      role_in_group: data.role_in_group ?? 'editor',
+      expires_days: data.expires_days ?? 7,
+    })
+    return response.data
+  },
+
+  async listGroupInvites(groupId: number): Promise<import('@/types/auth').GroupInviteResponse[]> {
+    const response = await apiClient.get(`/auth/groups/${groupId}/invites`)
+    return response.data
+  },
+
+  async revokeGroupInvite(groupId: number, inviteId: number): Promise<void> {
+    await apiClient.delete(`/auth/groups/${groupId}/invites/${inviteId}`)
+  },
+
+  async peekInvite(token: string): Promise<import('@/types/auth').InvitePeekResponse> {
+    const response = await apiClient.get(`/auth/groups/invites/${encodeURIComponent(token)}`)
+    return response.data
+  },
+
+  async acceptInvite(token: string): Promise<import('@/types/auth').AcceptInviteResponse> {
+    const response = await apiClient.post(`/auth/groups/invites/${encodeURIComponent(token)}/accept`)
+    return response.data
   },
 
   async removeGroupMember(groupId: number, userId: number): Promise<void> {

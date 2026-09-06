@@ -2,6 +2,8 @@
 
 from pydantic_settings import BaseSettings
 
+from shared.post_adapt import NETWORK_TEXT_LIMITS
+
 
 class Settings(BaseSettings):
     """Настройки Processor."""
@@ -23,14 +25,14 @@ class Settings(BaseSettings):
     # Уровень логирования
     LOG_LEVEL: str = "INFO"
 
-    # Лимиты длины текста по платформам
-    WORDPRESS_MAX_LENGTH: int = 150000
-    TELEGRAM_MAX_LENGTH: int = 4096
-    TWITTER_MAX_LENGTH: int = 280
-    VKONTAKTE_MAX_LENGTH: int = 15985
-    THREADS_MAX_LENGTH: int = 500
-    DZEN_MAX_LENGTH: int = 1500
-    INSTAGRAM_MAX_LENGTH: int = 2200
+    # Лимиты длины текста по платформам (defaults = shared.post_adapt)
+    WORDPRESS_MAX_LENGTH: int = NETWORK_TEXT_LIMITS["wp"]
+    TELEGRAM_MAX_LENGTH: int = NETWORK_TEXT_LIMITS["tg"]
+    TWITTER_MAX_LENGTH: int = NETWORK_TEXT_LIMITS["tw"]
+    VKONTAKTE_MAX_LENGTH: int = NETWORK_TEXT_LIMITS["vk"]
+    THREADS_MAX_LENGTH: int = NETWORK_TEXT_LIMITS["threads"]
+    DZEN_MAX_LENGTH: int = NETWORK_TEXT_LIMITS["dzen"]
+    INSTAGRAM_MAX_LENGTH: int = NETWORK_TEXT_LIMITS["instagram"]
 
     AI_SERVICE_URL: str = "http://ollama:11434"
     AI_MODEL: str = "qwen2.5:1.5b"

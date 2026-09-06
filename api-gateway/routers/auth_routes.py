@@ -258,6 +258,98 @@ async def stripe_webhook(request: Request) -> Response:
     return await forward_to_auth("/billing/webhooks/stripe", request)
 
 
+@router.post("/billing/requests")
+async def billing_create_request(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    return await forward_to_auth("/billing/requests", request)
+
+
+@router.get("/billing/requests")
+async def billing_list_requests(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    return await forward_to_auth("/billing/requests", request)
+
+
+@router.get("/billing/promo/preview")
+async def billing_promo_preview(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    return await forward_to_auth("/billing/promo/preview", request)
+
+
+@router.get("/billing/admin/requests")
+async def billing_admin_requests(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    return await forward_to_auth("/billing/admin/requests", request)
+
+
+@router.post("/billing/admin/requests")
+async def billing_admin_create_request(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    return await forward_to_auth("/billing/admin/requests", request)
+
+
+@router.post("/billing/admin/requests/{request_id}/invoice")
+async def billing_admin_invoice(
+    request: Request,
+    request_id: int,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    return await forward_to_auth(f"/billing/admin/requests/{request_id}/invoice", request)
+
+
+@router.post("/billing/admin/requests/{request_id}/apply")
+async def billing_admin_apply(
+    request: Request,
+    request_id: int,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    return await forward_to_auth(f"/billing/admin/requests/{request_id}/apply", request)
+
+
+@router.post("/billing/admin/requests/{request_id}/reject")
+async def billing_admin_reject(
+    request: Request,
+    request_id: int,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    return await forward_to_auth(f"/billing/admin/requests/{request_id}/reject", request)
+
+
+@router.get("/billing/admin/promo-codes")
+async def billing_admin_list_promos(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    return await forward_to_auth("/billing/admin/promo-codes", request)
+
+
+@router.post("/billing/admin/promo-codes")
+async def billing_admin_create_promo(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    return await forward_to_auth("/billing/admin/promo-codes", request)
+
+
+@router.patch("/billing/admin/promo-codes/{promo_id}")
+async def billing_admin_update_promo(
+    request: Request,
+    promo_id: int,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    return await forward_to_auth(f"/billing/admin/promo-codes/{promo_id}", request)
+
+
 @router.api_route("/groups", methods=["GET", "POST", "PATCH", "PUT", "DELETE"])
 async def groups_root_proxy(
     request: Request,

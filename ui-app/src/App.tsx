@@ -4,6 +4,7 @@ import { Layout } from '@/components/layout/layout'
 import { SignInPage } from '@/pages/auth/sign-in'
 import { SignUpPage } from '@/pages/auth/sign-up'
 import { ResetPasswordPage } from '@/pages/auth/reset-password'
+import { AcceptInvitePage } from '@/pages/auth/accept-invite'
 import { ProfilePage } from '@/pages/profile/profile'
 import { TelegramPage } from '@/pages/telegram/telegram'
 import { ThreadsPage } from '@/pages/threads/threads'
@@ -94,6 +95,7 @@ function App() {
       <Route path="/sign-in" element={<PublicRoute><SignInPage /></PublicRoute>} />
       <Route path="/sign-up" element={<PublicRoute><SignUpPage /></PublicRoute>} />
       <Route path="/reset-password" element={<PublicRoute><ResetPasswordPage /></PublicRoute>} />
+      <Route path="/invite/:token" element={<AcceptInvitePage />} />
 
       <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
         <Route index element={<Navigate to="/profile" replace />} />
@@ -101,7 +103,7 @@ function App() {
         <Route path="guide" element={<Navigate to="/about" replace />} />
         <Route path="profile" element={<ProfilePage />} />
         <Route path="billing" element={<Navigate to="/profile?tab=billing" replace />} />
-        <Route path="statistics" element={<Navigate to="/profile?tab=statistics" replace />} />
+        <Route path="statistics" element={<Navigate to="/analytics" replace />} />
         <Route path="brands" element={<BrandsPage />} />
         <Route path="channels" element={<ChannelsPage />} />
         <Route path="channels/:channelId" element={<ChannelFlowPage />} />

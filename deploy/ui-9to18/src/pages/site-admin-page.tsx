@@ -41,6 +41,15 @@ import {
   readTextFile,
 } from '@/data/site/post-file'
 import { DEFAULT_SITE_PROMO, normalizeSitePromo, type SitePromo } from '@/data/promo'
+import { StructuredPostEditor } from '@/components/structured-post-editor'
+import {
+  EMPTY_STRUCTURED_POST,
+  legacyBodyToStructured,
+  parsePostBody,
+  serializeStructuredPost,
+  type StructuredPost,
+  validateStructuredPost,
+} from '@/data/site/structured-post'
 
 function moveSlug(slugs: string[], index: number, delta: number): string[] | null {
   const next = index + delta
@@ -792,6 +801,8 @@ export function AppAdminPage() {
   const [isVisible, setIsVisible] = useState(true)
   const [postTitle, setPostTitle] = useState('')
   const [postBody, setPostBody] = useState('')
+  const [postStructured, setPostStructured] = useState<StructuredPost>(EMPTY_STRUCTURED_POST)
+  const [useStructured, setUseStructured] = useState(true)
   const [postSlug, setPostSlug] = useState('about')
   const [postPublished, setPostPublished] = useState(true)
   const [message, setMessage] = useState('')
@@ -819,16 +830,26 @@ export function AppAdminPage() {
   function loadPostIntoForm(post: SitePost) {
     setPostSlug(post.slug)
     setPostTitle(post.title)
-    setPostBody(post.body)
     setPostPublished(post.isPublished)
+    const parsed = parsePostBody(post.body)
+    if (parsed.structured) {
+      setUseStructured(true)
+      setPostStructured(parsed.structured)
+      setPostBody(post.body)
+    } else {
+      setUseStructured(true)
+      setPostStructured(legacyBodyToStructured(parsed.legacyMarkdown))
+      setPostBody(post.body)
+    }
   }
 
   function exportPostFile() {
     setError('')
+    const body = useStructured ? serializeStructuredPost(postStructured) : postBody
     downloadSitePostFile({
       slug: postSlug,
       title: postTitle,
-      body: postBody,
+      body,
       isPublished: postPublished,
     })
     setMessage('Статья выгружена в .md')
@@ -853,8 +874,17 @@ export function AppAdminPage() {
       if (parsed.title) {
         setPostTitle(parsed.title)
       }
-      setPostBody(parsed.body)
       setPostPublished(parsed.isPublished)
+      const bodyParsed = parsePostBody(parsed.body)
+      if (bodyParsed.structured) {
+        setUseStructured(true)
+        setPostStructured(bodyParsed.structured)
+        setPostBody(parsed.body)
+      } else {
+        setUseStructured(true)
+        setPostStructured(legacyBodyToStructured(bodyParsed.legacyMarkdown))
+        setPostBody(parsed.body)
+      }
       setMessage(`Загружено из «${file.name}» — проверьте и сохраните`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Не удалось загрузить файл')
@@ -943,12 +973,20 @@ export function AppAdminPage() {
     event.preventDefault()
     setMessage('')
     setError('')
+    const body = useStructured ? serializeStructuredPost(postStructured) : postBody
+    if (useStructured) {
+      const issues = validateStructuredPost(postStructured)
+      if (issues.length > 0 && postPublished) {
+        setError(`Перед публикацией: ${issues.join('; ')}`)
+        return
+      }
+    }
     setBusy(true)
     try {
       await siteSavePost(slug, postSlug, {
         slug: postSlug,
         title: postTitle,
-        body: postBody,
+        body,
         is_published: postPublished,
       })
       const nextPosts = await reload()
@@ -980,6 +1018,8 @@ export function AppAdminPage() {
         setPostSlug('about')
         setPostTitle('')
         setPostBody('')
+        setPostStructured(EMPTY_STRUCTURED_POST)
+        setUseStructured(true)
         setPostPublished(true)
       }
       setMessage(`Удалена статья ${targetSlug}`)
@@ -994,6 +1034,8 @@ export function AppAdminPage() {
     setPostSlug('')
     setPostTitle('')
     setPostBody('')
+    setPostStructured(EMPTY_STRUCTURED_POST)
+    setUseStructured(true)
     setPostPublished(true)
     setMessage('')
     setError('')
@@ -1006,19 +1048,21 @@ export function AppAdminPage() {
       </Link>
       <header className="learn-header">
         <p className="learn-eyebrow">
-          {isSuperAdmin(session) ? 'супер-админ' : 'админ сервиса'}
+          {isSuperAdmin(session) ? 'супер-админ' : 'кабинет владельца сервиса'}
         </p>
-        <h1 className="learn-title">Управление · {app?.title || slug}</h1>
+        <h1 className="learn-title">Владелец · {app?.title || slug}</h1>
         <p className="learn-lead">
-          Плашка на главной, страница сервиса и все статьи блога.
+          Плашка на главной ведёт сюда на публичную страницу сервиса. Здесь — описание, ссылки на
+          приложение и блог в едином формате статей.
         </p>
       </header>
 
       <AdminJumpNav
         items={[
-          { id: 'app-tile', label: 'Плашка' },
-          { id: 'app-posts', label: 'Статьи' },
+          { id: 'app-tile', label: 'Описание' },
+          { id: 'app-posts', label: 'Блог' },
           { id: 'app-public', label: 'Открыть сервис', href: `/app/${slug}` },
+          { id: 'app-account', label: 'Личный кабинет', href: `/account?section=app:${slug}` },
           ...(isSuperAdmin(session)
             ? [{ id: 'app-site-admin', label: 'Админка сайта', href: '/admin' }]
             : []),
@@ -1026,7 +1070,11 @@ export function AppAdminPage() {
       />
 
       <section id="app-tile" className="learn-schedule admin-jump-target">
-        <h2 className="learn-section-title">Плашка и страница сервиса</h2>
+        <h2 className="learn-section-title">Описание сервиса и плашка</h2>
+        <p className="learn-section-note">
+          Внешняя ссылка и внутренний путь не меняют клик по плашке на главной — они показываются
+          кнопками на странице сервиса.
+        </p>
         <form className="learn-admin-form" onSubmit={saveTile}>
           <div className="learn-admin-grid">
             <label className="learn-admin-field">
@@ -1155,8 +1203,8 @@ export function AppAdminPage() {
             />
           </div>
           <p className="learn-section-note" style={{ marginTop: 0 }}>
-            Файл: YAML frontmatter (slug, title, published) + markdown-текст. Загрузка заполняет
-            форму; сохранение в БД — отдельно.
+            Файл: YAML frontmatter (slug, title, published) + тело статьи (JSON единого формата или
+            markdown). Загрузка заполняет форму; сохранение в БД — отдельно.
           </p>
           <div className="learn-admin-grid">
             <label className="learn-admin-field">
@@ -1169,14 +1217,28 @@ export function AppAdminPage() {
             </label>
           </div>
           <label className="learn-admin-field">
-            <span>Текст (markdown)</span>
-            <textarea
-              className="learn-admin-textarea"
-              rows={10}
-              value={postBody}
-              onChange={(e) => setPostBody(e.target.value)}
-            />
+            <span>
+              <input
+                type="checkbox"
+                checked={useStructured}
+                onChange={(e) => setUseStructured(e.target.checked)}
+              />{' '}
+              Единый формат (введение / разделы / схемы / тест / anki)
+            </span>
           </label>
+          {useStructured ? (
+            <StructuredPostEditor value={postStructured} onChange={setPostStructured} />
+          ) : (
+            <label className="learn-admin-field">
+              <span>Текст (markdown)</span>
+              <textarea
+                className="learn-admin-textarea"
+                rows={10}
+                value={postBody}
+                onChange={(e) => setPostBody(e.target.value)}
+              />
+            </label>
+          )}
           <label className="learn-admin-field">
             <span>
               <input

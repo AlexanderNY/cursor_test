@@ -10,6 +10,7 @@ import type {
   BestTimeSlot,
   Brand,
   BrandChannel,
+  ChannelStatsResponse,
   CompetitorCompare,
   CompetitorDigest,
   CompetitorDiff,
@@ -296,25 +297,24 @@ export const smmService = {
     return data
   },
 
-  async channelStats(brandId?: number | null, period = '7d'): Promise<{
-    channels: {
-      channel_id: number
-      network: string
-      external_id: string
-      title?: string
-      sent: number
-      received: number
-      failed: number
-      alerts_sent?: number
-      conversion_pct?: number
-      role?: string
-    }[]
-    period: string
-  }> {
+  async channelStats(brandId?: number | null, period = '7d'): Promise<ChannelStatsResponse> {
     const { data } = await apiClient.get('/smm/analytics/channel-stats', {
       params: { brand_id: brandId ?? undefined, period },
     })
-    return data
+    return {
+      period: data.period ?? period,
+      days: data.days,
+      totals: data.totals ?? {
+        collected: 0,
+        processed: 0,
+        sent: 0,
+        failed: 0,
+        alerts_sent: 0,
+      },
+      by_network: data.by_network ?? [],
+      by_brand: data.by_brand ?? [],
+      channels: data.channels ?? [],
+    }
   },
 
   async runDueJobs(limit = 50): Promise<{ processed: number }> {

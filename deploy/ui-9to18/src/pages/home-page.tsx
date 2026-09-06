@@ -1,10 +1,17 @@
 import { useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { ContactForm } from '@/components/contact-form'
+import { LatestPosts } from '@/components/latest-posts'
 import { PageShell } from '@/components/page-shell'
 import { PromoSpotlight } from '@/components/promo-spotlight'
 import { SectionTile } from '@/components/section-tile'
-import { siteGetPromo, siteListApps, type SiteApp } from '@/data/site/site-api'
+import {
+  siteGetPromo,
+  siteListApps,
+  siteListLatestPosts,
+  type SiteApp,
+  type SiteLatestPost,
+} from '@/data/site/site-api'
 import { DEFAULT_SITE_PROMO, normalizeSitePromo, type SitePromo } from '@/data/promo'
 import { sections as fallbackSections, type Section } from '@/data/sections'
 
@@ -25,6 +32,7 @@ export function HomePage() {
   const location = useLocation()
   const [promo, setPromo] = useState<SitePromo>(DEFAULT_SITE_PROMO)
   const [tiles, setTiles] = useState<Section[]>(fallbackSections)
+  const [latest, setLatest] = useState<SiteLatestPost[]>([])
 
   useEffect(() => {
     if (!location.hash) {
@@ -43,18 +51,20 @@ export function HomePage() {
 
   useEffect(() => {
     let cancelled = false
-    void Promise.all([siteListApps(), siteGetPromo()])
-      .then(([apps, rawPromo]) => {
+    void Promise.all([siteListApps(), siteGetPromo(), siteListLatestPosts(5)])
+      .then(([apps, rawPromo, latestPosts]) => {
         if (cancelled) return
         if (apps.length > 0) {
           setTiles(apps.map(appToSection))
         }
         setPromo(normalizeSitePromo(rawPromo as Partial<SitePromo>))
+        setLatest(latestPosts)
       })
       .catch(() => {
         if (!cancelled) {
           setTiles(fallbackSections)
           setPromo(DEFAULT_SITE_PROMO)
+          setLatest([])
         }
       })
     return () => {
@@ -88,6 +98,8 @@ export function HomePage() {
 
       <PromoSpotlight promo={promo} />
 
+      <LatestPosts items={latest} />
+
       <div className="sections-grid">
         {tiles.map((section) => (
           <SectionTile key={section.slug} section={section} />
@@ -99,7 +111,8 @@ export function HomePage() {
           О сервисах
         </h2>
         <p className="section-block-lead">
-          Краткое описание разделов. Откройте плитку — попадёте в блог приложения.
+          Краткое описание разделов. Плашка ведёт на страницу сервиса с описанием и блогом;
+          приложение и внешние ссылки открываются уже оттуда.
         </p>
         <dl className="services-overview-list">
           {tiles.map((section) => (
@@ -110,7 +123,7 @@ export function HomePage() {
                     {section.emoji}
                   </span>
                 )}
-                {section.title}
+                <Link to={`/app/${section.slug}`}>{section.title}</Link>
               </dt>
               <dd className="services-overview-desc">{section.description}</dd>
             </div>

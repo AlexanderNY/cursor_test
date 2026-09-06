@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime
 
 from fastapi import FastAPI, Request
@@ -32,12 +33,19 @@ from routers import (
     site,
 )
 
+logger = logging.getLogger(__name__)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Обработчики событий жизненного цикла приложения."""
     await init_db(ALL_TABLES)
-    await init_site_db(SITE_ALL_TABLES + SITE_SCHEMA_PATCHES)
+    try:
+        await init_site_db(SITE_ALL_TABLES + SITE_SCHEMA_PATCHES)
+    except Exception:
+        logger.exception(
+            "Site database (db_9to18) init failed; CopyParse continues, /site routes unavailable"
+        )
     yield
     await close_site_db()
     await close_db()

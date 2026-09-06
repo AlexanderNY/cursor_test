@@ -9,6 +9,8 @@ import { apiClient } from '@/services/api-client'
 import { twitterService } from '@/services/twitter-service'
 import type { TwitterProfile, TwitterScheduleType, TwPostRow, TwitterFollowingUser } from '@/types/twitter'
 import { formatDateTime } from '@/utils/date'
+import { useAuth } from '@/contexts/auth-context'
+import { canManagePlatformAuth } from '@/types/smm'
 
 function generateId(): string {
   return Math.random().toString(36).substring(2, 9)
@@ -22,6 +24,9 @@ function screenshotUrl(path: string): string {
 }
 
 export function TwitterPage() {
+  const { user } = useAuth()
+  const hasTeam = Boolean(user?.group_id || user?.role_in_group)
+  const canAuth = canManagePlatformAuth(user?.role_in_group, hasTeam)
   const [searchParams, setSearchParams] = useSearchParams()
   const [activeTab, setActiveTab] = useState<'create' | 'auth' | 'posts' | 'profile'>('posts')
 
@@ -321,6 +326,7 @@ export function TwitterPage() {
       )}
 
       <div className="flex border-b border-[var(--border-color)]">
+        {canAuth && (
         <button
           className={`px-6 py-3 text-sm font-medium transition-all relative ${
             activeTab === 'auth'
@@ -334,6 +340,7 @@ export function TwitterPage() {
             <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-500" />
           )}
         </button>
+        )}
         <button
           className={`px-6 py-3 text-sm font-medium transition-all relative ${
             activeTab === 'posts'
@@ -371,7 +378,7 @@ export function TwitterPage() {
         </Alert>
       )}
 
-      {activeTab === 'auth' && (
+      {activeTab === 'auth' && canAuth && (
         <Card className="animate-slide-up">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">

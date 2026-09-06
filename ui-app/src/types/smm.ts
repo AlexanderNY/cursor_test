@@ -230,6 +230,7 @@ export interface PublishJob {
   updated_at?: string | null
   assigned_to?: number | null
   rejection_comment?: string | null
+  created_by_user_id?: number | null
   retry_count?: number
   last_error?: string | null
 }
@@ -255,6 +256,41 @@ export interface AutomationRule {
   enabled: boolean
   created_at?: string | null
   updated_at?: string | null
+}
+
+export interface PipelineCounts {
+  collected: number
+  processed: number | null
+  sent: number
+  failed: number
+  alerts_sent: number
+  channels?: number
+}
+
+export interface ChannelOpsStat {
+  channel_id: number
+  brand_id?: number | null
+  brand_name?: string | null
+  network: string
+  external_id: string
+  title?: string
+  sent: number
+  received: number
+  collected?: number
+  processed?: number | null
+  failed: number
+  alerts_sent?: number
+  conversion_pct?: number
+  role?: string
+}
+
+export interface ChannelStatsResponse {
+  period: string
+  days?: number
+  totals: PipelineCounts
+  by_network: (PipelineCounts & { network: string })[]
+  by_brand: (PipelineCounts & { brand_id?: number | null; brand_name?: string })[]
+  channels: ChannelOpsStat[]
 }
 
 export interface AnalyticsOverview {
@@ -348,9 +384,36 @@ export function isGroupEditor(role?: string | null): boolean {
   return isGroupAdmin(role) || role === 'editor' || role === 'author'
 }
 
+/** Any team member (or solo user) may create/publish posts. */
 export function canPublish(role?: string | null, globalRole?: string | null): boolean {
   if (globalRole === 'admin') return true
-  return isGroupEditor(role) || !role
+  if (!role) return true
+  return (
+    isGroupAdmin(role) ||
+    role === 'editor' ||
+    role === 'author' ||
+    role === 'analyst'
+  )
+}
+
+/** Auth tabs / credential management: solo user or team admin. */
+export function canManagePlatformAuth(
+  roleInGroup?: string | null,
+  hasTeam?: boolean,
+): boolean {
+  if (!hasTeam) return true
+  return isGroupAdmin(roleInGroup)
+}
+
+/** Analytics / team statistics: solo user or team admin. */
+export function canViewTeamAnalytics(
+  roleInGroup?: string | null,
+  hasTeam?: boolean,
+  globalRole?: string | null,
+): boolean {
+  if (globalRole === 'admin') return true
+  if (!hasTeam) return true
+  return isGroupAdmin(roleInGroup)
 }
 
 export function roleLabel(role?: string | null): string {
@@ -360,9 +423,9 @@ export function roleLabel(role?: string | null): string {
       return 'Admin'
     case 'editor':
     case 'author':
-      return 'Editor'
+      return 'Member'
     case 'analyst':
-      return 'Analyst'
+      return 'Member'
     default:
       return role ?? '—'
   }

@@ -11,6 +11,7 @@ class UserRegister(BaseModel):
     utm_source: Optional[str] = Field(None, max_length=64)
     utm_medium: Optional[str] = Field(None, max_length=64)
     utm_campaign: Optional[str] = Field(None, max_length=128)
+    invite_token: Optional[str] = Field(None, max_length=64)
 
 
 class UserLogin(BaseModel):
@@ -178,6 +179,49 @@ class AddMemberRequest(BaseModel):
     role_in_group: Literal["admin", "editor", "analyst", "manager", "author"] = "editor"
 
 
+class CreateInviteRequest(BaseModel):
+    """Создание invite-ссылки (email опционален)."""
+    email: Optional[str] = None
+    role_in_group: Literal["admin", "editor", "analyst", "manager", "author"] = "editor"
+    expires_days: int = Field(7, ge=1, le=30)
+
+
+class GroupInviteResponse(BaseModel):
+    id: int
+    group_id: int
+    email: Optional[str] = None
+    role_in_group: str
+    token: str
+    invited_by_user_id: int
+    status: str
+    expires_at: datetime
+    created_at: datetime
+    group_name: Optional[str] = None
+    invite_path: Optional[str] = None
+
+
+class InviteActionResponse(BaseModel):
+    status: Literal["added", "invited"]
+    group_name: Optional[str] = None
+    member: Optional[GroupMemberResponse] = None
+    invite: Optional[GroupInviteResponse] = None
+
+
+class InvitePeekResponse(BaseModel):
+    group_name: str
+    email: Optional[str] = None
+    role_in_group: str
+    status: str
+    expires_at: datetime
+
+
+class AcceptInviteResponse(BaseModel):
+    group_id: int
+    group_name: Optional[str] = None
+    role_in_group: str
+    already_member: bool = False
+
+
 def user_profile_from_user_dict(
     user: dict,
     memberships: Optional[list] = None,
@@ -233,4 +277,43 @@ class RoleTariffHistoryEntry(BaseModel):
 class CheckoutSessionRequest(BaseModel):
     """Self-serve Stripe Checkout: Standard или Full."""
     plan: Literal["standard", "full"]
+
+
+class PlanRequestCreate(BaseModel):
+    plan: Literal["free", "standard", "full"]
+    promo_code: Optional[str] = Field(None, max_length=40)
+    user_id: Optional[int] = None
+
+
+class PlanRequestInvoiceBody(BaseModel):
+    payment_note: Optional[str] = Field(None, max_length=2000)
+
+
+class PlanRequestRejectBody(BaseModel):
+    comment: Optional[str] = Field(None, max_length=2000)
+
+
+class PromoCodeCreate(BaseModel):
+    code: str = Field(..., min_length=3, max_length=40)
+    description: Optional[str] = Field(None, max_length=500)
+    discount_percent: Optional[int] = Field(None, ge=1, le=100)
+    discount_amount: Optional[int] = Field(None, ge=1)
+    applies_to_tariff: Optional[Literal["standard", "full"]] = None
+    max_redemptions: Optional[int] = Field(None, ge=1)
+    valid_from: Optional[datetime] = None
+    valid_until: Optional[datetime] = None
+    is_active: bool = True
+
+
+class PromoCodeUpdate(BaseModel):
+    code: Optional[str] = Field(None, min_length=3, max_length=40)
+    description: Optional[str] = Field(None, max_length=500)
+    discount_percent: Optional[int] = Field(None, ge=1, le=100)
+    discount_amount: Optional[int] = Field(None, ge=0)
+    applies_to_tariff: Optional[Literal["standard", "full"]] = None
+    max_redemptions: Optional[int] = Field(None, ge=1)
+    valid_from: Optional[datetime] = None
+    valid_until: Optional[datetime] = None
+    is_active: Optional[bool] = None
+
 

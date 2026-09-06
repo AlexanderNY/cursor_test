@@ -20,6 +20,7 @@ type AnkiStudyProps = {
   initialBranchIds?: string[]
   initialTags?: string[]
   onClose: () => void
+  onReview?: (card: AnkiCard, ease: 1 | 2 | 3 | 4) => void | Promise<void>
 }
 
 type Phase = 'setup' | 'study'
@@ -41,6 +42,7 @@ export function AnkiStudy({
   initialBranchIds = [],
   initialTags = [],
   onClose,
+  onReview,
 }: AnkiStudyProps) {
   const [phase, setPhase] = useState<Phase>('setup')
   const [selectedBranches, setSelectedBranches] = useState<string[]>(() =>
@@ -342,17 +344,44 @@ export function AnkiStudy({
           >
             {revealed ? 'Скрыть ответ' : 'Показать ответ'}
           </button>
-          <button
-            type="button"
-            className="lm-btn"
-            disabled={index >= total - 1}
-            onClick={() => {
-              setIndex((prev) => Math.min(total - 1, prev + 1))
-              setRevealed(false)
-            }}
-          >
-            Далее →
-          </button>
+          {revealed && onReview && card ? (
+            <>
+              <button
+                type="button"
+                className="lm-btn"
+                onClick={() => {
+                  void onReview(card, 1)
+                  setIndex((prev) => Math.min(prev + 1, total - 1))
+                  setRevealed(false)
+                }}
+              >
+                Снова
+              </button>
+              <button
+                type="button"
+                className="lm-btn is-active"
+                onClick={() => {
+                  void onReview(card, 3)
+                  setIndex((prev) => Math.min(prev + 1, total - 1))
+                  setRevealed(false)
+                }}
+              >
+                Хорошо
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              className="lm-btn"
+              disabled={index >= total - 1}
+              onClick={() => {
+                setIndex((prev) => Math.min(total - 1, prev + 1))
+                setRevealed(false)
+              }}
+            >
+              Далее →
+            </button>
+          )}
         </div>
         <p className="lm-viewport-hint">Пробел — ответ · ← → — карты · Esc — к фильтрам</p>
       </div>
