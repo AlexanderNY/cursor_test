@@ -404,15 +404,18 @@ export function SiteAdminPage() {
       </header>
 
       <AdminJumpNav
+        serviceItems={apps.map((app) => ({
+          id: `svc-${app.slug}`,
+          label: app.emoji ? `${app.emoji} ${app.title}` : app.title,
+          href: `/admin/apps/${app.slug}`,
+        }))}
         items={[
           { id: 'admin-tiles', label: 'Плашки' },
           { id: 'admin-promo', label: 'Спотлайт' },
-          { id: 'admin-learning-map', label: 'Карта' },
+          { id: 'admin-learning-map', label: 'Карта (MD)' },
           { id: 'admin-contacts', label: 'Контакты' },
           { id: 'admin-users', label: 'Пользователи' },
           { id: 'admin-assign', label: 'Админы сервисов' },
-          { id: 'admin-learn', label: 'Learn CMS', href: '/game/learn/admin' },
-          { id: 'admin-account', label: 'Кабинет', href: '/account' },
         ]}
       />
 
@@ -1058,14 +1061,18 @@ export function AppAdminPage() {
       </header>
 
       <AdminJumpNav
+        serviceItems={Array.from(
+          new Set([...(session.appAdmin || []), slug]),
+        ).map((appSlug) => ({
+          id: `svc-${appSlug}`,
+          label: appSlug === slug && app?.title ? app.title : appSlug,
+          href: `/admin/apps/${appSlug}`,
+        }))}
         items={[
           { id: 'app-tile', label: 'Описание' },
           { id: 'app-posts', label: 'Блог' },
           { id: 'app-public', label: 'Открыть сервис', href: `/app/${slug}` },
-          { id: 'app-account', label: 'Личный кабинет', href: `/account?section=app:${slug}` },
-          ...(isSuperAdmin(session)
-            ? [{ id: 'app-site-admin', label: 'Админка сайта', href: '/admin' }]
-            : []),
+          { id: 'app-account', label: 'Раздел в кабинете', href: `/account?section=app:${slug}` },
         ]}
       />
 

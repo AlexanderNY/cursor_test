@@ -3,6 +3,7 @@ from typing import Optional
 from database import get_db_connection
 from utils.jwt_utils import decode_token
 from utils.exceptions import TokenExpiredError, TokenInvalidError
+from shared.token_blacklist_redis import token_blacklist_redis
 
 
 async def save_refresh_token(user_id: int, token: str) -> None:
@@ -68,7 +69,7 @@ async def is_refresh_token_valid(token: str) -> bool:
 
 
 async def blacklist_token(token: str) -> None:
-    """Добавление токена в черный список."""
+    """Добавление токена в черный список (Postgres + Redis hot path)."""
     try:
         payload = decode_token(token)
         expires_at = datetime.fromtimestamp(payload["exp"])
@@ -87,9 +88,19 @@ async def blacklist_token(token: str) -> None:
                 (token, expires_at)
             )
 
+    await token_blacklist_redis.add(token, expires_at)
+    # Ensure ready flag stays set after first write (warm may have run already).
+    await token_blacklist_redis.mark_ready()
+
 
 async def is_token_blacklisted(token: str) -> bool:
-    """Проверка наличия токена в черном списке."""
+    """Проверка blacklist: Redis (если ready) → Postgres."""
+    ready = await token_blacklist_redis.is_ready()
+    if ready is True:
+        hit = await token_blacklist_redis.contains(token)
+        if hit is not None:
+            return hit
+
     async with get_db_connection() as conn:
         async with conn.cursor() as cur:
             await cur.execute(
@@ -101,6 +112,25 @@ async def is_token_blacklisted(token: str) -> bool:
             )
             row = await cur.fetchone()
             return row is not None
+
+
+async def warm_token_blacklist_redis() -> int:
+    """Load non-expired blacklisted tokens into Redis for gateway hot path."""
+    if not token_blacklist_redis.connected:
+        return 0
+    async with get_db_connection() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                """
+                SELECT token, expires_at
+                FROM blacklisted_tokens
+                WHERE expires_at > %s
+                """,
+                (datetime.utcnow(),),
+            )
+            rows = await cur.fetchall()
+    pairs = [(str(r[0]), r[1]) for r in rows if r and r[0]]
+    return await token_blacklist_redis.warm(pairs)
 
 
 async def save_email_verification_token(user_id: int, token: str) -> None:
@@ -209,4 +239,3 @@ async def delete_password_reset_token(token: str) -> None:
                 "DELETE FROM password_reset_tokens WHERE token = %s",
                 (token,)
             )
-

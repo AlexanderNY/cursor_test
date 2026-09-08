@@ -1,6 +1,10 @@
 """Core service DDL (hub posts, SMM, ops)."""
 
-from shared.db.generate_ddl import build_post_indexes, build_post_table_ddl
+from shared.db.generate_ddl import (
+    build_post_indexes,
+    build_post_table_ddl,
+    build_post_tenancy_migration,
+)
 
 POSTS_TABLE = build_post_table_ddl(
     "posts",
@@ -15,11 +19,10 @@ POSTS_TABLE = build_post_table_ddl(
     ],
 )
 
-POSTS_INDEXES = """
-CREATE INDEX IF NOT EXISTS idx_posts_status_created ON posts(status, created_at);
+POSTS_INDEXES = build_post_indexes("posts") + """
 CREATE UNIQUE INDEX IF NOT EXISTS idx_posts_source ON posts(source_platform, source_id)
     WHERE source_platform IS NOT NULL;
-""" + build_post_indexes("posts")
+"""
 
 CPOST_PROFILES_TABLE = """
 CREATE TABLE IF NOT EXISTS cpost_profiles (
@@ -193,6 +196,10 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_column THEN NULL; END $$;
 """
 
+# Existing post tables predate brand_id / channel_id; CREATE TABLE IF NOT EXISTS
+# will not add them. Must run before any CREATE INDEX on those columns.
+POST_TENANCY_MIGRATION = build_post_tenancy_migration()
+
 SMM_BRAND_CHANNELS_TABLE = """
 CREATE TABLE IF NOT EXISTS smm_brand_channels (
     id SERIAL PRIMARY KEY,
@@ -303,6 +310,39 @@ WHERE created_by_user_id IS NULL;
 CREATE INDEX IF NOT EXISTS idx_smm_jobs_created_by
     ON smm_publish_jobs(created_by_user_id)
     WHERE created_by_user_id IS NOT NULL;
+"""
+
+SMM_JOB_COMMENTS_TABLE = """
+CREATE TABLE IF NOT EXISTS smm_job_comments (
+    id SERIAL PRIMARY KEY,
+    job_id INTEGER NOT NULL REFERENCES smm_publish_jobs(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL,
+    parent_id INTEGER NULL REFERENCES smm_job_comments(id) ON DELETE CASCADE,
+    body TEXT NOT NULL,
+    anchor JSONB,
+    resolved_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_smm_job_comments_job
+    ON smm_job_comments(job_id, created_at);
+"""
+
+SMM_JOB_REVISIONS_TABLE = """
+CREATE TABLE IF NOT EXISTS smm_job_revisions (
+    id SERIAL PRIMARY KEY,
+    job_id INTEGER NOT NULL REFERENCES smm_publish_jobs(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL,
+    source_text TEXT,
+    media JSONB DEFAULT '[]',
+    targets JSONB DEFAULT '[]',
+    publish_at TIMESTAMPTZ,
+    status VARCHAR(30),
+    change_summary VARCHAR(500),
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_smm_job_revisions_job
+    ON smm_job_revisions(job_id, created_at DESC);
 """
 
 SMM_AUTOMATIONS_TABLE = """
@@ -470,6 +510,48 @@ CREATE INDEX IF NOT EXISTS idx_smm_templates_user
     ON smm_templates(user_id);
 """
 
+SMM_CONTENT_SERIES_TABLE = """
+CREATE TABLE IF NOT EXISTS smm_content_series (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    brand_id INTEGER NOT NULL REFERENCES smm_brands(id) ON DELETE CASCADE,
+    title VARCHAR(255) NOT NULL,
+    color VARCHAR(7) NOT NULL DEFAULT '#8B5CF6',
+    body TEXT NOT NULL DEFAULT '',
+    template_id INTEGER REFERENCES smm_templates(id) ON DELETE SET NULL,
+    targets JSONB NOT NULL DEFAULT '[]'::jsonb,
+    weekdays JSONB NOT NULL DEFAULT '[]'::jsonb,
+    publish_time VARCHAR(5) NOT NULL DEFAULT '10:00',
+    cadence VARCHAR(20) NOT NULL DEFAULT 'weekly'
+        CHECK (cadence IN ('weekly', 'biweekly')),
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    starts_on DATE,
+    ends_on DATE,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_smm_content_series_brand
+    ON smm_content_series(brand_id);
+CREATE INDEX IF NOT EXISTS idx_smm_content_series_user
+    ON smm_content_series(user_id);
+CREATE INDEX IF NOT EXISTS idx_smm_content_series_active
+    ON smm_content_series(brand_id, is_active)
+    WHERE is_active = TRUE;
+"""
+
+SMM_JOBS_SERIES_MIGRATION = """
+DO $$ BEGIN
+  ALTER TABLE smm_publish_jobs
+    ADD COLUMN series_id INTEGER REFERENCES smm_content_series(id) ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+CREATE INDEX IF NOT EXISTS idx_smm_jobs_series
+    ON smm_publish_jobs(series_id)
+    WHERE series_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_smm_jobs_series_publish
+    ON smm_publish_jobs(series_id, publish_at)
+    WHERE series_id IS NOT NULL;
+"""
+
 SMM_MEDIA_PACKS_TABLE = """
 CREATE TABLE IF NOT EXISTS smm_media_packs (
     id SERIAL PRIMARY KEY,
@@ -501,6 +583,7 @@ CREATE TABLE IF NOT EXISTS learn_posts (
     cheatsheet TEXT NOT NULL DEFAULT '',
     diagram TEXT NOT NULL DEFAULT '',
     links JSONB NOT NULL DEFAULT '[]'::jsonb,
+    structured JSONB NOT NULL DEFAULT '{}'::jsonb,
     theory_format VARCHAR(16) NOT NULL DEFAULT 'markdown'
         CHECK (theory_format IN ('markdown', 'html')),
     lab_format VARCHAR(16) NOT NULL DEFAULT 'markdown'
@@ -528,11 +611,34 @@ CREATE INDEX IF NOT EXISTS idx_learn_progress_user
     ON learn_progress (user_id);
 """
 
+POST_LIFECYCLE_EVENTS_TABLE = """
+CREATE TABLE IF NOT EXISTS post_lifecycle_events (
+    id BIGSERIAL PRIMARY KEY,
+    platform VARCHAR(20) NOT NULL,
+    post_id INTEGER NOT NULL,
+    user_id INTEGER,
+    job_id INTEGER,
+    from_status VARCHAR(40),
+    to_status VARCHAR(40) NOT NULL,
+    actor VARCHAR(80) NOT NULL DEFAULT 'system',
+    payload JSONB DEFAULT '{}',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_post_lifecycle_post
+    ON post_lifecycle_events (platform, post_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_post_lifecycle_job
+    ON post_lifecycle_events (job_id, created_at DESC)
+    WHERE job_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_post_lifecycle_created
+    ON post_lifecycle_events (created_at DESC);
+"""
+
 ALL_TABLES: list[str] = [
     POSTS_TABLE,
-    POSTS_INDEXES,
     CPOST_PROFILES_TABLE,
     CPOST_POSTS_TABLE,
+    POST_TENANCY_MIGRATION,
+    POSTS_INDEXES,
     CPOST_POSTS_INDEXES,
     CURL_SETTINGS_TABLE,
     CURL_ONE_TIME_DONE_TABLE,
@@ -548,6 +654,8 @@ ALL_TABLES: list[str] = [
     SMM_JOBS_TABLE,
     SMM_JOBS_APPROVAL_MIGRATION,
     SMM_JOBS_CREATED_BY_MIGRATION,
+    SMM_JOB_COMMENTS_TABLE,
+    SMM_JOB_REVISIONS_TABLE,
     SMM_AUTOMATIONS_TABLE,
     SMM_COMPETITOR_SNAPSHOTS_TABLE,
     SMM_INDEXES,
@@ -558,7 +666,10 @@ ALL_TABLES: list[str] = [
     SMM_BRANDS_AI_MIGRATION,
     SMM_BRANDS_DEMO_MIGRATION,
     SMM_TEMPLATES_TABLE,
+    SMM_CONTENT_SERIES_TABLE,
+    SMM_JOBS_SERIES_MIGRATION,
     SMM_MEDIA_PACKS_TABLE,
     LEARN_POSTS_TABLE,
     LEARN_PROGRESS_TABLE,
+    POST_LIFECYCLE_EVENTS_TABLE,
 ]

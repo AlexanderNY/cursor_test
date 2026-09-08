@@ -10,6 +10,8 @@ from services.post_service import post_service
 from schemas import InstagramProfileCreate, InstagramPost, InstagramPostUpdate
 from storage_client import get_storage
 from shared import async_fs
+from config import settings
+from upload_limits import enforce_upload_count, read_upload_limited
 
 
 router = APIRouter(prefix="/instagram", tags=["Instagram"])
@@ -31,7 +33,9 @@ async def _save_upload(upload_dir: Path, file: UploadFile, subdir: str) -> str:
     """Сохраняет загруженный файл в S3 или локально. Возвращает относительный URL (/uploads/instagram/...)."""
     ext = Path(file.filename).suffix if file.filename else ".bin"
     name = f"{uuid.uuid4()}{ext}"
-    content = await file.read()
+    content = await read_upload_limited(
+        file, max_bytes=settings.MAX_UPLOAD_IMAGE_BYTES, label="Image"
+    )
     storage = get_storage()
     if storage:
         key = f"{S3_KEY_PREFIX}/{subdir}/{name}"
@@ -139,6 +143,7 @@ async def create_instagram_post(
         target_groups = []
 
     try:
+        enforce_upload_count(list(images or []), label="images")
         for img in images or []:
             if img.filename:
                 url = await _save_upload(upload_dir, img, "images")

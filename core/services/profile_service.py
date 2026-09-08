@@ -203,8 +203,8 @@ class ProfileService:
                         add_static_html, static_html_content,
                         summarize_enabled, summarize_min_length, digest_interval_min,
                         digest_channel, classification_enabled, classification_categories,
-                        batch_enrichment_enabled
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        batch_enrichment_enabled, proxy_url
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (user_id) DO UPDATE SET
                         publish_enabled = EXCLUDED.publish_enabled,
                         collect_enabled = EXCLUDED.collect_enabled,
@@ -236,10 +236,12 @@ class ProfileService:
                         classification_enabled = EXCLUDED.classification_enabled,
                         classification_categories = EXCLUDED.classification_categories,
                         batch_enrichment_enabled = EXCLUDED.batch_enrichment_enabled,
+                        proxy_url = EXCLUDED.proxy_url,
                         auth_state = CASE
                             WHEN tg_profiles.api_id IS DISTINCT FROM EXCLUDED.api_id
                               OR tg_profiles.api_hash IS DISTINCT FROM EXCLUDED.api_hash
                               OR tg_profiles.auth_phone_number IS DISTINCT FROM EXCLUDED.auth_phone_number
+                              OR tg_profiles.proxy_url IS DISTINCT FROM EXCLUDED.proxy_url
                             THEN 'pending_code'
                             ELSE tg_profiles.auth_state
                         END,
@@ -247,6 +249,7 @@ class ProfileService:
                             WHEN tg_profiles.api_id IS DISTINCT FROM EXCLUDED.api_id
                               OR tg_profiles.api_hash IS DISTINCT FROM EXCLUDED.api_hash
                               OR tg_profiles.auth_phone_number IS DISTINCT FROM EXCLUDED.auth_phone_number
+                              OR tg_profiles.proxy_url IS DISTINCT FROM EXCLUDED.proxy_url
                             THEN NULL
                             ELSE tg_profiles.auth_phone_code_hash
                         END,
@@ -318,6 +321,7 @@ class ProfileService:
                         data.get("classification_enabled", False),
                         classification_categories_json,
                         data.get("batch_enrichment_enabled", False),
+                        data.get("proxy_url"),
                     )
                 )
                 row = await cur.fetchone()
@@ -375,6 +379,7 @@ class ProfileService:
         profile.setdefault("digest_channel", None)
         profile.setdefault("classification_enabled", False)
         profile.setdefault("batch_enrichment_enabled", False)
+        profile.setdefault("proxy_url", None)
         cc = profile.get("classification_categories")
         if isinstance(cc, str):
             try:

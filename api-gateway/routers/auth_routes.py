@@ -210,6 +210,24 @@ async def admin_growth_summary(
     return await forward_to_auth("/admin/growth/summary", request)
 
 
+@router.post("/activity/heartbeat")
+async def activity_heartbeat(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    """Heartbeat активного сеанса в приложении."""
+    return await forward_to_auth("/activity/heartbeat", request)
+
+
+@router.get("/admin/product-metrics")
+async def admin_product_metrics(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    """Продуктовые метрики админки (Active Users / Engagement / Retention / Conversion)."""
+    return await forward_to_auth("/admin/product-metrics", request)
+
+
 @router.get("/billing/plans")
 async def billing_plans(request: Request) -> Response:
     """Матрица тарифов (публично)."""

@@ -28,6 +28,7 @@ from storage_client import get_storage
 from pydantic import BaseModel
 from config import settings, get_vk_oauth_redirect_uri
 from shared import async_fs
+from upload_limits import read_upload_limited
 
 logger = logging.getLogger(__name__)
 
@@ -1047,7 +1048,9 @@ async def upload_vk_image(
             detail=f"Allowed formats: {', '.join(ALLOWED_IMAGE_EXTENSIONS)}",
         )
     name = f"{uuid.uuid4().hex}{ext}"
-    content = await image.read()
+    content = await read_upload_limited(
+        image, max_bytes=settings.MAX_UPLOAD_IMAGE_BYTES, label="Image"
+    )
     storage = get_storage()
     if storage:
         key = f"{S3_KEY_PREFIX}/{name}"

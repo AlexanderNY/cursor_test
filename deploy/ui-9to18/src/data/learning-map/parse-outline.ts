@@ -4,7 +4,21 @@ export type MindNode = {
   children: MindNode[]
   description?: string
   tags?: string[]
+  /** Learn article slug when leaf is linked 1:1. */
+  learnSlug?: string
+  /** Profile ids that should see this node (empty = all). */
+  profiles?: string[]
 }
+
+export const LEARN_MAP_PROFILES = [
+  { id: 'analyst', label: 'Аналитик' },
+  { id: 'devops', label: 'DevOps' },
+  { id: 'developer', label: 'Разработчик' },
+  { id: 'tester', label: 'Тестировщик' },
+  { id: 'product_owner', label: 'Владелец продукта' },
+] as const
+
+export type LearnMapProfileId = (typeof LEARN_MAP_PROFILES)[number]['id']
 
 type StackItem = { depth: number; node: MindNode }
 
@@ -22,7 +36,6 @@ function bulletDepth(line: string): number | null {
     return null
   }
   const spaces = match[1].replace(/\t/g, '  ').length
-  // outline export: depth 3 = `- `, deeper = 2 spaces per level
   return 3 + Math.floor(spaces / 2)
 }
 
@@ -30,16 +43,40 @@ function cleanTitle(raw: string): string {
   return raw.replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim()
 }
 
-function extractTags(raw: string): { text: string; tags: string[] } {
+function extractMeta(raw: string): {
+  text: string
+  tags: string[]
+  learnSlug?: string
+  profiles?: string[]
+} {
+  let text = cleanTitle(raw)
+  let learnSlug: string | undefined
+  let profiles: string[] | undefined
+  const brace = /\{([^}]*)\}\s*$/.exec(text)
+  if (brace) {
+    const meta = brace[1]
+    text = text.slice(0, brace.index).trim()
+    const learnMatch = /learn\s*:\s*([a-z0-9-]+)/i.exec(meta)
+    if (learnMatch) {
+      learnSlug = learnMatch[1].toLowerCase()
+    }
+    const profilesMatch = /profiles\s*:\s*([a-z0-9_,\s-]+)/i.exec(meta)
+    if (profilesMatch) {
+      profiles = profilesMatch[1]
+        .split(/[,|\s]+/)
+        .map((p) => p.trim().toLowerCase())
+        .filter(Boolean)
+    }
+  }
   const tags: string[] = []
-  const text = raw
+  text = text
     .replace(/(^|\s)#([A-Za-zА-Яа-яЁё0-9_+-]+)/g, (_full, space: string, tag: string) => {
       tags.push(tag.toLowerCase())
       return space
     })
     .replace(/\s+/g, ' ')
     .trim()
-  return { text, tags }
+  return { text, tags, learnSlug, profiles }
 }
 
 function splitTitleDescription(raw: string): { title: string; description: string } {
@@ -93,6 +130,12 @@ function promoteDescriptionChildren(node: MindNode): void {
     node.description = only.title
   }
   node.tags = [...new Set([...(node.tags || []), ...(only.tags || [])])]
+  if (!node.learnSlug && only.learnSlug) {
+    node.learnSlug = only.learnSlug
+  }
+  if ((!node.profiles || node.profiles.length === 0) && only.profiles?.length) {
+    node.profiles = only.profiles
+  }
   node.children = []
 }
 
@@ -108,14 +151,16 @@ export function parseOutlineMarkdown(markdown: string): MindNode {
     }
     const parent = stack[stack.length - 1].node
     counter += 1
-    const tagged = extractTags(rawTitle)
-    const split = splitTitleDescription(tagged.text)
+    const meta = extractMeta(rawTitle)
+    const split = splitTitleDescription(meta.text)
     const node: MindNode = {
       id: `n${counter}`,
       title: split.title || '—',
       children: [],
       description: split.description || undefined,
-      tags: tagged.tags.length ? tagged.tags : undefined,
+      tags: meta.tags.length ? meta.tags : undefined,
+      learnSlug: meta.learnSlug,
+      profiles: meta.profiles,
     }
     parent.children.push(node)
     stack.push({ depth, node })
@@ -131,7 +176,7 @@ export function parseOutlineMarkdown(markdown: string): MindNode {
     if (hDepth !== null) {
       const title = cleanTitle(line.replace(/^#{1,6}\s+/, ''))
       if (hDepth === 1) {
-        root.title = title || root.title
+        root.title = extractMeta(title).text || root.title
         stack.length = 1
         continue
       }
@@ -147,11 +192,65 @@ export function parseOutlineMarkdown(markdown: string): MindNode {
   }
 
   promoteDescriptionChildren(root)
+  enforceLearnSlugLeafInvariant(root)
   return root
+}
+
+/**
+ * Invariant: one Learn article (learnSlug) ↔ one leaf node.
+ * - learnSlug only kept on leaves (no children).
+ * - duplicate slug on a later node is dropped (console warn).
+ */
+export function enforceLearnSlugLeafInvariant(root: MindNode): void {
+  const seen = new Map<string, string>()
+
+  const walk = (node: MindNode): void => {
+    for (const child of node.children) {
+      walk(child)
+    }
+    if (!node.learnSlug) {
+      return
+    }
+    const slug = node.learnSlug.toLowerCase()
+    const isLeaf = node.children.length === 0 && node.id !== 'root'
+    if (!isLeaf) {
+      if (typeof console !== 'undefined') {
+        console.warn(
+          `[learning-map] learn:${slug} ignored on non-leaf «${node.title}» (id=${node.id})`,
+        )
+      }
+      delete node.learnSlug
+      return
+    }
+    const prevId = seen.get(slug)
+    if (prevId) {
+      if (typeof console !== 'undefined') {
+        console.warn(
+          `[learning-map] duplicate learn:${slug} on «${node.title}» (id=${node.id}); kept ${prevId}`,
+        )
+      }
+      delete node.learnSlug
+      return
+    }
+    seen.set(slug, node.id)
+  }
+
+  walk(root)
 }
 
 export function countNodes(node: MindNode): number {
   return 1 + node.children.reduce((sum, child) => sum + countNodes(child), 0)
+}
+
+export function collectLeaves(node: MindNode, acc: MindNode[] = []): MindNode[] {
+  if (node.children.length === 0 && node.id !== 'root') {
+    acc.push(node)
+    return acc
+  }
+  for (const child of node.children) {
+    collectLeaves(child, acc)
+  }
+  return acc
 }
 
 export function filterTree(node: MindNode, query: string): MindNode | null {
@@ -165,7 +264,8 @@ export function filterTree(node: MindNode, query: string): MindNode | null {
   const selfMatch =
     node.title.toLowerCase().includes(q) ||
     (node.description || '').toLowerCase().includes(q) ||
-    (node.tags || []).some((tag) => tag.toLowerCase().includes(q))
+    (node.tags || []).some((tag) => tag.toLowerCase().includes(q)) ||
+    (node.learnSlug || '').toLowerCase().includes(q)
   if (!selfMatch && filteredChildren.length === 0) {
     return null
   }
@@ -177,7 +277,6 @@ export function filterTree(node: MindNode, query: string): MindNode | null {
 
 type TagLookup = (node: MindNode) => string[]
 
-/** Оставляет узлы, у которых есть любой из selectedTags (или потомок с таким тегом). */
 export function filterTreeByTags(
   node: MindNode,
   selectedTags: string[],
@@ -204,7 +303,33 @@ export function filterTreeByTags(
   }
 }
 
-/** Обрезает дерево до maxDepth уровней от корня (корень = уровень 0). */
+/** Filter by career profile: keep branch if it or a descendant matches. */
+export function filterTreeByProfile(
+  node: MindNode,
+  profileId: string | null,
+): MindNode | null {
+  if (!profileId) {
+    return node
+  }
+  const wanted = profileId.trim().toLowerCase()
+  const filteredChildren = node.children
+    .map((child) => filterTreeByProfile(child, profileId))
+    .filter((child): child is MindNode => child !== null)
+
+  if (node.children.length > 0) {
+    if (filteredChildren.length === 0) {
+      return null
+    }
+    return { ...node, children: filteredChildren }
+  }
+  const selfProfiles = (node.profiles || []).map((p) => p.toLowerCase())
+  const selfMatch = selfProfiles.length === 0 || selfProfiles.includes(wanted)
+  if (!selfMatch) {
+    return null
+  }
+  return { ...node, children: [] }
+}
+
 export function limitDepth(node: MindNode, maxDepth: number, depth = 0): MindNode {
   if (depth >= maxDepth) {
     return { ...node, children: [] }

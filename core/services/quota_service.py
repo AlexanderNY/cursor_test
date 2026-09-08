@@ -1,4 +1,4 @@
-"""Квоты по тарифу пользователя (синхронизировать с auth/billing/plan_definitions.py)."""
+"""Квоты по тарифу пользователя. Source of truth: shared.billing.plan_definitions."""
 
 from __future__ import annotations
 
@@ -7,117 +7,38 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 from database import get_db_connection, release_db_connection
+from shared.billing.plan_definitions import (
+    normalize_tariff_code,
+    plan_feature as shared_plan_feature,
+    plan_limit as shared_plan_limit_raw,
+    quota_limits_for_tariff,
+)
 from shared.db.post_columns import QUOTA_POST_TABLES
 
 from exceptions import QuotaExceededError
-
-# Зеркало auth/billing/plan_definitions.py
-_PLAN_LIMITS: dict[str, dict[str, Any]] = {
-    "free": {
-        "monthly_posts": 300,
-        "storage_gb": 1,
-        "max_own_channels": 3,
-        "max_brands": 1,
-        "max_targets_per_job": 1,
-        "max_automations": 0,
-        "max_templates": 5,
-        "max_media_packs": 2,
-        "max_team_seats": 1,
-        "ai_calls_month": 0,
-        "schedule_horizon_days": 7,
-        "stats_retention_days": 7,
-        "csv_import_rows": 20,
-        "features": {
-            "inbox_reply": False,
-            "inbox_redirect": False,
-            "ai_composer": False,
-            "automations": False,
-            "competitors": False,
-            "approval_workflow": False,
-            "best_times": False,
-            "channel_stats": True,
-            "multi_channel_send": True,
-            "schedule": True,
-        },
-    },
-    "standard": {
-        "monthly_posts": 3000,
-        "storage_gb": 10,
-        "max_own_channels": 10,
-        "max_brands": 5,
-        "max_targets_per_job": 5,
-        "max_automations": 5,
-        "max_templates": 50,
-        "max_media_packs": 20,
-        "max_team_seats": 5,
-        "ai_calls_month": 100,
-        "schedule_horizon_days": 30,
-        "stats_retention_days": 90,
-        "csv_import_rows": 200,
-        "features": {
-            "inbox_reply": True,
-            "inbox_redirect": True,
-            "ai_composer": True,
-            "automations": True,
-            "competitors": False,
-            "approval_workflow": True,
-            "best_times": True,
-            "channel_stats": True,
-            "multi_channel_send": True,
-            "schedule": True,
-        },
-    },
-    "full": {
-        "monthly_posts": 50000,
-        "storage_gb": 100,
-        "max_own_channels": 20,
-        "max_brands": 20,
-        "max_targets_per_job": 20,
-        "max_automations": 50,
-        "max_templates": 500,
-        "max_media_packs": 100,
-        "max_team_seats": 20,
-        "ai_calls_month": 2000,
-        "schedule_horizon_days": 90,
-        "stats_retention_days": 365,
-        "csv_import_rows": 2000,
-        "features": {
-            "inbox_reply": True,
-            "inbox_redirect": True,
-            "ai_composer": True,
-            "automations": True,
-            "competitors": True,
-            "approval_workflow": True,
-            "best_times": True,
-            "channel_stats": True,
-            "multi_channel_send": True,
-            "schedule": True,
-        },
-    },
-}
-
-_TARIFF_ALIASES = {"basic": "standard", "premium": "full"}
 
 _POST_TABLES = QUOTA_POST_TABLES
 
 
 def normalize_tariff(tariff: Optional[str]) -> str:
-    t = (tariff or "free").strip().lower()
-    return _TARIFF_ALIASES.get(t, t)
+    return normalize_tariff_code(tariff)
 
 
 def get_plan_limits(tariff: Optional[str]) -> dict[str, Any]:
-    t = normalize_tariff(tariff)
-    return _PLAN_LIMITS.get(t, _PLAN_LIMITS["free"])
+    return quota_limits_for_tariff(tariff)
 
 
 def plan_limit(tariff: Optional[str], key: str, default: int = 0) -> int:
-    return int(get_plan_limits(tariff).get(key, default))
+    # quota keys use short names (monthly_posts); also accept plan_definitions keys
+    limits = get_plan_limits(tariff)
+    if key in limits:
+        return int(limits.get(key, default))
+    # fallback to raw plan definition keys like monthly_posts_limit
+    return int(shared_plan_limit_raw(tariff, key, default))
 
 
 def plan_feature(tariff: Optional[str], key: str, default: bool = False) -> bool:
-    features = get_plan_limits(tariff).get("features") or {}
-    return bool(features.get(key, default))
+    return shared_plan_feature(tariff, key, default)
 
 
 def _monthly_limit_for_tariff(tariff: Optional[str]) -> int:
@@ -256,6 +177,7 @@ async def get_usage_summary(user_id: int) -> dict[str, Any]:
     ai = await get_ai_usage(user_id)
 
     channels_used = 0
+    competitors_used = 0
     brands_used = 0
     automations_used = 0
     conn = await get_db_connection()
@@ -271,6 +193,17 @@ async def get_usage_summary(user_id: int) -> dict[str, Any]:
             )
             row = await cur.fetchone()
             channels_used = int(row[0] if row else 0)
+
+            await cur.execute(
+                """
+                SELECT COUNT(*) FROM smm_brand_channels c
+                JOIN smm_brands b ON b.id = c.brand_id
+                WHERE b.user_id = %s AND c.role = 'competitor'
+                """,
+                (user_id,),
+            )
+            row = await cur.fetchone()
+            competitors_used = int(row[0] if row else 0)
 
             await cur.execute(
                 "SELECT COUNT(*) FROM smm_brands WHERE user_id = %s",
@@ -301,6 +234,11 @@ async def get_usage_summary(user_id: int) -> dict[str, Any]:
         _metric("monthly_posts", posts_used, int(limits.get("monthly_posts", 0))),
         _metric("ai_calls_month", int(ai.get("used", 0)), int(ai.get("limit", 0))),
         _metric("max_own_channels", channels_used, int(limits.get("max_own_channels", 0))),
+        _metric(
+            "max_competitor_channels",
+            competitors_used,
+            int(limits.get("max_competitor_channels", 0)),
+        ),
         _metric("max_brands", brands_used, int(limits.get("max_brands", 0))),
         _metric("max_automations", automations_used, int(limits.get("max_automations", 0))),
         _metric("storage_gb", None, int(limits.get("storage_gb", 0)), unit="GB"),

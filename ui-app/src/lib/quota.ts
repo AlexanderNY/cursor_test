@@ -13,9 +13,14 @@ const RESOURCE_LABELS: Record<string, string> = {
   monthly_posts: 'Posts / month',
   ai_calls_month: 'AI calls / month',
   max_own_channels: 'Own channels',
+  max_competitor_channels: 'Competitor channels',
   max_brands: 'Brands',
   max_automations: 'Automations',
+  max_templates: 'Templates',
+  max_media_packs: 'Media packs',
+  max_content_series: 'Content series / рубрики',
   max_team_seats: 'Team seats',
+  schedule_horizon_days: 'Schedule horizon',
   storage_gb: 'Storage',
   'feature:competitors': 'Competitors',
   'feature:ai_composer': 'AI composer',
@@ -23,6 +28,9 @@ const RESOURCE_LABELS: Record<string, string> = {
   'feature:approval_workflow': 'Approval workflow',
   'feature:best_times': 'Best times',
   'feature:inbox_reply': 'Inbox reply',
+  'feature:tg_listening': 'Telegram Listening',
+  'feature:channel_stats': 'Channel stats',
+  'feature:schedule': 'Scheduling',
 }
 
 export function quotaResourceLabel(key: string): string {

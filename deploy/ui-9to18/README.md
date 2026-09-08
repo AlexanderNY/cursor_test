@@ -10,16 +10,17 @@
 | URL | Страница |
 |-----|----------|
 | `/` | Главная — сетка разделов |
-| `/game/bowl` | Bowl 2D — игра на Pyodide |
-| `/game/learn` | Learn — оглавление (рубрики + сезон S01) |
+| `/game/bowl` | Bowl 2D — игра на Pyodide (перки, заказы) |
+| `/game/learn` | Learn — оглавление (статьи + Anki) |
 | `/game/learn/admin/login` | Learn — вход (JWT CopyParse: admin/author) |
 | `/game/learn/admin` | Learn — админка: список записей |
 | `/game/learn/admin/new` | Learn — создать запись |
-| `/game/learn/admin/:slug` | Learn — редактировать запись (HTML-редактор) |
-| `/game/learn/:slug` | Learn — выпуск (теория / лаба / шпаргалка) |
+| `/game/learn/admin/:slug` | Learn — редактировать (StructuredPost + лаба) |
+| `/game/learn/:slug` | Learn — статья (Anki/квиз) + опциональная лаба |
+| `/game/learning-map` | Карта обучения — профили и листья → Learn |
 | `/game/:slug` | Страница раздела (заглушка) |
 
-Learn читает/пишет контент через API gateway: `GET /api/learn/posts` (публично), админка — `/api/learn/admin/*` + `/api/auth/*`. Edge (`9to18.conf`) проксирует только эти префиксы. Seed S01 лежит в `core/data/learn_seed.json`. Bowl по-прежнему в localStorage.
+Learn читает/пишет контент через API gateway: `GET /api/learn/posts` (публично), админка — `/api/learn/admin/*` + `/api/auth/*`. Seed: `core/data/learn_seed.json` (B + S01 + MAP). Bowl: localStorage (сейв + заказы).
 
 ## Локальная разработка
 

@@ -6,6 +6,7 @@ import { inputManager } from './input-manager'
 import { PerkSelectScreen } from './perk-select-screen'
 import { writeSave } from './save-storage'
 import { getAutosaveIntervalMs } from './game-config'
+import { awardMatchCredits, loadOrders } from './orders-storage'
 import type { PerkKind, RenderState } from './types'
 import { VirtualJoystick } from './virtual-joystick'
 
@@ -20,10 +21,12 @@ export function GameScreen({ onBackToMenu }: GameScreenProps) {
   const lastTimeRef = useRef<number | null>(null)
   const autosaveRef = useRef<number>(0)
   const gameOverRef = useRef(false)
+  const rewardedRef = useRef(false)
   const [showGameOver, setShowGameOver] = useState(false)
   const [showJoystick, setShowJoystick] = useState(false)
   const [renderState, setRenderState] = useState<RenderState | null>(null)
   const [loopError, setLoopError] = useState<string | null>(null)
+  const [creditsGained, setCreditsGained] = useState(0)
 
   const persistSave = useCallback(async () => {
     const stateJson = await gameBridge.exportState()
@@ -121,6 +124,13 @@ export function GameScreen({ onBackToMenu }: GameScreenProps) {
 
           if (frameState.game_over) {
             gameOverRef.current = true
+            if (!rewardedRef.current) {
+              rewardedRef.current = true
+              const before = loadOrders().credits
+              const survivedBoss = Boolean(frameState.boss_active || frameState.active_boss)
+              awardMatchCredits(frameState.enemies_eaten || 0, survivedBoss)
+              setCreditsGained(loadOrders().credits - before)
+            }
             setShowGameOver(true)
           }
 
@@ -211,7 +221,13 @@ export function GameScreen({ onBackToMenu }: GameScreenProps) {
         </div>
       )}
 
-      {showGameOver && <GameOverScreen onBackToMenu={onBackToMenu} />}
+      {showGameOver && (
+        <GameOverScreen
+          enemiesEaten={renderState?.enemies_eaten || 0}
+          creditsGained={creditsGained}
+          onBackToMenu={onBackToMenu}
+        />
+      )}
     </div>
   )
 }

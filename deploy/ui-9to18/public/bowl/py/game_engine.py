@@ -37,6 +37,9 @@ from ecosystem import try_ram_enemy, update_green_pickup, update_red_pickup
 from perks import (
     active_perk_ids,
     can_upgrade,
+    perk_dash_stats,
+    perk_pull_resist,
+    perk_shell_mults,
     perk_spike_contact_stats,
     perk_speed_mult,
     perk_tentacle_stats,
@@ -496,12 +499,14 @@ class GameEngine:
         is_moving = nx != 0.0 or ny != 0.0
         is_sprinting = sprint and is_moving and self.player.stamina > 0.0
         self.player.is_sprinting = is_sprinting
+        dash_bonus, stamina_drain_mult, _iframe = perk_dash_stats(self.player.perk_levels)
         if is_sprinting:
-            sprint_mult = float(cfg("sprint_speed_mult"))
+            sprint_mult = float(cfg("sprint_speed_mult")) + dash_bonus
             accel *= sprint_mult
             self.player.stamina = max(
                 0.0,
-                self.player.stamina - float(cfg("stamina_drain_per_sec")) * dt,
+                self.player.stamina
+                - float(cfg("stamina_drain_per_sec")) * stamina_drain_mult * dt,
             )
         else:
             self.player.stamina = min(
@@ -522,6 +527,7 @@ class GameEngine:
                 self.player.x,
                 self.player.y,
             )
+            pull *= 1.0 - perk_pull_resist(self.player.perk_levels)
             dx, dy = normalize(
                 self.bowl_center_x - self.player.x,
                 self.bowl_center_y - self.player.y,
@@ -1267,6 +1273,8 @@ class GameEngine:
                 )
 
     def _check_enemy_hits(self) -> None:
+        import random
+
         for enemy in self.enemies:
             if enemy.cooldown_left > 0:
                 continue
@@ -1274,16 +1282,21 @@ class GameEngine:
                 continue
             if can_eat_entity(enemy.radius, self.player.radius):
                 continue
+            _dash_bonus, _drain, iframe_chance = perk_dash_stats(self.player.perk_levels)
+            if self.player.is_sprinting and iframe_chance > 0 and random.random() < iframe_chance:
+                enemy.cooldown_left = float(cfg("enemy_hit_cooldown")) * 0.5
+                continue
+            dmg_mult, kb_mult = perk_shell_mults(self.player.perk_levels)
             if enemy.is_boss:
-                apply_boss_hit(enemy, self.player)
+                apply_boss_hit(enemy, self.player, damage_mult=dmg_mult)
             else:
-                damage = float(cfg("hit_damage"))
+                damage = float(cfg("hit_damage")) * dmg_mult
                 self.player.red = max(0.0, self.player.red - damage)
             enemy.cooldown_left = float(cfg("enemy_hit_cooldown"))
             enemy.state = "cooldown"
             dx, dy = normalize(self.player.x - enemy.x, self.player.y - enemy.y)
             if dx != 0.0 or dy != 0.0:
-                kb = float(cfg("knockback_distance"))
+                kb = float(cfg("knockback_distance")) * kb_mult
                 self.player.vx += dx * kb * 0.5
                 self.player.vy += dy * kb * 0.5
 

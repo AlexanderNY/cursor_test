@@ -51,6 +51,12 @@ async def publish_once():
     return {"status": "ok", "published": n}
 
 
+@app.post("/internal/publish-now")
+async def publish_now():
+    """Wake publisher immediately (alias for publish-once)."""
+    return await publish_once()
+
+
 @app.post("/dzen-bot/collect-once")
 async def collect_once():
     """Один проход сбора ссылок из студии."""

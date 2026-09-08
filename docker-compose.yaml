@@ -108,6 +108,9 @@ services:
     build: 
       context: .
       dockerfile: ./auth/Dockerfile
+    depends_on:
+      redis:
+        condition: service_started
     ports:
       # Только localhost: не публиковать Auth наружу (иначе identity spoof в обход gateway)
       - "127.0.0.1:8001:8001"
@@ -115,6 +118,7 @@ services:
       - API_GATEWAY_URL=http://api_gateway:8000
       - DATABASE_URL=${DATABASE_URL}
       - SECRET_KEY=${SECRET_KEY}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
       - LOG_SETTINGS_JOURNALD_LEVEL=DEBUG  # Для приложений, которые поддерживают эту переменную
       # Или, например, для Java-приложений
       - LOG_LEVEL=DEBUG
@@ -137,6 +141,11 @@ services:
       context: .
       dockerfile: ./api-gateway/Dockerfile
     container_name: gateway
+    depends_on:
+      redis:
+        condition: service_started
+      auth:
+        condition: service_started
     ports:
       - "127.0.0.1:8000:8000"
     environment:
@@ -149,6 +158,8 @@ services:
       - TG_GAME_SERVICE_URL=http://tg-game:8015
       - GAME_ADMIN_API_TOKEN=${GAME_ADMIN_API_TOKEN}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - AUTH_SERVICE_URL=http://auth:8001
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
       - TRUSTED_PROXY_CIDRS=${TRUSTED_PROXY_CIDRS:-127.0.0.0/8,::1/128,172.20.0.0/16}
       - CORS_ORIGINS=http://localhost:5173,http://localhost:8100,http://127.0.0.1:8100,http://localhost:8200,http://127.0.0.1:8200,http://192.168.1.66,http://192.168.1.66:8100,http://95.165.87.163,https://95.165.87.163,http://copyparse.ru,https://copyparse.ru,http://www.copyparse.ru,https://www.copyparse.ru,http://9to18.ru,https://9to18.ru,http://www.9to18.ru,https://www.9to18.ru
     networks:
@@ -585,6 +596,16 @@ services:
     networks:
       monitoring_network:
         ipv4_address: 172.20.10.200
+
+  redis:
+    <<: *mem-light
+    image: redis:7-alpine
+    ports:
+      - "127.0.0.1:6379:6379"
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    networks:
+      monitoring_network:
+        ipv4_address: 172.20.10.201
 
 
 volumes:

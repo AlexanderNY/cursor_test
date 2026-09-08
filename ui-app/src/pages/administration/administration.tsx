@@ -15,7 +15,7 @@ import { feedbackService } from '@/services/feedback-service'
 import { GuideBlocksAdmin } from '@/pages/administration/guide-blocks-admin'
 import { AdministrationBillingPanel } from '@/pages/administration/administration-billing'
 import { Input } from '@/components/ui/input'
-import type { User, RoleTariffHistoryEntry, GroupResponse, AdminAuditLogEntry } from '@/types/auth'
+import type { User, RoleTariffHistoryEntry, GroupResponse, AdminAuditLogEntry, AdminProductMetrics } from '@/types/auth'
 import type {
   UserStatisticsItem,
   Notification,
@@ -53,6 +53,29 @@ const USERS_SUB_TABS: { id: UsersSubTab; label: string }[] = [
   { id: 'statistics', label: 'Statistics' },
   { id: 'growth', label: 'Growth / UTM' },
 ]
+
+function formatEngagement(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds <= 0) {
+    return '0 мин'
+  }
+  if (seconds < 60) {
+    return `${Math.round(seconds)} сек`
+  }
+  const totalMinutes = Math.round(seconds / 60)
+  if (totalMinutes < 120) {
+    return `${totalMinutes} мин`
+  }
+  const hours = Math.floor(seconds / 3600)
+  const minutes = Math.round((seconds % 3600) / 60)
+  return minutes > 0 ? `${hours} ч ${minutes} мин` : `${hours} ч`
+}
+
+function formatRatio(value: number | null): string {
+  if (value == null || !Number.isFinite(value)) {
+    return '—'
+  }
+  return `${(value * 100).toFixed(1)}%`
+}
 
 export function AdministrationPage() {
   const { user: currentUser } = useAuth()
@@ -97,6 +120,9 @@ export function AdministrationPage() {
   } | null>(null)
   const [isLoadingGrowth, setIsLoadingGrowth] = useState(false)
   const [growthError, setGrowthError] = useState('')
+  const [productMetrics, setProductMetrics] = useState<AdminProductMetrics | null>(null)
+  const [isLoadingProductMetrics, setIsLoadingProductMetrics] = useState(false)
+  const [productMetricsError, setProductMetricsError] = useState('')
 
   // Notifications state
   const [notificationMessage, setNotificationMessage] = useState('')
@@ -211,6 +237,20 @@ export function AdministrationPage() {
       setGrowthSummary(null)
     } finally {
       setIsLoadingGrowth(false)
+    }
+  }
+
+  async function handleLoadProductMetrics() {
+    setProductMetricsError('')
+    setIsLoadingProductMetrics(true)
+    try {
+      const data = await authService.getProductMetrics()
+      setProductMetrics(data)
+    } catch (error) {
+      setProductMetricsError(error instanceof Error ? error.message : 'Failed to load product metrics')
+      setProductMetrics(null)
+    } finally {
+      setIsLoadingProductMetrics(false)
     }
   }
 
@@ -585,6 +625,32 @@ export function AdministrationPage() {
       void loadFeedback()
     }
   }, [activeTab])
+
+  useEffect(() => {
+    if (activeTab !== 'users' || usersSubTab !== 'statistics') {
+      return
+    }
+    let cancelled = false
+    setProductMetricsError('')
+    setIsLoadingProductMetrics(true)
+    void authService
+      .getProductMetrics()
+      .then((data) => {
+        if (!cancelled) setProductMetrics(data)
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setProductMetricsError(error instanceof Error ? error.message : 'Failed to load product metrics')
+          setProductMetrics(null)
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingProductMetrics(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [activeTab, usersSubTab])
 
   useEffect(() => {
     const tabParam = searchParams.get('tab')
@@ -1386,6 +1452,75 @@ export function AdministrationPage() {
         </Card>
           )}
 
+          {usersSubTab === 'statistics' && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+              </svg>
+              Product metrics
+            </CardTitle>
+            <CardDescription>
+              Active Users, Engagement, Retention и Conversion за последние 30 / 60 дней
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Button
+              onClick={handleLoadProductMetrics}
+              isLoading={isLoadingProductMetrics}
+              className="w-full sm:w-auto"
+            >
+              Refresh metrics
+            </Button>
+            {productMetricsError && (
+              <Alert variant="error" className="animate-slide-down">
+                {productMetricsError}
+              </Alert>
+            )}
+            {productMetrics && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+                <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-tertiary)] p-4">
+                  <p className="text-sm text-[var(--text-muted)]">Active Users</p>
+                  <p className="mt-1 text-2xl font-semibold text-[var(--text-primary)]">
+                    {productMetrics.active_users_30d.toLocaleString()}
+                  </p>
+                  <p className="mt-2 text-xs text-[var(--text-secondary)]">
+                    Уникальные пользователи, заходившие в сервис за последние 30 дней
+                  </p>
+                </div>
+                <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-tertiary)] p-4">
+                  <p className="text-sm text-[var(--text-muted)]">Engagement</p>
+                  <p className="mt-1 text-2xl font-semibold text-[var(--text-primary)]">
+                    {formatEngagement(productMetrics.engagement_seconds)}
+                  </p>
+                  <p className="mt-2 text-xs text-[var(--text-secondary)]">
+                    Среднее время в приложении за 30 дней на одного активного пользователя
+                  </p>
+                </div>
+                <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-tertiary)] p-4">
+                  <p className="text-sm text-[var(--text-muted)]">Retention</p>
+                  <p className="mt-1 text-2xl font-semibold text-[var(--text-primary)]">
+                    {formatRatio(productMetrics.retention)}
+                  </p>
+                  <p className="mt-2 text-xs text-[var(--text-secondary)]">
+                    {productMetrics.active_users_30d.toLocaleString()} / {productMetrics.active_users_60d.toLocaleString()} активных за 30 / 60 дней
+                  </p>
+                </div>
+                <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-tertiary)] p-4">
+                  <p className="text-sm text-[var(--text-muted)]">Conversion</p>
+                  <p className="mt-1 text-2xl font-semibold text-[var(--text-primary)]">
+                    {formatRatio(productMetrics.conversion)}
+                  </p>
+                  <p className="mt-2 text-xs text-[var(--text-secondary)]">
+                    {productMetrics.paid_active_users_30d.toLocaleString()} / {productMetrics.paid_active_users_60d.toLocaleString()} активных на платных тарифах за 30 / 60 дней
+                  </p>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+        )}
           {usersSubTab === 'statistics' && (
         <Card>
           <CardHeader>

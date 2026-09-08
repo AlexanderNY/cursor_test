@@ -14,6 +14,8 @@ type QuizQuestion = {
   episodeSlug: string
 }
 
+const OPTION_LETTERS = ['A', 'B', 'C', 'D', 'E', 'F']
+
 function buildQuestions(posts: LearnPost[]): QuizQuestion[] {
   const pool = posts.filter((p) => p.title && p.shortTitle).slice(0, 12)
   return pool.map((post, index) => {
@@ -35,6 +37,23 @@ function buildQuestions(posts: LearnPost[]): QuizQuestion[] {
   })
 }
 
+function optionStateClass(
+  submitted: boolean,
+  selected: boolean,
+  isCorrectOption: boolean,
+): string {
+  if (!submitted) {
+    return selected ? ' is-selected' : ''
+  }
+  if (isCorrectOption) {
+    return ' is-correct'
+  }
+  if (selected) {
+    return ' is-wrong'
+  }
+  return ' is-muted'
+}
+
 export function QuizPage() {
   const { posts, isReady } = useLearnPosts()
   const published = getPublishedPosts(posts)
@@ -47,6 +66,7 @@ export function QuizPage() {
   const [submitted, setSubmitted] = useState(false)
   const [saveNote, setSaveNote] = useState('')
 
+  const answeredCount = questions.filter((q) => answers[q.id] !== undefined).length
   const score = questions.reduce((sum, q) => {
     return sum + (answers[q.id] === q.correctIndex ? 1 : 0)
   }, 0)
@@ -98,73 +118,85 @@ export function QuizPage() {
         <p className="learn-section-note">Недостаточно выпусков для квиза.</p>
       ) : (
         <form
-          className="learn-admin-form"
+          className="quiz-form"
           onSubmit={(e) => {
             e.preventDefault()
             void onSubmit()
           }}
         >
+          {!submitted ? (
+            <p className="quiz-progress" aria-live="polite">
+              Отвечено {answeredCount} из {questions.length}
+            </p>
+          ) : null}
+
           {questions.map((q, qi) => (
-            <fieldset key={q.id} className="learn-schedule" style={{ border: 0, padding: 0 }}>
-              <legend className="learn-panel-heading">
-                {qi + 1}. {q.prompt}
+            <fieldset key={q.id} className="quiz-question">
+              <legend className="quiz-question-prompt">
+                <span className="quiz-question-index">{qi + 1}</span>
+                <span>{q.prompt}</span>
               </legend>
-              {q.options.map((opt, oi) => {
-                const selected = answers[q.id] === oi
-                const isCorrect = submitted && oi === q.correctIndex
-                const isWrong = submitted && selected && oi !== q.correctIndex
-                return (
-                  <label
-                    key={`${q.id}-${oi}`}
-                    className="learn-admin-field"
-                    style={{
-                      color: isCorrect
-                        ? 'var(--ok, #16a34a)'
-                        : isWrong
-                          ? 'var(--err, #dc2626)'
-                          : undefined,
-                    }}
-                  >
-                    <span>
+              <div className="quiz-options" role="radiogroup" aria-label={`Вопрос ${qi + 1}`}>
+                {q.options.map((opt, oi) => {
+                  const selected = answers[q.id] === oi
+                  const isCorrectOption = oi === q.correctIndex
+                  const stateClass = optionStateClass(submitted, selected, isCorrectOption)
+                  const inputId = `${q.id}-${oi}`
+                  return (
+                    <label key={inputId} className={`quiz-option${stateClass}`} htmlFor={inputId}>
                       <input
+                        id={inputId}
+                        className="quiz-option-input"
                         type="radio"
                         name={q.id}
                         checked={selected}
                         disabled={submitted}
                         onChange={() => setAnswers((prev) => ({ ...prev, [q.id]: oi }))}
-                      />{' '}
-                      {opt}
-                    </span>
-                  </label>
-                )
-              })}
+                      />
+                      <span className="quiz-option-letter" aria-hidden="true">
+                        {OPTION_LETTERS[oi] || String(oi + 1)}
+                      </span>
+                      <span className="quiz-option-text">{opt}</span>
+                    </label>
+                  )
+                })}
+              </div>
               {submitted ? (
-                <p className="learn-section-note">
+                <p className="quiz-question-link">
                   <Link to={`/game/learn/${q.episodeSlug}`}>Открыть выпуск →</Link>
                 </p>
               ) : null}
             </fieldset>
           ))}
-          {!submitted ? (
-            <button type="submit" className="learn-admin-btn learn-admin-btn-primary">
-              Проверить
-            </button>
-          ) : (
-            <p className="learn-admin-ok">
-              Результат: {score}/{questions.length}.{' '}
+
+          <div className="quiz-actions">
+            {!submitted ? (
               <button
-                type="button"
-                className="learn-admin-link"
-                onClick={() => {
-                  setAnswers({})
-                  setSubmitted(false)
-                  setSaveNote('')
-                }}
+                type="submit"
+                className="learn-admin-btn learn-admin-btn-primary"
+                disabled={answeredCount < questions.length}
               >
-                Ещё раз
+                Проверить
               </button>
-            </p>
-          )}
+            ) : (
+              <>
+                <p className="learn-admin-ok">
+                  Результат: {score}/{questions.length}
+                </p>
+                <button
+                  type="button"
+                  className="learn-admin-btn"
+                  onClick={() => {
+                    setAnswers({})
+                    setSubmitted(false)
+                    setSaveNote('')
+                  }}
+                >
+                  Ещё раз
+                </button>
+              </>
+            )}
+          </div>
           {saveNote ? <p className="learn-section-note">{saveNote}</p> : null}
         </form>
       )}

@@ -111,6 +111,14 @@ class PostPublisher:
                 )
         finally:
             await release_db_connection(conn)
+        from shared.bot_internal import mark_post_published
+
+        await mark_post_published(
+            settings.CORE_SERVICE_URL or "",
+            platform="tw",
+            post_id=int(post_id),
+            external_id=str(tweet_id),
+        )
 
     async def _mark_failed(self, post_id: int, hint: str) -> None:
         logger.error("tw_posts id=%s publish failed: %s", post_id, hint)
@@ -126,6 +134,14 @@ class PostPublisher:
                 )
         finally:
             await release_db_connection(conn)
+        from shared.bot_internal import mark_post_published
+
+        await mark_post_published(
+            settings.CORE_SERVICE_URL or "",
+            platform="tw",
+            post_id=int(post_id),
+            error=hint[:500],
+        )
 
     async def publish_one(self, post: Dict[str, Any]) -> bool:
         post_id = post["id"]

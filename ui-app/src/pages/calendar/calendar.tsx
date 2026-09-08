@@ -1,16 +1,26 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { PageContainer, PageHeader } from '@/components/ui'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
 import { LearnModeBanner } from '@/components/smm/learn-mode-banner'
 import { useBrand } from '@/contexts/brand-context'
+import { useAuth } from '@/contexts/auth-context'
 import { smmService } from '@/services/smm-service'
-import type { BestTimeSlot, PublishJob } from '@/types/smm'
+import type { BestTimeSlot, ContentSeries, PublishJob } from '@/types/smm'
+import { canApprove, canPublish, normalizeGroupRole } from '@/types/smm'
 import { getErrorMessage } from '@/services/api-client'
-
-const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+import { MonthGrid } from './month-grid'
+import { WeekGrid } from './week-grid'
+import { SeriesPanel } from './series-panel'
+import {
+  formatWeekLabel,
+  getMondayWeekStart,
+  isJobLocked,
+  seriesColorMap,
+  type CalendarView,
+} from './calendar-utils'
 
 const STATUS_FILTERS = [
   { value: '', label: 'All statuses' },
@@ -28,19 +38,39 @@ function toDatetimeLocal(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
+function mergeDateTime(day: Date, hour: number | undefined, source?: PublishJob | null): Date {
+  let h = hour ?? 12
+  let m = 0
+  if (hour == null && source?.publish_at) {
+    const prev = new Date(source.publish_at)
+    if (!Number.isNaN(prev.getTime())) {
+      h = prev.getHours()
+      m = prev.getMinutes()
+    }
+  } else if (hour != null && source?.publish_at) {
+    const prev = new Date(source.publish_at)
+    if (!Number.isNaN(prev.getTime())) m = prev.getMinutes()
+  }
+  return new Date(day.getFullYear(), day.getMonth(), day.getDate(), h, m, 0)
+}
+
 export function CalendarPage() {
+  const navigate = useNavigate()
+  const { user } = useAuth()
   const { selectedBrand, selectedBrandId, brands, ownChannels, setSelectedBrandId } = useBrand()
+  const hasTeam = Boolean(user?.group_id || user?.role_in_group)
+  const roleInGroup = user?.role_in_group
+  const isViewer = hasTeam && normalizeGroupRole(roleInGroup) === 'viewer'
+  const canEditCalendar = canPublish(roleInGroup, user?.role) && !isViewer
+  const canApproveJobs = canApprove(roleInGroup, user?.role) && !isViewer
   const [searchParams, setSearchParams] = useSearchParams()
   const [jobs, setJobs] = useState<PublishJob[]>([])
+  const [series, setSeries] = useState<ContentSeries[]>([])
   const [slots, setSlots] = useState<BestTimeSlot[]>([])
   const [planFeatures, setPlanFeatures] = useState<Record<string, boolean>>({})
   const [horizonDays, setHorizonDays] = useState(7)
-  const [cursor, setCursor] = useState(() => {
-    const d = new Date()
-    return new Date(d.getFullYear(), d.getMonth(), 1)
-  })
+  const [maxSeries, setMaxSeries] = useState(1)
   const [error, setError] = useState('')
-  const [draggingId, setDraggingId] = useState<number | null>(null)
   const [selectedIds, setSelectedIds] = useState<number[]>([])
   const [rejectComment, setRejectComment] = useState('')
   const [rejectingId, setRejectingId] = useState<number | null>(null)
@@ -50,14 +80,24 @@ export function CalendarPage() {
   const [bulkPublishAt, setBulkPublishAt] = useState('')
   const [learnMode, setLearnMode] = useState(false)
 
+  const view = (searchParams.get('view') === 'week' ? 'week' : 'month') as CalendarView
   const statusFilter = searchParams.get('status') || ''
   const channelFilter = searchParams.get('channel')
     ? Number(searchParams.get('channel'))
     : undefined
   const networkFilter = searchParams.get('network') || undefined
+  const seriesFilter = searchParams.get('series')
+    ? Number(searchParams.get('series'))
+    : undefined
   const brandFromUrl = searchParams.get('brand')
     ? Number(searchParams.get('brand'))
     : undefined
+
+  const [cursor, setCursor] = useState(() => {
+    const d = new Date()
+    return new Date(d.getFullYear(), d.getMonth(), 1)
+  })
+  const [weekStart, setWeekStart] = useState(() => getMondayWeekStart(new Date()))
 
   useEffect(() => {
     if (brandFromUrl && brandFromUrl !== selectedBrandId) {
@@ -77,27 +117,47 @@ export function CalendarPage() {
     [ownChannels, selectedBrandId],
   )
 
+  const range = useMemo(() => {
+    if (view === 'week') {
+      const from = new Date(weekStart)
+      from.setHours(0, 0, 0, 0)
+      const to = new Date(weekStart)
+      to.setDate(to.getDate() + 6)
+      to.setHours(23, 59, 59, 999)
+      return { from: from.toISOString(), to: to.toISOString() }
+    }
+    const from = new Date(cursor.getFullYear(), cursor.getMonth(), 1)
+    const to = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0, 23, 59, 59)
+    return { from: from.toISOString(), to: to.toISOString() }
+  }, [view, cursor, weekStart])
+
   async function load() {
     setError('')
     try {
-      const from = new Date(cursor.getFullYear(), cursor.getMonth(), 1).toISOString()
-      const to = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0, 23, 59, 59).toISOString()
-      const [list, plan] = await Promise.all([
+      const [list, plan, seriesList] = await Promise.all([
         smmService.listJobs({
           brand_id: selectedBrandId ?? undefined,
-          from,
-          to,
+          from: range.from,
+          to: range.to,
           status: statusFilter || undefined,
           channel_id: channelFilter,
           network: networkFilter,
           assigned_to_me: mineOnly || undefined,
+          series_id: seriesFilter,
         }),
         smmService.getPlan().catch(() => null),
+        selectedBrandId
+          ? smmService.listContentSeries(selectedBrandId).catch(() => [])
+          : Promise.resolve([]),
       ])
       setJobs(list)
+      setSeries(seriesList)
       if (plan?.limits?.features) setPlanFeatures(plan.limits.features as Record<string, boolean>)
       if (plan?.limits?.schedule_horizon_days != null) {
         setHorizonDays(Number(plan.limits.schedule_horizon_days))
+      }
+      if (plan?.limits?.max_content_series != null) {
+        setMaxSeries(Number(plan.limits.max_content_series))
       }
     } catch (err) {
       setError(getErrorMessage(err))
@@ -106,7 +166,7 @@ export function CalendarPage() {
 
   useEffect(() => {
     void load()
-  }, [cursor, selectedBrandId, statusFilter, channelFilter, networkFilter, mineOnly])
+  }, [range.from, range.to, selectedBrandId, statusFilter, channelFilter, networkFilter, mineOnly, seriesFilter])
 
   const pendingApproval = useMemo(
     () => jobs.filter((j) => j.status === 'pending_approval'),
@@ -118,35 +178,19 @@ export function CalendarPage() {
     [pendingApproval],
   )
 
-  const daysInMonth = useMemo(() => {
-    const y = cursor.getFullYear()
-    const m = cursor.getMonth()
-    const count = new Date(y, m + 1, 0).getDate()
-    const startDow = new Date(y, m, 1).getDay()
-    const cells: (number | null)[] = []
-    for (let i = 0; i < startDow; i++) cells.push(null)
-    for (let d = 1; d <= count; d++) cells.push(d)
-    return cells
-  }, [cursor])
-
   const maxScheduleDate = useMemo(() => {
     const d = new Date()
     d.setDate(d.getDate() + horizonDays)
     return d
   }, [horizonDays])
 
-  function jobsForDay(day: number): PublishJob[] {
-    return jobs.filter((j) => {
-      const iso = j.publish_at || j.created_at
-      if (!iso) return false
-      const d = new Date(iso)
-      return (
-        d.getFullYear() === cursor.getFullYear() &&
-        d.getMonth() === cursor.getMonth() &&
-        d.getDate() === day
-      )
-    })
-  }
+  const seriesById = useMemo(() => {
+    const m = new Map<number, ContentSeries>()
+    for (const s of series) m.set(s.id, s)
+    return m
+  }, [series])
+
+  const colors = useMemo(() => seriesColorMap(series), [series])
 
   function brandColor(brandId?: number | null) {
     return brands.find((b) => b.id === brandId)?.color ?? selectedBrand?.color ?? '#3B82F6'
@@ -157,6 +201,13 @@ export function CalendarPage() {
     if (!value) next.delete(key)
     else next.set(key, value)
     setSearchParams(next, { replace: true })
+  }
+
+  function setView(next: CalendarView) {
+    const params = new URLSearchParams(searchParams)
+    if (next === 'month') params.delete('view')
+    else params.set('view', next)
+    setSearchParams(params, { replace: true })
   }
 
   function toggleSelect(id: number) {
@@ -176,8 +227,21 @@ export function CalendarPage() {
     }
   }
 
-  async function reschedule(jobId: number, day: number) {
-    const pub = new Date(cursor.getFullYear(), cursor.getMonth(), day, 12, 0, 0)
+  async function rescheduleJob(jobId: number, day: Date, hour?: number) {
+    if (!canEditCalendar) {
+      setError('Read-only: Viewer cannot reschedule')
+      return
+    }
+    const job = jobs.find((j) => j.id === jobId)
+    if (job && isJobLocked(job.status)) {
+      setError('Cannot move published/publishing jobs')
+      return
+    }
+    if (job?.status === 'pending_approval' && !canApproveJobs) {
+      setError('Cannot move jobs pending approval')
+      return
+    }
+    const pub = mergeDateTime(day, hour, job)
     if (pub > maxScheduleDate) {
       setError(`Slot outside plan horizon (${horizonDays} days). Upgrade or pick an earlier date.`)
       return
@@ -190,7 +254,43 @@ export function CalendarPage() {
     }
   }
 
+  async function dropSeries(seriesId: number, day: Date, hour?: number) {
+    if (!canEditCalendar) {
+      setError('Read-only: Viewer cannot create from series')
+      return
+    }
+    const s = seriesById.get(seriesId)
+    const defaultHour = hour ?? (s ? Number(s.publish_time.split(':')[0]) || 10 : 10)
+    const defaultMin = s ? Number(s.publish_time.split(':')[1]) || 0 : 0
+    const pub =
+      hour != null
+        ? mergeDateTime(day, hour, null)
+        : new Date(day.getFullYear(), day.getMonth(), day.getDate(), defaultHour, defaultMin, 0)
+    if (pub > maxScheduleDate) {
+      setError(`Slot outside plan horizon (${horizonDays} days)`)
+      return
+    }
+    try {
+      await smmService.instantiateContentSeries(seriesId, pub.toISOString())
+      await load()
+    } catch (err) {
+      setError(getErrorMessage(err))
+    }
+  }
+
+  function openCreateAt(day: Date, hour?: number) {
+    const pub = mergeDateTime(day, hour ?? 12, null)
+    const qs = new URLSearchParams()
+    if (selectedBrandId) qs.set('brand', String(selectedBrandId))
+    qs.set('publish_at', pub.toISOString())
+    navigate(`/posts?${qs.toString()}`)
+  }
+
   async function approve(jobId: number) {
+    if (!canApproveJobs) {
+      setError('Only Owner or Approver can approve')
+      return
+    }
     try {
       await smmService.approveJob(jobId)
       await load()
@@ -200,6 +300,10 @@ export function CalendarPage() {
   }
 
   async function reject(jobId: number) {
+    if (!canApproveJobs) {
+      setError('Only Owner or Approver can reject')
+      return
+    }
     try {
       await smmService.rejectJob(jobId, rejectComment || undefined)
       setRejectingId(null)
@@ -227,6 +331,10 @@ export function CalendarPage() {
   }
 
   async function bulkApprove() {
+    if (!canApproveJobs) {
+      setError('Only Owner or Approver can approve')
+      return
+    }
     if (!selectedIds.length) return
     try {
       await smmService.bulkApproveJobs(selectedIds)
@@ -238,6 +346,10 @@ export function CalendarPage() {
   }
 
   async function bulkReschedule() {
+    if (!canEditCalendar) {
+      setError('Read-only: Viewer cannot reschedule')
+      return
+    }
     if (!selectedIds.length || !bulkPublishAt) return
     const pub = new Date(bulkPublishAt)
     if (Number.isNaN(pub.getTime())) {
@@ -258,38 +370,83 @@ export function CalendarPage() {
     }
   }
 
-  const statusBadge = (status: string) => {
-    if (status === 'pending_approval') return '⏳ '
-    if (status === 'rejected') return '✕ '
-    if (status === 'failed') return '! '
-    if (status === 'published') return '✓ '
-    return ''
+  function goPrev() {
+    if (view === 'week') {
+      const prev = new Date(weekStart)
+      prev.setDate(prev.getDate() - 7)
+      setWeekStart(getMondayWeekStart(prev))
+      return
+    }
+    setCursor(new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1))
   }
+
+  function goNext() {
+    if (view === 'week') {
+      const next = new Date(weekStart)
+      next.setDate(next.getDate() + 7)
+      setWeekStart(getMondayWeekStart(next))
+      return
+    }
+    setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1))
+  }
+
+  function goToday() {
+    const now = new Date()
+    setWeekStart(getMondayWeekStart(now))
+    setCursor(new Date(now.getFullYear(), now.getMonth(), 1))
+  }
+
+  const periodLabel =
+    view === 'week'
+      ? formatWeekLabel(weekStart)
+      : cursor.toLocaleString(undefined, { month: 'long', year: 'numeric' })
 
   return (
     <PageContainer>
       <PageHeader
-        title="Calendar"
-        description="Единый календарь SMM jobs: approve → слот → публикация"
+        title="Content Calendar"
+        description={
+          isViewer
+            ? 'Общий календарь workspace · только просмотр'
+            : 'Неделя / месяц · DnD · согласование · рубрики'
+        }
       />
+      {isViewer && (
+        <Alert variant="info" className="mb-3">
+          Режим Viewer: календарь только для чтения. Approve / drag недоступны.
+        </Alert>
+      )}
       <LearnModeBanner visible={learnMode} />
       {error && <Alert variant="error">{error}</Alert>}
 
       <div className="flex flex-wrap items-center gap-2 mb-4">
-        <Button
-          variant="secondary"
-          onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1))}
-        >
+        <div className="inline-flex rounded-md border border-[var(--border-color)] overflow-hidden">
+          <Button
+            size="sm"
+            variant={view === 'week' ? 'primary' : 'ghost'}
+            className="rounded-none"
+            onClick={() => setView('week')}
+          >
+            Неделя
+          </Button>
+          <Button
+            size="sm"
+            variant={view === 'month' ? 'primary' : 'ghost'}
+            className="rounded-none"
+            onClick={() => setView('month')}
+          >
+            Месяц
+          </Button>
+        </div>
+        <Button variant="secondary" onClick={goPrev}>
           Prev
         </Button>
-        <span className="font-medium min-w-[160px] text-center">
-          {cursor.toLocaleString(undefined, { month: 'long', year: 'numeric' })}
-        </span>
-        <Button
-          variant="secondary"
-          onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1))}
-        >
+        <span className="font-medium min-w-[180px] text-center">{periodLabel}</span>
+        <Button variant="secondary" onClick={goNext}>
           Next
+        </Button>
+        <Button variant="ghost" size="sm" onClick={goToday}>
+          Today
         </Button>
         <select
           className="rounded-md border border-[var(--border-color)] bg-[var(--bg-primary)] px-2 py-1.5 text-sm"
@@ -353,13 +510,17 @@ export function CalendarPage() {
         </span>
       </div>
 
-      {selectedIds.length > 0 && planFeatures.approval_workflow && (
+      {selectedIds.length > 0 && planFeatures.approval_workflow && (canApproveJobs || canEditCalendar) && (
         <Card className="mb-4">
           <CardContent className="flex flex-wrap items-center gap-2 py-3">
             <span className="text-sm">{selectedIds.length} selected</span>
-            <Button size="sm" onClick={() => void bulkApprove()}>
-              Bulk approve
-            </Button>
+            {canApproveJobs && (
+              <Button size="sm" onClick={() => void bulkApprove()}>
+                Bulk approve
+              </Button>
+            )}
+            {canEditCalendar && (
+              <>
             <input
               type="datetime-local"
               value={bulkPublishAt}
@@ -370,6 +531,8 @@ export function CalendarPage() {
             <Button size="sm" variant="secondary" onClick={() => void bulkReschedule()}>
               Bulk reschedule
             </Button>
+              </>
+            )}
             <Button size="sm" variant="ghost" onClick={() => setSelectedIds([])}>
               Clear
             </Button>
@@ -395,20 +558,19 @@ export function CalendarPage() {
                     type="checkbox"
                     checked={selectedIds.includes(j.id)}
                     onChange={() => toggleSelect(j.id)}
+                    disabled={isViewer}
                   />
                   <span className="truncate">{j.source_text.slice(0, 80)}</span>
-                  {j.created_by_user_id != null && (
-                    <span className="text-xs text-[var(--text-muted)] shrink-0">
-                      by user {j.created_by_user_id}
-                    </span>
-                  )}
-                  {j.assigned_to != null && (
-                    <span className="text-xs text-[var(--text-muted)] shrink-0">
-                      → user {j.assigned_to}
-                    </span>
+                  {j.series_id != null && colors.has(j.series_id) && (
+                    <span
+                      className="inline-block w-2 h-2 rounded-full shrink-0"
+                      style={{ backgroundColor: colors.get(j.series_id) }}
+                    />
                   )}
                 </label>
                 <div className="flex flex-wrap gap-1">
+                  {canApproveJobs && (
+                    <>
                   <Button size="sm" onClick={() => void approve(j.id)}>
                     Approve
                   </Button>
@@ -422,6 +584,9 @@ export function CalendarPage() {
                   >
                     Reject
                   </Button>
+                    </>
+                  )}
+                  {canEditCalendar && (
                   <Button
                     size="sm"
                     variant="ghost"
@@ -432,6 +597,7 @@ export function CalendarPage() {
                   >
                     Assign
                   </Button>
+                  )}
                 </div>
                 {rejectingId === j.id && (
                   <div className="w-full flex flex-wrap gap-2 mt-1">
@@ -474,85 +640,98 @@ export function CalendarPage() {
       <div className="grid gap-4 lg:grid-cols-4">
         <Card className="lg:col-span-3">
           <CardContent className="p-4">
-            <div className="grid grid-cols-7 gap-1 text-center text-xs text-[var(--text-muted)] mb-2">
-              {WEEKDAYS.map((w) => (
-                <div key={w}>{w}</div>
-              ))}
-            </div>
-            <div className="grid grid-cols-7 gap-1">
-              {daysInMonth.map((day, idx) => {
-                const dayDate =
-                  day != null
-                    ? new Date(cursor.getFullYear(), cursor.getMonth(), day, 12)
-                    : null
-                const isBeyondHorizon = dayDate != null && dayDate > maxScheduleDate
-                return (
-                  <div
-                    key={idx}
-                    className={`min-h-[88px] rounded-md border border-[var(--border-color)] p-1 ${
-                      isBeyondHorizon ? 'opacity-40 bg-[var(--bg-secondary)]' : ''
-                    }`}
-                    title={
-                      isBeyondHorizon
-                        ? `Outside schedule horizon (${horizonDays} days)`
-                        : undefined
-                    }
-                    onDragOver={(e) => {
-                      if (!isBeyondHorizon) e.preventDefault()
-                    }}
-                    onDrop={() => {
-                      if (draggingId != null && day != null && !isBeyondHorizon) {
-                        void reschedule(draggingId, day)
-                      }
-                      setDraggingId(null)
-                    }}
-                  >
-                    {day != null && (
-                      <>
-                        <div className="text-xs text-[var(--text-muted)] mb-1">{day}</div>
-                        {jobsForDay(day).map((j) => (
-                          <div
-                            key={j.id}
-                            draggable={!isBeyondHorizon}
-                            onDragStart={() => setDraggingId(j.id)}
-                            className="text-[10px] truncate rounded px-1 py-0.5 mb-0.5 text-white cursor-grab"
-                            style={{ backgroundColor: brandColor(j.brand_id) }}
-                            title={`${j.status}: ${j.source_text}`}
-                          >
-                            {statusBadge(j.status)}
-                            {j.source_text.slice(0, 40)}
-                          </div>
-                        ))}
-                      </>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
+            {view === 'week' ? (
+              <WeekGrid
+                weekStart={weekStart}
+                jobs={jobs}
+                seriesById={seriesById}
+                brandColor={brandColor}
+                maxScheduleDate={maxScheduleDate}
+                horizonDays={horizonDays}
+                bestSlots={slots}
+                onDropJob={(id, day, hour) => void rescheduleJob(id, day, hour)}
+                onDropSeries={(id, day, hour) => void dropSeries(id, day, hour)}
+                onEmptyClick={(day, hour) => openCreateAt(day, hour)}
+                readOnly={!canEditCalendar}
+              />
+            ) : (
+              <MonthGrid
+                cursor={cursor}
+                jobs={jobs}
+                seriesById={seriesById}
+                brandColor={brandColor}
+                maxScheduleDate={maxScheduleDate}
+                horizonDays={horizonDays}
+                onDropJob={(id, day, hour) => void rescheduleJob(id, day, hour)}
+                onDropSeries={(id, day, hour) => void dropSeries(id, day, hour)}
+                onEmptyClick={(day) => openCreateAt(day)}
+                readOnly={!canEditCalendar}
+              />
+            )}
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Best times</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm">
-            {slots.length === 0 && (
-              <p className="text-[var(--text-muted)]">Нажмите «ИИ: лучшее время»</p>
-            )}
-            {slots.map((s, i) => (
-              <div key={i} className="flex justify-between border-b border-[var(--border-color)] py-1">
-                <span>
-                  {WEEKDAYS[s.weekday]} {String(s.hour).padStart(2, '0')}:00
-                </span>
-                <span className="text-[var(--text-muted)]">{s.score}</span>
-              </div>
-            ))}
-            <p className="text-xs text-[var(--text-muted)] pt-2">
-              TG/VK week calendars deep-link here — SMM jobs are the source of truth.
-            </p>
-          </CardContent>
-        </Card>
+        <div className="space-y-4">
+          {selectedBrandId ? (
+            <SeriesPanel
+              series={series}
+              maxSeries={maxSeries}
+              canCreate={canEditCalendar && series.length < maxSeries}
+              selectedSeriesId={seriesFilter}
+              onFilterSeries={(id) => setFilter('series', id != null ? String(id) : '')}
+              onCreate={async (payload) => {
+                if (!canEditCalendar) return
+                await smmService.createContentSeries(selectedBrandId, payload)
+                await load()
+              }}
+              onToggleActive={async (id, is_active) => {
+                if (!canEditCalendar) return
+                await smmService.updateContentSeries(id, { is_active, rebuild: true })
+                await load()
+              }}
+              onExpand={async (id) => {
+                if (!canEditCalendar) return
+                await smmService.expandContentSeries(id)
+                await load()
+              }}
+              onDelete={async (id) => {
+                if (!canEditCalendar) return
+                await smmService.deleteContentSeries(id)
+                if (seriesFilter === id) setFilter('series', '')
+                await load()
+              }}
+            />
+          ) : (
+            <Card>
+              <CardContent className="py-4 text-sm text-[var(--text-muted)]">
+                Выберите бренд, чтобы управлять рубриками.
+              </CardContent>
+            </Card>
+          )}
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Best times</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm">
+              {slots.length === 0 && (
+                <p className="text-[var(--text-muted)]">Нажмите «ИИ: лучшее время»</p>
+              )}
+              {slots.map((s, i) => (
+                <div key={i} className="flex justify-between border-b border-[var(--border-color)] py-1">
+                  <span>
+                    {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][s.weekday]}{' '}
+                    {String(s.hour).padStart(2, '0')}:00
+                  </span>
+                  <span className="text-[var(--text-muted)]">{s.score}</span>
+                </div>
+              ))}
+              <p className="text-xs text-[var(--text-muted)] pt-2">
+                DnD сохраняет время; рубрику можно бросить на слот. Double-click — создать пост.
+              </p>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </PageContainer>
   )

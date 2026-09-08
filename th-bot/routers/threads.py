@@ -184,6 +184,8 @@ async def schedule():
     забираем посты из threads_posts и публикуем в Threads API.
     """
     from database import get_db_connection, release_db_connection
+    from shared.bot_internal import mark_post_published
+    from config import settings as th_settings
 
     conn = await get_db_connection()
     try:
@@ -224,9 +226,21 @@ async def schedule():
                 result = await publish_text_post(threads_user_id, access_token, text)
             if result:
                 await set_post_status(user_id, post_id, "published")
+                await mark_post_published(
+                    th_settings.CORE_SERVICE_URL or "",
+                    platform="threads",
+                    post_id=int(post_id),
+                    external_id=str(result.get("id") or "") or None,
+                )
                 published += 1
             else:
                 await set_post_status(user_id, post_id, "failed")
+                await mark_post_published(
+                    th_settings.CORE_SERVICE_URL or "",
+                    platform="threads",
+                    post_id=int(post_id),
+                    error="threads publish failed",
+                )
                 errors += 1
 
     return {"status": "ok", "published": published, "errors": errors}

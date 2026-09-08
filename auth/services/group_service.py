@@ -30,18 +30,23 @@ async def _count_group_members(group_id: int) -> int:
     return int(row[0]) if row else 0
 
 
-async def _count_managers_in_group(group_id: int) -> int:
+async def _count_owners_in_group(group_id: int) -> int:
     async with get_db_connection() as conn:
         async with conn.cursor() as cur:
             await cur.execute(
                 """
                 SELECT COUNT(*) FROM group_members
-                WHERE group_id = %s AND role_in_group = 'admin'
+                WHERE group_id = %s AND role_in_group = 'owner'
                 """,
                 (group_id,),
             )
             row = await cur.fetchone()
     return int(row[0]) if row else 0
+
+
+async def _count_managers_in_group(group_id: int) -> int:
+    """Backward-compatible alias for owner count."""
+    return await _count_owners_in_group(group_id)
 
 
 async def _seat_budget_for_group(group_id: int) -> Tuple[int, str]:
@@ -63,20 +68,26 @@ async def _seat_budget_for_group(group_id: int) -> Tuple[int, str]:
 
 
 def _is_group_admin(role_in_group: Optional[str]) -> bool:
-    return role_in_group == "admin"
+    """Workspace owner (legacy admin/manager aliases included)."""
+    return role_in_group in ("owner", "admin", "manager")
 
 
 def _normalize_role_in_group(role: str) -> str:
-    """Map legacy roles to SMM RBAC; accept new roles as-is."""
+    """Map legacy roles to workspace RBAC; accept canonical roles as-is."""
     mapping = {
-        "manager": "admin",
-        "author": "editor",
-        "admin": "admin",
+        "owner": "owner",
+        "admin": "owner",
+        "manager": "owner",
         "editor": "editor",
-        "analyst": "analyst",
+        "author": "editor",
+        "approver": "approver",
+        "viewer": "viewer",
+        "analyst": "viewer",
     }
     if role not in mapping:
-        raise ValueError("role_in_group must be admin, editor, or analyst")
+        raise ValueError(
+            "role_in_group must be owner, editor, approver, or viewer"
+        )
     return mapping[role]
 
 
@@ -133,31 +144,19 @@ async def get_user_group_memberships(user_id: int) -> List[Dict]:
 
 
 async def get_user_group_membership(user_id: int) -> Optional[Dict]:
-    """Первая группа по дате вступления (совместимость с профилем, полный список — get_user_group_memberships)."""
-    async with get_db_connection() as conn:
-        async with conn.cursor() as cur:
-            await cur.execute(
-                """
-                SELECT g.id, g.name, g.created_at, g.created_by_user_id, gm.role_in_group, gm.joined_at
-                FROM group_members gm
-                JOIN groups g ON g.id = gm.group_id
-                WHERE gm.user_id = %s
-                ORDER BY gm.joined_at ASC
-                LIMIT 1
-                """,
-                (user_id,),
-            )
-            row = await cur.fetchone()
-    if not row:
+    """Активная или первая группа пользователя (для профиля)."""
+    memberships = await get_user_group_memberships(user_id)
+    if not memberships:
         return None
-    return {
-        "group_id": row[0],
-        "group_name": row[1],
-        "created_at": row[2],
-        "created_by_user_id": row[3],
-        "role_in_group": row[4],
-        "joined_at": row[5],
-    }
+    active_id = await get_user_active_group_id(user_id)
+    chosen = memberships[0]
+    if active_id is not None:
+        for m in memberships:
+            if m["group_id"] == active_id:
+                chosen = m
+                break
+    detail = await get_membership_in_group(user_id, chosen["group_id"])
+    return detail
 
 
 async def get_group_member_user_ids(group_id: int) -> List[int]:
@@ -223,16 +222,54 @@ async def get_group_by_id(group_id: int, include_members: bool = False) -> Optio
     return group
 
 
+async def get_user_active_group_id(user_id: int) -> Optional[int]:
+    async with get_db_connection() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                "SELECT active_group_id FROM users WHERE id = %s",
+                (user_id,),
+            )
+            row = await cur.fetchone()
+    return int(row[0]) if row and row[0] is not None else None
+
+
+async def set_active_group(user_id: int, group_id: Optional[int]) -> Optional[int]:
+    """Set active workspace; None clears. Must be a member when group_id is set."""
+    if group_id is not None:
+        membership = await get_membership_in_group(user_id, group_id)
+        if not membership:
+            raise PermissionError("You are not a member of this workspace")
+    async with get_db_connection() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                """
+                UPDATE users SET active_group_id = %s, updated_at = CURRENT_TIMESTAMP
+                WHERE id = %s
+                RETURNING active_group_id
+                """,
+                (group_id, user_id),
+            )
+            row = await cur.fetchone()
+    return int(row[0]) if row and row[0] is not None else None
+
+
 async def get_my_group(user_id: int, current_user_role: str) -> Optional[Dict]:
     """
-    Группа для «моей» страницы: первая по дате вступления.
-    Для менеджера этой группы — с участниками (если manager в этой группе); admin — всегда с участниками.
+    Workspace for «my» page: active_group_id if set and valid, else first joined.
+    Owner sees members; platform admin always sees members.
     """
     memberships = await get_user_group_memberships(user_id)
     if not memberships:
         return None
-    group_id = memberships[0]["group_id"]
-    membership_role = memberships[0]["role_in_group"]
+    active_id = await get_user_active_group_id(user_id)
+    chosen = memberships[0]
+    if active_id is not None:
+        for m in memberships:
+            if m["group_id"] == active_id:
+                chosen = m
+                break
+    group_id = chosen["group_id"]
+    membership_role = chosen["role_in_group"]
     include_members = _is_group_admin(membership_role) or current_user_role == "admin"
     group = await get_group_by_id(group_id, include_members=include_members)
     if not group:
@@ -264,7 +301,7 @@ async def create_group_by_admin(
 
 async def create_group(user_id: int, name: str, current_user_role: str, description: Optional[str] = None) -> Dict:
     """
-    Создаёт группу и добавляет создателя как admin (SMM RBAC).
+    Создаёт workspace и добавляет создателя как owner.
     Роль manager или admin (глобальная); пользователь может состоять и в других группах.
     """
     if current_user_role not in ("manager", "admin"):
@@ -287,7 +324,14 @@ async def create_group(user_id: int, name: str, current_user_role: str, descript
             await cur.execute(
                 """
                 INSERT INTO group_members (group_id, user_id, role_in_group)
-                VALUES (%s, %s, 'admin')
+                VALUES (%s, %s, 'owner')
+                """,
+                (group_id, user_id),
+            )
+            await cur.execute(
+                """
+                UPDATE users SET active_group_id = %s, updated_at = CURRENT_TIMESTAMP
+                WHERE id = %s
                 """,
                 (group_id, user_id),
             )
@@ -297,7 +341,7 @@ async def create_group(user_id: int, name: str, current_user_role: str, descript
         "description": row[2],
         "created_at": row[3],
         "created_by_user_id": row[4],
-        "role_in_group": "admin",
+        "role_in_group": "owner",
         "members": [],
     }
 
@@ -369,11 +413,11 @@ async def add_member_by_email(
 
     n_members = await _count_group_members(group_id)
     if n_members == 0:
-        if role_in_group != "admin":
-            raise ValueError("The first member of an empty group must be an admin")
+        if role_in_group != "owner":
+            raise ValueError("The first member of an empty workspace must be an owner")
     else:
-        if role_in_group == "admin" and await _count_managers_in_group(group_id) >= 1:
-            raise ValueError("This group already has an admin")
+        if role_in_group == "owner":
+            raise ValueError("Workspace already has an owner; invite as editor, approver, or viewer")
         seat_limit, seat_tariff = await _seat_budget_for_group(group_id)
         if n_members >= seat_limit:
             raise TeamSeatLimitError(limit=seat_limit, used=n_members, tariff=seat_tariff)
@@ -433,7 +477,7 @@ async def remove_member(
                 raise ValueError("User is not a member of this group")
             if _is_group_admin(row[0]):
                 if await _count_managers_in_group(group_id) <= 1:
-                    raise ValueError("Cannot remove the only admin of the group")
+                    raise ValueError("Cannot remove the only owner of the workspace")
             await cur.execute(
                 "DELETE FROM group_members WHERE group_id = %s AND user_id = %s",
                 (group_id, member_user_id),
@@ -519,7 +563,7 @@ async def _assert_can_manage_invites(
         return
     membership = await get_membership_in_group(requested_by_user_id, group_id)
     if not membership or not _is_group_admin(membership.get("role_in_group")):
-        raise PermissionError("Only team admin can manage invites")
+        raise PermissionError("Only workspace owner can manage invites")
 
 
 async def create_invite(
@@ -547,8 +591,8 @@ async def create_invite(
         raise ValueError("Group not found")
 
     clean_email = (email or "").strip().lower() or None
-    if role_in_group == "admin" and await _count_managers_in_group(group_id) >= 1:
-        raise ValueError("This group already has an admin")
+    if role_in_group == "owner":
+        raise ValueError("Workspace already has an owner; use editor, approver, or viewer")
 
     n_members = await _count_group_members(group_id)
     seat_limit, seat_tariff = await _seat_budget_for_group(group_id)
@@ -729,8 +773,8 @@ async def accept_invite(token: str, user_id: int, user_email: Optional[str] = No
     seat_limit, seat_tariff = await _seat_budget_for_group(group_id)
     if n_members >= seat_limit:
         raise TeamSeatLimitError(limit=seat_limit, used=n_members, tariff=seat_tariff)
-    if role_in_group == "admin" and await _count_managers_in_group(group_id) >= 1:
-        raise ValueError("This group already has an admin")
+    if role_in_group == "owner":
+        raise ValueError("Workspace already has an owner; use editor, approver, or viewer")
 
     async with get_db_connection() as conn:
         async with conn.cursor() as cur:

@@ -19,6 +19,8 @@ from services.tg_analytics_service import tg_analytics_service
 from schemas import TelegramProfileCreate, TgPostTemplateCreate
 from storage_client import get_storage
 from shared import async_fs
+from upload_limits import read_upload_limited
+from config import settings
 
 
 router = APIRouter(prefix="/tg", tags=["Telegram"])
@@ -89,6 +91,7 @@ async def get_tg_profile(x_user_id: Optional[str] = Header(None)):
         "classification_enabled": False,
         "classification_categories": ["новости", "реклама", "технологии", "финансы", "другое"],
         "batch_enrichment_enabled": False,
+        "proxy_url": None,
     }
 
 
@@ -162,7 +165,9 @@ async def create_tg_post(
     try:
         images = []
         if image:
-            content = await image.read()
+            content = await read_upload_limited(
+                image, max_bytes=settings.MAX_UPLOAD_IMAGE_BYTES, label="Image"
+            )
             file_extension = Path(image.filename).suffix if image.filename else ".jpg"
             file_name = f"{uuid.uuid4()}{file_extension}"
             storage = get_storage()
@@ -261,7 +266,9 @@ async def update_tg_post(
     try:
         images = None
         if image:
-            content = await image.read()
+            content = await read_upload_limited(
+                image, max_bytes=settings.MAX_UPLOAD_IMAGE_BYTES, label="Image"
+            )
             file_extension = Path(image.filename).suffix if image.filename else ".jpg"
             file_name = f"{uuid.uuid4()}{file_extension}"
             storage = get_storage()

@@ -11,7 +11,7 @@ from typing import Any, Literal, Optional
 
 logger = logging.getLogger(__name__)
 
-ActionId = Literal["summarize", "categorize", "rewrite", "reply_draft"]
+ActionId = Literal["summarize", "categorize", "rewrite", "reply_draft", "competitor_ideas"]
 
 MAX_SOURCE_CHARS = 8000
 MAX_NOTE_CHARS = 300
@@ -55,6 +55,12 @@ AI_ACTIONS: list[dict[str, Any]] = [
         "title": "Черновик ответа",
         "description": "Короткий ответ на входящее сообщение",
         "params": ["tone", "network", "note"],
+    },
+    {
+        "id": "competitor_ideas",
+        "title": "Идеи из трендов конкурентов",
+        "description": "Карточки идей постов на основе тем и топ-постов конкурента",
+        "params": ["channel_id", "brand_id", "limit"],
     },
 ]
 
@@ -235,6 +241,70 @@ async def process(
         raise AiAssistError(f"Unknown action: {action}")
 
     params = params or {}
+
+    if action == "competitor_ideas":
+        from services.smm_service import smm_service
+
+        channel_id_raw = params.get("channel_id") or source_id
+        try:
+            channel_id = int(channel_id_raw)
+        except (TypeError, ValueError) as exc:
+            raise AiAssistError("channel_id is required for competitor_ideas") from exc
+        try:
+            limit = int(params.get("limit") or 6)
+        except (TypeError, ValueError):
+            limit = 6
+        limit = max(1, min(limit, 8))
+        bid = brand_id
+        if bid is None and params.get("brand_id") is not None:
+            try:
+                bid = int(params.get("brand_id"))
+            except (TypeError, ValueError):
+                bid = None
+        payload = {
+            "action": action,
+            "channel_id": channel_id,
+            "brand_id": bid,
+            "limit": limit,
+            "source": source,
+            "source_id": source_id,
+        }
+        task_id = await _insert_task(user_id, action, payload)
+        model = os.getenv("AI_MODEL", "qwen2.5:1.5b")
+        started = time.perf_counter()
+        try:
+            data = await smm_service.competitor_ideas(
+                user_id, channel_id, brand_id=bid, limit=limit
+            )
+            result = {
+                "text": "\n\n".join(
+                    f"{i+1}. {idea.get('title')}: {idea.get('hook') or idea.get('angle') or ''}"
+                    for i, idea in enumerate(data.get("ideas") or [])
+                ),
+                "ideas": data.get("ideas") or [],
+                "themes": data.get("themes") or [],
+                "fallback": data.get("fallback"),
+            }
+            latency_ms = round((time.perf_counter() - started) * 1000, 1)
+            out = {
+                "task_id": task_id,
+                "action": action,
+                "result": result,
+                "model": model,
+                "latency_ms": latency_ms,
+            }
+            await _finish_task(
+                task_id,
+                status="done",
+                result={**result, "model": model, "latency_ms": latency_ms},
+            )
+            return out
+        except Exception as exc:
+            await _finish_task(task_id, status="error", result={"error": str(exc)})
+            if hasattr(exc, "resource"):
+                raise
+            raise AiAssistError(str(exc), status_code=400) from exc
+
     source_text = sanitize_source_text(text)
     note = sanitize_note(
         params.get("note") if isinstance(params.get("note"), str) else params.get("instruction")

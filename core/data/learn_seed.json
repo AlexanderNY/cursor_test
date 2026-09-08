@@ -27,7 +27,80 @@
     "theoryFormat": "markdown",
     "labFormat": "markdown",
     "cheatsheetFormat": "markdown",
-    "publishedAt": "2026-08-18T22:49:01.216Z"
+    "publishedAt": "2026-08-18T22:49:01.216Z",
+    "structured": {
+      "version": 1,
+      "intro": "S01E01 · Слои · UI / API / БД / деплой Тема выпуска: Зачем собирать сервис слоями.",
+      "sections": [
+        {
+          "heading": "Основная часть",
+          "body": "Сервис — это не «один файл Python, который рисует HTML». Как только появляются второй пользователь, обновление кода и падение базы, слои начинают окупаться.\n\nЧетыре слоя, которые вы соберёте за сезон:\n\n1. UI — то, что видит человек (у нас позже React).\n2. API — контракт: HTTP, JSON, ошибки. Без экранов.\n3. БД — факты, которые переживают перезапуск процесса (PostgreSQL).\n4. Деплой — как это запускают одинаково у вас и на стенде (сначала Compose, потом Minikube).\n\nЗачем это в живом сервисе. У CopyParse браузер не ходит в базу: он говорит с UI и с `/api`, дальше шлюз, сервисы, Postgres. Если смешать всё в одном процессе, нельзя заменить только бота или только фронт.\n\nГраница. Слой «оркестратор / Kafka / микросервисы на каждый чих» в первую неделю — лишняя фича. Сначала четыре коробки и понятные стрелки.\n\nСледующий выпуск: карта CopyParse — кто кому звонит, без клонирования всего монорепо."
+        },
+        {
+          "heading": "Шпаргалка",
+          "body": "### Слои (запомнить)\n\n| Слой | Отвечает за | Не делает |\n|------|-------------|-----------|\n| UI | Экраны, формы | Прямой доступ к БД |\n| API | HTTP, JSON, коды ошибок | Вёрстку |\n| БД | Факты после рестарта | Бизнес-логику UI |\n| Деплой | Одинаковый запуск | «У меня локально ок» |\n\n### Стрелка «создать заявку»\n\n`Человек → UI → API → БД`\n\n### Не делать\n\n- Браузер → Postgres\n- Один файл «и HTML, и SQL, и деплой»\n- Kafka / оркестратор в первую неделю\n\n### Готово, если…\n\n- [ ] На схеме 4 коробки\n- [ ] Одна подписанная стрелка вызова\n- [ ] БД не торчит в браузер"
+        }
+      ],
+      "diagrams": [
+        {
+          "caption": "Схема",
+          "mermaid": "flowchart LR\n  User[Человек] --> UI[UI]\n  UI --> API[API]\n  API --> DB[(БД)]\n  Deploy[Деплой] -.-> UI\n  Deploy -.-> API\n  Deploy -.-> DB"
+        }
+      ],
+      "quiz": [
+        {
+          "question": "Какой код у выпуска «Слои»?",
+          "answer": "S01E01",
+          "explain": "Зачем собирать сервис слоями"
+        }
+      ],
+      "anki": [
+        {
+          "front": "Что такое «UI»?",
+          "back": "Экраны, формы"
+        },
+        {
+          "front": "Что такое «API»?",
+          "back": "HTTP, JSON, коды ошибок"
+        },
+        {
+          "front": "Что такое «БД»?",
+          "back": "Факты после рестарта"
+        },
+        {
+          "front": "Что такое «Деплой»?",
+          "back": "Одинаковый запуск"
+        },
+        {
+          "front": "UI?",
+          "back": "Экраны, формы"
+        },
+        {
+          "front": "API?",
+          "back": "HTTP, JSON, коды ошибок"
+        },
+        {
+          "front": "БД?",
+          "back": "Факты после рестарта"
+        },
+        {
+          "front": "Деплой?",
+          "back": "Одинаковый запуск"
+        }
+      ],
+      "summary": [
+        "UI — Экраны, формы",
+        "API — HTTP, JSON, коды ошибок",
+        "БД — Факты после рестарта",
+        "Деплой — Одинаковый запуск",
+        "Браузер → Postgres",
+        "Один файл «и HTML, и SQL, и деплой»",
+        "Kafka / оркестратор в первую неделю",
+        "На схеме 4 коробки",
+        "Одна подписанная стрелка вызова",
+        "БД не торчит в браузер"
+      ]
+    }
   },
   {
     "slug": "s01e02-karta",
@@ -57,7 +130,76 @@
     "theoryFormat": "markdown",
     "labFormat": "markdown",
     "cheatsheetFormat": "markdown",
-    "publishedAt": "2026-08-19T22:49:01.216Z"
+    "publishedAt": "2026-08-19T22:49:01.216Z",
+    "structured": {
+      "version": 1,
+      "intro": "S01E02 · Карта · кто кому звонит Тема выпуска: Карта CopyParse за 10 минут.",
+      "sections": [
+        {
+          "heading": "Основная часть",
+          "body": "Сегодня не поднимаем стенд. Учимся читать чужую систему по коробкам, а не по файлам.\n\nУпрощённо CopyParse:\n\n- Край: nginx принимает HTTPS и режет по Host.\n- UI — React. Браузер ходит на UI и на `/api`.\n- Шлюз (gateway) — JWT, CORS, прокси во внутренние сервисы.\n- Платформа: auth, core, scheduler, collector, processor.\n- Боты площадок: Telegram, VK и остальные.\n- Данные: PostgreSQL и объектное хранилище S3 (MinIO).\n\nПуть «опубликовать пост»: UI или бот → данные в Postgres → collector/processor гоняют статусы → бот площадки публикует. Это конвейер со статусами, не один скрипт `send()`.\n\nЗачем это вам. Ваш сервис заявок в миниатюре повторит ту же идею: UI не пишет в БД в обход API, деплой не равен «у меня на ноутбуке завелось».\n\nГраница. Не клонируйте весь монорепо на первой неделе и не пытайтесь понять каждый бот. Пять коробок достаточно.\n\nСледующий выпуск: Git и GitHub — чтобы лабы жили в ветке, а не в архиве на Рабочем столе."
+        },
+        {
+          "heading": "Шпаргалка",
+          "body": "### Коробки CopyParse\n\n1. **nginx** — HTTPS, Host\n2. **UI** — React\n3. **gateway** — JWT, CORS, прокси\n4. **Сервисы** — auth, core, боты…\n5. **Данные** — Postgres + S3/MinIO\n\n### Путь «Опубликовать»\n\n`UI → gateway → core/боты → Postgres → статусы → публикация`\n\nНе: `UI → send() в бот напрямую`.\n\n### Не делать\n\n- Клонировать весь монорепо в первую неделю\n- Рисовать 20 микросервисов «как в проде»\n- UI → Postgres\n\n### Готово, если…\n\n- [ ] 5–7 блоков своими словами\n- [ ] Красный путь «Опубликовать»\n- [ ] На пути есть API/шлюз"
+        }
+      ],
+      "diagrams": [
+        {
+          "caption": "Схема",
+          "mermaid": "flowchart LR\n  User[Браузер] --> Edge[nginx]\n  Edge --> UI[UI]\n  Edge --> GW[gateway]\n  UI --> GW\n  GW --> Auth[auth]\n  GW --> Core[core]\n  GW --> Bots[боты]\n  Core --> PG[(PostgreSQL)]\n  Bots --> PG"
+        }
+      ],
+      "quiz": [
+        {
+          "question": "Какой код у выпуска «Карта»?",
+          "answer": "S01E02",
+          "explain": "Карта CopyParse за 10 минут"
+        }
+      ],
+      "anki": [
+        {
+          "front": "О чём выпуск «Карта»?",
+          "back": "S01E02 · Карта · кто кому звонит"
+        },
+        {
+          "front": "Ключевая идея: Карта",
+          "back": "Сегодня не поднимаем стенд. Учимся читать чужую систему по коробкам, а не по файлам."
+        },
+        {
+          "front": "Запомните (Карта) #1",
+          "back": "Клонировать весь монорепо в первую неделю"
+        },
+        {
+          "front": "Запомните (Карта) #2",
+          "back": "Рисовать 20 микросервисов «как в проде»"
+        },
+        {
+          "front": "Запомните (Карта) #3",
+          "back": "UI → Postgres"
+        },
+        {
+          "front": "Запомните (Карта) #4",
+          "back": "5–7 блоков своими словами"
+        },
+        {
+          "front": "Запомните (Карта) #5",
+          "back": "Красный путь «Опубликовать»"
+        },
+        {
+          "front": "Запомните (Карта) #6",
+          "back": "На пути есть API/шлюз"
+        }
+      ],
+      "summary": [
+        "Клонировать весь монорепо в первую неделю",
+        "Рисовать 20 микросервисов «как в проде»",
+        "UI → Postgres",
+        "5–7 блоков своими словами",
+        "Красный путь «Опубликовать»",
+        "На пути есть API/шлюз"
+      ]
+    }
   },
   {
     "slug": "s01e03-git",
@@ -87,7 +229,78 @@
     "theoryFormat": "markdown",
     "labFormat": "markdown",
     "cheatsheetFormat": "markdown",
-    "publishedAt": "2026-08-20T22:49:01.216Z"
+    "publishedAt": "2026-08-20T22:49:01.216Z",
+    "structured": {
+      "version": 1,
+      "intro": "S01E03 · Git · commit, ветка, PR — на примерах",
+      "sections": [
+        {
+          "heading": "Основная часть",
+          "body": "Код без истории — черновик на Рабочем столе. Git фиксирует *что* изменилось. GitHub — *где это обсудить*, не кидая zip в мессенджер.\n\nСквозной пример сезона: репозиторий учебного сервиса **«Заявки»** (`tickets`).\n\n### 1. Репозиторий\n\nОдин учебный проект — один repo. На GitHub: New repository → имя `tickets` (private нормально) → **без** README, если будете `git init` локально.\n\n```bash\nmkdir tickets\ncd tickets\ngit init\ngit branch -M main\n```\n\n### 2. .gitignore сразу, до первого commit\n\nИначе `.env` и `venv/` уедут в историю навсегда.\n\n```\n.env\nvenv/\n.venv/\n__pycache__/\n*.pyc\nnode_modules/\n.idea/\n.vscode/\n*.pem\n```\n\nПлохо: закоммитить `.env` с `DATABASE_URL=...` и потом «удалить файл» — секрет уже в истории.\n\n### 3. Commit — снимок с понятным сообщением\n\n```bash\ngit add .gitignore README.md\ngit status\ngit commit -m \"init: учебный сервис заявок, gitignore\"\n```\n\n| Плохо | Хорошо |\n|-------|--------|\n| `fix` | `init: учебный сервис заявок, gitignore` |\n| `asdf` | `docs: схема слоёв UI/API/БД` |\n| `update` | `feat: черновик статусов заявки` |\n\n### 4. Ветка: `main` бережём\n\n```bash\ngit switch -c s01-e03\n# правите docs/layers.md (схема из E01 текстом)\ngit add docs/layers.md\ngit commit -m \"docs: схема слоёв для сервиса заявок\"\n```\n\nИмена веток: `s01-e03`, `feature/tickets-api` — коротко и по делу.\n\n### 5. Push и Pull Request\n\n```bash\ngit remote add origin https://github.com/<you>/tickets.git\ngit push -u origin main\ngit push -u origin s01-e03\n```\n\nНа GitHub: Compare & pull request → `s01-e03` → `main`. В PR смотрите **Files changed** (дифф), не кнопку Merge.\n\nЗачем это в живом сервисе. В CopyParse секреты не кладут в git (`secret.yaml` собирают из example). Один пароль БД в истории = ротация у всех.\n\nГраница. Теги, rebase «как в банке» и монорепо-тулинг подождут. В сезон 1: ветка + понятный commit + PR.\n\nСледующий выпуск: системный анализ — контракт API до первой строчки FastAPI."
+        },
+        {
+          "heading": "Шпаргалка",
+          "body": "### Команды подряд (happy path)\n\n```bash\ngit init\ngit branch -M main\ngit status\ngit add .gitignore README.md\ngit commit -m \"init: учебный сервис заявок, gitignore\"\ngit remote add origin https://github.com/<you>/tickets.git\ngit push -u origin main\n\ngit switch -c s01-e03\ngit add docs/layers.md\ngit commit -m \"docs: схема слоёв для сервиса заявок\"\ngit push -u origin s01-e03\n# дальше PR на GitHub: s01-e03 → main\n```\n\n### Смотреть, что происходит\n\n```bash\ngit status          # что изменено / в индексе\ngit log --oneline   # короткая история\ngit diff            # незакоммиченный дифф\ngit diff --staged   # то, что уже в add\n```\n\n### .gitignore (минимум)\n\n```\n.env\nvenv/\n.venv/\n__pycache__/\n*.pyc\nnode_modules/\n*.pem\n```\n\n### Не делать\n\n- Commit `fix` / `asdf` / `update`\n- Класть `.env` и `venv/` в репозиторий\n- Писать лабу прямо в `main` без ветки и PR\n- «Починить» секрет удалением файла без ротации — история помнит\n\n### Готово, если…\n\n- [ ] Есть PR со ссылкой\n- [ ] В Files changed нет секретов и venv\n- [ ] Два осмысленных commit message\n- [ ] Ветка лабы ≠ `main`"
+        }
+      ],
+      "diagrams": [
+        {
+          "caption": "Схема",
+          "mermaid": "flowchart LR\n  Main[main] --> Branch[s01_e03]\n  Branch --> Commit[commit_docs]\n  Commit --> Push[push]\n  Push --> PR[Pull_Request]\n  PR --> Review[ревью_диффа]\n  Review --> Main"
+        }
+      ],
+      "quiz": [
+        {
+          "question": "Какой код у выпуска «Git»?",
+          "answer": "S01E03",
+          "explain": "Git / GitHub"
+        }
+      ],
+      "anki": [
+        {
+          "front": "«Починить» секрет удалением файла без ротации?",
+          "back": "история помнит"
+        },
+        {
+          "front": "О чём выпуск «Git»?",
+          "back": "S01E03 · Git · commit, ветка, PR — на примерах"
+        },
+        {
+          "front": "Ключевая идея: Git",
+          "back": "Код без истории — черновик на Рабочем столе. Git фиксирует *что* изменилось. GitHub — *где это обсудить*, не кидая zip в мессенджер."
+        },
+        {
+          "front": "Запомните (Git) #1",
+          "back": "Commit `fix` / `asdf` / `update`"
+        },
+        {
+          "front": "Запомните (Git) #2",
+          "back": "Класть `.env` и `venv/` в репозиторий"
+        },
+        {
+          "front": "Запомните (Git) #3",
+          "back": "Писать лабу прямо в `main` без ветки и PR"
+        },
+        {
+          "front": "Запомните (Git) #4",
+          "back": "«Починить» секрет удалением файла без ротации — история помнит"
+        },
+        {
+          "front": "Запомните (Git) #5",
+          "back": "Есть PR со ссылкой"
+        }
+      ],
+      "summary": [
+        "Commit `fix` / `asdf` / `update`",
+        "Класть `.env` и `venv/` в репозиторий",
+        "Писать лабу прямо в `main` без ветки и PR",
+        "«Починить» секрет удалением файла без ротации — история помнит",
+        "Есть PR со ссылкой",
+        "В Files changed нет секретов и venv",
+        "Два осмысленных commit message",
+        "Ветка лабы ≠ `main`"
+      ]
+    }
   },
   {
     "slug": "s01e04-sa",
@@ -117,7 +330,64 @@
     "theoryFormat": "markdown",
     "labFormat": "markdown",
     "cheatsheetFormat": "markdown",
-    "publishedAt": "2026-08-21T22:49:01.216Z"
+    "publishedAt": "2026-08-21T22:49:01.216Z",
+    "structured": {
+      "version": 1,
+      "intro": "S01E04 · SA · контракт до экранов Тема выпуска: SA: от боли к контракту API.",
+      "sections": [
+        {
+          "heading": "Основная часть",
+          "body": "Системный анализ — не «нарисовать макет». Это ответить: какая боль, какой факт в системе меняется, какой HTTP-контракт это фиксирует.\n\nПорядок, который экономит переписывание React:\n\n1. Боль. «Куратор не видит, какие заявки зависли».\n2. Факт. Заявка имеет статус: `new` → `in_progress` → `done` (отказ — отдельный статус, не удаление строки «чтобы не потерять историю»).\n3. Контракт. `POST /tickets`, `GET /tickets`, `PATCH /tickets/{id}` — поля, коды 400/404/409.\n4. Экран. Список и форма появляются после пунктов 1–3.\n\nТак устроен CopyParse: пост живёт статусами (`collected` → `review`/`ready` → `published`), а не кнопкой «отправить во все сети сразу».\n\nГраница. Не пишите ТЗ на 40 страниц и не тащите Kafka «на вырост». Одна страница: цель, 3–5 операций, статусы, что *не* делаем в MVP.\n\nСледующий выпуск: FastAPI — первый роутер под этот контракт."
+        },
+        {
+          "heading": "Шпаргалка",
+          "body": "### Порядок SA\n\n`Боль → Факт/статусы → Контракт HTTP → Экраны`\n\n### Таблица операций (шаблон)\n\n| Метод | Путь | Тело | OK | Ошибка |\n|-------|------|------|-----|--------|\n| POST | /tickets | title | 201 | 400 |\n| GET | /tickets | — | 200 | — |\n| PATCH | /tickets/{id} | status | 200 | 404 / 409 |\n\n### Статусы заявки (пример)\n\n`new → in_progress → done` (+ `rejected`, не DELETE)\n\n### Не делать\n\n- ТЗ на 40 страниц\n- Kafka «на вырост»\n- Начинать с макета React\n\n### Готово, если…\n\n- [ ] Есть 409 или 404 в таблице\n- [ ] Есть убитая фича\n- [ ] Нет пункта «красивый UI»"
+        }
+      ],
+      "diagrams": [
+        {
+          "caption": "Схема",
+          "mermaid": "flowchart LR\n  Pain[Боль] --> Fact[Факт_и_статусы]\n  Fact --> Contract[Контракт_HTTP]\n  Contract --> UI[Экраны]"
+        }
+      ],
+      "quiz": [
+        {
+          "question": "Какой код у выпуска «SA / контракт»?",
+          "answer": "S01E04",
+          "explain": "SA: от боли к контракту API"
+        }
+      ],
+      "anki": [
+        {
+          "front": "Что такое «POST»?",
+          "back": "/tickets"
+        },
+        {
+          "front": "Что такое «GET»?",
+          "back": "/tickets"
+        },
+        {
+          "front": "Что такое «PATCH»?",
+          "back": "/tickets/{id}"
+        },
+        {
+          "front": "PATCH?",
+          "back": "/tickets/{id}"
+        }
+      ],
+      "summary": [
+        "Метод — Путь",
+        "POST — /tickets",
+        "GET — /tickets",
+        "PATCH — /tickets/{id}",
+        "ТЗ на 40 страниц",
+        "Kafka «на вырост»",
+        "Начинать с макета React",
+        "Есть 409 или 404 в таблице",
+        "Есть убитая фича",
+        "Нет пункта «красивый UI»"
+      ]
+    }
   },
   {
     "slug": "s01e05-fastapi",
@@ -147,7 +417,80 @@
     "theoryFormat": "markdown",
     "labFormat": "markdown",
     "cheatsheetFormat": "markdown",
-    "publishedAt": "2026-08-22T22:49:01.216Z"
+    "publishedAt": "2026-08-22T22:49:01.216Z",
+    "structured": {
+      "version": 1,
+      "intro": "S01E05 · FastAPI · роутер и Pydantic Тема выпуска: FastAPI: первый роутер и Pydantic.",
+      "sections": [
+        {
+          "heading": "Основная часть",
+          "body": "API начинается не с базы, а с контракта: путь, вход, выход, ошибка. FastAPI как раз заставляет это написать типами.\n\nТри понятия:\n\n- Роутер — набор путей (`GET /health`, `GET /tickets`). Позже разрежете по модулям, сейчас хватит одного файла.\n- Pydantic-модель — JSON, который вы обещаете. Лишнее поле клиента не должно молча ломать сервер; недостающее — 422, не 500.\n- Обработчик — функция. Пока можно вернуть список из памяти. База будет в E07.\n\nЗачем это в живом сервисе. В CopyParse сервисы на FastAPI: шлюз и core говорят JSON-контрактами, а не «как получилось в print».\n\nГраница. Не подключайте ORM, JWT и Docker в этом выпуске. Один процесс, `uvicorn`, две ручки. Swagger сам появится на `/docs` — это нормально, не отдельный микросервис.\n\nСледующий выпуск: Insomnia — те же ручки без браузера и без React."
+        },
+        {
+          "heading": "Шпаргалка",
+          "body": "### Скелет\n\n```python\nfrom fastapi import FastAPI\nfrom pydantic import BaseModel\n\napp = FastAPI()\n\nclass Ticket(BaseModel):\n    id: int\n    title: str\n    status: str\n\n@app.get(\"/health\")\ndef health():\n    return {\"status\": \"ok\"}\n\n@app.get(\"/tickets\", response_model=list[Ticket])\ndef list_tickets():\n    return [...]\n```\n\n### Запуск\n\n```bash\nuvicorn main:app --reload\n# docs → http://127.0.0.1:8000/docs\n```\n\n### Коды\n\n| Ситуация | Код |\n|----------|-----|\n| OK | 200 |\n| Создано | 201 |\n| Плохое тело / валидация | 422 |\n| Не найдено | 404 |\n| Сервер упал | 500 — чинить, не маскировать |\n\n### Не делать\n\n- ORM + JWT + Docker в этом выпуске\n- Ответ «как print» без модели\n\n### Готово, если…\n\n- [ ] `/health` и `/tickets` в `/docs`\n- [ ] Совпадает с ТЗ хотя бы по GET /tickets"
+        }
+      ],
+      "diagrams": [
+        {
+          "caption": "Схема",
+          "mermaid": "flowchart LR\n  Client[Клиент] --> Route[\"GET /tickets\"]\n  Route --> Model[Pydantic]\n  Model --> Handler[Обработчик]\n  Handler --> JSON[JSON]"
+        }
+      ],
+      "quiz": [
+        {
+          "question": "Какой код у выпуска «FastAPI»?",
+          "answer": "S01E05",
+          "explain": "FastAPI: первый роутер и Pydantic"
+        }
+      ],
+      "anki": [
+        {
+          "front": "Что такое «Сервер упал»?",
+          "back": "500 — чинить, не маскировать"
+        },
+        {
+          "front": "Сервер упал?",
+          "back": "500 — чинить, не маскировать"
+        },
+        {
+          "front": "О чём выпуск «FastAPI»?",
+          "back": "S01E05 · FastAPI · роутер и Pydantic"
+        },
+        {
+          "front": "Ключевая идея: FastAPI",
+          "back": "API начинается не с базы, а с контракта: путь, вход, выход, ошибка. FastAPI как раз заставляет это написать типами."
+        },
+        {
+          "front": "Запомните (FastAPI) #1",
+          "back": "Ситуация — Код"
+        },
+        {
+          "front": "Запомните (FastAPI) #2",
+          "back": "OK — 200"
+        },
+        {
+          "front": "Запомните (FastAPI) #3",
+          "back": "Создано — 201"
+        },
+        {
+          "front": "Запомните (FastAPI) #4",
+          "back": "Плохое тело / валидация — 422"
+        }
+      ],
+      "summary": [
+        "Ситуация — Код",
+        "OK — 200",
+        "Создано — 201",
+        "Плохое тело / валидация — 422",
+        "Не найдено — 404",
+        "Сервер упал — 500 — чинить, не маскировать",
+        "ORM + JWT + Docker в этом выпуске",
+        "Ответ «как print» без модели",
+        "`/health` и `/tickets` в `/docs`",
+        "Совпадает с ТЗ хотя бы по GET /tickets"
+      ]
+    }
   },
   {
     "slug": "s01e06-insomnia",
@@ -177,7 +520,80 @@
     "theoryFormat": "markdown",
     "labFormat": "markdown",
     "cheatsheetFormat": "markdown",
-    "publishedAt": "2026-08-23T22:49:01.216Z"
+    "publishedAt": "2026-08-23T22:49:01.216Z",
+    "structured": {
+      "version": 1,
+      "intro": "S01E06 · Insomnia · API проверяем до React",
+      "sections": [
+        {
+          "heading": "Основная часть",
+          "body": "UI ещё нет — и это хорошо. Если ручка жива только «когда открыта страница», вы не отличите баг фронта от бага сервера.\n\nInsomnia (или аналог) нужна как **клиент контракта**:\n\n- Коллекция — набор запросов, который живёт рядом с кодом, а не в голове.\n- Environment — `base_url` для local (`http://127.0.0.1:8000`). Позже добавите minikube, не плодя копии запросов.\n- Заголовки. Пока без JWT; привыкайте видеть `Content-Type: application/json`. Authorization появится позже.\n\nЗачем это в живом сервисе. Шлюз CopyParse отдаёт JSON; отладка «пост не ушёл» начинается с запроса к API, не с кликов в UI.\n\nГраница. Не превращайте Insomnia в CI. Сначала руками, коллекцию — в git. Прогоны в Jenkins — сезон 2.\n\nСледующий выпуск: PostgreSQL — факты заявок переживут перезапуск uvicorn."
+        },
+        {
+          "heading": "Шпаргалка",
+          "body": "### Environment\n\n```\nbase_url = http://127.0.0.1:8000\n```\n\nЗапросы: `{{ base_url }}/health`, `{{ base_url }}/tickets`\n\n### Чеклист запроса\n\n- Method + URL\n- `Content-Type: application/json` (для тела)\n- Сохранённый успешный ответ в коллекции\n- JSON коллекции в git\n\n### Не делать\n\n- Копии одних и тех же запросов под каждый стенд (используйте env)\n- «Проверил только в браузере на UI»\n- Jenkins вместо ручной коллекции в сезон 1\n\n### Готово, если…\n\n- [ ] Два зелёных запроса\n- [ ] `insomnia/*.json` в PR\n- [ ] Меняется только `base_url`"
+        }
+      ],
+      "diagrams": [
+        {
+          "caption": "Схема",
+          "mermaid": "flowchart LR\n  Insomnia[Insomnia] --> Health[\"GET /health\"]\n  Insomnia --> Tickets[\"GET /tickets\"]\n  Health --> API[FastAPI]\n  Tickets --> API"
+        }
+      ],
+      "quiz": [
+        {
+          "question": "Какой код у выпуска «Insomnia»?",
+          "answer": "S01E06",
+          "explain": "Insomnia: коллекция до UI"
+        }
+      ],
+      "anki": [
+        {
+          "front": "`Content-Type?",
+          "back": "application/json` (для тела)"
+        },
+        {
+          "front": "О чём выпуск «Insomnia»?",
+          "back": "S01E06 · Insomnia · API проверяем до React"
+        },
+        {
+          "front": "Ключевая идея: Insomnia",
+          "back": "UI ещё нет — и это хорошо. Если ручка жива только «когда открыта страница», вы не отличите баг фронта от бага сервера."
+        },
+        {
+          "front": "Запомните (Insomnia) #1",
+          "back": "Method + URL"
+        },
+        {
+          "front": "Запомните (Insomnia) #2",
+          "back": "`Content-Type: application/json` (для тела)"
+        },
+        {
+          "front": "Запомните (Insomnia) #3",
+          "back": "Сохранённый успешный ответ в коллекции"
+        },
+        {
+          "front": "Запомните (Insomnia) #4",
+          "back": "JSON коллекции в git"
+        },
+        {
+          "front": "Запомните (Insomnia) #5",
+          "back": "Копии одних и тех же запросов под каждый стенд (используйте env)"
+        }
+      ],
+      "summary": [
+        "Method + URL",
+        "`Content-Type: application/json` (для тела)",
+        "Сохранённый успешный ответ в коллекции",
+        "JSON коллекции в git",
+        "Копии одних и тех же запросов под каждый стенд (используйте env)",
+        "«Проверил только в браузере на UI»",
+        "Jenkins вместо ручной коллекции в сезон 1",
+        "Два зелёных запроса",
+        "`insomnia/*.json` в PR",
+        "Меняется только `base_url`"
+      ]
+    }
   },
   {
     "slug": "s01e07-postgres",
@@ -207,7 +623,75 @@
     "theoryFormat": "markdown",
     "labFormat": "markdown",
     "cheatsheetFormat": "markdown",
-    "publishedAt": "2026-08-24T22:49:01.216Z"
+    "publishedAt": "2026-08-24T22:49:01.216Z",
+    "structured": {
+      "version": 1,
+      "intro": "S01E07 · PostgreSQL · таблица, PK, SELECT",
+      "sections": [
+        {
+          "heading": "Основная часть",
+          "body": "Пока заявки живут в списке Python, перезапуск сервера стирает учебный стенд. База — это факты: строка либо есть, либо её нет.\n\nМинимум:\n\n- Таблица `tickets`: столбцы с типами, не «одна JSON-простыня на всё».\n- Первичный ключ (`id`). Без него вы не скажете PATCH/DELETE «вот эта заявка».\n- `SELECT` — чтение. Сначала без JOIN.\n- Подключение с API. Один пул / одно соединение на запрос в учебном коде допустимо; соединение в глобальном цикле без закрытия — нет.\n\nЗачем это в живом сервисе. CopyParse хранит посты и статусы в PostgreSQL: конвейер переживает рестарт бота.\n\nГраница. Не настраивайте репликацию, партиции и Kafka «чтобы было как в банке». Одна база, одна таблица, три строки.\n\nСледующий выпуск: JOIN и индекс — когда таблиц станет две."
+        },
+        {
+          "heading": "Шпаргалка",
+          "body": "### DDL\n\n```sql\nCREATE TABLE tickets (\n  id         bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,\n  title      text NOT NULL,\n  status     text NOT NULL,\n  created_at timestamptz NOT NULL DEFAULT now()\n);\n\nINSERT INTO tickets (title, status) VALUES\n  ('Первая', 'new'),\n  ('Вторая', 'in_progress'),\n  ('Третья', 'done');\n\nSELECT id, title, status FROM tickets;\n```\n\n### Правило\n\nСписок в Python → **пропадает** после рестарта.  \nСтроки в Postgres → **остаются**.\n\n### Не делать\n\n- Одна JSON-простыня «на всё»\n- Соединение без закрытия в бесконечном цикле\n- Репликация / партиции в этот выпуск\n\n### Готово, если…\n\n- [ ] SELECT в клиенте БД\n- [ ] GET /tickets после рестарта uvicorn тот же"
+        }
+      ],
+      "diagrams": [
+        {
+          "caption": "Схема",
+          "mermaid": "flowchart LR\n  API[FastAPI] --> PG[(tickets)]\n  Insomnia[Insomnia] --> API"
+        }
+      ],
+      "quiz": [
+        {
+          "question": "Какой код у выпуска «PostgreSQL»?",
+          "answer": "S01E07",
+          "explain": "PostgreSQL: таблица и SELECT"
+        }
+      ],
+      "anki": [
+        {
+          "front": "О чём выпуск «PostgreSQL»?",
+          "back": "S01E07 · PostgreSQL · таблица, PK, SELECT"
+        },
+        {
+          "front": "Ключевая идея: PostgreSQL",
+          "back": "Пока заявки живут в списке Python, перезапуск сервера стирает учебный стенд. База — это факты: строка либо есть, либо её нет."
+        },
+        {
+          "front": "Запомните (PostgreSQL) #1",
+          "back": "Одна JSON-простыня «на всё»"
+        },
+        {
+          "front": "Запомните (PostgreSQL) #2",
+          "back": "Соединение без закрытия в бесконечном цикле"
+        },
+        {
+          "front": "Запомните (PostgreSQL) #3",
+          "back": "Репликация / партиции в этот выпуск"
+        },
+        {
+          "front": "Запомните (PostgreSQL) #4",
+          "back": "SELECT в клиенте БД"
+        },
+        {
+          "front": "Запомните (PostgreSQL) #5",
+          "back": "GET /tickets после рестарта uvicorn тот же"
+        },
+        {
+          "front": "Зачем тема «PostgreSQL» на практике?",
+          "back": "Следующий выпуск: JOIN и индекс — когда таблиц станет две."
+        }
+      ],
+      "summary": [
+        "Одна JSON-простыня «на всё»",
+        "Соединение без закрытия в бесконечном цикле",
+        "Репликация / партиции в этот выпуск",
+        "SELECT в клиенте БД",
+        "GET /tickets после рестарта uvicorn тот же"
+      ]
+    }
   },
   {
     "slug": "s01e08-sql",
@@ -237,7 +721,77 @@
     "theoryFormat": "markdown",
     "labFormat": "markdown",
     "cheatsheetFormat": "markdown",
-    "publishedAt": "2026-08-25T22:49:01.216Z"
+    "publishedAt": "2026-08-25T22:49:01.216Z",
+    "structured": {
+      "version": 1,
+      "intro": "S01E08 · SQL · JOIN и зачем индекс Тема выпуска: SQL: JOIN и индекс.",
+      "sections": [
+        {
+          "heading": "Основная часть",
+          "body": "Одна таблица врёт, как только появляется «чей это». Автор заявки — не строка, повторённая в каждом title, а другая сущность.\n\nJOIN склеивает факты по ключу: `tickets.author_id = users.id`. Это не «цикл в Python по двум спискам», это работа СУБД.\n\nИндекс — структура, которая ускоряет поиск по условию (`WHERE status = ...`, `WHERE author_id = ...`). Цена: INSERT/UPDATE становятся чуть дороже, место на диске тоже. Индекс «на всякий случай по всем колонкам» — лишняя фича.\n\n`EXPLAIN` (и `EXPLAIN ANALYZE`) показывает, пошла ли база seq scan по всей таблице или index scan. На трёх строках разницы не видно — и это нормально. Смотрите план, привыкайте к словам.\n\nЗачем это в живом сервисе. В аналитике и в ядре CopyParse без JOIN и индексов под реальные выборки вы не отладите «почему тормозит список».\n\nГраница. Не учите оконные функции и CTE в этом выпуске, если JOIN ещё не уверенный. Партиции и шардинг — не сюда.\n\nСледующий выпуск: регулярные выражения — валидация на входе, не парсинг всего HTML."
+        },
+        {
+          "heading": "Шпаргалка",
+          "body": "### JOIN\n\n```sql\nSELECT t.id, t.title, u.name AS author\nFROM tickets t\nINNER JOIN users u ON u.id = t.author_id\nWHERE t.author_id = 1;\n```\n\n### Индекс\n\n```sql\nCREATE INDEX tickets_author_id_idx ON tickets (author_id);\nEXPLAIN SELECT ... WHERE tickets.author_id = 1;\n```\n\n### Когда индекс\n\n- Часто фильтруете / джойните по колонке\n- Не «на все колонки сразу»\n\n### Не делать\n\n- JOIN в цикле Python по двум спискам\n- Оконные функции, пока JOIN не уверенный\n- Индекс «на всякий случай»\n\n### Готово, если…\n\n- [ ] Имя автора из SQL, не из Python\n- [ ] Есть скрин EXPLAIN"
+        }
+      ],
+      "diagrams": [
+        {
+          "caption": "Схема",
+          "mermaid": "flowchart LR\n  Users[users] --> Join[JOIN]\n  Tickets[tickets] --> Join\n  Join --> Result[заявка_плюс_автор]"
+        }
+      ],
+      "quiz": [
+        {
+          "question": "Какой код у выпуска «SQL JOIN»?",
+          "answer": "S01E08",
+          "explain": "SQL: JOIN и индекс"
+        }
+      ],
+      "anki": [
+        {
+          "front": "О чём выпуск «SQL JOIN»?",
+          "back": "S01E08 · SQL · JOIN и зачем индекс"
+        },
+        {
+          "front": "Ключевая идея: SQL JOIN",
+          "back": "Одна таблица врёт, как только появляется «чей это». Автор заявки — не строка, повторённая в каждом title, а другая сущность."
+        },
+        {
+          "front": "Запомните (SQL JOIN) #1",
+          "back": "Часто фильтруете / джойните по колонке"
+        },
+        {
+          "front": "Запомните (SQL JOIN) #2",
+          "back": "Не «на все колонки сразу»"
+        },
+        {
+          "front": "Запомните (SQL JOIN) #3",
+          "back": "JOIN в цикле Python по двум спискам"
+        },
+        {
+          "front": "Запомните (SQL JOIN) #4",
+          "back": "Оконные функции, пока JOIN не уверенный"
+        },
+        {
+          "front": "Запомните (SQL JOIN) #5",
+          "back": "Индекс «на всякий случай»"
+        },
+        {
+          "front": "Запомните (SQL JOIN) #6",
+          "back": "Имя автора из SQL, не из Python"
+        }
+      ],
+      "summary": [
+        "Часто фильтруете / джойните по колонке",
+        "Не «на все колонки сразу»",
+        "JOIN в цикле Python по двум спискам",
+        "Оконные функции, пока JOIN не уверенный",
+        "Индекс «на всякий случай»",
+        "Имя автора из SQL, не из Python",
+        "Есть скрин EXPLAIN"
+      ]
+    }
   },
   {
     "slug": "s01e09-regex",
@@ -267,7 +821,77 @@
     "theoryFormat": "markdown",
     "labFormat": "markdown",
     "cheatsheetFormat": "markdown",
-    "publishedAt": "2026-08-26T22:49:01.216Z"
+    "publishedAt": "2026-08-26T22:49:01.216Z",
+    "structured": {
+      "version": 1,
+      "intro": "S01E09 · Regex · валидация и где уже вредно",
+      "sections": [
+        {
+          "heading": "Основная часть",
+          "body": "Регулярное выражение — это формальный язык для поиска по строке, не «искусственный интеллект» и не парсер HTML.\n\nГде уместно в сервисе заявок:\n\n- Грубый формат: код заявки `TCK-\\d+`, e-mail «есть @ и точка», slug из латиницы.\n- Вырезать кусок из лога: номер запроса, статус.\n- Серверная проверка плюс та же идея на клиенте — но источником правды остаётся API.\n\nГде вредно:\n\n- Разбор HTML/XML regex’ом («достать все ссылки из страницы») — ломается на вложенности. Для этого парсер.\n- «Умная» валидация ФИО, адресов, телефона всех стран одним выражением — ложные отказы.\n- Секреты и SQL: regex не заменяет параметризованные запросы.\n\nВ Python — модуль `re`. Отлаживать удобно на regex101: видны группы и расхождения Python vs JS.\n\nЗачем это в живом сервисе. В пайплайне контента (чистка текста, URL, лимиты) без дисциплины regex легко сломать валидные данные.\n\nГраница. Не пишите комбайн на 80 групп. Если выражение нельзя прочитать вслух — упростите или откажитесь.\n\nСледующий выпуск: React — список заявок из того API, которое вы уже проверили Insomnia."
+        },
+        {
+          "heading": "Шпаргалка",
+          "body": "### Пример\n\n```\n^TCK-\\d+$\n```\n\n- Flavor на regex101: **Python**\n- В Pydantic: `pattern=...` → невалидное → **422**\n\n### Уместно / вредно\n\n| Уместно | Вредно |\n|---------|--------|\n| Код `TCK-123` | Парсинг HTML |\n| Грубый e-mail | «Телефон всех стран» |\n| Кусок из лога | Замена параметризованного SQL |\n\n### Не делать\n\n- Комбайн на 80 групп\n- Источник правды только на клиенте\n\n### Готово, если…\n\n- [ ] 5+ / 3− примера на regex101\n- [ ] Скрин 422 из Insomnia\n- [ ] HTML не парсите regex’ом"
+        }
+      ],
+      "diagrams": [
+        {
+          "caption": "Схема",
+          "mermaid": "flowchart LR\n  Input[Ввод] --> Re[re_pattern]\n  Re -->|ok| API[Принять]\n  Re -->|fail| Err[422]"
+        }
+      ],
+      "quiz": [
+        {
+          "question": "Какой код у выпуска «Regex»?",
+          "answer": "S01E09",
+          "explain": "Регулярные выражения"
+        }
+      ],
+      "anki": [
+        {
+          "front": "Что такое «Код `TCK-123`»?",
+          "back": "Парсинг HTML"
+        },
+        {
+          "front": "Что такое «Грубый e-mail»?",
+          "back": "«Телефон всех стран»"
+        },
+        {
+          "front": "Что такое «Кусок из лога»?",
+          "back": "Замена параметризованного SQL"
+        },
+        {
+          "front": "В Pydantic?",
+          "back": "`pattern=...` → невалидное → **422**"
+        },
+        {
+          "front": "Код `TCK-123`?",
+          "back": "Парсинг HTML"
+        },
+        {
+          "front": "Грубый e-mail?",
+          "back": "«Телефон всех стран»"
+        },
+        {
+          "front": "Кусок из лога?",
+          "back": "Замена параметризованного SQL"
+        }
+      ],
+      "summary": [
+        "Flavor на regex101: **Python**",
+        "В Pydantic: `pattern=...` → невалидное → **422**",
+        "Уместно — Вредно",
+        "Код `TCK-123` — Парсинг HTML",
+        "Грубый e-mail — «Телефон всех стран»",
+        "Кусок из лога — Замена параметризованного SQL",
+        "Комбайн на 80 групп",
+        "Источник правды только на клиенте",
+        "5+ / 3− примера на regex101",
+        "Скрин 422 из Insomnia",
+        "HTML не парсите regex’ом"
+      ]
+    }
   },
   {
     "slug": "s01e10-react",
@@ -301,7 +925,76 @@
     "theoryFormat": "markdown",
     "labFormat": "markdown",
     "cheatsheetFormat": "markdown",
-    "publishedAt": "2026-08-27T22:49:01.216Z"
+    "publishedAt": "2026-08-27T22:49:01.216Z",
+    "structured": {
+      "version": 1,
+      "intro": "S01E10 · React · список и fetch Тема выпуска: React: страница списка и вызов API.",
+      "sections": [
+        {
+          "heading": "Основная часть",
+          "body": "UI — последний слой в этой десятке, не первый. Вы уже знаете контракт (`GET /tickets`) и видели JSON в Insomnia. Страница только рисует то, что API уже умеет.\n\nМинимум Vite + React:\n\n- Страница «Список заявок»: запрос к API при загрузке, вывод `title` и `status`.\n- Один `baseURL` (лучше переменная `VITE_API_URL`), не размазанные по компонентам localhost.\n- Ошибка сети — текст на странице, не пустой экран.\n- Пока без дизайн-системы, без Redux, без авторизации (JWT — позже).\n\nCORS. Если UI на `:5173`, а API на `:8000`, браузер заблокирует запрос, пока FastAPI не отдаст CORS. Это не баг React. Либо прокси Vite на `/api`, либо настройки CORS на бэке — выберите одно и зафиксируйте в README.\n\nЗачем это в живом сервисе. UI CopyParse ходит в `/api` так же: один клиент, не «каждый экран сам знает хост core».\n\nГраница. Не верстайте админку и не тащите компонентную библиотеку «как на проде». Список из API важнее кнопок.\n\nСледующий выпуск: JWT — логин без самодельной криптографии."
+        },
+        {
+          "heading": "Шпаргалка",
+          "body": "### Минимум страницы\n\n```ts\nconst base = import.meta.env.VITE_API_URL\n\nuseEffect(() => {\n  fetch(`${base}/tickets`)\n    .then((r) => {\n      if (!r.ok) throw new Error(String(r.status))\n      return r.json()\n    })\n    .then(setTickets)\n    .catch(setError)\n}, [])\n```\n\n### CORS\n\nUI `:5173` + API `:8000` → нужен CORS на FastAPI **или** proxy Vite. Зафиксируйте в README.\n\n### Не делать\n\n- Хардкод списка «пока без API»\n- Redux / UI-kit / JWT в этом выпуске\n- Пустой экран при ошибке сети\n\n### Готово, если…\n\n- [ ] Список = то же, что Insomnia\n- [ ] Стоп API → ошибка на экране\n- [ ] Один `VITE_API_URL`"
+        }
+      ],
+      "diagrams": [
+        {
+          "caption": "Схема",
+          "mermaid": "flowchart LR\n  Page[Страница_списка] --> Fetch[fetch]\n  Fetch --> API[\"GET /tickets\"]\n  API --> PG[(PostgreSQL)]\n  Fetch --> View[Таблица_на_экране]"
+        }
+      ],
+      "quiz": [
+        {
+          "question": "Какой код у выпуска «React»?",
+          "answer": "S01E10",
+          "explain": "React: страница списка и вызов API"
+        }
+      ],
+      "anki": [
+        {
+          "front": "О чём выпуск «React»?",
+          "back": "S01E10 · React · список и fetch"
+        },
+        {
+          "front": "Ключевая идея: React",
+          "back": "UI — последний слой в этой десятке, не первый. Вы уже знаете контракт (`GET /tickets`) и видели JSON в Insomnia. Страница только рисует то, что API уже умеет."
+        },
+        {
+          "front": "Запомните (React) #1",
+          "back": "Хардкод списка «пока без API»"
+        },
+        {
+          "front": "Запомните (React) #2",
+          "back": "Redux / UI-kit / JWT в этом выпуске"
+        },
+        {
+          "front": "Запомните (React) #3",
+          "back": "Пустой экран при ошибке сети"
+        },
+        {
+          "front": "Запомните (React) #4",
+          "back": "Список = то же, что Insomnia"
+        },
+        {
+          "front": "Запомните (React) #5",
+          "back": "Стоп API → ошибка на экране"
+        },
+        {
+          "front": "Запомните (React) #6",
+          "back": "Один `VITE_API_URL`"
+        }
+      ],
+      "summary": [
+        "Хардкод списка «пока без API»",
+        "Redux / UI-kit / JWT в этом выпуске",
+        "Пустой экран при ошибке сети",
+        "Список = то же, что Insomnia",
+        "Стоп API → ошибка на экране",
+        "Один `VITE_API_URL`"
+      ]
+    }
   },
   {
     "slug": "b01-karta",
@@ -331,7 +1024,82 @@
     "theoryFormat": "markdown",
     "labFormat": "markdown",
     "cheatsheetFormat": "markdown",
-    "publishedAt": "2026-08-29T10:00:00Z"
+    "publishedAt": "2026-08-29T10:00:00Z",
+    "structured": {
+      "version": 1,
+      "intro": "B01 · Карта · первое приложение за серию",
+      "sections": [
+        {
+          "heading": "Основная часть",
+          "body": "Цель сезона B: быстро собрать своё первое приложение — **«Заметки»** (`notes`): API на Python, страница на React, упаковка в Docker. Не весь прод-стенд, а минимальный круг «кнопка → API → список».\n\nЧетыре кирпича, которые вы соберёте:\n\n1. **Git** — где живёт код и история ([B02](/game/learn/b02-git), [B06](/game/learn/b06-git-branch)).\n2. **Python / FastAPI** — HTTP и JSON ([B03](/game/learn/b03-python)–[B07](/game/learn/b07-notes-api)).\n3. **React** — экран поверх готового API ([B08](/game/learn/b08-react-list), [B09](/game/learn/b09-react-form)).\n4. **Docker / Compose** — одинаковый запуск у вас и у друга ([B10](/game/learn/b10-docker), [B11](/game/learn/b11-compose)).\n\nПорядок важен: сначала API можно проверить без UI ([B05](/game/learn/b05-api-check)), потом уже React. Docker — когда код уже отвечает.\n\nЗачем это на 9to18. Площадка про взаимное продвижение проектов: сначала учимся запускать своё, потом показывать его другим. CopyParse — пример «взрослого» стенда, не ДЗ на клон.\n\nГраница. JWT, Kubernetes, Kafka и «красивый дизайн» в сезон B не входят. Финал — [склейка B12](/game/learn/b12-sklejka).\n\nСледующий выпуск: [B02 · Git](/game/learn/b02-git) — репозиторий до первой строки Python."
+        },
+        {
+          "heading": "Шпаргалка",
+          "body": "### Сезон B — маршрут\n\n| № | Тема | Ссылка |\n|---|------|--------|\n| B01 | Карта | этот выпуск |\n| B02 | Git init | [открыть](/game/learn/b02-git) |\n| B03 | Python / venv | [открыть](/game/learn/b03-python) |\n| B04 | FastAPI `/health` | [открыть](/game/learn/b04-fastapi-health) |\n| B05 | Проверка API | [открыть](/game/learn/b05-api-check) |\n| B06 | Git ветка | [открыть](/game/learn/b06-git-branch) |\n| B07 | Notes API | [открыть](/game/learn/b07-notes-api) |\n| B08 | React список | [открыть](/game/learn/b08-react-list) |\n| B09 | React форма | [открыть](/game/learn/b09-react-form) |\n| B10 | Docker | [открыть](/game/learn/b10-docker) |\n| B11 | Compose | [открыть](/game/learn/b11-compose) |\n| B12 | Склейка | [открыть](/game/learn/b12-sklejka) |\n\n### Не делать в B01\n\n- Ставить Minikube «на вырост»\n- Писать UI до API"
+        }
+      ],
+      "diagrams": [
+        {
+          "caption": "Схема",
+          "mermaid": "flowchart LR\n  User[Браузер] --> UI[React]\n  UI --> API[FastAPI]\n  API --> Mem[(Память_или_БД)]\n  Git[GitHub] -.-> UI\n  Git -.-> API\n  Docker[Compose] -.-> UI\n  Docker -.-> API"
+        }
+      ],
+      "quiz": [
+        {
+          "question": "Какой код у выпуска «Карта»?",
+          "answer": "B01",
+          "explain": "Из чего состоит первое приложение"
+        }
+      ],
+      "anki": [
+        {
+          "front": "Что такое «B02»?",
+          "back": "Git init"
+        },
+        {
+          "front": "Что такое «B03»?",
+          "back": "Python / venv"
+        },
+        {
+          "front": "Что такое «B04»?",
+          "back": "FastAPI `/health`"
+        },
+        {
+          "front": "Что такое «B05»?",
+          "back": "Проверка API"
+        },
+        {
+          "front": "Что такое «B06»?",
+          "back": "Git ветка"
+        },
+        {
+          "front": "Что такое «B07»?",
+          "back": "Notes API"
+        },
+        {
+          "front": "Что такое «B08»?",
+          "back": "React список"
+        },
+        {
+          "front": "Что такое «B09»?",
+          "back": "React форма"
+        }
+      ],
+      "summary": [
+        "№ — Тема",
+        "B01 — Карта",
+        "B02 — Git init",
+        "B03 — Python / venv",
+        "B04 — FastAPI `/health`",
+        "B05 — Проверка API",
+        "B06 — Git ветка",
+        "B07 — Notes API",
+        "B08 — React список",
+        "B09 — React форма",
+        "B10 — Docker",
+        "B11 — Compose"
+      ]
+    }
   },
   {
     "slug": "b02-git",
@@ -365,7 +1133,68 @@
     "theoryFormat": "markdown",
     "labFormat": "markdown",
     "cheatsheetFormat": "markdown",
-    "publishedAt": "2026-08-30T10:00:00Z"
+    "publishedAt": "2026-08-30T10:00:00Z",
+    "structured": {
+      "version": 1,
+      "intro": "B02 · Git · init, commit, .gitignore Тема выпуска: Git: репозиторий за 15 минут.",
+      "sections": [
+        {
+          "heading": "Основная часть",
+          "body": "Код на Рабочем столе без истории — черновик. Git фиксирует *что* изменилось. GitHub — место, куда потом положите Docker-инструкции из [B11](/game/learn/b11-compose).\n\nСквозной проект сезона: репозиторий **`notes`**.\n\n### 1. Создайте repo\n\nНа GitHub: New repository → `notes` (private ок) → **без** README, если делаете `git init` локально.\n\n```bash\nmkdir notes && cd notes\ngit init\ngit branch -M main\n```\n\n### 2. .gitignore до первого commit\n\nИначе `venv/` и `.env` уедут в историю навсегда (секреты понадобятся ближе к [B10](/game/learn/b10-docker)).\n\n```\n.env\nvenv/\n.venv/\n__pycache__/\n*.pyc\nnode_modules/\ndist/\n.idea/\n.vscode/\n*.pem\n```\n\n### 3. Первый commit\n\n```bash\n# README: что за сервис (заметки), для кого, стек позже\ngit add .gitignore README.md\ngit status\ngit commit -m \"init: notes app, gitignore\"\n```\n\nКарта слоёв из [B01](/game/learn/b01-karta) можно положить в `docs/map.md` вторым commit — или оставить на [B06](/game/learn/b06-git-branch).\n\nЗачем это дальше. В [B03](/game/learn/b03-python) в этот же repo появится Python. В [B08](/game/learn/b08-react-list) — папка `web/`. Один репозиторий на всё приложение.\n\nГраница. Ветки и PR — в [B06](/game/learn/b06-git-branch). Сейчас достаточно `main` + понятный commit.\n\nСледующий: [B03 · Python](/game/learn/b03-python)."
+        },
+        {
+          "heading": "Шпаргалка",
+          "body": "### Happy path\n\n```bash\ngit init && git branch -M main\ngit add .gitignore README.md\ngit commit -m \"init: notes app, gitignore\"\ngit remote add origin https://github.com/<you>/notes.git\ngit push -u origin main\n```\n\n### Связи\n\n- Карта приложения: [B01](/game/learn/b01-karta)\n- Ветка и PR: [B06](/game/learn/b06-git-branch)"
+        }
+      ],
+      "diagrams": [
+        {
+          "caption": "Схема",
+          "mermaid": "flowchart LR\n  Local[локально] --> Init[git_init]\n  Init --> Ignore[gitignore]\n  Ignore --> Commit[commit]\n  Commit --> Remote[GitHub]"
+        }
+      ],
+      "quiz": [
+        {
+          "question": "Какой код у выпуска «Git»?",
+          "answer": "B02",
+          "explain": "Git: репозиторий за 15 минут"
+        }
+      ],
+      "anki": [
+        {
+          "front": "Карта приложения?",
+          "back": "[B01](/game/learn/b01-karta)"
+        },
+        {
+          "front": "Ветка и PR?",
+          "back": "[B06](/game/learn/b06-git-branch)"
+        },
+        {
+          "front": "О чём выпуск «Git»?",
+          "back": "B02 · Git · init, commit, .gitignore"
+        },
+        {
+          "front": "Ключевая идея: Git",
+          "back": "Код на Рабочем столе без истории — черновик. Git фиксирует *что* изменилось. GitHub — место, куда потом положите Docker-инструкции из [B11](/game/learn/b11-compose)."
+        },
+        {
+          "front": "Запомните (Git) #1",
+          "back": "Карта приложения: [B01](/game/learn/b01-karta)"
+        },
+        {
+          "front": "Запомните (Git) #2",
+          "back": "Ветка и PR: [B06](/game/learn/b06-git-branch)"
+        },
+        {
+          "front": "Зачем тема «Git» на практике?",
+          "back": "Следующий: [B03 · Python](/game/learn/b03-python)."
+        }
+      ],
+      "summary": [
+        "Карта приложения: [B01](/game/learn/b01-karta)",
+        "Ветка и PR: [B06](/game/learn/b06-git-branch)"
+      ]
+    }
   },
   {
     "slug": "b03-python",
@@ -395,7 +1224,55 @@
     "theoryFormat": "markdown",
     "labFormat": "markdown",
     "cheatsheetFormat": "markdown",
-    "publishedAt": "2026-08-31T10:00:00Z"
+    "publishedAt": "2026-08-31T10:00:00Z",
+    "structured": {
+      "version": 1,
+      "intro": "B03 · Python · окружение Тема выпуска: Python: venv и первая команда.",
+      "sections": [
+        {
+          "heading": "Основная часть",
+          "body": "API сезона будет на **Python 3.12+**. Сначала — изолированное окружение, чтобы пакеты FastAPI из [B04](/game/learn/b04-fastapi-health) не смешались с системным Python.\n\nРаботайте **внутри** репозитория `notes` из [B02](/game/learn/b02-git).\n\n### 1. Проверьте Python\n\n```bash\npython --version\n# или: python3 --version\n```\n\nНужен 3.11+ (лучше 3.12).\n\n### 2. venv\n\n```bash\ncd notes\npython -m venv .venv\n# Windows PowerShell:\n.\\.venv\\Scripts\\Activate.ps1\n# macOS / Linux:\n# source .venv/bin/activate\npython -m pip install --upgrade pip\n```\n\nПапка `.venv/` уже в `.gitignore` из B02 — не коммитьте её.\n\n### 3. Проверка\n\n```bash\npython -c \"print('notes ok')\"\n```\n\nГраница. Пока не ставьте FastAPI — это [B04](/game/learn/b04-fastapi-health). Не ставьте глобально без venv.\n\nСледующий: [B04 · FastAPI `/health`](/game/learn/b04-fastapi-health)."
+        },
+        {
+          "heading": "Шпаргалка",
+          "body": "```bash\npython -m venv .venv\n# Windows: .\\.venv\\Scripts\\Activate.ps1\npython -m pip install --upgrade pip\npython -c \"print('notes ok')\"\n```\n\nНе коммитить: `.venv/`, `__pycache__/`.\n\nДальше: [B04 FastAPI](/game/learn/b04-fastapi-health)."
+        }
+      ],
+      "diagrams": [
+        {
+          "caption": "Схема",
+          "mermaid": "flowchart LR\n  Py[Python] --> Venv[.venv]\n  Venv --> Pip[pip]\n  Pip --> App[код_notes]"
+        }
+      ],
+      "quiz": [
+        {
+          "question": "Какой код у выпуска «Python»?",
+          "answer": "B03",
+          "explain": "Python: venv и первая команда"
+        }
+      ],
+      "anki": [
+        {
+          "front": "О чём выпуск «Python»?",
+          "back": "B03 · Python · окружение"
+        },
+        {
+          "front": "Ключевая идея: Python",
+          "back": "API сезона будет на **Python 3.12+**. Сначала — изолированное окружение, чтобы пакеты FastAPI из [B04](/game/learn/b04-fastapi-health) не смешались с системным Python."
+        },
+        {
+          "front": "Зачем тема «Python» на практике?",
+          "back": "Следующий: [B04 · FastAPI `/health`](/game/learn/b04-fastapi-health)."
+        },
+        {
+          "front": "Кратко: Python: venv и первая команда",
+          "back": "```bash\npython -m venv .venv\n# Windows: .\\.venv\\Scripts\\Activate.ps1\npython -m pip install --upgrade pip\npython -c \"print('notes ok')\"\n```\n\nНе коммитить: `.venv/`, `__pycache__/`.\n\nДальше: [B04 FastAPI](/game/learn/b04-fastapi-health)."
+        }
+      ],
+      "summary": [
+        "Изучите выпуск B03: Python"
+      ]
+    }
   },
   {
     "slug": "b04-fastapi-health",
@@ -429,7 +1306,57 @@
     "theoryFormat": "markdown",
     "labFormat": "markdown",
     "cheatsheetFormat": "markdown",
-    "publishedAt": "2026-09-01T10:00:00Z"
+    "publishedAt": "2026-09-01T10:00:00Z",
+    "structured": {
+      "version": 1,
+      "intro": "B04 · FastAPI · `/health` Тема выпуска: FastAPI: первый /health.",
+      "sections": [
+        {
+          "heading": "Основная часть",
+          "body": "API начинается с контракта: путь, ответ, код. FastAPI это фиксирует типами и сразу даёт Swagger на `/docs`.\n\nВ репо `notes` (venv из [B03](/game/learn/b03-python)):\n\n```bash\npip install \"fastapi[standard]\"\n```\n\nМинимальный `api/main.py`:\n\n```python\nfrom fastapi import FastAPI\n\napp = FastAPI(title=\"notes\")\n\n@app.get(\"/health\")\ndef health():\n    return {\"status\": \"ok\"}\n```\n\nЗапуск:\n\n```bash\nuvicorn api.main:app --reload --port 8000\n```\n\nОткройте `http://127.0.0.1:8000/health` и `http://127.0.0.1:8000/docs`.\n\nЗачем без React. В [B05](/game/learn/b05-api-check) научитесь проверять API до UI. В [B07](/game/learn/b07-notes-api) добавите заметки. В [B10](/game/learn/b10-docker) этот же процесс попадёт в Docker.\n\nГраница. Без БД, JWT и CORS-танцев. Один процесс, одна ручка.\n\nСледующий: [B05 · проверка API](/game/learn/b05-api-check)."
+        },
+        {
+          "heading": "Шпаргалка",
+          "body": "```bash\npip install \"fastapi[standard]\"\nuvicorn api.main:app --reload --port 8000\n```\n\n| URL | Ожидание |\n|-----|----------|\n| `/health` | `{\"status\":\"ok\"}` |\n| `/docs` | Swagger UI |\n\nСвязи: [B05](/game/learn/b05-api-check), [B07](/game/learn/b07-notes-api), [B10](/game/learn/b10-docker)."
+        }
+      ],
+      "diagrams": [
+        {
+          "caption": "Схема",
+          "mermaid": "flowchart LR\n  Client[Клиент] --> Health[GET_/health]\n  Health --> App[FastAPI]\n  App --> JSON[status_ok]"
+        }
+      ],
+      "quiz": [
+        {
+          "question": "Какой код у выпуска «FastAPI»?",
+          "answer": "B04",
+          "explain": "FastAPI: первый /health"
+        }
+      ],
+      "anki": [
+        {
+          "front": "Что такое «URL»?",
+          "back": "Ожидание"
+        },
+        {
+          "front": "Что такое «`/health`»?",
+          "back": "`{\"status\":\"ok\"}`"
+        },
+        {
+          "front": "Что такое «`/docs`»?",
+          "back": "Swagger UI"
+        },
+        {
+          "front": "`/health`?",
+          "back": "`{\"status\":\"ok\"}`"
+        }
+      ],
+      "summary": [
+        "URL — Ожидание",
+        "`/health` — `{\"status\":\"ok\"}`",
+        "`/docs` — Swagger UI"
+      ]
+    }
   },
   {
     "slug": "b05-api-check",
@@ -459,7 +1386,55 @@
     "theoryFormat": "markdown",
     "labFormat": "markdown",
     "cheatsheetFormat": "markdown",
-    "publishedAt": "2026-09-02T10:00:00Z"
+    "publishedAt": "2026-09-02T10:00:00Z",
+    "structured": {
+      "version": 1,
+      "intro": "B05 · Проверка · curl и браузер Тема выпуска: Как проверить API без React.",
+      "sections": [
+        {
+          "heading": "Основная часть",
+          "body": "Пока нет React ([B08](/game/learn/b08-react-list)), API из [B04](/game/learn/b04-fastapi-health) уже можно проверить тремя способами.\n\n### 1. Браузер\n\n`http://127.0.0.1:8000/health` — для GET достаточно.\n\n### 2. Swagger `/docs`\n\nКнопка Try it out → Execute. Удобно видеть схему ответа.\n\n### 3. curl / PowerShell\n\n```bash\ncurl http://127.0.0.1:8000/health\n```\n\nPowerShell:\n\n```powershell\nInvoke-RestMethod http://127.0.0.1:8000/health\n```\n\nЗачем это. Когда в [B07](/game/learn/b07-notes-api) появится `POST /notes`, вы сначала проверите его здесь, и только потом повесите кнопку в [B09](/game/learn/b09-react-form). Иначе отладка «не работает форма» смешивает UI и API.\n\nГраница. Insomnia/Postman — по желанию; curl достаточно.\n\nСледующий: [B06 · Git ветка](/game/learn/b06-git-branch) — зафиксировать прогресс до усложнения API."
+        },
+        {
+          "heading": "Шпаргалка",
+          "body": "```bash\ncurl http://127.0.0.1:8000/health\n```\n\nПорядок отладки: **API → потом UI**. См. [B09](/game/learn/b09-react-form)."
+        }
+      ],
+      "diagrams": [
+        {
+          "caption": "Схема",
+          "mermaid": "flowchart LR\n  Browser[Браузер] --> Health\n  Curl[curl] --> Health\n  Docs[Swagger] --> Health\n  Health[GET_/health]"
+        }
+      ],
+      "quiz": [
+        {
+          "question": "Какой код у выпуска «Проверка API»?",
+          "answer": "B05",
+          "explain": "Как проверить API без React"
+        }
+      ],
+      "anki": [
+        {
+          "front": "О чём выпуск «Проверка API»?",
+          "back": "B05 · Проверка · curl и браузер"
+        },
+        {
+          "front": "Ключевая идея: Проверка API",
+          "back": "Пока нет React ([B08](/game/learn/b08-react-list)), API из [B04](/game/learn/b04-fastapi-health) уже можно проверить тремя способами."
+        },
+        {
+          "front": "Зачем тема «Проверка API» на практике?",
+          "back": "Следующий: [B06 · Git ветка](/game/learn/b06-git-branch) — зафиксировать прогресс до усложнения API."
+        },
+        {
+          "front": "Кратко: Как проверить API без React",
+          "back": "```bash\ncurl http://127.0.0.1:8000/health\n```\n\nПорядок отладки: **API → потом UI**. См. [B09](/game/learn/b09-react-form)."
+        }
+      ],
+      "summary": [
+        "Изучите выпуск B05: Проверка API"
+      ]
+    }
   },
   {
     "slug": "b06-git-branch",
@@ -493,7 +1468,55 @@
     "theoryFormat": "markdown",
     "labFormat": "markdown",
     "cheatsheetFormat": "markdown",
-    "publishedAt": "2026-09-03T10:00:00Z"
+    "publishedAt": "2026-09-03T10:00:00Z",
+    "structured": {
+      "version": 1,
+      "intro": "B06 · Git · ветка и README Тема выпуска: Git: ветка и понятный README.",
+      "sections": [
+        {
+          "heading": "Основная часть",
+          "body": "Перед `POST /notes` ([B07](/game/learn/b07-notes-api)) закрепим привычку: лаба не пишется прямо в `main`.\n\n```bash\ngit switch -c b06-readme\n# обновите README: как поднять venv и uvicorn (команды из B03–B04)\ngit add README.md\ngit commit -m \"docs: how to run health API\"\ngit push -u origin b06-readme\n```\n\nНа GitHub: Pull Request `b06-readme` → `main`. Смотрите **Files changed**.\n\nREADME минимум:\n\n1. Что это (`notes`).\n2. Как создать venv ([B03](/game/learn/b03-python)).\n3. Как запустить `uvicorn` ([B04](/game/learn/b04-fastapi-health)).\n\nПозже в [B12](/game/learn/b12-sklejka) добавите Compose.\n\nГраница. Rebase и monorepo-тулинг не нужны. Ветка + PR + читаемый commit.\n\nСледующий: [B07 · Notes API](/game/learn/b07-notes-api)."
+        },
+        {
+          "heading": "Шпаргалка",
+          "body": "```bash\ngit switch -c b06-readme\ngit add README.md\ngit commit -m \"docs: how to run health API\"\ngit push -u origin b06-readme\n```\n\nСвязи: [B02](/game/learn/b02-git), финал README — [B12](/game/learn/b12-sklejka)."
+        }
+      ],
+      "diagrams": [
+        {
+          "caption": "Схема",
+          "mermaid": "flowchart LR\n  Main[main] --> Branch[b06_readme]\n  Branch --> PR[Pull_Request]\n  PR --> Main"
+        }
+      ],
+      "quiz": [
+        {
+          "question": "Какой код у выпуска «Git ветка»?",
+          "answer": "B06",
+          "explain": "Git: ветка и понятный README"
+        }
+      ],
+      "anki": [
+        {
+          "front": "О чём выпуск «Git ветка»?",
+          "back": "B06 · Git · ветка и README"
+        },
+        {
+          "front": "Ключевая идея: Git ветка",
+          "back": "Перед `POST /notes` ([B07](/game/learn/b07-notes-api)) закрепим привычку: лаба не пишется прямо в `main`."
+        },
+        {
+          "front": "Зачем тема «Git ветка» на практике?",
+          "back": "Следующий: [B07 · Notes API](/game/learn/b07-notes-api)."
+        },
+        {
+          "front": "Кратко: Git: ветка и понятный README",
+          "back": "```bash\ngit switch -c b06-readme\ngit add README.md\ngit commit -m \"docs: how to run health API\"\ngit push -u origin b06-readme\n```\n\nСвязи: [B02](/game/learn/b02-git), финал README — [B12](/game/learn/b12-sklejka)."
+        }
+      ],
+      "summary": [
+        "Изучите выпуск B06: Git ветка"
+      ]
+    }
   },
   {
     "slug": "b07-notes-api",
@@ -527,7 +1550,74 @@
     "theoryFormat": "markdown",
     "labFormat": "markdown",
     "cheatsheetFormat": "markdown",
-    "publishedAt": "2026-09-04T10:00:00Z"
+    "publishedAt": "2026-09-04T10:00:00Z",
+    "structured": {
+      "version": 1,
+      "intro": "B07 · FastAPI · заметки в памяти Тема выпуска: Notes API: список и создание.",
+      "sections": [
+        {
+          "heading": "Основная часть",
+          "body": "Расширяем [B04](/game/learn/b04-fastapi-health): ресурс заметок без БД. React в [B08](/game/learn/b08-react-list)–[B09](/game/learn/b09-react-form) будет бить именно сюда.\n\nПример моделей и ручек в `api/main.py`:\n\n```python\nfrom fastapi import FastAPI\nfrom pydantic import BaseModel, Field\n\napp = FastAPI(title=\"notes\")\n_notes: list[dict] = []\n_next_id = 1\n\nclass NoteIn(BaseModel):\n    title: str = Field(min_length=1, max_length=200)\n\nclass Note(NoteIn):\n    id: int\n\n@app.get(\"/health\")\ndef health():\n    return {\"status\": \"ok\"}\n\n@app.get(\"/notes\", response_model=list[Note])\ndef list_notes():\n    return _notes\n\n@app.post(\"/notes\", response_model=Note)\ndef create_note(body: NoteIn):\n    global _next_id\n    note = {\"id\": _next_id, \"title\": body.title}\n    _next_id += 1\n    _notes.append(note)\n    return note\n```\n\nПроверьте через приёмы [B05](/game/learn/b05-api-check):\n\n```bash\ncurl -X POST http://127.0.0.1:8000/notes -H \"Content-Type: application/json\" -d \"{\\\"title\\\":\\\"первая\\\"}\"\ncurl http://127.0.0.1:8000/notes\n```\n\nГраница. Postgres подождёт сезона S01. После рестарта uvicorn список обнулится — это ожидаемо.\n\nСледующий: [B08 · React список](/game/learn/b08-react-list)."
+        },
+        {
+          "heading": "Шпаргалка",
+          "body": "| Метод | Путь | Назначение |\n|-------|------|------------|\n| GET | `/health` | живость |\n| GET | `/notes` | список |\n| POST | `/notes` | создать |\n\nОтладка: [B05](/game/learn/b05-api-check). UI: [B08](/game/learn/b08-react-list), [B09](/game/learn/b09-react-form)."
+        }
+      ],
+      "diagrams": [
+        {
+          "caption": "Схема",
+          "mermaid": "flowchart LR\n  Client --> Post[POST_/notes]\n  Client --> Get[GET_/notes]\n  Post --> Mem[(list_in_memory)]\n  Get --> Mem"
+        }
+      ],
+      "quiz": [
+        {
+          "question": "Какой код у выпуска «Notes API»?",
+          "answer": "B07",
+          "explain": "Notes API: список и создание"
+        }
+      ],
+      "anki": [
+        {
+          "front": "Что такое «GET»?",
+          "back": "`/health`"
+        },
+        {
+          "front": "Что такое «POST»?",
+          "back": "`/notes`"
+        },
+        {
+          "front": "О чём выпуск «Notes API»?",
+          "back": "B07 · FastAPI · заметки в памяти"
+        },
+        {
+          "front": "Ключевая идея: Notes API",
+          "back": "Расширяем [B04](/game/learn/b04-fastapi-health): ресурс заметок без БД. React в [B08](/game/learn/b08-react-list)–[B09](/game/learn/b09-react-form) будет бить именно сюда."
+        },
+        {
+          "front": "Запомните (Notes API) #1",
+          "back": "Метод — Путь"
+        },
+        {
+          "front": "Запомните (Notes API) #2",
+          "back": "GET — `/health`"
+        },
+        {
+          "front": "Запомните (Notes API) #3",
+          "back": "GET — `/notes`"
+        },
+        {
+          "front": "Запомните (Notes API) #4",
+          "back": "POST — `/notes`"
+        }
+      ],
+      "summary": [
+        "Метод — Путь",
+        "GET — `/health`",
+        "GET — `/notes`",
+        "POST — `/notes`"
+      ]
+    }
   },
   {
     "slug": "b08-react-list",
@@ -557,7 +1647,55 @@
     "theoryFormat": "markdown",
     "labFormat": "markdown",
     "cheatsheetFormat": "markdown",
-    "publishedAt": "2026-09-05T10:00:00Z"
+    "publishedAt": "2026-09-05T10:00:00Z",
+    "structured": {
+      "version": 1,
+      "intro": "B08 · React · список Тема выпуска: React: список заметок с API.",
+      "sections": [
+        {
+          "heading": "Основная часть",
+          "body": "UI появляется **после** рабочего API ([B07](/game/learn/b07-notes-api)). В том же репо `notes`:\n\n```bash\nnpm create vite@latest web -- --template react-ts\ncd web\nnpm install\nnpm run dev\n```\n\nНа странице: `fetch(\"http://127.0.0.1:8000/notes\")` → показать `title` списком.\n\nCORS: в FastAPI добавьте (временно для учёбы):\n\n```python\nfrom fastapi.middleware.cors import CORSMiddleware\napp.add_middleware(\n    CORSMiddleware,\n    allow_origins=[\"http://127.0.0.1:5173\", \"http://localhost:5173\"],\n    allow_methods=[\"*\"],\n    allow_headers=[\"*\"],\n)\n```\n\nЗачем так. В [B05](/game/learn/b05-api-check) вы уже знаете, что API отвечает; если список пустой — сначала curl, потом React.\n\nСледующий: [B09 · форма](/game/learn/b09-react-form)."
+        },
+        {
+          "heading": "Шпаргалка",
+          "body": "```bash\nnpm create vite@latest web -- --template react-ts\ncd web && npm install && npm run dev\n```\n\nПорядок отладки: curl ([B05](/game/learn/b05-api-check)) → React.\n\nФорма: [B09](/game/learn/b09-react-form)."
+        }
+      ],
+      "diagrams": [
+        {
+          "caption": "Схема",
+          "mermaid": "flowchart LR\n  Page[React] --> Fetch[fetch_/notes]\n  Fetch --> API[FastAPI]\n  API --> List[ul_li]"
+        }
+      ],
+      "quiz": [
+        {
+          "question": "Какой код у выпуска «React список»?",
+          "answer": "B08",
+          "explain": "React: список заметок с API"
+        }
+      ],
+      "anki": [
+        {
+          "front": "О чём выпуск «React список»?",
+          "back": "B08 · React · список"
+        },
+        {
+          "front": "Ключевая идея: React список",
+          "back": "UI появляется **после** рабочего API ([B07](/game/learn/b07-notes-api)). В том же репо `notes`:"
+        },
+        {
+          "front": "Зачем тема «React список» на практике?",
+          "back": "Следующий: [B09 · форма](/game/learn/b09-react-form)."
+        },
+        {
+          "front": "Кратко: React: список заметок с API",
+          "back": "```bash\nnpm create vite@latest web -- --template react-ts\ncd web && npm install && npm run dev\n```\n\nПорядок отладки: curl ([B05](/game/learn/b05-api-check)) → React.\n\nФорма: [B09](/game/learn/b09-react-form)."
+        }
+      ],
+      "summary": [
+        "Изучите выпуск B08: React список"
+      ]
+    }
   },
   {
     "slug": "b09-react-form",
@@ -587,7 +1725,55 @@
     "theoryFormat": "markdown",
     "labFormat": "markdown",
     "cheatsheetFormat": "markdown",
-    "publishedAt": "2026-09-06T10:00:00Z"
+    "publishedAt": "2026-09-06T10:00:00Z",
+    "structured": {
+      "version": 1,
+      "intro": "B09 · React · POST из формы Тема выпуска: React: форма «добавить заметку».",
+      "sections": [
+        {
+          "heading": "Основная часть",
+          "body": "Замыкаем круг: поле ввода → `POST /notes` → обновить список ([B07](/game/learn/b07-notes-api), [B08](/game/learn/b08-react-list)).\n\n```ts\nawait fetch(\"http://127.0.0.1:8000/notes\", {\n  method: \"POST\",\n  headers: { \"Content-Type\": \"application/json\" },\n  body: JSON.stringify({ title }),\n})\n```\n\nПосле успеха — снова `GET /notes` или добавьте ответ POST в локальный state.\n\nЭто и есть «первое приложение» до Docker: человек жмёт кнопку, данные появляются в списке.\n\nДальше упакуем API в образ ([B10](/game/learn/b10-docker)) и поднимем Compose ([B11](/game/learn/b11-compose)).\n\nГраница. Авторизация, редактирование, удаление — не в сезон B."
+        },
+        {
+          "heading": "Шпаргалка",
+          "body": "Круг: `форма → POST /notes → GET /notes → ul`.\n\nСвязи: [B07](/game/learn/b07-notes-api), [B08](/game/learn/b08-react-list), Docker: [B10](/game/learn/b10-docker)."
+        }
+      ],
+      "diagrams": [
+        {
+          "caption": "Схема",
+          "mermaid": "flowchart LR\n  Form[форма] --> Post[POST_/notes]\n  Post --> API[FastAPI]\n  API --> Refresh[GET_/notes]\n  Refresh --> UI[список]"
+        }
+      ],
+      "quiz": [
+        {
+          "question": "Какой код у выпуска «React форма»?",
+          "answer": "B09",
+          "explain": "React: форма «добавить заметку»"
+        }
+      ],
+      "anki": [
+        {
+          "front": "О чём выпуск «React форма»?",
+          "back": "B09 · React · POST из формы"
+        },
+        {
+          "front": "Ключевая идея: React форма",
+          "back": "Замыкаем круг: поле ввода → `POST /notes` → обновить список ([B07](/game/learn/b07-notes-api), [B08](/game/learn/b08-react-list))."
+        },
+        {
+          "front": "Зачем тема «React форма» на практике?",
+          "back": "Граница. Авторизация, редактирование, удаление — не в сезон B."
+        },
+        {
+          "front": "Кратко: React: форма «добавить заметку»",
+          "back": "Круг: `форма → POST /notes → GET /notes → ul`.\n\nСвязи: [B07](/game/learn/b07-notes-api), [B08](/game/learn/b08-react-list), Docker: [B10](/game/learn/b10-docker)."
+        }
+      ],
+      "summary": [
+        "Изучите выпуск B09: React форма"
+      ]
+    }
   },
   {
     "slug": "b10-docker",
@@ -621,7 +1807,55 @@
     "theoryFormat": "markdown",
     "labFormat": "markdown",
     "cheatsheetFormat": "markdown",
-    "publishedAt": "2026-09-07T10:00:00Z"
+    "publishedAt": "2026-09-07T10:00:00Z",
+    "structured": {
+      "version": 1,
+      "intro": "B10 · Docker · образ FastAPI Тема выпуска: Docker: образ API.",
+      "sections": [
+        {
+          "heading": "Основная часть",
+          "body": "Друг без вашего venv должен поднять тот же API из [B07](/game/learn/b07-notes-api). Для этого — образ.\n\n`api/requirements.txt`:\n\n```\nfastapi[standard]==0.115.6\n```\n\n`api/Dockerfile` (пример):\n\n```dockerfile\nFROM python:3.12-slim\nWORKDIR /app\nCOPY requirements.txt .\nRUN pip install --no-cache-dir -r requirements.txt\nCOPY . .\nCMD [\"uvicorn\", \"main:app\", \"--host\", \"0.0.0.0\", \"--port\", \"8000\"]\n```\n\nЕсли код в `api/main.py` и контекст сборки — папка `api/`:\n\n```bash\ncd api\ndocker build -t notes-api .\ndocker run --rm -p 8000:8000 notes-api\n```\n\nПроверка как в [B05](/game/learn/b05-api-check): `curl localhost:8000/health`.\n\nГраница. UI в образ пока не кладём — в [B11](/game/learn/b11-compose) решим через Compose (API + dev UI или статика).\n\nСледующий: [B11 · Compose](/game/learn/b11-compose)."
+        },
+        {
+          "heading": "Шпаргалка",
+          "body": "```bash\ndocker build -t notes-api .\ndocker run --rm -p 8000:8000 notes-api\n```\n\nНе коммитить секреты. Compose: [B11](/game/learn/b11-compose)."
+        }
+      ],
+      "diagrams": [
+        {
+          "caption": "Схема",
+          "mermaid": "flowchart LR\n  Dockerfile --> Build[docker_build]\n  Build --> Image[notes_api]\n  Image --> Run[docker_run_:8000]"
+        }
+      ],
+      "quiz": [
+        {
+          "question": "Какой код у выпуска «Docker»?",
+          "answer": "B10",
+          "explain": "Docker: образ API"
+        }
+      ],
+      "anki": [
+        {
+          "front": "О чём выпуск «Docker»?",
+          "back": "B10 · Docker · образ FastAPI"
+        },
+        {
+          "front": "Ключевая идея: Docker",
+          "back": "Друг без вашего venv должен поднять тот же API из [B07](/game/learn/b07-notes-api). Для этого — образ."
+        },
+        {
+          "front": "Зачем тема «Docker» на практике?",
+          "back": "Следующий: [B11 · Compose](/game/learn/b11-compose)."
+        },
+        {
+          "front": "Кратко: Docker: образ API",
+          "back": "```bash\ndocker build -t notes-api .\ndocker run --rm -p 8000:8000 notes-api\n```\n\nНе коммитить секреты. Compose: [B11](/game/learn/b11-compose)."
+        }
+      ],
+      "summary": [
+        "Изучите выпуск B10: Docker"
+      ]
+    }
   },
   {
     "slug": "b11-compose",
@@ -655,7 +1889,55 @@
     "theoryFormat": "markdown",
     "labFormat": "markdown",
     "cheatsheetFormat": "markdown",
-    "publishedAt": "2026-09-08T10:00:00Z"
+    "publishedAt": "2026-09-08T10:00:00Z",
+    "structured": {
+      "version": 1,
+      "intro": "B11 · Compose · API (+ UI) Тема выпуска: Compose: поднять приложение одной командой.",
+      "sections": [
+        {
+          "heading": "Основная часть",
+          "body": "`docker-compose.yml` в корне `notes`:\n\n```yaml\nservices:\n  api:\n    build: ./api\n    ports:\n      - \"8000:8000\"\n```\n\nЗапуск:\n\n```bash\ndocker compose up --build\n```\n\nОпционально добавьте сервис `web` (nginx со статикой после `npm run build`) или оставьте UI на `npm run dev` против `localhost:8000` — для учёбы оба варианта ок. Главное: **API поднимается одной командой**, как обещали в [B01](/game/learn/b01-karta).\n\nПроверка: [B05](/game/learn/b05-api-check) + форма из [B09](/game/learn/b09-react-form).\n\nСледующий: [B12 · склейка](/game/learn/b12-sklejka) — чеклист и README для портфолио / взаимного продвижения на 9to18."
+        },
+        {
+          "heading": "Шпаргалка",
+          "body": "```bash\ndocker compose up --build\n```\n\nСвязи: [B10](/game/learn/b10-docker), финал: [B12](/game/learn/b12-sklejka)."
+        }
+      ],
+      "diagrams": [
+        {
+          "caption": "Схема",
+          "mermaid": "flowchart LR\n  Compose[compose_up] --> API[api_:8000]\n  Compose -.-> Web[web_опционально]\n  User[браузер] --> Web\n  User --> API"
+        }
+      ],
+      "quiz": [
+        {
+          "question": "Какой код у выпуска «Compose»?",
+          "answer": "B11",
+          "explain": "Compose: поднять приложение одной командой"
+        }
+      ],
+      "anki": [
+        {
+          "front": "О чём выпуск «Compose»?",
+          "back": "B11 · Compose · API (+ UI)"
+        },
+        {
+          "front": "Ключевая идея: Compose",
+          "back": "`docker-compose.yml` в корне `notes`:"
+        },
+        {
+          "front": "Зачем тема «Compose» на практике?",
+          "back": "Следующий: [B12 · склейка](/game/learn/b12-sklejka) — чеклист и README для портфолио / взаимного продвижения на 9to18."
+        },
+        {
+          "front": "Кратко: Compose: поднять приложение одной командой",
+          "back": "```bash\ndocker compose up --build\n```\n\nСвязи: [B10](/game/learn/b10-docker), финал: [B12](/game/learn/b12-sklejka)."
+        }
+      ],
+      "summary": [
+        "Изучите выпуск B11: Compose"
+      ]
+    }
   },
   {
     "slug": "b12-sklejka",
@@ -689,6 +1971,865 @@
     "theoryFormat": "markdown",
     "labFormat": "markdown",
     "cheatsheetFormat": "markdown",
-    "publishedAt": "2026-09-09T10:00:00Z"
+    "publishedAt": "2026-09-09T10:00:00Z",
+    "structured": {
+      "version": 1,
+      "intro": "B12 · Склейка · чеклист первого приложения",
+      "sections": [
+        {
+          "heading": "Основная часть",
+          "body": "Вы прошли круг сезона B:\n\n1. Карта — [B01](/game/learn/b01-karta)\n2. Git — [B02](/game/learn/b02-git), [B06](/game/learn/b06-git-branch)\n3. Python / FastAPI — [B03](/game/learn/b03-python)–[B07](/game/learn/b07-notes-api)\n4. Проверка без UI — [B05](/game/learn/b05-api-check)\n5. React — [B08](/game/learn/b08-react-list), [B09](/game/learn/b09-react-form)\n6. Docker / Compose — [B10](/game/learn/b10-docker), [B11](/game/learn/b11-compose)\n\n### Чеклист «готово»\n\n- [ ] Репозиторий на GitHub, README с командами\n- [ ] `GET /health` и `GET/POST /notes`\n- [ ] React: список + форма\n- [ ] `docker compose up --build` поднимает API\n- [ ] В git нет `.venv`, `node_modules`, `.env` с секретами\n\n### Что писать в README для продвижения\n\nНа 9to18 взаимное продвижение начинается с понятного «как запустить за 5 минут». Три команды в README важнее длинного манифеста.\n\n### Куда дальше\n\nКогда будете готовы к БД, JWT и Minikube — смотрите сезон S01 на Learn (Postgres, Docker «взрослее», k8s). Сезон B сознательно короче.\n\nСледующий шаг вне серии: покажите `notes` другу или вынесите ссылку на репо в спотлайт сообщества."
+        },
+        {
+          "heading": "Шпаргалка",
+          "body": "### Маршрут сезона B\n\n[B01](/game/learn/b01-karta) → [B02](/game/learn/b02-git) → [B03](/game/learn/b03-python) → [B04](/game/learn/b04-fastapi-health) → [B05](/game/learn/b05-api-check) → [B06](/game/learn/b06-git-branch) → [B07](/game/learn/b07-notes-api) → [B08](/game/learn/b08-react-list) → [B09](/game/learn/b09-react-form) → [B10](/game/learn/b10-docker) → [B11](/game/learn/b11-compose) → **B12**\n\n### Готово, если…\n\n- API + React + Compose\n- README на 5 минут запуска\n- Без секретов в git"
+        }
+      ],
+      "diagrams": [
+        {
+          "caption": "Схема",
+          "mermaid": "flowchart LR\n  B01 --> B02 --> B03 --> B04 --> B05 --> B06\n  B06 --> B07 --> B08 --> B09 --> B10 --> B11 --> B12"
+        }
+      ],
+      "quiz": [
+        {
+          "question": "Какой код у выпуска «Склейка»?",
+          "answer": "B12",
+          "explain": "Склейка: что должно получиться"
+        }
+      ],
+      "anki": [
+        {
+          "front": "О чём выпуск «Склейка»?",
+          "back": "B12 · Склейка · чеклист первого приложения"
+        },
+        {
+          "front": "Ключевая идея: Склейка",
+          "back": "Вы прошли круг сезона B:"
+        },
+        {
+          "front": "Запомните (Склейка) #1",
+          "back": "API + React + Compose"
+        },
+        {
+          "front": "Запомните (Склейка) #2",
+          "back": "README на 5 минут запуска"
+        },
+        {
+          "front": "Запомните (Склейка) #3",
+          "back": "Без секретов в git"
+        },
+        {
+          "front": "Зачем тема «Склейка» на практике?",
+          "back": "Следующий шаг вне серии: покажите `notes` другу или вынесите ссылку на репо в спотлайт сообщества."
+        }
+      ],
+      "summary": [
+        "API + React + Compose",
+        "README на 5 минут запуска",
+        "Без секретов в git"
+      ]
+    }
+  },
+  {
+    "slug": "map-requirements",
+    "episode": "MAP01",
+    "title": "Требования и user stories",
+    "shortTitle": "Требования",
+    "rubricId": "api",
+    "order": 201,
+    "theory": "На собеседовании аналитика и PO ждут ясности: кто пользователь, какая цель, как понять что готово. User story — формат, а не магия.\n\n## INVEST и критерии\n\nХорошая история: Independent, Negotiable, Valuable, Estimable, Small, Testable.\n\nAcceptance criteria отвечают на «как проверить». Без них история — пожелание.\n\n## Анти-паттерны\n\n- «Сделать удобно» без сценария\n- Техническое решение вместо ценности\n- Критерии только для happy path",
+    "lab": "",
+    "cheatsheet": "- История = роль + цель + ценность\n- Критерии приёмки обязательны\n- INVEST — чеклист качества",
+    "diagram": "",
+    "links": [],
+    "structured": {
+      "version": 1,
+      "intro": "На собеседовании аналитика и PO ждут ясности: кто пользователь, какая цель, как понять что готово. User story — формат, а не магия.",
+      "sections": [
+        {
+          "heading": "INVEST и критерии",
+          "body": "Хорошая история: Independent, Negotiable, Valuable, Estimable, Small, Testable.\n\nAcceptance criteria отвечают на «как проверить». Без них история — пожелание."
+        },
+        {
+          "heading": "Анти-паттерны",
+          "body": "- «Сделать удобно» без сценария\n- Техническое решение вместо ценности\n- Критерии только для happy path"
+        }
+      ],
+      "diagrams": [],
+      "quiz": [
+        {
+          "question": "Одной фразой: о чём статья «Требования»?",
+          "answer": "Требования",
+          "explain": "Требования и user stories"
+        }
+      ],
+      "anki": [
+        {
+          "front": "Что такое user story?",
+          "back": "Краткое описание ценности для роли: As a… I want… so that…"
+        },
+        {
+          "front": "Зачем acceptance criteria?",
+          "back": "Определяют проверяемое «готово» для истории."
+        },
+        {
+          "front": "Что значит Testable в INVEST?",
+          "back": "Можно проверить, что история выполнена."
+        },
+        {
+          "front": "Анти-паттерн требований",
+          "back": "Формулировка без сценария и без критериев приёмки."
+        }
+      ],
+      "summary": [
+        "История = роль + цель + ценность",
+        "Критерии приёмки обязательны",
+        "INVEST — чеклист качества"
+      ]
+    },
+    "theoryFormat": "markdown",
+    "labFormat": "markdown",
+    "cheatsheetFormat": "markdown",
+    "publishedAt": "2026-09-15T10:00:00Z"
+  },
+  {
+    "slug": "map-product-backlog",
+    "episode": "MAP02",
+    "title": "Приоритизация бэклога",
+    "shortTitle": "Бэклог",
+    "rubricId": "api",
+    "order": 202,
+    "theory": "Владелец продукта ранжирует работу: ценность, риск, зависимости. На собеседовании важно назвать хотя бы один метод и его ограничения.\n\n## Методы\n\n- MoSCoW: Must / Should / Could / Won't\n- Value vs Effort: матрица быстрых побед\n- RICE: Reach × Impact × Confidence / Effort\n\n## Практика\n\nБэклог — упорядоченный список, не свалка идей. Переупорядочивайте при новой информации; фиксируйте почему Must выше Should.",
+    "lab": "",
+    "cheatsheet": "- Бэклог упорядочен\n- Метод приоритезации осознан\n- Must не равен весь список",
+    "diagram": "",
+    "links": [],
+    "structured": {
+      "version": 1,
+      "intro": "Владелец продукта ранжирует работу: ценность, риск, зависимости. На собеседовании важно назвать хотя бы один метод и его ограничения.",
+      "sections": [
+        {
+          "heading": "Методы",
+          "body": "- MoSCoW: Must / Should / Could / Won't\n- Value vs Effort: матрица быстрых побед\n- RICE: Reach × Impact × Confidence / Effort"
+        },
+        {
+          "heading": "Практика",
+          "body": "Бэклог — упорядоченный список, не свалка идей. Переупорядочивайте при новой информации; фиксируйте почему Must выше Should."
+        }
+      ],
+      "diagrams": [],
+      "quiz": [
+        {
+          "question": "Одной фразой: о чём статья «Бэклог»?",
+          "answer": "Бэклог",
+          "explain": "Приоритизация бэклога"
+        }
+      ],
+      "anki": [
+        {
+          "front": "Что такое MoSCoW?",
+          "back": "Must / Should / Could / Won't — приоритеты объёма."
+        },
+        {
+          "front": "Формула RICE",
+          "back": "Reach × Impact × Confidence / Effort"
+        },
+        {
+          "front": "Зачем упорядоченный бэклог?",
+          "back": "Команда всегда знает, что брать следующим."
+        },
+        {
+          "front": "Ограничение Value vs Effort",
+          "back": "Субъективные оценки; нужна калибровка команды."
+        }
+      ],
+      "summary": [
+        "Бэклог упорядочен",
+        "Метод приоритезации осознан",
+        "Must не равен весь список"
+      ]
+    },
+    "theoryFormat": "markdown",
+    "labFormat": "markdown",
+    "cheatsheetFormat": "markdown",
+    "publishedAt": "2026-09-16T10:00:00Z"
+  },
+  {
+    "slug": "map-normalization",
+    "episode": "MAP03",
+    "title": "Нормализация и моделирование данных",
+    "shortTitle": "Нормализация",
+    "rubricId": "data",
+    "order": 203,
+    "theory": "Нормализация уменьшает дублирование и аномалии обновления. На собеседовании достаточно 1–3 НФ и понимания когда денормализуют.\n\n## 1–3 НФ коротко\n\n1НФ: атомарные значения, есть ключ.\n2НФ: нет частичных зависимостей от составного ключа.\n3НФ: нет транзитивных зависимостей неключевых атрибутов.\n\n## Денормализация\n\nЧитаемость и скорость отчётов иногда важнее строгой 3НФ. Фиксируйте инварианты и кто обновляет дубли.",
+    "lab": "",
+    "cheatsheet": "- 1–3 НФ знать наизусть\n- Денормализация — осознанный trade-off",
+    "diagram": "",
+    "links": [],
+    "structured": {
+      "version": 1,
+      "intro": "Нормализация уменьшает дублирование и аномалии обновления. На собеседовании достаточно 1–3 НФ и понимания когда денормализуют.",
+      "sections": [
+        {
+          "heading": "1–3 НФ коротко",
+          "body": "1НФ: атомарные значения, есть ключ.\n2НФ: нет частичных зависимостей от составного ключа.\n3НФ: нет транзитивных зависимостей неключевых атрибутов."
+        },
+        {
+          "heading": "Денормализация",
+          "body": "Читаемость и скорость отчётов иногда важнее строгой 3НФ. Фиксируйте инварианты и кто обновляет дубли."
+        }
+      ],
+      "diagrams": [],
+      "quiz": [
+        {
+          "question": "Одной фразой: о чём статья «Нормализация»?",
+          "answer": "Нормализация",
+          "explain": "Нормализация и моделирование данных"
+        }
+      ],
+      "anki": [
+        {
+          "front": "Что требует 1НФ?",
+          "back": "Атомарные значения и уникальный идентификатор строки."
+        },
+        {
+          "front": "Что запрещает 2НФ?",
+          "back": "Частичную зависимость атрибута от части составного ключа."
+        },
+        {
+          "front": "Что запрещает 3НФ?",
+          "back": "Транзитивные зависимости неключевых атрибутов."
+        },
+        {
+          "front": "Зачем денормализуют?",
+          "back": "Ускорить чтение/отчёты ценой контролируемого дублирования."
+        }
+      ],
+      "summary": [
+        "1–3 НФ знать наизусть",
+        "Денормализация — осознанный trade-off"
+      ]
+    },
+    "theoryFormat": "markdown",
+    "labFormat": "markdown",
+    "cheatsheetFormat": "markdown",
+    "publishedAt": "2026-09-17T10:00:00Z"
+  },
+  {
+    "slug": "map-sql-nosql",
+    "episode": "MAP04",
+    "title": "SQL и NoSQL: когда что выбирать",
+    "shortTitle": "SQL/NoSQL",
+    "rubricId": "data",
+    "order": 204,
+    "theory": "Реляционная БД сильна контрактом схемы и JOIN. Документные/ключ-значение удобны при гибкой схеме и горизонтальном росте.\n\n## Сравнение\n\n| | SQL | NoSQL |\n|---|---|---|\n| Схема | Строгая | Гибкая |\n| Транзакции | ACID (часто) | Зависит от СУБД |\n| Масштаб | Вертикальный + шардинг | Горизонтальный из коробки |\n\n## Выбор\n\nСложные связи и отчёты → SQL. Кэш, сессии, события, профили с разной формой → Redis/Mongo и т.п.",
+    "lab": "",
+    "cheatsheet": "- Выбор от доступа к данным\n- Не религия стека",
+    "diagram": "",
+    "links": [],
+    "structured": {
+      "version": 1,
+      "intro": "Реляционная БД сильна контрактом схемы и JOIN. Документные/ключ-значение удобны при гибкой схеме и горизонтальном росте.",
+      "sections": [
+        {
+          "heading": "Сравнение",
+          "body": "| | SQL | NoSQL |\n|---|---|---|\n| Схема | Строгая | Гибкая |\n| Транзакции | ACID (часто) | Зависит от СУБД |\n| Масштаб | Вертикальный + шардинг | Горизонтальный из коробки |"
+        },
+        {
+          "heading": "Выбор",
+          "body": "Сложные связи и отчёты → SQL. Кэш, сессии, события, профили с разной формой → Redis/Mongo и т.п."
+        }
+      ],
+      "diagrams": [],
+      "quiz": [
+        {
+          "question": "Одной фразой: о чём статья «SQL/NoSQL»?",
+          "answer": "SQL/NoSQL",
+          "explain": "SQL и NoSQL: когда что выбирать"
+        }
+      ],
+      "anki": [
+        {
+          "front": "Сильная сторона SQL?",
+          "back": "Схема, JOIN, предсказуемые транзакции."
+        },
+        {
+          "front": "Когда NoSQL уместен?",
+          "back": "Гибкая схема, горизонтальный масштаб, простые ключи доступа."
+        },
+        {
+          "front": "Миф про NoSQL",
+          "back": "«Всегда быстрее» — нет, зависит от доступа и нагрузки."
+        },
+        {
+          "front": "Можно ли смешивать?",
+          "back": "Да: Postgres + Redis — частый паттерн."
+        }
+      ],
+      "summary": [
+        "Выбор от доступа к данным",
+        "Не религия стека"
+      ]
+    },
+    "theoryFormat": "markdown",
+    "labFormat": "markdown",
+    "cheatsheetFormat": "markdown",
+    "publishedAt": "2026-09-18T10:00:00Z"
+  },
+  {
+    "slug": "map-redis",
+    "episode": "MAP05",
+    "title": "Redis как кэш и структуры данных",
+    "shortTitle": "Redis",
+    "rubricId": "data",
+    "order": 205,
+    "theory": "Redis — in-memory хранилище: строки, хеши, списки, множества, TTL. На собеседовании ждут паттерн cache-aside и понимание потери данных при рестарте.\n\n## Типичные сценарии\n\n- Кэш ответа API (ключ = hash запроса)\n- Сессии и rate limit\n- Очереди/pub-sub для лёгких сигналов\n\n## Осторожно\n\nНе храните единственный источник правды без persistence. Инвалидация кэша сложнее записи.",
+    "lab": "",
+    "cheatsheet": "- Кэш ≠ БД\n- TTL и инвалидация обязательны в дизайне",
+    "diagram": "",
+    "links": [],
+    "structured": {
+      "version": 1,
+      "intro": "Redis — in-memory хранилище: строки, хеши, списки, множества, TTL. На собеседовании ждут паттерн cache-aside и понимание потери данных при рестарте.",
+      "sections": [
+        {
+          "heading": "Типичные сценарии",
+          "body": "- Кэш ответа API (ключ = hash запроса)\n- Сессии и rate limit\n- Очереди/pub-sub для лёгких сигналов"
+        },
+        {
+          "heading": "Осторожно",
+          "body": "Не храните единственный источник правды без persistence. Инвалидация кэша сложнее записи."
+        }
+      ],
+      "diagrams": [],
+      "quiz": [
+        {
+          "question": "Одной фразой: о чём статья «Redis»?",
+          "answer": "Redis",
+          "explain": "Redis как кэш и структуры данных"
+        }
+      ],
+      "anki": [
+        {
+          "front": "Что такое Redis?",
+          "back": "In-memory key-value с богатыми структурами и TTL."
+        },
+        {
+          "front": "Паттерн cache-aside",
+          "back": "Читаем кэш; miss → БД → пишем кэш."
+        },
+        {
+          "front": "Риск Redis как sole source?",
+          "back": "Данные могут пропасть при сбое без persistence."
+        },
+        {
+          "front": "Зачем TTL?",
+          "back": "Автоматическая протухлость кэша и лимитов."
+        }
+      ],
+      "summary": [
+        "Кэш ≠ БД",
+        "TTL и инвалидация обязательны в дизайне"
+      ]
+    },
+    "theoryFormat": "markdown",
+    "labFormat": "markdown",
+    "cheatsheetFormat": "markdown",
+    "publishedAt": "2026-09-19T10:00:00Z"
+  },
+  {
+    "slug": "map-cicd",
+    "episode": "MAP06",
+    "title": "CI/CD обзор",
+    "shortTitle": "CI/CD",
+    "rubricId": "tools",
+    "order": 206,
+    "theory": "Continuous Integration — частые сборки и проверки на каждый push. Continuous Delivery/Deployment — автоматизированная доставка артефакта.\n\n## Пайплайн\n\n1. Checkout\n2. Install / build\n3. Lint + unit/integration tests\n4. Сборка образа / артефакта\n5. Deploy в staging → prod (с одобрением или auto)\n\n## Инструменты\n\nGitHub Actions, GitLab CI, Jenkins — разный UX, одна идея: воспроизводимый пайплайн как код (YAML/Jenkinsfile).",
+    "lab": "",
+    "cheatsheet": "- CI ловит регрессии рано\n- Пайплайн в репозитории",
+    "diagram": "",
+    "links": [],
+    "structured": {
+      "version": 1,
+      "intro": "Continuous Integration — частые сборки и проверки на каждый push. Continuous Delivery/Deployment — автоматизированная доставка артефакта.",
+      "sections": [
+        {
+          "heading": "Пайплайн",
+          "body": "1. Checkout\n2. Install / build\n3. Lint + unit/integration tests\n4. Сборка образа / артефакта\n5. Deploy в staging → prod (с одобрением или auto)"
+        },
+        {
+          "heading": "Инструменты",
+          "body": "GitHub Actions, GitLab CI, Jenkins — разный UX, одна идея: воспроизводимый пайплайн как код (YAML/Jenkinsfile)."
+        }
+      ],
+      "diagrams": [],
+      "quiz": [
+        {
+          "question": "Одной фразой: о чём статья «CI/CD»?",
+          "answer": "CI/CD",
+          "explain": "CI/CD обзор"
+        }
+      ],
+      "anki": [
+        {
+          "front": "Что такое CI?",
+          "back": "Автосборка и проверки на каждое изменение в репозитории."
+        },
+        {
+          "front": "Отличие CD Delivery и Deploy",
+          "back": "Delivery готов к выкладке; Deploy выкладывает автоматически."
+        },
+        {
+          "front": "Зачем pipeline as code?",
+          "back": "Версионируется, ревьюится, не живёт только в UI."
+        },
+        {
+          "front": "Минимальный полезный CI",
+          "back": "Install + тесты + линт на PR."
+        }
+      ],
+      "summary": [
+        "CI ловит регрессии рано",
+        "Пайплайн в репозитории"
+      ]
+    },
+    "theoryFormat": "markdown",
+    "labFormat": "markdown",
+    "cheatsheetFormat": "markdown",
+    "publishedAt": "2026-09-20T10:00:00Z"
+  },
+  {
+    "slug": "map-k8s",
+    "episode": "MAP07",
+    "title": "Kubernetes обзор",
+    "shortTitle": "Kubernetes",
+    "rubricId": "tools",
+    "order": 207,
+    "theory": "Kubernetes оркестрирует контейнеры: Pod, Deployment, Service, Ingress. После Docker/Compose это следующий уровень для нескольких реплик и самовосстановления.\n\n## Базовые объекты\n\n- Pod — минимальная единица запуска\n- Deployment — желаемое число реплик и rolling update\n- Service — стабильный сетевой доступ к подам\n- Ingress — HTTP вход снаружи\n\n## Когда рано\n\nОдин сервис на одном сервере часто закрывается Compose. k8s окупается при многих сервисах, автоскейле и политике доставки.",
+    "lab": "",
+    "cheatsheet": "- Pod / Deployment / Service\n- Compose → k8s по необходимости",
+    "diagram": "flowchart LR\n  User --> Ingress\n  Ingress --> Svc[Service]\n  Svc --> Pod1\n  Svc --> Pod2",
+    "links": [],
+    "structured": {
+      "version": 1,
+      "intro": "Kubernetes оркестрирует контейнеры: Pod, Deployment, Service, Ingress. После Docker/Compose это следующий уровень для нескольких реплик и самовосстановления.",
+      "sections": [
+        {
+          "heading": "Базовые объекты",
+          "body": "- Pod — минимальная единица запуска\n- Deployment — желаемое число реплик и rolling update\n- Service — стабильный сетевой доступ к подам\n- Ingress — HTTP вход снаружи"
+        },
+        {
+          "heading": "Когда рано",
+          "body": "Один сервис на одном сервере часто закрывается Compose. k8s окупается при многих сервисах, автоскейле и политике доставки."
+        }
+      ],
+      "diagrams": [
+        {
+          "caption": "Упрощённо",
+          "mermaid": "flowchart LR\n  User --> Ingress\n  Ingress --> Svc[Service]\n  Svc --> Pod1\n  Svc --> Pod2"
+        }
+      ],
+      "quiz": [
+        {
+          "question": "Одной фразой: о чём статья «Kubernetes»?",
+          "answer": "Kubernetes",
+          "explain": "Kubernetes обзор"
+        }
+      ],
+      "anki": [
+        {
+          "front": "Что такое Pod?",
+          "back": "Группа контейнеров с общей сетью/томами — единица планирования."
+        },
+        {
+          "front": "Зачем Deployment?",
+          "back": "Держит N реплик и обновляет без ручного ssh."
+        },
+        {
+          "front": "Роль Service",
+          "back": "Стабильный endpoint к набору подов."
+        },
+        {
+          "front": "Когда k8s избыточен?",
+          "back": "Простой стенд из 1–2 сервисов без нужды в оркестрации."
+        }
+      ],
+      "summary": [
+        "Pod / Deployment / Service",
+        "Compose → k8s по необходимости"
+      ]
+    },
+    "theoryFormat": "markdown",
+    "labFormat": "markdown",
+    "cheatsheetFormat": "markdown",
+    "publishedAt": "2026-09-21T10:00:00Z"
+  },
+  {
+    "slug": "map-networking",
+    "episode": "MAP08",
+    "title": "Сети и путь HTTP-запроса",
+    "shortTitle": "Сети/HTTP",
+    "rubricId": "tools",
+    "order": 208,
+    "theory": "Браузер → DNS → TCP → TLS → HTTP → сервер. На собеседовании полезно пройти путь запроса словами и назвать статус-коды.\n\n## Слои на пальцах\n\nDNS даёт IP. TCP устанавливает соединение. TLS шифрует. HTTP несёт метод, путь, заголовки, тело.\n\n## Коды\n\n2xx успех, 3xx редирект, 4xx ошибка клиента, 5xx ошибка сервера. 401 vs 403: не аутентифицирован vs нет прав.",
+    "lab": "",
+    "cheatsheet": "- Путь запроса наизусть\n- Смысл классов статус-кодов",
+    "diagram": "",
+    "links": [],
+    "structured": {
+      "version": 1,
+      "intro": "Браузер → DNS → TCP → TLS → HTTP → сервер. На собеседовании полезно пройти путь запроса словами и назвать статус-коды.",
+      "sections": [
+        {
+          "heading": "Слои на пальцах",
+          "body": "DNS даёт IP. TCP устанавливает соединение. TLS шифрует. HTTP несёт метод, путь, заголовки, тело."
+        },
+        {
+          "heading": "Коды",
+          "body": "2xx успех, 3xx редирект, 4xx ошибка клиента, 5xx ошибка сервера. 401 vs 403: не аутентифицирован vs нет прав."
+        }
+      ],
+      "diagrams": [],
+      "quiz": [
+        {
+          "question": "Одной фразой: о чём статья «Сети/HTTP»?",
+          "answer": "Сети/HTTP",
+          "explain": "Сети и путь HTTP-запроса"
+        }
+      ],
+      "anki": [
+        {
+          "front": "Порядок: DNS и TCP?",
+          "back": "Сначала DNS (имя→IP), затем TCP handshake."
+        },
+        {
+          "front": "Зачем TLS?",
+          "back": "Шифрование и проверка сервера (HTTPS)."
+        },
+        {
+          "front": "401 vs 403",
+          "back": "401 — кто ты?; 403 — тебе нельзя."
+        },
+        {
+          "front": "Что в HTTP-запросе?",
+          "back": "Метод, URL/path, заголовки, опционально тело."
+        }
+      ],
+      "summary": [
+        "Путь запроса наизусть",
+        "Смысл классов статус-кодов"
+      ]
+    },
+    "theoryFormat": "markdown",
+    "labFormat": "markdown",
+    "cheatsheetFormat": "markdown",
+    "publishedAt": "2026-09-22T10:00:00Z"
+  },
+  {
+    "slug": "map-auth-jwt",
+    "episode": "MAP09",
+    "title": "Аутентификация и JWT",
+    "shortTitle": "Auth/JWT",
+    "rubricId": "tools",
+    "order": 209,
+    "theory": "Аутентификация — кто вы. Авторизация — что можно. JWT — самодостаточный токен с подписью; храните осторожно.\n\n## Сессия vs JWT\n\nСессия на сервере: cookie session id, состояние в Redis/БД. JWT: claims в токене, проверка подписи без round-trip (до отзыва).\n\n## Практика\n\nКороткий access + refresh, HTTPS only, не кладите секреты в payload. Logout = blacklist/ротация refresh.",
+    "lab": "",
+    "cheatsheet": "- AuthN ≠ AuthZ\n- Подпись и срок JWT\n- Хранение токена — угроза XSS",
+    "diagram": "",
+    "links": [],
+    "structured": {
+      "version": 1,
+      "intro": "Аутентификация — кто вы. Авторизация — что можно. JWT — самодостаточный токен с подписью; храните осторожно.",
+      "sections": [
+        {
+          "heading": "Сессия vs JWT",
+          "body": "Сессия на сервере: cookie session id, состояние в Redis/БД. JWT: claims в токене, проверка подписи без round-trip (до отзыва)."
+        },
+        {
+          "heading": "Практика",
+          "body": "Короткий access + refresh, HTTPS only, не кладите секреты в payload. Logout = blacklist/ротация refresh."
+        }
+      ],
+      "diagrams": [],
+      "quiz": [
+        {
+          "question": "Одной фразой: о чём статья «Auth/JWT»?",
+          "answer": "Auth/JWT",
+          "explain": "Аутентификация и JWT"
+        }
+      ],
+      "anki": [
+        {
+          "front": "AuthN vs AuthZ",
+          "back": "Кто вы vs какие права."
+        },
+        {
+          "front": "Что проверяет сервер в JWT?",
+          "back": "Подпись, срок (exp), aud/iss при необходимости."
+        },
+        {
+          "front": "Риск JWT в localStorage",
+          "back": "XSS может украсть токен."
+        },
+        {
+          "front": "Зачем refresh token?",
+          "back": "Обновлять короткий access без повторного логина."
+        }
+      ],
+      "summary": [
+        "AuthN ≠ AuthZ",
+        "Подпись и срок JWT",
+        "Хранение токена — угроза XSS"
+      ]
+    },
+    "theoryFormat": "markdown",
+    "labFormat": "markdown",
+    "cheatsheetFormat": "markdown",
+    "publishedAt": "2026-09-23T10:00:00Z"
+  },
+  {
+    "slug": "map-https-access",
+    "episode": "MAP10",
+    "title": "HTTPS и разграничение доступа",
+    "shortTitle": "HTTPS/доступ",
+    "rubricId": "tools",
+    "order": 210,
+    "theory": "HTTPS защищает канал. Разграничение доступа — кто к каким ресурсам допущен: ACL, RBAC, уровни секретности.\n\n## HTTPS\n\nСертификат подтверждает сервер. Без TLS логин и cookie видны в сети. HSTS снижает риск отката на HTTP.\n\n## Модели доступа\n\n- ACL: списки на объект/пользователя\n- RBAC: роли → права\n- Матрица доступа: субъекты × объекты",
+    "lab": "",
+    "cheatsheet": "- HTTPS обязателен для логина\n- RBAC проще масштабировать",
+    "diagram": "",
+    "links": [],
+    "structured": {
+      "version": 1,
+      "intro": "HTTPS защищает канал. Разграничение доступа — кто к каким ресурсам допущен: ACL, RBAC, уровни секретности.",
+      "sections": [
+        {
+          "heading": "HTTPS",
+          "body": "Сертификат подтверждает сервер. Без TLS логин и cookie видны в сети. HSTS снижает риск отката на HTTP."
+        },
+        {
+          "heading": "Модели доступа",
+          "body": "- ACL: списки на объект/пользователя\n- RBAC: роли → права\n- Матрица доступа: субъекты × объекты"
+        }
+      ],
+      "diagrams": [],
+      "quiz": [
+        {
+          "question": "Одной фразой: о чём статья «HTTPS/доступ»?",
+          "answer": "HTTPS/доступ",
+          "explain": "HTTPS и разграничение доступа"
+        }
+      ],
+      "anki": [
+        {
+          "front": "Зачем HTTPS?",
+          "back": "Шифрование трафика и проверка сервера."
+        },
+        {
+          "front": "Что такое RBAC?",
+          "back": "Права выдаются через роли, не поштучно каждому."
+        },
+        {
+          "front": "ACL коротко",
+          "back": "Список кто и с какими правами к ресурсу."
+        },
+        {
+          "front": "Риск HTTP-логина",
+          "back": "Перехват пароля/cookie в открытой сети."
+        }
+      ],
+      "summary": [
+        "HTTPS обязателен для логина",
+        "RBAC проще масштабировать"
+      ]
+    },
+    "theoryFormat": "markdown",
+    "labFormat": "markdown",
+    "cheatsheetFormat": "markdown",
+    "publishedAt": "2026-09-24T10:00:00Z"
+  },
+  {
+    "slug": "map-qa",
+    "episode": "MAP11",
+    "title": "QA и тест-дизайн",
+    "shortTitle": "QA",
+    "rubricId": "tools",
+    "order": 211,
+    "theory": "Тестирование снижает риск релиза. Пирамида: много быстрых unit, меньше integration, ещё меньше дорогих E2E. Тест-дизайн выбирает сценарии.\n\n## Виды\n\n- Функциональные / регресс\n- API-тесты по контракту\n- Негативные кейсы и границы\n\n## Артефакты\n\nЧек-лист, тест-кейс (шаги + ожидаемый результат), баг-репорт с воспроизведением.",
+    "lab": "",
+    "cheatsheet": "- Пирамида\n- Воспроизводимый баг-репорт",
+    "diagram": "",
+    "links": [],
+    "structured": {
+      "version": 1,
+      "intro": "Тестирование снижает риск релиза. Пирамида: много быстрых unit, меньше integration, ещё меньше дорогих E2E. Тест-дизайн выбирает сценарии.",
+      "sections": [
+        {
+          "heading": "Виды",
+          "body": "- Функциональные / регресс\n- API-тесты по контракту\n- Негативные кейсы и границы"
+        },
+        {
+          "heading": "Артефакты",
+          "body": "Чек-лист, тест-кейс (шаги + ожидаемый результат), баг-репорт с воспроизведением."
+        }
+      ],
+      "diagrams": [],
+      "quiz": [
+        {
+          "question": "Одной фразой: о чём статья «QA»?",
+          "answer": "QA",
+          "explain": "QA и тест-дизайн"
+        }
+      ],
+      "anki": [
+        {
+          "front": "Пирамида тестирования",
+          "back": "Unit > integration > E2E по количеству/скорости."
+        },
+        {
+          "front": "Что в хорошем баг-репорте?",
+          "back": "Шаги, ожидаемое, фактическое, окружение."
+        },
+        {
+          "front": "Зачем негативные кейсы?",
+          "back": "Проверяют отказоустойчивость и валидацию."
+        },
+        {
+          "front": "Регресс",
+          "back": "Повторная проверка, что старое не сломалось."
+        }
+      ],
+      "summary": [
+        "Пирамида",
+        "Воспроизводимый баг-репорт"
+      ]
+    },
+    "theoryFormat": "markdown",
+    "labFormat": "markdown",
+    "cheatsheetFormat": "markdown",
+    "publishedAt": "2026-09-25T10:00:00Z"
+  },
+  {
+    "slug": "map-e2e",
+    "episode": "MAP12",
+    "title": "E2E сценарии локально",
+    "shortTitle": "E2E",
+    "rubricId": "tools",
+    "order": 212,
+    "theory": "E2E гоняет браузер против живого UI. На 9to18 для этого есть локальный e2e-tester (Docker, Playwright) на 127.0.0.1:8300 — без облачной панели.\n\n## Практика\n\n1. Поднимите цель (UI) и tester контейнер\n2. Задайте TARGET_UI_URL\n3. Соберите сценарий (YAML/JSON) или через Discovery\n4. Смотрите HTML/ZIP отчёт\n\n## Стабильность\n\nЖдите URL/текст, избегайте хрупких селекторов, отделяйте smoke от глубоких сюитов.",
+    "lab": "**30 минут.** Поднимите `deploy/e2e-tester` по README, откройте панель, запустите smoke-пример и сохраните отчёт.",
+    "cheatsheet": "- Только локальный запуск\n- Стабильные селекторы и ожидания",
+    "diagram": "",
+    "links": [],
+    "structured": {
+      "version": 1,
+      "intro": "E2E гоняет браузер против живого UI. На 9to18 для этого есть локальный e2e-tester (Docker, Playwright) на 127.0.0.1:8300 — без облачной панели.",
+      "sections": [
+        {
+          "heading": "Практика",
+          "body": "1. Поднимите цель (UI) и tester контейнер\n2. Задайте TARGET_UI_URL\n3. Соберите сценарий (YAML/JSON) или через Discovery\n4. Смотрите HTML/ZIP отчёт"
+        },
+        {
+          "heading": "Стабильность",
+          "body": "Ждите URL/текст, избегайте хрупких селекторов, отделяйте smoke от глубоких сюитов."
+        }
+      ],
+      "diagrams": [],
+      "quiz": [
+        {
+          "question": "Одной фразой: о чём статья «E2E»?",
+          "answer": "E2E",
+          "explain": "E2E сценарии локально"
+        }
+      ],
+      "anki": [
+        {
+          "front": "Где панель e2e-tester?",
+          "back": "Локально http://127.0.0.1:8300 после docker compose."
+        },
+        {
+          "front": "Что такое Playwright E2E?",
+          "back": "Автоматизация браузера: клики, заполнение, assert."
+        },
+        {
+          "front": "Зачем TARGET_UI_URL?",
+          "back": "Указывает Chromium, какой сайт тестировать."
+        },
+        {
+          "front": "Артефакты прогона",
+          "back": "Скриншоты, HTML-отчёт, ZIP."
+        }
+      ],
+      "summary": [
+        "Только локальный запуск",
+        "Стабильные селекторы и ожидания"
+      ]
+    },
+    "theoryFormat": "markdown",
+    "labFormat": "markdown",
+    "cheatsheetFormat": "markdown",
+    "publishedAt": "2026-09-26T10:00:00Z"
+  },
+  {
+    "slug": "map-soft-skills",
+    "episode": "MAP13",
+    "title": "Поведенческие вопросы на собеседовании",
+    "shortTitle": "Soft skills",
+    "rubricId": "architecture",
+    "order": 213,
+    "theory": "STAR: Situation, Task, Action, Result. Готовьте 3–5 историй: конфликт, ошибка, лидерство без должности, обучение.\n\n## Структура ответа\n\nКороткий контекст → ваша роль → конкретные действия → измеримый итог. Избегайте «мы всё сделали» без вашего вклада.\n\n## Темы\n\nДедлайн, разногласие в команде, фидбек, провал и вывод, менторство.",
+    "lab": "",
+    "cheatsheet": "- STAR\n- Личный вклад и итог",
+    "diagram": "",
+    "links": [],
+    "structured": {
+      "version": 1,
+      "intro": "STAR: Situation, Task, Action, Result. Готовьте 3–5 историй: конфликт, ошибка, лидерство без должности, обучение.",
+      "sections": [
+        {
+          "heading": "Структура ответа",
+          "body": "Короткий контекст → ваша роль → конкретные действия → измеримый итог. Избегайте «мы всё сделали» без вашего вклада."
+        },
+        {
+          "heading": "Темы",
+          "body": "Дедлайн, разногласие в команде, фидбек, провал и вывод, менторство."
+        }
+      ],
+      "diagrams": [],
+      "quiz": [
+        {
+          "question": "Одной фразой: о чём статья «Soft skills»?",
+          "answer": "Soft skills",
+          "explain": "Поведенческие вопросы на собеседовании"
+        }
+      ],
+      "anki": [
+        {
+          "front": "Что такое STAR?",
+          "back": "Situation, Task, Action, Result."
+        },
+        {
+          "front": "Чего избегать в ответе?",
+          "back": "Размытого «мы» без личных действий и итога."
+        },
+        {
+          "front": "Сколько историй подготовить?",
+          "back": "3–5 универсальных под разные вопросы."
+        },
+        {
+          "front": "Зачем Result?",
+          "back": "Показать эффект: метрика, урок, изменение процесса."
+        }
+      ],
+      "summary": [
+        "STAR",
+        "Личный вклад и итог"
+      ]
+    },
+    "theoryFormat": "markdown",
+    "labFormat": "markdown",
+    "cheatsheetFormat": "markdown",
+    "publishedAt": "2026-09-27T10:00:00Z"
   }
 ]

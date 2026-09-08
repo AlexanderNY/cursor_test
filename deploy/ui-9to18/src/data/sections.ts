@@ -13,9 +13,9 @@ export const sections: Section[] = [
   {
     slug: 'bowl',
     title: 'Bowl',
-    subtitle: 'Игра и заказы',
+    subtitle: 'Игра · перки · заказы',
     description:
-      '2D-игра на Python в браузере: сражения, прокачка персонажа и внутриигровые заказы.',
+      '2D-игра на Python в браузере: выживание в чаше, перки, боссы и внутриигровые заказы между матчами.',
     accent: '#34d399',
     emoji: '🎳',
     appPath: '/game/bowl',
@@ -23,9 +23,9 @@ export const sections: Section[] = [
   {
     slug: 'learn',
     title: 'Learn',
-    subtitle: 'Теория, лабы, шпаргалки',
+    subtitle: 'Статьи · Anki · лабы',
     description:
-      'Учебные материалы по сборке сервисов: теория, лабораторные работы и краткие шпаргалки.',
+      'Единый формат учебных статей: введение, разделы, схемы, тест и Anki-карты; лаба опционально.',
     accent: '#2dd4bf',
     emoji: '📚',
     appPath: '/game/learn',
@@ -33,9 +33,9 @@ export const sections: Section[] = [
   {
     slug: 'learning-map',
     title: 'Карта обучения',
-    subtitle: 'Mind map · собеседование',
+    subtitle: 'Профили · статьи Learn',
     description:
-      'Интерактивная карта подготовки к собеседованию: ветки тем и конспект из Markdown.',
+      'Mind map к собеседованию: профили (аналитик, DevOps, разработчик, QA, PO). Каждый лист — статья Learn с Anki.',
     accent: '#2dd4bf',
     emoji: '🗺️',
     appPath: '/game/learning-map',
@@ -43,9 +43,9 @@ export const sections: Section[] = [
   {
     slug: 'e2e-tester',
     title: 'E2E Tester',
-    subtitle: 'Playwright · сценарии',
+    subtitle: 'Локально · Playwright',
     description:
-      'On-demand браузерные E2E против живого стека: YAML/JSON шаги, Playwright-скрипты, креды и артефакты прогонов.',
+      'Локальный Docker-сервис E2E на 127.0.0.1:8300: YAML/JSON/Playwright, креды и отчёты. Без облачной панели.',
     accent: '#f43f5e',
     emoji: '🧪',
     href: 'http://127.0.0.1:8300',

@@ -119,3 +119,14 @@ async def handle_schedule(request: ScheduleRequest) -> Dict[str, Any]:
         "publish_result": publish_result,
         "collect_result": collect_result
     }
+
+
+@router.post("/internal/publish-now")
+async def publish_now() -> Dict[str, Any]:
+    """Wake WordPress publisher immediately (skip schedule poll wait)."""
+    result = await publish_service.publish_pending_posts()
+    return {
+        "status": "ok",
+        "published": int(result.get("published") or 0),
+        "failed": int(result.get("failed") or 0),
+    }

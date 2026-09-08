@@ -22,13 +22,13 @@ export const PERKS_CONFIG_PATH = '/bowl/perks.json'
 
 export type GamePhase = 'normal' | 'whirlpool' | 'boss' | 'exit'
 
-export type GameScreen = 'loading' | 'menu' | 'settings' | 'guide' | 'characterEditor' | 'colorSelect' | 'perkSelect' | 'playing' | 'gameOver'
+export type GameScreen = 'loading' | 'menu' | 'settings' | 'guide' | 'characterEditor' | 'colorSelect' | 'perkSelect' | 'orders' | 'playing' | 'gameOver'
 
 export type PickupKind = 'green' | 'red'
 export type EnemyState = 'patrol' | 'chase' | 'cooldown' | 'flee'
 export type EnemyKind = 'grazer' | 'hunter' | 'lurker'
 export type BossKind = 'titan' | 'stalker' | 'swarm' | 'leech' | 'vortex'
-export type PerkKind = 'leg' | 'eye' | 'tentacle' | 'spike'
+export type PerkKind = 'leg' | 'eye' | 'tentacle' | 'spike' | 'shell' | 'dash' | 'anchor'
 export type ObstacleKind = 'paper' | 'toothbrush'
 
 export interface RenderState {

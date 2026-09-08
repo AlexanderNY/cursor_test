@@ -75,6 +75,28 @@ async def reload_collect():
     return {"status": "ok", "message": "Collect started"}
 
 
+@app.post("/vk/engagement/refresh-one")
+async def engagement_refresh_one(payload: dict):
+    global bot_service
+    if not bot_service or not getattr(bot_service, "_engagement_service", None):
+        return {"ok": False, "error": "bot_not_ready"}
+    user_id = int(payload.get("user_id") or 0)
+    post_id = int(payload.get("post_id") or 0)
+    if not user_id or not post_id:
+        return {"ok": False, "error": "user_id and post_id required"}
+    return await bot_service._engagement_service.refresh_one(user_id, post_id)
+
+
+@app.post("/internal/publish-now")
+async def publish_now():
+    """Wake publisher immediately (skip PUBLISH_INTERVAL_SEC wait)."""
+    global bot_service
+    if not bot_service or not getattr(bot_service, "_post_publisher", None):
+        return {"status": "error", "message": "Bot service not initialized", "published": 0}
+    published = await bot_service._post_publisher.publish_ready_posts()
+    return {"status": "ok", "published": published}
+
+
 async def run_api_server():
     config = uvicorn.Config(
         app,

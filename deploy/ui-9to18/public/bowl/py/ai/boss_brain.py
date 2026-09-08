@@ -144,6 +144,12 @@ def apply_vortex_pull(boss: Enemy, player: Player, dt: float) -> None:
         return
     proximity = 1.0 - dist / pull_radius
     pull = float(cfg("boss_vortex_pull_strength")) * proximity * dt
+    try:
+        from perks import perk_pull_resist
+
+        pull *= 1.0 - perk_pull_resist(player.perk_levels)
+    except Exception:
+        pass
     dx, dy = normalize(boss.x - player.x, boss.y - player.y)
     player.vx += dx * pull
     player.vy += dy * pull

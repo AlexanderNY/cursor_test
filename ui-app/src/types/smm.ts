@@ -12,7 +12,15 @@ export type ChannelRole = 'own' | 'competitor' | 'source'
 export type InboxType = 'dm' | 'comment' | 'reaction' | 'competitor_post'
 export type InboxStatus = 'new' | 'read' | 'replied' | 'archived' | 'reply_failed' | 'in_progress'
 export type AutomationType = 'rss' | 'tg_repost' | 'mention'
-export type GroupRole = 'admin' | 'editor' | 'analyst' | 'manager' | 'author'
+export type GroupRole =
+  | 'owner'
+  | 'editor'
+  | 'approver'
+  | 'viewer'
+  | 'admin'
+  | 'manager'
+  | 'author'
+  | 'analyst'
 
 export const BRAND_PALETTE = [
   '#3B82F6',
@@ -233,6 +241,39 @@ export interface PublishJob {
   created_by_user_id?: number | null
   retry_count?: number
   last_error?: string | null
+  series_id?: number | null
+}
+
+export interface JobCommentAnchor {
+  kind?: 'text' | 'media'
+  start?: number
+  end?: number
+  media_key?: string
+}
+
+export interface JobComment {
+  id: number
+  job_id: number
+  user_id: number
+  parent_id?: number | null
+  body: string
+  anchor?: JobCommentAnchor | null
+  resolved_at?: string | null
+  created_at?: string | null
+  updated_at?: string | null
+}
+
+export interface JobRevision {
+  id: number
+  job_id: number
+  user_id: number
+  source_text?: string | null
+  media?: string[]
+  targets?: PublishJobTarget[]
+  publish_at?: string | null
+  status?: string | null
+  change_summary?: string | null
+  created_at?: string | null
 }
 
 export type PublishJobStatus =
@@ -245,6 +286,35 @@ export type PublishJobStatus =
   | 'failed'
   | 'rejected'
   | 'partial'
+
+export type ContentSeriesCadence = 'weekly' | 'biweekly'
+
+export interface ContentSeries {
+  id: number
+  user_id: number
+  brand_id: number
+  title: string
+  color: string
+  body: string
+  template_id?: number | null
+  targets: PublishJobTarget[]
+  /** ISO weekdays: 1=Mon … 7=Sun */
+  weekdays: number[]
+  publish_time: string
+  cadence: ContentSeriesCadence
+  is_active: boolean
+  starts_on?: string | null
+  ends_on?: string | null
+  created_at?: string | null
+  updated_at?: string | null
+}
+
+export interface ContentSeriesExpandResult {
+  created: number
+  job_ids: number[]
+  skipped: number
+  horizon_days?: number
+}
 
 
 export interface AutomationRule {
@@ -322,6 +392,86 @@ export interface AnalyticsPost {
   channel_id?: number | null
   channel_external_id?: string | null
   channel_title?: string | null
+  brand_id?: number | null
+  external_post_id?: number | null
+}
+
+export interface AnalyticsTrendPoint {
+  date: string
+  views: number
+  likes: number
+  comments: number
+  reposts: number
+  engagement: number
+  er: number
+  posts: number
+}
+
+export interface AnalyticsCommentsSummary {
+  period: string
+  brand_id?: number | null
+  channel_id?: number | null
+  total: number
+  unanswered: number
+  median_reply_hours: number | null
+  by_day: { date: string; count: number }[]
+  by_channel: { channel_id: number | null; title: string; count: number }[]
+  by_sentiment: Record<string, number>
+}
+
+export interface AnalyticsFunnelStep {
+  key: string
+  label: string
+  value: number | null
+}
+
+export interface AnalyticsFunnel {
+  period: string
+  steps: AnalyticsFunnelStep[]
+}
+
+export interface AnalyticsCohort {
+  period: string
+  sample_size: number
+  retention: { '1h': number; '24h': number; '7d': number }
+}
+
+export interface AnalyticsInsight {
+  type: string
+  severity: 'info' | 'warning' | string
+  title: string
+  message: string
+}
+
+export interface AnalyticsPostDetail {
+  id: number
+  platform: string
+  text: string
+  views: number
+  likes: number
+  comments: number
+  reposts: number
+  er: number
+  status?: string
+  created_at?: string | null
+  published_at?: string | null
+  channel_id?: number | null
+  channel_title?: string | null
+  series: {
+    captured_at?: string | null
+    views: number
+    likes: number
+    comments: number
+    reposts: number
+  }[]
+  inbox_comments: {
+    id: number
+    author?: string | null
+    text?: string | null
+    status?: string
+    created_at?: string | null
+    sentiment?: string | null
+  }[]
 }
 
 export interface BestTimeSlot {
@@ -376,36 +526,58 @@ export interface MediaPackApplyResult {
   job?: PublishJob | null
 }
 
+export function normalizeGroupRole(role?: string | null): string | null {
+  if (!role) return null
+  const map: Record<string, string> = {
+    owner: 'owner',
+    admin: 'owner',
+    manager: 'owner',
+    editor: 'editor',
+    author: 'editor',
+    approver: 'approver',
+    viewer: 'viewer',
+    analyst: 'viewer',
+  }
+  return map[role] ?? role
+}
+
 export function isGroupAdmin(role?: string | null): boolean {
-  return role === 'admin' || role === 'manager'
+  return normalizeGroupRole(role) === 'owner'
+}
+
+export function isGroupOwner(role?: string | null): boolean {
+  return isGroupAdmin(role)
 }
 
 export function isGroupEditor(role?: string | null): boolean {
-  return isGroupAdmin(role) || role === 'editor' || role === 'author'
+  const n = normalizeGroupRole(role)
+  return n === 'owner' || n === 'editor'
 }
 
-/** Any team member (or solo user) may create/publish posts. */
+export function canApprove(role?: string | null, globalRole?: string | null): boolean {
+  if (globalRole === 'admin') return true
+  if (!role) return true
+  const n = normalizeGroupRole(role)
+  return n === 'owner' || n === 'approver'
+}
+
+/** Owner/Editor (or solo user) may create/edit posts. Viewer cannot. */
 export function canPublish(role?: string | null, globalRole?: string | null): boolean {
   if (globalRole === 'admin') return true
   if (!role) return true
-  return (
-    isGroupAdmin(role) ||
-    role === 'editor' ||
-    role === 'author' ||
-    role === 'analyst'
-  )
+  return isGroupEditor(role)
 }
 
-/** Auth tabs / credential management: solo user or team admin. */
+/** Auth tabs / credential management: solo user or workspace owner. */
 export function canManagePlatformAuth(
   roleInGroup?: string | null,
   hasTeam?: boolean,
 ): boolean {
   if (!hasTeam) return true
-  return isGroupAdmin(roleInGroup)
+  return isGroupOwner(roleInGroup)
 }
 
-/** Analytics / team statistics: solo user or team admin. */
+/** Analytics: any workspace member including Viewer. */
 export function canViewTeamAnalytics(
   roleInGroup?: string | null,
   hasTeam?: boolean,
@@ -413,25 +585,37 @@ export function canViewTeamAnalytics(
 ): boolean {
   if (globalRole === 'admin') return true
   if (!hasTeam) return true
-  return isGroupAdmin(roleInGroup)
+  return Boolean(normalizeGroupRole(roleInGroup))
 }
 
 export function roleLabel(role?: string | null): string {
-  switch (role) {
+  switch (normalizeGroupRole(role) ?? role) {
+    case 'owner':
+      return 'Owner'
+    case 'editor':
+      return 'Editor'
+    case 'approver':
+      return 'Approver'
+    case 'viewer':
+      return 'Viewer'
     case 'admin':
     case 'manager':
-      return 'Admin'
-    case 'editor':
+      return 'Owner'
     case 'author':
-      return 'Member'
+      return 'Editor'
     case 'analyst':
-      return 'Member'
+      return 'Viewer'
     default:
       return role ?? '—'
   }
 }
 
-export type AiAssistActionId = 'summarize' | 'categorize' | 'rewrite' | 'reply_draft'
+export type AiAssistActionId =
+  | 'summarize'
+  | 'categorize'
+  | 'rewrite'
+  | 'reply_draft'
+  | 'competitor_ideas'
 
 export interface AiAssistAction {
   id: AiAssistActionId
@@ -531,5 +715,45 @@ export interface CompetitorCompare {
   own: CompetitorCompareStats
   competitor: CompetitorCompareStats
   top_themes: { theme: string; count: number }[]
+  competitor_best_slots?: BestTimeSlot[]
+  own_best_slots?: BestTimeSlot[]
+  slot_overlap?: BestTimeSlot[]
+}
+
+export interface CompetitorCadence {
+  posts_count: number
+  posts_per_day?: number | null
+  avg_length: number
+  weekday_histogram: number[]
+  hour_histogram: number[]
+  interval_hours_median?: number | null
+  interval_hours_p90?: number | null
+}
+
+export interface CompetitorInsights {
+  channel_id: number
+  period: string
+  since?: string
+  cadence: CompetitorCadence
+  best_slots: BestTimeSlot[]
+  themes: { theme: string; count: number }[]
+  posts_count: number
+}
+
+export interface CompetitorIdea {
+  title: string
+  angle: string
+  hook: string
+  theme: string
+  source_snapshot_ids: number[]
+}
+
+export interface CompetitorIdeasResponse {
+  channel_id: number
+  brand_id: number
+  themes?: { theme: string; count: number }[]
+  ideas: CompetitorIdea[]
+  fallback?: boolean
+  message?: string
 }
 

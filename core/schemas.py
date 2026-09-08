@@ -5,6 +5,7 @@ from typing import Optional, List, Dict, Any, Literal
 from datetime import datetime
 from enum import Enum
 from uuid import uuid4
+from urllib.parse import urlparse
 
 
 # ==================== Общие типы ====================
@@ -235,6 +236,7 @@ class TelegramProfileBase(BaseModel):
         default_factory=lambda: ["новости", "реклама", "технологии", "финансы", "другое"]
     )
     batch_enrichment_enabled: bool = False
+    proxy_url: Optional[str] = None
 
     @field_validator("chats_to_read", "channels_to_post", mode="before")
     @classmethod
@@ -255,6 +257,24 @@ class TelegramProfileBase(BaseModel):
         if not isinstance(value, list):
             return []
         return value[:10]
+
+    @field_validator("proxy_url", mode="before")
+    @classmethod
+    def normalize_proxy_url(cls, value: Any) -> Optional[str]:
+        if value is None:
+            return None
+        raw = str(value).strip()
+        if not raw:
+            return None
+        parsed = urlparse(raw)
+        scheme = (parsed.scheme or "").lower()
+        allowed = {"socks5", "socks5h", "socks4", "socks4a", "http", "https"}
+        if scheme not in allowed or not parsed.hostname or not parsed.port:
+            raise ValueError(
+                "proxy_url must be scheme://host:port "
+                "(socks5, socks5h, socks4, http; optional user:pass)"
+            )
+        return raw[:512]
 
 
 class TgAnalyticsOverview(BaseModel):

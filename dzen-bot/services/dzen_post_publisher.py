@@ -171,6 +171,22 @@ async def _update_post_result(
                 )
     finally:
         await release_db_connection(conn)
+    from shared.bot_internal import mark_post_published
+
+    if status == "published":
+        await mark_post_published(
+            settings.CORE_SERVICE_URL or "",
+            platform="dzen",
+            post_id=int(post_id),
+            external_id=url,
+        )
+    elif status == "failed":
+        await mark_post_published(
+            settings.CORE_SERVICE_URL or "",
+            platform="dzen",
+            post_id=int(post_id),
+            error="dzen publish failed",
+        )
 
 
 async def _fetch_ready_posts() -> List[Dict[str, Any]]:

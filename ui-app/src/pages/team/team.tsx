@@ -217,7 +217,7 @@ export function TeamPage() {
   if (isLoadingGroup) {
     return (
       <PageContainer>
-        <PageHeader title="Team" description="Loading…" />
+        <PageHeader title="Workspace" description="Loading…" />
         <SkeletonCard />
       </PageContainer>
     )
@@ -234,17 +234,17 @@ export function TeamPage() {
   if (!group && (user?.role === 'manager' || user?.role === 'admin')) {
     return (
       <PageContainer>
-        <PageHeader title="Team" description="Создайте команду: Admin подключает платформы, участники публикуют" />
+        <PageHeader title="Workspace" description="Создайте workspace: Owner управляет участниками и платформами" />
         <Card>
           <CardHeader>
-            <CardTitle>Create team</CardTitle>
+            <CardTitle>Create workspace</CardTitle>
             <CardDescription>
-              Вы станете Admin. Участники смогут постить без доступа к авторизации и статистике.
+              Вы станете Owner. Editor пишет черновики, Approver согласует, Viewer только смотрит.
             </CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleCreateGroup} className="space-y-4">
-              <Input value={createName} onChange={(e) => setCreateName(e.target.value)} placeholder="Team name" />
+              <Input value={createName} onChange={(e) => setCreateName(e.target.value)} placeholder="Workspace name" />
               {addError && <Alert variant="error">{addError}</Alert>}
               <Button type="submit" disabled={!createName.trim() || isCreating}>
                 {isCreating ? 'Creating…' : 'Create'}
@@ -259,9 +259,9 @@ export function TeamPage() {
   if (!group) {
     return (
       <PageContainer>
-        <PageHeader title="Team" description="Вас ещё не добавили в команду" />
+        <PageHeader title="Workspace" description="Вас ещё не добавили в workspace" />
         <p className="text-[var(--text-muted)]">
-          Откройте ссылку-приглашение от администратора или дождитесь добавления по email.
+          Откройте ссылку-приглашение от Owner или дождитесь добавления по email.
         </p>
       </PageContainer>
     )
@@ -270,7 +270,7 @@ export function TeamPage() {
   return (
     <PageContainer>
       <PageHeader
-        title="Team"
+        title="Workspace"
         description={`Роль: ${roleLabel(roleInGroup)} · общие бренды без передачи паролей`}
       />
       <QuotaUpgradeModal
@@ -283,7 +283,7 @@ export function TeamPage() {
         <CardHeader>
           <CardTitle>{group.name}</CardTitle>
           <CardDescription>
-            Admin — авторизация платформ, статистика, управление командой · Member — публикация постов
+            Owner — участники и платформы · Editor — черновики · Approver — согласование · Viewer — просмотр
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -311,8 +311,9 @@ export function TeamPage() {
                   value={addRole}
                   onChange={(e) => setAddRole(e.target.value as GroupRole)}
                 >
-                  <option value="editor">Member</option>
-                  <option value="admin">Admin</option>
+                  <option value="editor">Editor</option>
+                  <option value="approver">Approver</option>
+                  <option value="viewer">Viewer</option>
                 </select>
               </div>
               <Button type="submit" disabled={isAddingMember}>

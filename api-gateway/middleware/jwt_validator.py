@@ -219,8 +219,10 @@ def check_public_endpoint(endpoint_path: str) -> bool:
     return False
 
 
-async def is_token_blacklisted(token: str, http_client: Optional[httpx.AsyncClient] = None) -> bool:
-    """Проверяет blacklist через auth-сервис (fail closed при ошибке связи)."""
+async def _blacklist_via_auth_http(
+    token: str, http_client: Optional[httpx.AsyncClient] = None
+) -> bool:
+    """Fallback: auth Postgres-backed blacklist-check (fail closed)."""
     url = f"{settings.AUTH_SERVICE_URL.rstrip('/')}/token/blacklist-check"
     try:
         if http_client is not None:
@@ -238,6 +240,19 @@ async def is_token_blacklisted(token: str, http_client: Optional[httpx.AsyncClie
         raise TokenValidationException(
             "Unable to verify token revocation status."
         ) from error
+
+
+async def is_token_blacklisted(token: str, http_client: Optional[httpx.AsyncClient] = None) -> bool:
+    """Проверяет blacklist: Redis (если warm) → HTTP auth (fail closed)."""
+    from shared.token_blacklist_redis import token_blacklist_redis
+
+    ready = await token_blacklist_redis.is_ready()
+    if ready is True:
+        hit = await token_blacklist_redis.contains(token)
+        if hit is not None:
+            return hit
+
+    return await _blacklist_via_auth_http(token, http_client)
 
 
 async def get_current_user(

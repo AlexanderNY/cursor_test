@@ -74,25 +74,18 @@ async def record_post_metric_snapshot(
     comments: int = 0,
     reposts: int = 0,
 ) -> None:
-    base = (settings.CORE_SERVICE_URL or "").rstrip("/")
-    if not base:
-        return
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            await client.post(
-                f"{base}/internal/smm/post-metrics/snapshot",
-                json={
-                    "user_id": user_id,
-                    "platform": "vk",
-                    "post_id": post_id,
-                    "views": views,
-                    "likes": likes,
-                    "comments": comments,
-                    "reposts": reposts,
-                },
-            )
-    except Exception as exc:
-        logger.debug("post metric snapshot failed: %s", exc)
+    from shared.bot_internal import post_metric_snapshot
+
+    await post_metric_snapshot(
+        settings.CORE_SERVICE_URL or "",
+        user_id=user_id,
+        platform="vk",
+        post_id=post_id,
+        views=views,
+        likes=likes,
+        comments=comments,
+        reposts=reposts,
+    )
 
 
 async def record_subscriber_snapshot(channel_id: int, subscribers: int) -> None:

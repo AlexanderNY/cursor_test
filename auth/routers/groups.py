@@ -15,8 +15,12 @@ from schemas import (
     InviteActionResponse,
     InvitePeekResponse,
     AcceptInviteResponse,
+    ActiveGroupRequest,
+    UserProfile,
+    user_profile_from_user_dict,
 )
 from services import group_service
+from services.auth_service import get_user_by_id
 from dependencies import get_current_user, get_admin_user
 
 
@@ -66,7 +70,7 @@ def _group_to_response(g: Dict, with_members: bool = True) -> GroupResponse:
 
 @router.get("/my", response_model=GroupResponse)
 async def get_my_group(current_user: Dict = Depends(get_current_user)) -> GroupResponse:
-    """Получение «первой» группы пользователя (по дате вступления)."""
+    """Получение активного workspace пользователя (или первого по дате вступления)."""
     group = await group_service.get_my_group(
         current_user["id"],
         current_user.get("role", "user"),
@@ -77,6 +81,23 @@ async def get_my_group(current_user: Dict = Depends(get_current_user)) -> GroupR
             detail="You are not in any group",
         )
     return _group_to_response(group, with_members=bool(group.get("members")))
+
+
+@router.put("/active", response_model=UserProfile)
+async def set_active_workspace(
+    body: ActiveGroupRequest,
+    current_user: Dict = Depends(get_current_user),
+) -> UserProfile:
+    """Switch active workspace for the current user."""
+    try:
+        await group_service.set_active_group(current_user["id"], body.group_id)
+    except PermissionError as e:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
+    user = await get_user_by_id(current_user["id"])
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    memberships = await group_service.get_user_group_memberships(user["id"])
+    return user_profile_from_user_dict(user, memberships)
 
 
 @router.post("/admin", response_model=GroupResponse, status_code=status.HTTP_201_CREATED)
@@ -115,7 +136,7 @@ async def create_group(
         full = await group_service.get_group_by_id(group["id"], include_members=True)
         if not full:
             raise HTTPException(status_code=500, detail="Failed to load group")
-        full["role_in_group"] = "admin"
+        full["role_in_group"] = "owner"
         return _group_to_response(full, with_members=True)
     except PermissionError as e:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
@@ -226,10 +247,10 @@ async def get_my_group_member_ids(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="You are not a member of this group",
         )
-    if m["role_in_group"] not in ("manager", "admin") and current_user.get("role") != "admin":
+    if m["role_in_group"] not in ("owner", "admin", "manager") and current_user.get("role") != "admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only group admin can get member ids",
+            detail="Only workspace owner can get member ids",
         )
     return await group_service.get_group_member_user_ids(target_gid)
 
@@ -242,10 +263,10 @@ async def get_group_member_user_ids_for_statistics(
     """Список user_id участников группы (manager этой группы или admin)."""
     membership = await group_service.get_membership_in_group(current_user["id"], group_id)
     if current_user.get("role") != "admin":
-        if not membership or membership["role_in_group"] not in ("manager", "admin"):
+        if not membership or membership["role_in_group"] not in ("owner", "admin", "manager"):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Only group admin or platform admin can get member ids",
+                detail="Only workspace owner or platform admin can get member ids",
             )
     ids = await group_service.get_group_member_user_ids(group_id)
     return ids

@@ -12,7 +12,7 @@ SEED_PATH = Path(__file__).resolve().parents[1] / "data" / "learn_seed.json"
 
 POST_COLUMNS = (
     "id, slug, episode, title, short_title, rubric_id, sort_order, "
-    "theory, lab, cheatsheet, diagram, links, "
+    "theory, lab, cheatsheet, diagram, links, structured, "
     "theory_format, lab_format, cheatsheet_format, "
     "published_at, updated_at, created_at"
 )
@@ -68,7 +68,33 @@ def _normalize_links(raw: Any) -> list[dict[str, str]]:
     return out
 
 
+def _normalize_structured(raw: Any) -> Optional[dict[str, Any]]:
+    if isinstance(raw, str):
+        text = raw.strip()
+        if not text:
+            return None
+        try:
+            raw = json.loads(text)
+        except (json.JSONDecodeError, TypeError):
+            return None
+    if not isinstance(raw, dict) or not raw:
+        return None
+    version = raw.get("version")
+    if version not in (1, "1"):
+        return None
+    anki = raw.get("anki")
+    if not isinstance(anki, list) or not any(
+        isinstance(item, dict)
+        and str(item.get("front") or "").strip()
+        and str(item.get("back") or "").strip()
+        for item in anki
+    ):
+        return None
+    return raw
+
+
 def _row_post(row: tuple) -> dict[str, Any]:
+    structured = _normalize_structured(row[12])
     return {
         "id": row[0],
         "slug": row[1],
@@ -82,12 +108,13 @@ def _row_post(row: tuple) -> dict[str, Any]:
         "cheatsheet": row[9] or "",
         "diagram": row[10] or "",
         "links": _normalize_links(row[11]),
-        "theoryFormat": _normalize_format(row[12]),
-        "labFormat": _normalize_format(row[13]),
-        "cheatsheetFormat": _normalize_format(row[14]),
-        "publishedAt": _iso(row[15]),
-        "updatedAt": _iso(row[16]),
-        "createdAt": _iso(row[17]),
+        "structured": structured,
+        "theoryFormat": _normalize_format(row[13]),
+        "labFormat": _normalize_format(row[14]),
+        "cheatsheetFormat": _normalize_format(row[15]),
+        "publishedAt": _iso(row[16]),
+        "updatedAt": _iso(row[17]),
+        "createdAt": _iso(row[18]),
     }
 
 
@@ -101,6 +128,7 @@ def load_seed_posts() -> list[dict[str, Any]]:
 
 
 def seed_payload_to_row(item: dict[str, Any]) -> dict[str, Any]:
+    structured = _normalize_structured(item.get("structured"))
     return {
         "slug": str(item.get("slug") or "").strip()[:128],
         "episode": str(item.get("episode") or "").strip()[:32],
@@ -117,6 +145,7 @@ def seed_payload_to_row(item: dict[str, Any]) -> dict[str, Any]:
         "cheatsheet": str(item.get("cheatsheet") or ""),
         "diagram": str(item.get("diagram") or ""),
         "links": _normalize_links(item.get("links")),
+        "structured": structured or {},
         "theory_format": _normalize_format(
             item.get("theoryFormat") or item.get("theory_format")
         ),
@@ -165,12 +194,12 @@ class LearnService:
                         """
                         INSERT INTO learn_posts (
                             slug, episode, title, short_title, rubric_id, sort_order,
-                            theory, lab, cheatsheet, diagram, links,
+                            theory, lab, cheatsheet, diagram, links, structured,
                             theory_format, lab_format, cheatsheet_format, published_at
                         )
                         VALUES (
                             %s, %s, %s, %s, %s, %s,
-                            %s, %s, %s, %s, %s::jsonb,
+                            %s, %s, %s, %s, %s::jsonb, %s::jsonb,
                             %s, %s, %s, %s
                         )
                         """,
@@ -186,6 +215,7 @@ class LearnService:
                             row["cheatsheet"],
                             row["diagram"],
                             json.dumps(row["links"], ensure_ascii=False),
+                            json.dumps(row["structured"], ensure_ascii=False),
                             row["theory_format"],
                             row["lab_format"],
                             row["cheatsheet_format"],
@@ -268,13 +298,13 @@ class LearnService:
                     """
                     INSERT INTO learn_posts (
                         slug, episode, title, short_title, rubric_id, sort_order,
-                        theory, lab, cheatsheet, diagram, links,
+                        theory, lab, cheatsheet, diagram, links, structured,
                         theory_format, lab_format, cheatsheet_format, published_at,
                         updated_at
                     )
                     VALUES (
                         %s, %s, %s, %s, %s, %s,
-                        %s, %s, %s, %s, %s::jsonb,
+                        %s, %s, %s, %s, %s::jsonb, %s::jsonb,
                         %s, %s, %s, %s, NOW()
                     )
                     ON CONFLICT (slug) DO UPDATE SET
@@ -288,6 +318,7 @@ class LearnService:
                         cheatsheet = EXCLUDED.cheatsheet,
                         diagram = EXCLUDED.diagram,
                         links = EXCLUDED.links,
+                        structured = EXCLUDED.structured,
                         theory_format = EXCLUDED.theory_format,
                         lab_format = EXCLUDED.lab_format,
                         cheatsheet_format = EXCLUDED.cheatsheet_format,
@@ -307,6 +338,7 @@ class LearnService:
                         row["cheatsheet"],
                         row["diagram"],
                         json.dumps(row["links"], ensure_ascii=False),
+                        json.dumps(row["structured"], ensure_ascii=False),
                         row["theory_format"],
                         row["lab_format"],
                         row["cheatsheet_format"],

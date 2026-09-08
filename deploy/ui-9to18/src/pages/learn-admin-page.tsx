@@ -103,8 +103,6 @@ export function LearnAdminPage() {
         items={[
           { id: 'learn-schedule', label: 'Расписание' },
           { id: 'learn-posts', label: 'Записи' },
-          { id: 'learn-new', label: 'Новая запись', href: '/game/learn/admin/new' },
-          { id: 'learn-site-admin', label: 'Админка сайта', href: '/admin' },
         ]}
       />
 

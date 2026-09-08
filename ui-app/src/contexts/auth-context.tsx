@@ -1,6 +1,7 @@
 import { createContext, useContext, useReducer, useEffect, useCallback } from 'react'
 import type { AuthState, AuthAction, User, TokenResponse, LoginCredentials, RegisterCredentials, ProfileUpdate } from '@/types'
 import { authService } from '@/services/auth-service'
+import { useSessionHeartbeat } from '@/hooks'
 
 interface AuthContextType extends AuthState {
   login: (credentials: LoginCredentials) => Promise<void>
@@ -11,6 +12,7 @@ interface AuthContextType extends AuthState {
   resetPassword: (email: string) => Promise<void>
   clearError: () => void
   refreshUserData: () => Promise<void>
+  setActiveWorkspace: (groupId: number) => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -97,6 +99,7 @@ interface AuthProviderProps {
 
 export function AuthProvider({ children }: AuthProviderProps) {
   const [state, dispatch] = useReducer(authReducer, initialState)
+  useSessionHeartbeat(state.isAuthenticated)
 
   const refreshUserData = useCallback(async () => {
     const { accessToken } = getStoredTokens()
@@ -244,6 +247,27 @@ export function AuthProvider({ children }: AuthProviderProps) {
     dispatch({ type: 'CLEAR_ERROR' })
   }, [])
 
+  const setActiveWorkspace = useCallback(async (groupId: number) => {
+    const profile = await authService.setActiveWorkspace(groupId)
+    const access = localStorage.getItem('access_token') || ''
+    const refresh = localStorage.getItem('refresh_token') || ''
+    dispatch({
+      type: 'AUTH_SUCCESS',
+      payload: {
+        user: {
+          ...profile,
+          access_token: access,
+          refresh_token: refresh,
+        },
+        tokens: {
+          access_token: access,
+          refresh_token: refresh,
+          token_type: 'bearer',
+        },
+      },
+    })
+  }, [])
+
   return (
     <AuthContext.Provider
       value={{
@@ -256,6 +280,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         resetPassword,
         clearError,
         refreshUserData,
+        setActiveWorkspace,
       }}
     >
       {children}

@@ -1,17 +1,31 @@
+import { LearnContent } from '@/components/learn-content'
 import type { StructuredPost } from '@/data/site/structured-post'
-import { EMPTY_STRUCTURED_POST, validateStructuredPost } from '@/data/site/structured-post'
+import {
+  EMPTY_LEARN_STRUCTURED_POST,
+  EMPTY_STRUCTURED_POST,
+  validateLearnStructuredPost,
+  validateStructuredPost,
+} from '@/data/site/structured-post'
 
 type StructuredPostEditorProps = {
   value: StructuredPost
   onChange: (next: StructuredPost) => void
+  /** Learn course: lab + HTML cheatsheet + stricter validation; hide blog-only summary. */
+  mode?: 'blog' | 'learn'
 }
 
 function clone(post: StructuredPost): StructuredPost {
   return JSON.parse(JSON.stringify(post)) as StructuredPost
 }
 
-export function StructuredPostEditor({ value, onChange }: StructuredPostEditorProps) {
-  const errors = validateStructuredPost(value)
+export function StructuredPostEditor({
+  value,
+  onChange,
+  mode = 'blog',
+}: StructuredPostEditorProps) {
+  const isLearn = mode === 'learn'
+  const errors = isLearn ? validateLearnStructuredPost(value) : validateStructuredPost(value)
+  const emptyTemplate = isLearn ? EMPTY_LEARN_STRUCTURED_POST : EMPTY_STRUCTURED_POST
 
   function patch(mutator: (draft: StructuredPost) => void) {
     const draft = clone(value)
@@ -22,8 +36,9 @@ export function StructuredPostEditor({ value, onChange }: StructuredPostEditorPr
   return (
     <div className="structured-editor">
       <p className="learn-section-note">
-        Единый формат: введение → основная часть → схемы → тест → итог/anki. Подходит и для
-        проверки знаний, и для карточек повторения.
+        {isLearn
+          ? 'Шаблон Learn: теория → лаба → схемы → тест → шпаргалка (HTML) → Anki. Один выпуск = один лист карты.'
+          : 'Единый формат: введение → основная часть → схемы → тест → итог/anki.'}
       </p>
       {errors.length > 0 ? (
         <ul className="structured-editor-errors">
@@ -35,22 +50,24 @@ export function StructuredPostEditor({ value, onChange }: StructuredPostEditorPr
         <p className="learn-admin-ok">Формат готов к публикации</p>
       )}
 
-      <label className="learn-admin-field">
-        <span>Введение</span>
-        <textarea
-          className="learn-admin-textarea"
-          rows={4}
-          value={value.intro}
-          onChange={(e) => patch((d) => {
-            d.intro = e.target.value
-          })}
-          placeholder="Зачем эта тема, контекст, что получит читатель…"
-        />
-      </label>
+      <div id="edit-theory" className="structured-editor-block admin-jump-target">
+        <label className="learn-admin-field">
+          <span>Введение (теория)</span>
+          <textarea
+            className="learn-admin-textarea"
+            rows={4}
+            value={value.intro}
+            onChange={(e) =>
+              patch((d) => {
+                d.intro = e.target.value
+              })
+            }
+            placeholder="Зачем эта тема, контекст, что получит читатель…"
+          />
+        </label>
 
-      <div className="structured-editor-block">
         <div className="structured-editor-block-head">
-          <h4 className="learn-panel-heading">Основная часть</h4>
+          <h4 className="learn-panel-heading">Основная часть (теория)</h4>
           <button
             type="button"
             className="learn-admin-btn"
@@ -106,7 +123,32 @@ export function StructuredPostEditor({ value, onChange }: StructuredPostEditorPr
         ))}
       </div>
 
-      <div className="structured-editor-block">
+      {isLearn ? (
+        <div id="edit-lab" className="structured-editor-block admin-jump-target">
+          <div className="structured-editor-block-head">
+            <h4 className="learn-panel-heading">Лабораторная работа</h4>
+          </div>
+          <p className="learn-section-note">
+            Что сделать на ПК: цель, шаги, что сдать в группу, чеклист «готово если».
+          </p>
+          <label className="learn-admin-field">
+            <span>Лаба (markdown)</span>
+            <textarea
+              className="learn-admin-textarea"
+              rows={8}
+              value={value.lab || ''}
+              onChange={(e) =>
+                patch((d) => {
+                  d.lab = e.target.value
+                })
+              }
+              placeholder="**Цель.** …&#10;&#10;**Шаги.**&#10;1. …"
+            />
+          </label>
+        </div>
+      ) : null}
+
+      <div id="edit-diagrams" className="structured-editor-block admin-jump-target">
         <div className="structured-editor-block-head">
           <h4 className="learn-panel-heading">Схемы (Mermaid)</h4>
           <button
@@ -122,7 +164,11 @@ export function StructuredPostEditor({ value, onChange }: StructuredPostEditorPr
           </button>
         </div>
         {value.diagrams.length === 0 ? (
-          <p className="learn-section-note">Необязательно. Добавьте схему, если помогает понять тему.</p>
+          <p className="learn-section-note">
+            {isLearn
+              ? 'Нужна хотя бы одна схема.'
+              : 'Необязательно. Добавьте схему, если помогает понять тему.'}
+          </p>
         ) : null}
         {value.diagrams.map((diagram, index) => (
           <div key={`diag-${index}`} className="structured-editor-card">
@@ -165,7 +211,7 @@ export function StructuredPostEditor({ value, onChange }: StructuredPostEditorPr
         ))}
       </div>
 
-      <div className="structured-editor-block">
+      <div id="edit-quiz" className="structured-editor-block admin-jump-target">
         <div className="structured-editor-block-head">
           <h4 className="learn-panel-heading">Тест (вопрос → ответ)</h4>
           <button
@@ -180,6 +226,9 @@ export function StructuredPostEditor({ value, onChange }: StructuredPostEditorPr
             + Вопрос
           </button>
         </div>
+        {isLearn ? (
+          <p className="learn-section-note">Краткий тест на запоминание: минимум 3 вопроса.</p>
+        ) : null}
         {value.quiz.map((item, index) => (
           <div key={`quiz-${index}`} className="structured-editor-card">
             <label className="learn-admin-field">
@@ -235,7 +284,38 @@ export function StructuredPostEditor({ value, onChange }: StructuredPostEditorPr
         ))}
       </div>
 
-      <div className="structured-editor-block">
+      {isLearn ? (
+        <div id="edit-cheatsheet" className="structured-editor-block admin-jump-target">
+          <div className="structured-editor-block-head">
+            <h4 className="learn-panel-heading">Шпаргалка (HTML)</h4>
+          </div>
+          <p className="learn-section-note">
+            Формулы, команды, таблицы, суть урока. Разрешены h1–h4, списки, table, pre/code.
+          </p>
+          <label className="learn-admin-field">
+            <span>HTML</span>
+            <textarea
+              className="learn-admin-textarea"
+              rows={10}
+              value={value.cheatsheetHtml || ''}
+              onChange={(e) =>
+                patch((d) => {
+                  d.cheatsheetHtml = e.target.value
+                })
+              }
+              placeholder="<h3>Суть</h3>…"
+            />
+          </label>
+          {(value.cheatsheetHtml || '').trim() ? (
+            <div className="structured-editor-card">
+              <p className="learn-section-note">Превью</p>
+              <LearnContent content={value.cheatsheetHtml || ''} format="html" />
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      <div id="edit-anki" className="structured-editor-block admin-jump-target">
         <div className="structured-editor-block-head">
           <h4 className="learn-panel-heading">Anki-карточки</h4>
           <button
@@ -251,7 +331,9 @@ export function StructuredPostEditor({ value, onChange }: StructuredPostEditorPr
           </button>
         </div>
         <p className="learn-section-note">
-          Если пусто — при чтении карточки соберутся из теста и итогов.
+          {isLearn
+            ? 'Колода листа карты: 3–8 авторских пар. Не подставляются из summary автоматически.'
+            : 'Если пусто — при чтении карточки соберутся из теста и итогов.'}
         </p>
         {value.anki.map((item, index) => (
           <div key={`anki-${index}`} className="structured-editor-card">
@@ -297,35 +379,68 @@ export function StructuredPostEditor({ value, onChange }: StructuredPostEditorPr
         ))}
       </div>
 
-      <div className="structured-editor-block">
-        <div className="structured-editor-block-head">
-          <h4 className="learn-panel-heading">Итог (чеклист)</h4>
-          <button
-            type="button"
-            className="learn-admin-btn"
-            onClick={() =>
-              patch((d) => {
-                d.summary.push('')
-              })
-            }
-          >
-            + Пункт
-          </button>
-        </div>
-        {value.summary.map((line, index) => (
-          <label key={`sum-${index}`} className="learn-admin-field">
-            <span>Пункт {index + 1}</span>
-            <input
-              value={line}
-              onChange={(e) =>
+      {!isLearn ? (
+        <div className="structured-editor-block">
+          <div className="structured-editor-block-head">
+            <h4 className="learn-panel-heading">Итог (чеклист)</h4>
+            <button
+              type="button"
+              className="learn-admin-btn"
+              onClick={() =>
                 patch((d) => {
-                  d.summary[index] = e.target.value
+                  d.summary.push('')
                 })
               }
-            />
-          </label>
-        ))}
-      </div>
+            >
+              + Пункт
+            </button>
+          </div>
+          {value.summary.map((line, index) => (
+            <label key={`sum-${index}`} className="learn-admin-field">
+              <span>Пункт {index + 1}</span>
+              <input
+                value={line}
+                onChange={(e) =>
+                  patch((d) => {
+                    d.summary[index] = e.target.value
+                  })
+                }
+              />
+            </label>
+          ))}
+        </div>
+      ) : (
+        <div className="structured-editor-block">
+          <div className="structured-editor-block-head">
+            <h4 className="learn-panel-heading">Итог (опционально, 3 строки)</h4>
+            <button
+              type="button"
+              className="learn-admin-btn"
+              onClick={() =>
+                patch((d) => {
+                  d.summary.push('')
+                })
+              }
+            >
+              + Пункт
+            </button>
+          </div>
+          <p className="learn-section-note">Не превращается в Anki автоматически.</p>
+          {value.summary.map((line, index) => (
+            <label key={`sum-${index}`} className="learn-admin-field">
+              <span>Пункт {index + 1}</span>
+              <input
+                value={line}
+                onChange={(e) =>
+                  patch((d) => {
+                    d.summary[index] = e.target.value
+                  })
+                }
+              />
+            </label>
+          ))}
+        </div>
+      )}
 
       <label className="learn-admin-field">
         <span>Дополнительно (необязательный markdown)</span>
@@ -344,7 +459,7 @@ export function StructuredPostEditor({ value, onChange }: StructuredPostEditorPr
       <button
         type="button"
         className="learn-admin-btn"
-        onClick={() => onChange(clone(EMPTY_STRUCTURED_POST))}
+        onClick={() => onChange(clone(emptyTemplate))}
       >
         Сбросить шаблон
       </button>

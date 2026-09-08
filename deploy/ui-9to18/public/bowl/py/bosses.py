@@ -53,11 +53,11 @@ def create_boss(x: float, y: float, boss_kind: BossKind) -> Enemy:
     )
 
 
-def apply_boss_hit(boss: Enemy, player: Player) -> float:
-    damage = float(cfg("boss_hit_damage")) * boss_damage_mult(boss.boss_kind)
+def apply_boss_hit(boss: Enemy, player: Player, damage_mult: float = 1.0) -> float:
+    damage = float(cfg("boss_hit_damage")) * boss_damage_mult(boss.boss_kind) * float(damage_mult)
     player.red = max(0.0, player.red - damage)
     if boss.boss_kind == "leech":
-        player.red = max(0.0, player.red - float(cfg("boss_leech_extra_drain")))
+        player.red = max(0.0, player.red - float(cfg("boss_leech_extra_drain")) * float(damage_mult))
         growth = float(cfg("boss_leech_growth"))
         boss.radius += growth
         boss.health = min(boss.max_health, boss.health + growth * 0.5)

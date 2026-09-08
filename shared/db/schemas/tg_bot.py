@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS tg_profiles (
     classification_enabled BOOLEAN DEFAULT FALSE,
     classification_categories JSONB DEFAULT '["новости", "реклама", "технологии", "финансы", "другое"]',
     batch_enrichment_enabled BOOLEAN DEFAULT FALSE,
+    proxy_url VARCHAR(512),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
@@ -46,6 +47,12 @@ CREATE TABLE IF NOT EXISTS tg_profiles (
 TG_PROFILES_BATCH_ENRICH_MIGRATION = """
 DO $$ BEGIN
   ALTER TABLE tg_profiles ADD COLUMN batch_enrichment_enabled BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+"""
+
+TG_PROFILES_PROXY_URL_MIGRATION = """
+DO $$ BEGIN
+  ALTER TABLE tg_profiles ADD COLUMN proxy_url VARCHAR(512);
 EXCEPTION WHEN duplicate_column THEN NULL; END $$;
 """
 
@@ -141,6 +148,7 @@ CREATE INDEX IF NOT EXISTS idx_tg_digests_user_chat_created
 ALL_TABLES: list[str] = [
     TG_PROFILES_TABLE,
     TG_PROFILES_BATCH_ENRICH_MIGRATION,
+    TG_PROFILES_PROXY_URL_MIGRATION,
     TG_POSTS_TABLE,
     TG_POSTS_INDEXES,
     TG_POST_TEMPLATES_TABLE,

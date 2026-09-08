@@ -47,7 +47,13 @@ import {
   getMapLearnLink,
 } from '@/data/learning-map/map-learn-links'
 import type { MindNode } from '@/data/learning-map/parse-outline'
-import { filterTree, filterTreeByTags } from '@/data/learning-map/parse-outline'
+import {
+  filterTree,
+  filterTreeByProfile,
+  filterTreeByTags,
+  LEARN_MAP_PROFILES,
+  type LearnMapProfileId,
+} from '@/data/learning-map/parse-outline'
 import {
   collectAllTags,
   getNodeTags,
@@ -124,6 +130,7 @@ export function LearningMindmap({ root, branchCount, nodeCount }: LearningMindma
   const [ankiOpen, setAnkiOpen] = useState(false)
   const [activeTags, setActiveTags] = useState<string[]>([])
   const [tagColors, setTagColors] = useState<Record<string, string>>(() => loadTagColors())
+  const [profileId, setProfileId] = useState<LearnMapProfileId | null>('developer')
   const { posts, isReady: learnReady } = useLearnPosts()
   const publishedPosts = useMemo(() => getPublishedPosts(posts), [posts])
   const { completedSlugs } = useSiteLearnProgress()
@@ -150,7 +157,11 @@ export function LearningMindmap({ root, branchCount, nodeCount }: LearningMindma
   }, [root, hiddenSet])
 
   const filtered = useMemo(() => {
-    const byQuery = filterTree(visibleRoot, query) ?? visibleRoot
+    const byProfile = filterTreeByProfile(visibleRoot, profileId) ?? {
+      ...visibleRoot,
+      children: [],
+    }
+    const byQuery = filterTree(byProfile, query) ?? byProfile
     if (activeTags.length === 0) {
       return byQuery
     }
@@ -160,7 +171,7 @@ export function LearningMindmap({ root, branchCount, nodeCount }: LearningMindma
         children: [],
       }
     )
-  }, [visibleRoot, query, activeTags, leafNotes])
+  }, [visibleRoot, query, activeTags, leafNotes, profileId])
   const layout = useMemo(() => layoutMindmap(filtered, depth), [filtered, depth])
 
   const allTags = useMemo(
@@ -563,107 +574,144 @@ export function LearningMindmap({ root, branchCount, nodeCount }: LearningMindma
       ref={shellRef}
       className={`lm${isFullscreen ? ' is-fullscreen' : ''}`}
     >
-      <div className="lm-toolbar">
-        <label className="lm-search">
-          <span className="lm-search-label">Поиск</span>
-          <input
-            type="search"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="ACID, docker, soft skills…"
-            autoComplete="off"
-          />
-        </label>
+      <div className="lm-menu" aria-label="Управление картой">
+        <section className="lm-menu-block">
+          <p className="lm-menu-block-label">Фильтры</p>
+          <div className="lm-menu-block-body">
+            <label className="lm-search">
+              <span className="lm-search-label">Поиск</span>
+              <input
+                type="search"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="ACID, docker, soft skills…"
+                autoComplete="off"
+              />
+            </label>
 
-        <div className="lm-depth" role="group" aria-label="Глубина карты">
-          <span className="lm-search-label">Уровни</span>
-          <div className="lm-depth-btns">
-            {DEPTH_OPTIONS.map((value) => (
-              <button
-                key={value}
-                type="button"
-                className={`lm-depth-btn${depth === value ? ' is-active' : ''}`}
-                onClick={() => setDepth(value)}
-                aria-pressed={depth === value}
-              >
-                {value}
-              </button>
-            ))}
+            <div className="lm-depth" role="group" aria-label="Профиль обучения">
+              <span className="lm-search-label">Профиль</span>
+              <div className="lm-profile-btns">
+                <button
+                  type="button"
+                  className={`lm-profile-btn${profileId === null ? ' is-active' : ''}`}
+                  onClick={() => setProfileId(null)}
+                  aria-pressed={profileId === null}
+                  title="Все листья"
+                >
+                  Все
+                </button>
+                {LEARN_MAP_PROFILES.map((profile) => (
+                  <button
+                    key={profile.id}
+                    type="button"
+                    className={`lm-profile-btn${profileId === profile.id ? ' is-active' : ''}`}
+                    onClick={() => setProfileId(profile.id)}
+                    aria-pressed={profileId === profile.id}
+                    title={profile.label}
+                  >
+                    {profile.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="lm-depth" role="group" aria-label="Глубина карты">
+              <span className="lm-search-label">Уровни</span>
+              <div className="lm-depth-btns">
+                {DEPTH_OPTIONS.map((value) => (
+                  <button
+                    key={value}
+                    type="button"
+                    className={`lm-depth-btn${depth === value ? ' is-active' : ''}`}
+                    onClick={() => setDepth(value)}
+                    aria-pressed={depth === value}
+                  >
+                    {value}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
-        </div>
+        </section>
 
-        <div className="lm-zoom-controls" role="group" aria-label="Масштаб">
-          <button type="button" className="lm-btn" onClick={() => setZoom((z) => clamp(z / 1.15, MIN_ZOOM, MAX_ZOOM))}>
-            −
-          </button>
-          <button type="button" className="lm-btn lm-zoom-label" onClick={fitToView}>
-            {Math.round(zoom * 100)}%
-          </button>
-          <button type="button" className="lm-btn" onClick={() => setZoom((z) => clamp(z * 1.15, MIN_ZOOM, MAX_ZOOM))}>
-            +
-          </button>
-          <button type="button" className="lm-btn" onClick={fitToView}>
-            Вписать
-          </button>
-          <button
-            type="button"
-            className={`lm-btn${linkMode ? ' is-active' : ''}`}
-            aria-pressed={linkMode}
-            onClick={() => {
-              setLinkMode((prev) => !prev)
-              setLinkFromId(null)
-              setLinkMessage(
-                !linkMode
-                  ? 'Режим связи: кликните два листа из разных веток'
-                  : '',
-              )
-            }}
-          >
-            Связь
-          </button>
-          <button
-            type="button"
-            className={`lm-btn${isFullscreen ? ' is-active' : ''}`}
-            aria-pressed={isFullscreen}
-            onClick={() => void toggleFullscreen()}
-            title={isFullscreen ? 'Выйти из полного экрана (Esc)' : 'На весь экран'}
-          >
-            {isFullscreen ? 'Свернуть' : 'На весь экран'}
-          </button>
-          <button
-            type="button"
-            className="lm-btn"
-            onClick={exportMarkdown}
-            title="Скачать карту в Markdown (Obsidian)"
-          >
-            Выгрузить MD
-          </button>
-          <button
-            type="button"
-            className="lm-btn"
-            onClick={exportAnki}
-            title="Скачать колоду Anki (тема → ответ) для импорта"
-          >
-            Anki ↓
-          </button>
-          <button
-            type="button"
-            className={`lm-btn${ankiOpen ? ' is-active' : ''}`}
-            onClick={() => setAnkiOpen(true)}
-            title="Повторение карточек в браузере"
-          >
-            Anki ▶
-          </button>
-        </div>
+        <section className="lm-menu-block">
+          <p className="lm-menu-block-label">Карта</p>
+          <div className="lm-menu-block-body lm-menu-block-body-actions">
+            <div className="lm-zoom-controls" role="group" aria-label="Масштаб">
+              <button type="button" className="lm-btn" onClick={() => setZoom((z) => clamp(z / 1.15, MIN_ZOOM, MAX_ZOOM))}>
+                −
+              </button>
+              <button type="button" className="lm-btn lm-zoom-label" onClick={fitToView}>
+                {Math.round(zoom * 100)}%
+              </button>
+              <button type="button" className="lm-btn" onClick={() => setZoom((z) => clamp(z * 1.15, MIN_ZOOM, MAX_ZOOM))}>
+                +
+              </button>
+              <button type="button" className="lm-btn" onClick={fitToView}>
+                Вписать
+              </button>
+              <button
+                type="button"
+                className={`lm-btn${linkMode ? ' is-active' : ''}`}
+                aria-pressed={linkMode}
+                onClick={() => {
+                  setLinkMode((prev) => !prev)
+                  setLinkFromId(null)
+                  setLinkMessage(
+                    !linkMode
+                      ? 'Режим связи: кликните два листа из разных веток'
+                      : '',
+                  )
+                }}
+              >
+                Связь
+              </button>
+              <button
+                type="button"
+                className={`lm-btn${isFullscreen ? ' is-active' : ''}`}
+                aria-pressed={isFullscreen}
+                onClick={() => void toggleFullscreen()}
+                title={isFullscreen ? 'Выйти из полного экрана (Esc)' : 'На весь экран'}
+              >
+                {isFullscreen ? 'Свернуть' : 'На весь экран'}
+              </button>
+              <button
+                type="button"
+                className="lm-btn"
+                onClick={exportMarkdown}
+                title="Скачать карту в Markdown (Obsidian)"
+              >
+                Выгрузить MD
+              </button>
+              <button
+                type="button"
+                className="lm-btn"
+                onClick={exportAnki}
+                title="Скачать колоду Anki (тема → ответ) для импорта"
+              >
+                Anki ↓
+              </button>
+              <button
+                type="button"
+                className={`lm-btn${ankiOpen ? ' is-active' : ''}`}
+                onClick={() => setAnkiOpen(true)}
+                title="Повторение карточек в браузере"
+              >
+                Anki ▶
+              </button>
+            </div>
 
-        <p className="lm-stats">
-          {branches.length - hiddenSet.size}/{branchCount} веток · показано {visibleCount} /{' '}
-          {nodeCount} · глубина {depth}
-          {hiddenSet.size > 0 ? ` · скрыто ${hiddenSet.size}` : ''}
-          {crossLinks.length > 0 ? ` · связей ${crossLinks.length}` : ''}
-          {activeTags.length > 0 ? ` · теги: ${activeTags.map((t) => `#${t}`).join(' ')}` : ''}
-        </p>
-        {linkMessage ? <p className="lm-link-hint">{linkMessage}</p> : null}
+            <p className="lm-stats">
+              {branches.length - hiddenSet.size}/{branchCount} веток · показано {visibleCount} /{' '}
+              {nodeCount} · глубина {depth}
+              {hiddenSet.size > 0 ? ` · скрыто ${hiddenSet.size}` : ''}
+              {crossLinks.length > 0 ? ` · связей ${crossLinks.length}` : ''}
+              {activeTags.length > 0 ? ` · теги: ${activeTags.map((t) => `#${t}`).join(' ')}` : ''}
+            </p>
+            {linkMessage ? <p className="lm-link-hint">{linkMessage}</p> : null}
+          </div>
+        </section>
       </div>
 
       {allTags.length > 0 ? (
@@ -953,6 +1001,7 @@ export function LearningMindmap({ root, branchCount, nodeCount }: LearningMindma
             data={leafPanel}
             root={root}
             nodeId={selectedId}
+            learnSlug={selectedNode.learnSlug}
             notes={leafNotes}
             posts={publishedPosts}
             tagColors={tagColors}

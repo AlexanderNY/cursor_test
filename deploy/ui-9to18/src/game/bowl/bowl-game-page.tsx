@@ -8,6 +8,7 @@ import { HeroColorScreen } from './hero-color-screen'
 import { GameScreen } from './game-screen'
 import { LoadingScreen } from './loading-screen'
 import { MenuScreen } from './menu-screen'
+import { OrdersScreen } from './orders-screen'
 import { PerkSelectScreen } from './perk-select-screen'
 import { SettingsScreen } from './settings-screen'
 import { loadEffectiveGameConfig } from './settings-storage'
@@ -15,7 +16,8 @@ import { applyGameConfig } from './game-bridge'
 import { setAutosaveIntervalMs } from './game-config'
 import { loadPyodideRuntime } from './pyodide-loader'
 import { hasSave, loadSave } from './save-storage'
-import type { PerkLevels } from './perks'
+import { consumePendingPerkBoost } from './orders-storage'
+import { defaultPerkLevels, type PerkLevels } from './perks'
 import type { GameScreen as GameScreenState, PerkKind } from './types'
 import '@/styles/bowl-game.css'
 
@@ -60,7 +62,13 @@ export function BowlGamePage() {
 
   const startWithPerk = useCallback(
     async (perk: PerkKind) => {
-      await gameBridge.newGame(window.innerWidth, window.innerHeight, perk, heroColor)
+      const levels = defaultPerkLevels()
+      levels[perk] = Math.max(levels[perk] ?? 0, 1)
+      const boost = consumePendingPerkBoost()
+      for (const [id, level] of Object.entries(boost)) {
+        levels[id as keyof PerkLevels] = Math.max(levels[id as keyof PerkLevels] ?? 0, level)
+      }
+      await gameBridge.newGameWithPerks(window.innerWidth, window.innerHeight, heroColor, levels)
       setScreen('playing')
     },
     [heroColor],
@@ -116,10 +124,15 @@ export function BowlGamePage() {
         onContinue={continueGame}
         onGuide={() => setScreen('guide')}
         onCharacterEditor={() => setScreen('characterEditor')}
+        onOrders={() => setScreen('orders')}
         onSettings={() => setScreen('settings')}
         onExit={exitToHome}
       />
     )
+  }
+
+  if (screen === 'orders') {
+    return <OrdersScreen onBack={backToMenu} />
   }
 
   if (screen === 'settings') {

@@ -41,6 +41,7 @@ export interface TelegramConfig {
   api_hash?: string
   telegram_username?: string
   auth_phone_number?: string
+  proxy_url?: string
   chats_to_read: TelegramChatRefInput[]
   save_conditions: string[]
   channel_to_post?: string

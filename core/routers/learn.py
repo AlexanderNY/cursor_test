@@ -47,6 +47,7 @@ class LearnPostIn(BaseModel):
     cheatsheet: str = ""
     diagram: str = ""
     links: List[LearnLinkIn] = Field(default_factory=list)
+    structured: Optional[dict[str, Any]] = None
     theoryFormat: str = "markdown"
     labFormat: str = "markdown"
     cheatsheetFormat: str = "markdown"

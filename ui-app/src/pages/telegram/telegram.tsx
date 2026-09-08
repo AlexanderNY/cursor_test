@@ -141,6 +141,7 @@ export function TelegramPage() {
   const [apiHash, setApiHash] = useState('')
   const [telegramUsername, setTelegramUsername] = useState('')
   const [authPhoneNumber, setAuthPhoneNumber] = useState('')
+  const [proxyUrl, setProxyUrl] = useState('')
   const [channelToPost, setChannelToPost] = useState('')
   const [channelToPostTitle, setChannelToPostTitle] = useState('')
   const [channelsToPost, setChannelsToPost] = useState<TelegramChatRef[]>([])
@@ -301,6 +302,7 @@ export function TelegramPage() {
         setApiHash(profile.api_hash || '')
         setTelegramUsername(profile.telegram_username || '')
         setAuthPhoneNumber(profile.auth_phone_number || '')
+        setProxyUrl(profile.proxy_url || '')
         setChannelToPost(profile.channel_to_post || '')
         {
           const channelRefs = chatRefsFromInputs(
@@ -384,6 +386,7 @@ export function TelegramPage() {
       api_hash: apiHash || undefined,
       telegram_username: telegramUsername || undefined,
       auth_phone_number: authPhoneNumber || undefined,
+      proxy_url: proxyUrl.trim() || undefined,
       chats_to_read: chatRefsFromDynamicFields(chatsToRead),
       save_conditions: saveConditions.map((f) => f.value).filter(Boolean),
       channel_to_post: channelsToPost[0]?.id || channelToPost || undefined,
@@ -834,6 +837,8 @@ export function TelegramPage() {
           onTelegramUsernameChange={setTelegramUsername}
           authPhoneNumber={authPhoneNumber}
           onAuthPhoneNumberChange={setAuthPhoneNumber}
+          proxyUrl={proxyUrl}
+          onProxyUrlChange={setProxyUrl}
           authCode={authCode}
           onAuthCodeChange={setAuthCode}
           authPassword={authPassword}

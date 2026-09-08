@@ -13,7 +13,45 @@ logger = logging.getLogger(__name__)
 
 
 class VkEngagementService:
-    async def refresh_engagement(self, limit: int = 50) -> int:
+    async def refresh_engagement(
+        self,
+        limit: int = 100,
+        *,
+        hot_days: int = 7,
+        hot_cap: int = 300,
+        sample_older: int = 50,
+    ) -> int:
+        rows = await self._select_posts(hot_days=hot_days, hot_cap=hot_cap, sample_older=sample_older)
+        rows = rows[: max(limit, hot_cap + sample_older)]
+        return await self._refresh_rows(rows)
+
+    async def refresh_one(self, user_id: int, post_id: int) -> dict:
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT p.id, p.user_id, p.published_vk_post_id, p.published_owner_id,
+                           pr.access_token, pr.user_access_token
+                    FROM vk_posts p
+                    JOIN vk_profiles pr ON pr.user_id = p.user_id
+                    WHERE p.id = %s AND p.user_id = %s AND p.status = 'published'
+                      AND p.published_vk_post_id IS NOT NULL
+                      AND p.published_owner_id IS NOT NULL
+                    """,
+                    (post_id, user_id),
+                )
+                row = await cur.fetchone()
+        finally:
+            await release_db_connection(conn)
+        if not row:
+            return {"ok": False, "error": "post_not_found"}
+        updated = await self._refresh_rows([row])
+        return {"ok": updated > 0, "updated": updated}
+
+    async def _select_posts(
+        self, *, hot_days: int, hot_cap: int, sample_older: int
+    ) -> list:
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
@@ -26,15 +64,35 @@ class VkEngagementService:
                     WHERE p.status = 'published'
                       AND p.published_vk_post_id IS NOT NULL
                       AND p.published_owner_id IS NOT NULL
-                    ORDER BY p.updated_at DESC
+                      AND COALESCE(p.publish_at, p.created_at) >= NOW() - make_interval(days => %s)
+                    ORDER BY COALESCE(p.publish_at, p.created_at) DESC
                     LIMIT %s
                     """,
-                    (limit,),
+                    (hot_days, hot_cap),
                 )
-                rows = await cur.fetchall()
+                hot = list(await cur.fetchall() or [])
+                hot_ids = {r[0] for r in hot}
+                await cur.execute(
+                    """
+                    SELECT p.id, p.user_id, p.published_vk_post_id, p.published_owner_id,
+                           pr.access_token, pr.user_access_token
+                    FROM vk_posts p
+                    JOIN vk_profiles pr ON pr.user_id = p.user_id
+                    WHERE p.status = 'published'
+                      AND p.published_vk_post_id IS NOT NULL
+                      AND p.published_owner_id IS NOT NULL
+                      AND COALESCE(p.publish_at, p.created_at) < NOW() - make_interval(days => %s)
+                    ORDER BY p.updated_at ASC NULLS FIRST
+                    LIMIT %s
+                    """,
+                    (hot_days, sample_older),
+                )
+                older = [r for r in (await cur.fetchall() or []) if r[0] not in hot_ids]
+                return hot + older
         finally:
             await release_db_connection(conn)
 
+    async def _refresh_rows(self, rows: list) -> int:
         updated = 0
         for post_id, user_id, vk_post_id, owner_id, token, user_token in rows:
             client = self._client_for_owner(int(owner_id), token, user_token)
@@ -45,7 +103,11 @@ class VkEngagementService:
                 if not items:
                     continue
                 item = items[0]
-                views = (item.get("views") or {}).get("count", 0) if isinstance(item.get("views"), dict) else (item.get("views") or 0)
+                views = (
+                    (item.get("views") or {}).get("count", 0)
+                    if isinstance(item.get("views"), dict)
+                    else (item.get("views") or 0)
+                )
                 likes = (item.get("likes") or {}).get("count", 0) or 0
                 reposts = (item.get("reposts") or {}).get("count", 0) or 0
                 comments = (item.get("comments") or {}).get("count", 0) or 0

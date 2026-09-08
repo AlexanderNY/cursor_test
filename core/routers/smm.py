@@ -5,15 +5,18 @@ from __future__ import annotations
 import logging
 from typing import Any, List, Literal, Optional
 
-from fastapi import APIRouter, File, Header, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Body, File, Header, HTTPException, Query, UploadFile
 from pydantic import BaseModel, Field
 
+from config import settings
+from upload_limits import read_upload_limited
 from services.smm_service import BRAND_PALETTE, compose_brand_voice, smm_service
 from services.content_library_service import (
     TEMPLATE_KINDS,
     build_utm_url,
     content_library_service,
 )
+from services.content_series_service import content_series_service
 from services.smm_networks import (
     is_adapt_network,
     network_text_limit,
@@ -178,6 +181,7 @@ class JobCreate(BaseModel):
     status: Optional[str] = None
     adapter_overrides: Optional[dict[str, Any]] = None
     assigned_to: Optional[int] = None
+    series_id: Optional[int] = None
 
 
 class JobUpdate(BaseModel):
@@ -189,6 +193,7 @@ class JobUpdate(BaseModel):
     adapters_result: Optional[dict[str, Any]] = None
     assigned_to: Optional[int] = None
     rejection_comment: Optional[str] = None
+    series_id: Optional[int] = None
 
 
 class JobReject(BaseModel):
@@ -206,6 +211,42 @@ class JobBulkApprove(BaseModel):
 class JobBulkReschedule(BaseModel):
     job_ids: List[int] = Field(..., min_length=1, max_length=100)
     publish_at: str
+
+
+class ContentSeriesCreate(BaseModel):
+    title: str = Field(..., min_length=1, max_length=255)
+    color: str = Field(default="#8B5CF6", max_length=7)
+    body: str = ""
+    template_id: Optional[int] = None
+    targets: List[dict[str, Any]] = Field(default_factory=list)
+    weekdays: List[int] = Field(default_factory=list)
+    publish_time: str = Field(default="10:00", max_length=5)
+    cadence: Literal["weekly", "biweekly"] = "weekly"
+    is_active: bool = True
+    starts_on: Optional[str] = None
+    ends_on: Optional[str] = None
+    expand: bool = True
+
+
+class ContentSeriesUpdate(BaseModel):
+    title: Optional[str] = Field(None, min_length=1, max_length=255)
+    color: Optional[str] = Field(None, max_length=7)
+    body: Optional[str] = None
+    template_id: Optional[int] = None
+    clear_template: bool = False
+    targets: Optional[List[dict[str, Any]]] = None
+    weekdays: Optional[List[int]] = None
+    publish_time: Optional[str] = Field(None, max_length=5)
+    cadence: Optional[Literal["weekly", "biweekly"]] = None
+    is_active: Optional[bool] = None
+    starts_on: Optional[str] = None
+    ends_on: Optional[str] = None
+    rebuild: bool = True
+
+
+class ContentSeriesInstantiate(BaseModel):
+    publish_at: str
+    status: Optional[str] = None
 
 
 class AutomationCreate(BaseModel):
@@ -266,6 +307,12 @@ class CompetitorAlertUpdate(BaseModel):
     alert_enabled: Optional[bool] = None
     alert_delivery: Optional[dict[str, Any]] = None
     sync_interval_min: Optional[int] = Field(None, ge=5, le=1440)
+    alert_rules: Optional[list[dict[str, Any]]] = None
+
+
+class CompetitorIdeasRequest(BaseModel):
+    brand_id: Optional[int] = None
+    limit: int = Field(6, ge=1, le=8)
 
 
 class TemplateCreate(BaseModel):
@@ -397,7 +444,9 @@ async def import_channels_file(
 ):
     """Import channels from uploaded JSON file."""
     user_id = get_user_id(x_user_id)
-    raw = await file.read()
+    raw = await read_upload_limited(
+        file, max_bytes=settings.MAX_UPLOAD_IMPORT_BYTES, label="Import file"
+    )
     try:
         import json as _json
 
@@ -705,11 +754,14 @@ async def create_job(body: JobCreate, x_user_id: Optional[str] = Header(None)):
             status=body.status or "ready",
             adapter_overrides=body.adapter_overrides,
             assigned_to=body.assigned_to,
+            series_id=body.series_id,
         )
     except QuotaExceededError as exc:
         raise _http_quota(exc)
     except PlatformAuthError as exc:
         raise _http_platform_auth(exc)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
 
@@ -723,6 +775,8 @@ async def approve_job(job_id: int, x_user_id: Optional[str] = Header(None)):
         raise _http_quota(exc)
     except PlatformAuthError as exc:
         raise _http_platform_auth(exc)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     if not job:
@@ -739,6 +793,8 @@ async def reject_job(
         job = await smm_service.reject_job(user_id, job_id, body.comment)
     except QuotaExceededError as exc:
         raise _http_quota(exc)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     if not job:
@@ -755,6 +811,8 @@ async def assign_job(
         job = await smm_service.assign_job(user_id, job_id, body.assigned_to)
     except QuotaExceededError as exc:
         raise _http_quota(exc)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     if not job:
@@ -769,6 +827,8 @@ async def bulk_approve_jobs(body: JobBulkApprove, x_user_id: Optional[str] = Hea
         return await smm_service.bulk_approve_jobs(user_id, body.job_ids)
     except QuotaExceededError as exc:
         raise _http_quota(exc)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
 
 
 @router.post("/jobs/bulk-reschedule")
@@ -782,6 +842,8 @@ async def bulk_reschedule_jobs(
         )
     except QuotaExceededError as exc:
         raise _http_quota(exc)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
 
 
 @router.post("/jobs/run-due")
@@ -807,12 +869,18 @@ async def list_jobs(
     network: Optional[str] = None,
     assigned_to: Optional[int] = None,
     assigned_to_me: bool = False,
+    series_id: Optional[int] = None,
     x_user_id: Optional[str] = Header(None),
 ):
     user_id = get_user_id(x_user_id)
     status_list = (
         [s.strip() for s in statuses.split(",") if s.strip()] if statuses else None
     )
+    if brand_id is not None:
+        try:
+            await content_series_service.expand_brand_series_lazy(user_id, brand_id)
+        except Exception:
+            logger.debug("lazy series expand skipped", exc_info=True)
     jobs = await smm_service.list_jobs(
         user_id,
         brand_id,
@@ -824,6 +892,7 @@ async def list_jobs(
         network=network,
         assigned_to=assigned_to,
         assigned_to_me=assigned_to_me,
+        series_id=series_id,
     )
     return {"jobs": jobs}
 
@@ -843,9 +912,98 @@ async def update_job(job_id: int, body: JobUpdate, x_user_id: Optional[str] = He
             adapters_result=body.adapters_result,
             assigned_to=body.assigned_to,
             rejection_comment=body.rejection_comment,
+            series_id=body.series_id,
         )
     except QuotaExceededError as exc:
         raise _http_quota(exc)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return job
+
+
+class JobCommentCreate(BaseModel):
+    body: str
+    parent_id: Optional[int] = None
+    anchor: Optional[dict] = None
+
+
+class JobCommentResolve(BaseModel):
+    resolved: bool = True
+
+
+@router.get("/jobs/{job_id}/comments")
+async def list_job_comments(job_id: int, x_user_id: Optional[str] = Header(None)):
+    user_id = get_user_id(x_user_id)
+    try:
+        items = await smm_service.list_job_comments(user_id, job_id)
+    except PermissionError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    return {"comments": items}
+
+
+@router.post("/jobs/{job_id}/comments", status_code=201)
+async def add_job_comment(
+    job_id: int, body: JobCommentCreate, x_user_id: Optional[str] = Header(None)
+):
+    user_id = get_user_id(x_user_id)
+    try:
+        return await smm_service.add_job_comment(
+            user_id,
+            job_id,
+            body.body,
+            parent_id=body.parent_id,
+            anchor=body.anchor,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+
+@router.patch("/jobs/{job_id}/comments/{comment_id}")
+async def resolve_job_comment(
+    job_id: int,
+    comment_id: int,
+    body: JobCommentResolve,
+    x_user_id: Optional[str] = Header(None),
+):
+    user_id = get_user_id(x_user_id)
+    try:
+        comment = await smm_service.resolve_job_comment(
+            user_id, job_id, comment_id, resolved=body.resolved
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    if not comment:
+        raise HTTPException(status_code=404, detail="Comment not found")
+    return comment
+
+
+@router.get("/jobs/{job_id}/revisions")
+async def list_job_revisions(job_id: int, x_user_id: Optional[str] = Header(None)):
+    user_id = get_user_id(x_user_id)
+    try:
+        items = await smm_service.list_job_revisions(user_id, job_id)
+    except PermissionError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    return {"revisions": items}
+
+
+@router.post("/jobs/{job_id}/revisions/{revision_id}/restore")
+async def restore_job_revision(
+    job_id: int, revision_id: int, x_user_id: Optional[str] = Header(None)
+):
+    user_id = get_user_id(x_user_id)
+    try:
+        job = await smm_service.restore_job_revision(user_id, job_id, revision_id)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     return job
@@ -879,7 +1037,9 @@ async def import_csv(
     x_user_id: Optional[str] = Header(None),
 ):
     user_id = get_user_id(x_user_id)
-    raw = await file.read()
+    raw = await read_upload_limited(
+        file, max_bytes=settings.MAX_UPLOAD_IMPORT_BYTES, label="CSV file"
+    )
     try:
         content = raw.decode("utf-8-sig")
     except UnicodeDecodeError:
@@ -1000,11 +1160,127 @@ async def analytics_posts(
 
 @router.get("/analytics/growth")
 async def analytics_growth(
-    brand_id: Optional[int] = None, x_user_id: Optional[str] = Header(None)
+    brand_id: Optional[int] = None,
+    channel_id: Optional[int] = None,
+    period: str = "30d",
+    x_user_id: Optional[str] = Header(None),
 ):
     user_id = get_user_id(x_user_id)
     await _require_analytics_access(user_id)
-    return await smm_service.analytics_growth(user_id, brand_id)
+    return await smm_service.analytics_growth(user_id, brand_id, channel_id, period)
+
+
+@router.get("/analytics/post-trends")
+async def analytics_post_trends(
+    brand_id: Optional[int] = None,
+    channel_id: Optional[int] = None,
+    period: str = "7d",
+    x_user_id: Optional[str] = Header(None),
+):
+    user_id = get_user_id(x_user_id)
+    await _require_analytics_access(user_id)
+    return await smm_service.analytics_post_trends(user_id, brand_id, period, channel_id)
+
+
+@router.get("/analytics/posts/{platform}/{post_id}")
+async def analytics_post_detail(
+    platform: str,
+    post_id: int,
+    x_user_id: Optional[str] = Header(None),
+):
+    user_id = get_user_id(x_user_id)
+    await _require_analytics_access(user_id)
+    detail = await smm_service.analytics_post_detail(user_id, platform, post_id)
+    if not detail:
+        raise HTTPException(status_code=404, detail="Post not found")
+    return detail
+
+
+@router.post("/analytics/posts/{platform}/{post_id}/refresh")
+async def analytics_post_refresh(
+    platform: str,
+    post_id: int,
+    x_user_id: Optional[str] = Header(None),
+):
+    user_id = get_user_id(x_user_id)
+    await _require_analytics_access(user_id)
+    result = await smm_service.request_post_engagement_refresh(user_id, platform, post_id)
+    if not result.get("ok") and result.get("error") == "post_not_found":
+        raise HTTPException(status_code=404, detail="Post not found")
+    return result
+
+
+@router.get("/analytics/comments")
+async def analytics_comments(
+    brand_id: Optional[int] = None,
+    channel_id: Optional[int] = None,
+    period: str = "7d",
+    x_user_id: Optional[str] = Header(None),
+):
+    user_id = get_user_id(x_user_id)
+    await _require_analytics_access(user_id)
+    return await smm_service.analytics_comments(user_id, brand_id, period, channel_id)
+
+
+@router.get("/analytics/funnel")
+async def analytics_funnel(
+    brand_id: Optional[int] = None,
+    channel_id: Optional[int] = None,
+    period: str = "7d",
+    x_user_id: Optional[str] = Header(None),
+):
+    user_id = get_user_id(x_user_id)
+    await _require_analytics_access(user_id)
+    return await smm_service.analytics_funnel(user_id, brand_id, period, channel_id)
+
+
+@router.get("/analytics/cohort")
+async def analytics_cohort(
+    brand_id: Optional[int] = None,
+    channel_id: Optional[int] = None,
+    period: str = "30d",
+    x_user_id: Optional[str] = Header(None),
+):
+    user_id = get_user_id(x_user_id)
+    await _require_analytics_access(user_id)
+    return await smm_service.analytics_cohort(user_id, brand_id, period, channel_id)
+
+
+@router.get("/analytics/insights")
+async def analytics_insights(
+    brand_id: Optional[int] = None,
+    channel_id: Optional[int] = None,
+    period: str = "7d",
+    x_user_id: Optional[str] = Header(None),
+):
+    user_id = get_user_id(x_user_id)
+    await _require_analytics_access(user_id)
+    return await smm_service.analytics_insights(user_id, brand_id, period, channel_id)
+
+
+@router.get("/analytics/export")
+async def analytics_export(
+    brand_id: Optional[int] = None,
+    channel_id: Optional[int] = None,
+    period: str = "7d",
+    x_user_id: Optional[str] = Header(None),
+):
+    from fastapi.responses import Response
+
+    user_id = get_user_id(x_user_id)
+    await _require_analytics_access(user_id)
+    overview = await smm_service.analytics_overview(user_id, brand_id, period, channel_id)
+    posts = await smm_service.analytics_posts(
+        user_id, brand_id, sort="views", limit=100, channel_id=channel_id
+    )
+    funnel = await smm_service.analytics_funnel(user_id, brand_id, period, channel_id)
+    growth = await smm_service.analytics_growth(user_id, brand_id, channel_id, period)
+    csv_text = smm_service.export_analytics_csv(overview, posts, funnel, growth)
+    return Response(
+        content=csv_text,
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="smm-analytics.csv"'},
+    )
 
 
 @router.get("/analytics/best-times")
@@ -1136,6 +1412,8 @@ async def update_competitor_settings(
         fields["alert_enabled"] = body.alert_enabled
     if body.alert_delivery is not None:
         fields["alert_delivery"] = body.alert_delivery
+    if body.alert_rules is not None:
+        fields["alert_rules"] = body.alert_rules
     if body.sync_interval_min is not None:
         processing = dict(ch.get("processing") or {})
         processing["sync_interval_min"] = body.sync_interval_min
@@ -1152,6 +1430,44 @@ async def update_competitor_settings(
 async def competitor_posts(channel_id: int, x_user_id: Optional[str] = Header(None)):
     user_id = get_user_id(x_user_id)
     return {"posts": await smm_service.competitor_posts(user_id, channel_id)}
+
+
+@router.get("/competitors/{channel_id}/insights")
+async def competitor_insights(
+    channel_id: int,
+    period: str = Query("7d"),
+    with_ai: bool = Query(True),
+    x_user_id: Optional[str] = Header(None),
+):
+    user_id = get_user_id(x_user_id)
+    try:
+        return await smm_service.competitor_insights(
+            user_id, channel_id, period, with_ai=with_ai
+        )
+    except QuotaExceededError as exc:
+        raise _http_quota(exc)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+
+@router.post("/competitors/{channel_id}/ideas")
+async def competitor_ideas(
+    channel_id: int,
+    body: CompetitorIdeasRequest = Body(default_factory=CompetitorIdeasRequest),
+    x_user_id: Optional[str] = Header(None),
+):
+    user_id = get_user_id(x_user_id)
+    try:
+        return await smm_service.competitor_ideas(
+            user_id,
+            channel_id,
+            brand_id=body.brand_id,
+            limit=body.limit,
+        )
+    except QuotaExceededError as exc:
+        raise _http_quota(exc)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
 
 
 @router.get("/competitors/{channel_id}/digest")
@@ -1669,4 +1985,130 @@ async def build_utm_link(body: UtmBuildRequest, x_user_id: Optional[str] = Heade
     get_user_id(x_user_id)
     url = build_utm_url(body.base_url, body.params)
     return {"url": url}
+
+
+# ---------- Content series (рубрики) ----------
+
+@router.get("/brands/{brand_id}/series")
+async def list_content_series(
+    brand_id: int,
+    active_only: bool = False,
+    x_user_id: Optional[str] = Header(None),
+):
+    user_id = get_user_id(x_user_id)
+    try:
+        series = await content_series_service.list_series(
+            user_id, brand_id, active_only=active_only
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    return {"series": series}
+
+
+@router.post("/brands/{brand_id}/series")
+async def create_content_series(
+    brand_id: int,
+    body: ContentSeriesCreate,
+    x_user_id: Optional[str] = Header(None),
+):
+    user_id = get_user_id(x_user_id)
+    try:
+        return await content_series_service.create_series(
+            user_id,
+            brand_id,
+            title=body.title,
+            color=body.color,
+            body=body.body,
+            template_id=body.template_id,
+            targets=body.targets,
+            weekdays=body.weekdays,
+            publish_time=body.publish_time,
+            cadence=body.cadence,
+            is_active=body.is_active,
+            starts_on=body.starts_on,
+            ends_on=body.ends_on,
+            expand=body.expand,
+        )
+    except QuotaExceededError as exc:
+        raise _http_quota(exc)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+
+@router.patch("/series/{series_id}")
+async def update_content_series(
+    series_id: int,
+    body: ContentSeriesUpdate,
+    x_user_id: Optional[str] = Header(None),
+):
+    user_id = get_user_id(x_user_id)
+    try:
+        series = await content_series_service.update_series(
+            user_id,
+            series_id,
+            title=body.title,
+            color=body.color,
+            body=body.body,
+            template_id=body.template_id,
+            clear_template=body.clear_template,
+            targets=body.targets,
+            weekdays=body.weekdays,
+            publish_time=body.publish_time,
+            cadence=body.cadence,
+            is_active=body.is_active,
+            starts_on=body.starts_on,
+            ends_on=body.ends_on,
+            rebuild=body.rebuild,
+        )
+    except QuotaExceededError as exc:
+        raise _http_quota(exc)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    if not series:
+        raise HTTPException(status_code=404, detail="Series not found")
+    return series
+
+
+@router.delete("/series/{series_id}")
+async def delete_content_series(
+    series_id: int, x_user_id: Optional[str] = Header(None)
+):
+    user_id = get_user_id(x_user_id)
+    ok = await content_series_service.delete_series(user_id, series_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Series not found")
+    return {"ok": True}
+
+
+@router.post("/series/{series_id}/expand")
+async def expand_content_series(
+    series_id: int, x_user_id: Optional[str] = Header(None)
+):
+    user_id = get_user_id(x_user_id)
+    try:
+        return await content_series_service.expand_series(user_id, series_id)
+    except QuotaExceededError as exc:
+        raise _http_quota(exc)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@router.post("/series/{series_id}/instantiate")
+async def instantiate_content_series(
+    series_id: int,
+    body: ContentSeriesInstantiate,
+    x_user_id: Optional[str] = Header(None),
+):
+    user_id = get_user_id(x_user_id)
+    try:
+        return await content_series_service.instantiate_series(
+            user_id,
+            series_id,
+            body.publish_at,
+            status=body.status,
+        )
+    except QuotaExceededError as exc:
+        raise _http_quota(exc)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
 

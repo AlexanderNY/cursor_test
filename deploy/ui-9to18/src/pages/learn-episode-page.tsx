@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, Navigate, useParams, useSearchParams } from 'react-router-dom'
 import { LearnContent } from '@/components/learn-content'
 import { MermaidBlock } from '@/components/learn-mermaid'
 import { PageShell } from '@/components/page-shell'
+import { StructuredPostView } from '@/components/structured-post-view'
 import { formatPublishDate, isPostPublished } from '@/data/learn/learn-store'
 import {
   getAdjacentPosts,
@@ -12,11 +13,12 @@ import {
   useLearnPosts,
 } from '@/data/learn/use-learn-posts'
 import { useSiteLearnProgress } from '@/data/site/use-learn-progress'
+import { hydrateLearnStructured } from '@/data/site/structured-post'
 
-type LearnTab = 'theory' | 'lab' | 'cheatsheet'
+type LearnTab = 'article' | 'lab' | 'cheatsheet'
 
 const tabs: { id: LearnTab; label: string }[] = [
-  { id: 'theory', label: 'Теория' },
+  { id: 'article', label: 'Статья' },
   { id: 'lab', label: 'Лаба' },
   { id: 'cheatsheet', label: 'Шпаргалка' },
 ]
@@ -27,7 +29,7 @@ export function LearnEpisodePage() {
   const isPreview = searchParams.get('preview') === '1'
   const { post: episode, isReady } = useLearnPost(slug, { preview: isPreview })
   const { posts } = useLearnPosts()
-  const [activeTab, setActiveTab] = useState<LearnTab>('theory')
+  const [activeTab, setActiveTab] = useState<LearnTab>('article')
   const {
     completedSlugs,
     isAuthed,
@@ -37,8 +39,20 @@ export function LearnEpisodePage() {
   const [progressBusy, setProgressBusy] = useState(false)
 
   useEffect(() => {
-    setActiveTab('theory')
+    setActiveTab('article')
   }, [slug])
+
+  const hydrated = useMemo(() => {
+    if (!episode) {
+      return null
+    }
+    return hydrateLearnStructured(episode.structured, {
+      lab: episode.lab,
+      cheatsheet: episode.cheatsheet,
+      cheatsheetFormat: episode.cheatsheetFormat,
+      diagram: episode.diagram,
+    })
+  }, [episode])
 
   if (!isReady) {
     return (
@@ -75,6 +89,17 @@ export function LearnEpisodePage() {
   const rubricTitle = rubricTitleById(episode.rubricId)
   const adjacent = getAdjacentPosts(getPublishedPosts(posts), episode.slug)
   const isDone = completedSlugs.has(episode.slug)
+  const labContent = (hydrated?.lab || episode.lab || '').trim()
+  const cheatsheetHtml = (hydrated?.cheatsheetHtml || '').trim()
+  const cheatsheetLegacy = episode.cheatsheet.trim()
+  const hasLab = Boolean(labContent)
+  const hasCheatsheet = Boolean(cheatsheetHtml || cheatsheetLegacy)
+  const visibleTabs = tabs.filter((tab) => {
+    if (tab.id === 'article') return true
+    if (tab.id === 'lab') return hasLab
+    if (tab.id === 'cheatsheet') return hasCheatsheet
+    return false
+  })
 
   async function toggleProgress() {
     if (!isAuthed) {
@@ -127,25 +152,27 @@ export function LearnEpisodePage() {
         </p>
       </header>
 
-      <div className="learn-tabs" role="tablist" aria-label="Разделы выпуска">
-        {tabs.map((tab) => {
-          const isActive = activeTab === tab.id
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              role="tab"
-              id={`tab-${tab.id}`}
-              aria-selected={isActive}
-              aria-controls={`panel-${tab.id}`}
-              className={isActive ? 'learn-tab is-active' : 'learn-tab'}
-              onClick={() => setActiveTab(tab.id)}
-            >
-              {tab.label}
-            </button>
-          )
-        })}
-      </div>
+      {visibleTabs.length > 1 ? (
+        <div className="learn-tabs" role="tablist" aria-label="Разделы выпуска">
+          {visibleTabs.map((tab) => {
+            const isActive = activeTab === tab.id
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                id={`tab-${tab.id}`}
+                aria-selected={isActive}
+                aria-controls={`panel-${tab.id}`}
+                className={isActive ? 'learn-tab is-active' : 'learn-tab'}
+                onClick={() => setActiveTab(tab.id)}
+              >
+                {tab.label}
+              </button>
+            )
+          })}
+        </div>
+      ) : null}
 
       <div
         id={`panel-${activeTab}`}
@@ -153,64 +180,95 @@ export function LearnEpisodePage() {
         aria-labelledby={`tab-${activeTab}`}
         className="learn-panel"
       >
-        {activeTab === 'theory' && (
-          <>
-            <LearnContent content={episode.theory} format={episode.theoryFormat} />
-            {episode.diagram.trim() ? (
-              <section className="learn-diagram" aria-labelledby="learn-diagram-heading">
-                <h2 id="learn-diagram-heading" className="learn-panel-heading">
-                  Схема
-                </h2>
-                <MermaidBlock chart={episode.diagram} />
-              </section>
-            ) : null}
-            {episode.links.length > 0 && (
-              <section className="learn-links" aria-labelledby="learn-links-heading">
-                <h2 id="learn-links-heading" className="learn-panel-heading">
-                  Ссылки
-                </h2>
-                <ul>
-                  {episode.links
-                    .filter((link) => link.href !== '#')
-                    .map((link) => {
-                      const isInternal =
-                        link.href.startsWith('/') && !link.href.startsWith('//')
-                      const isExternal = link.href.startsWith('http')
-                      return (
-                        <li key={link.href + link.label}>
-                          {isInternal ? (
-                            <Link to={link.href}>{link.label}</Link>
-                          ) : (
-                            <a
-                              href={link.href}
-                              target={isExternal ? '_blank' : undefined}
-                              rel={isExternal ? 'noreferrer' : undefined}
-                            >
-                              {link.label}
-                            </a>
-                          )}
+        {activeTab === 'article' &&
+          (hydrated ? (
+            <>
+              <StructuredPostView
+                post={hydrated}
+                appSlug="learn"
+                postSlug={episode.slug}
+                sourceType="learn"
+              />
+              {episode.links.length > 0 && (
+                <section className="learn-links" aria-labelledby="learn-links-heading">
+                  <h2 id="learn-links-heading" className="learn-panel-heading">
+                    Ссылки
+                  </h2>
+                  <ul>
+                    {episode.links
+                      .filter((link) => link.href !== '#')
+                      .map((link) => {
+                        const isInternal =
+                          link.href.startsWith('/') && !link.href.startsWith('//')
+                        const isExternal = link.href.startsWith('http')
+                        return (
+                          <li key={link.href + link.label}>
+                            {isInternal ? (
+                              <Link to={link.href}>{link.label}</Link>
+                            ) : (
+                              <a
+                                href={link.href}
+                                target={isExternal ? '_blank' : undefined}
+                                rel={isExternal ? 'noreferrer' : undefined}
+                              >
+                                {link.label}
+                              </a>
+                            )}
+                          </li>
+                        )
+                      })}
+                    {episode.links
+                      .filter((link) => link.href === '#')
+                      .map((link) => (
+                        <li key={link.label} className="learn-link-local">
+                          {link.label}
                         </li>
-                      )
-                    })}
-                  {episode.links
-                    .filter((link) => link.href === '#')
-                    .map((link) => (
-                      <li key={link.label} className="learn-link-local">
-                        {link.label}
-                      </li>
+                      ))}
+                  </ul>
+                </section>
+              )}
+            </>
+          ) : (
+            <>
+              <LearnContent content={episode.theory} format={episode.theoryFormat} />
+              {episode.diagram.trim() ? (
+                <section className="learn-diagram" aria-labelledby="learn-diagram-heading">
+                  <h2 id="learn-diagram-heading" className="learn-panel-heading">
+                    Схема
+                  </h2>
+                  <MermaidBlock chart={episode.diagram} />
+                </section>
+              ) : null}
+              {episode.links.length > 0 && (
+                <section className="learn-links" aria-labelledby="learn-links-heading">
+                  <h2 id="learn-links-heading" className="learn-panel-heading">
+                    Ссылки
+                  </h2>
+                  <ul>
+                    {episode.links.map((link) => (
+                      <li key={link.href + link.label}>{link.label}</li>
                     ))}
-                </ul>
-              </section>
+                  </ul>
+                </section>
+              )}
+            </>
+          ))}
+
+        {activeTab === 'lab' && hasLab && (
+          <LearnContent content={labContent} format={episode.labFormat} />
+        )}
+
+        {activeTab === 'cheatsheet' && hasCheatsheet && (
+          <section className="learn-cheatsheet" aria-labelledby="learn-cheat-heading">
+            <h2 id="learn-cheat-heading" className="learn-panel-heading">
+              Шпаргалка
+            </h2>
+            {cheatsheetHtml ? (
+              <LearnContent content={cheatsheetHtml} format="html" />
+            ) : (
+              <LearnContent content={cheatsheetLegacy} format={episode.cheatsheetFormat} />
             )}
-          </>
-        )}
-
-        {activeTab === 'lab' && (
-          <LearnContent content={episode.lab} format={episode.labFormat} />
-        )}
-
-        {activeTab === 'cheatsheet' && (
-          <LearnContent content={episode.cheatsheet} format={episode.cheatsheetFormat} />
+          </section>
         )}
       </div>
 

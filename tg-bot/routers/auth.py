@@ -47,8 +47,8 @@ async def submit_phone_code(request: PhoneCodeRequest):
             status_code=404,
             detail=(
                 "No pending Telegram session for this user. "
-                "Connection to Telegram may have failed — check tg-bot logs "
-                "and TELEGRAM_PROXY_URL, then save profile / reload bot and request a new code."
+                "Connection to Telegram may have failed — set SOCKS5/HTTP proxy "
+                "in the Telegram profile, save, and request a new code."
             ),
         )
     
@@ -87,8 +87,8 @@ async def submit_password(request: PasswordRequest):
             status_code=404,
             detail=(
                 "No pending Telegram session for this user. "
-                "Connection to Telegram may have failed — check tg-bot logs "
-                "and TELEGRAM_PROXY_URL, then save profile / reload bot."
+                "Connection to Telegram may have failed — set SOCKS5/HTTP proxy "
+                "in the Telegram profile, save, and try again."
             ),
         )
     
@@ -117,6 +117,16 @@ async def get_auth_status(user_id: int):
         Статус авторизации
     """
     from database import get_db_connection, release_db_connection
+
+    # Живой клиент важнее устаревшего auth_state в БД
+    # (например failed после сетевой ошибки при уже валидной сессии).
+    if client_manager and client_manager.get_client(user_id):
+        if client_manager.get_pending_client(user_id) is None:
+            return AuthStatusResponse(
+                user_id=user_id,
+                auth_state="authorized",
+                message="Authorized",
+            )
     
     conn = await get_db_connection()
     try:

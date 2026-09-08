@@ -139,6 +139,7 @@ Host-порты ботов/MinIO/Ollama/collector/processor привязаны �
 | Bot publishers (tg/vk/ig/tw/dzen) | Да (claim → `publishing`) |
 | Scheduler poll | Да (`pg_try_advisory_lock`) |
 | Gateway rate limit | Нет (in-memory; scale → Redis, фаза 2) |
+| Gateway JWT blacklist | Да (Redis `jwt:bl:*`; fallback HTTP → auth/Postgres) |
 | Ollama / MinIO | Один инстанс по дизайну |
 
 ## 5. Поток запроса UI → API
@@ -174,7 +175,31 @@ sequenceDiagram
 | Custom URL | url-bot | через distribute на другие платформы |
 | Ручной пост | Core `/cpost` | через collector → боты |
 
-## 7. Связанные документы
+## 7. Асинхронность: Postgres-очередь, не Kafka
+
+На текущем этапе (SMB SaaS, единый хост, десятки тенантов) **полный переход на Event-Driven Architecture с Kafka/RabbitMQ и event sourcing не внедряем**.
+
+Постинг уже асинхронный:
+
+- статусы в `posts` / `*_posts` + `FOR UPDATE SKIP LOCKED` = очередь в PostgreSQL;
+- collector / processor / боты — poll-циклы (`PUBLISH_INTERVAL_SEC` ~30–90 с);
+- hot-path SMM: после materialize пост сразу `ready`, Core будит бота `POST /internal/publish-now`;
+- финальный статус SMM job (`published` / `failed` / `partial`) выставляется по `POST /internal/smm/posts/publish-result`, а не в момент INSERT строки.
+
+Аудит жизненного цикла — append-only таблица `post_lifecycle_events` (журнал переходов), **не** event sourcing как источник истины.
+
+Redis используется для JWT blacklist, не как брокер задач.
+
+### Когда пересмотреть брокер
+
+1. Lock contention / poll не успевает при росте тенантов.
+2. Много независимых подписчиков на одно событие (вебхуки, биллинг, аналитика) без новых HTTP-связок.
+3. Нужен replay потока или внешняя data-platform.
+4. Боты на нескольких хостах без общей БД как очереди.
+
+До этих сигналов: Postgres queue + HTTP wake-up. Если позже понадобится шина — transactional outbox + RabbitMQ/Redis Streams (не Kafka), без смены модели истины в Postgres.
+
+## 8. Связанные документы
 
 - [SERVICES_OVERVIEW.md](SERVICES_OVERVIEW.md) — эндпоинты и БД
 - [POSTS_LIFECYCLE.md](POSTS_LIFECYCLE.md) — статусы постов

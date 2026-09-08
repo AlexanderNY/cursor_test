@@ -8,9 +8,16 @@ import { Alert } from '@/components/ui/alert'
 import { useBrand } from '@/contexts/brand-context'
 import { useAuth } from '@/contexts/auth-context'
 import { smmService } from '@/services/smm-service'
+import { telegramService } from '@/services/telegram-service'
 import type {
+  AnalyticsCohort,
+  AnalyticsCommentsSummary,
+  AnalyticsFunnel,
+  AnalyticsInsight,
   AnalyticsOverview,
   AnalyticsPost,
+  AnalyticsTrendPoint,
+  BestTimeSlot,
   BrandChannel,
   ChannelOpsStat,
   ChannelStatsResponse,
@@ -22,6 +29,12 @@ import { formatDateTime } from '@/utils/date'
 import { networkLabel } from '@/lib/smm-networks'
 import { PlanGate } from '@/components/billing/PlanGate'
 import { TelegramAnalyticsPanel } from './telegram-analytics'
+import {
+  AnalyticsChartsSection,
+  BestTimesHeatmap,
+  CommentsVolumeChart,
+} from './components/analytics-charts'
+import { PostDetailDrawer } from './components/post-detail-drawer'
 
 const EMPTY_PIPELINE: PipelineCounts = {
   collected: 0,
@@ -50,26 +63,46 @@ export function SmmAnalyticsPage() {
   const { user } = useAuth()
   const hasTeam = Boolean(user?.group_id || user?.role_in_group)
   const canView = canViewTeamAnalytics(user?.role_in_group, hasTeam, user?.role)
-  const { selectedBrandId, setSelectedBrandId, selectedBrand, channels, refreshChannels } = useBrand()
+  const { selectedBrandId, setSelectedBrandId, selectedBrand, channels, refreshChannels, brands } = useBrand()
   const [searchParams, setSearchParams] = useSearchParams()
   const [tab, setTab] = useState<Tab>('overview')
   const [period, setPeriod] = useState('7d')
   const [overview, setOverview] = useState<AnalyticsOverview | null>(null)
+  const [compareOverview, setCompareOverview] = useState<AnalyticsOverview | null>(null)
   const [posts, setPosts] = useState<AnalyticsPost[]>([])
   const [pipeline, setPipeline] = useState<ChannelStatsResponse>(EMPTY_CHANNEL_STATS)
   const [messageEvents, setMessageEvents] = useState<
     { id: string; direction: string; network: string; created_at?: string; channel_title?: string; text?: string }[]
   >([])
   const [growthPoints, setGrowthPoints] = useState<{ date: string; subscribers: number }[]>([])
+  const [trendPoints, setTrendPoints] = useState<AnalyticsTrendPoint[]>([])
+  const [funnel, setFunnel] = useState<AnalyticsFunnel | null>(null)
+  const [cohort, setCohort] = useState<AnalyticsCohort | null>(null)
+  const [commentsSummary, setCommentsSummary] = useState<AnalyticsCommentsSummary | null>(null)
+  const [insights, setInsights] = useState<AnalyticsInsight[]>([])
+  const [bestSlots, setBestSlots] = useState<BestTimeSlot[]>([])
+  const [canBestTimes, setCanBestTimes] = useState(false)
+  const [canChannelStats, setCanChannelStats] = useState(true)
+  const [channelStatsBlocked, setChannelStatsBlocked] = useState(false)
+  const [comparePrev, setComparePrev] = useState(false)
+  const [compareBrandId, setCompareBrandId] = useState<number | null>(null)
+  const [drillPost, setDrillPost] = useState<AnalyticsPost | null>(null)
   const [error, setError] = useState('')
   const [compNetwork, setCompNetwork] = useState<'tg' | 'vk' | 'url'>('tg')
   const [compId, setCompId] = useState('')
   const [compTitle, setCompTitle] = useState('')
   const [compPosts, setCompPosts] = useState<
-    { id?: number; text?: string; posted_at?: string; collected_at?: string }[]
+    { id?: number; text?: string | null; posted_at?: string | null; collected_at?: string | null }[]
   >([])
   const [selectedComp, setSelectedComp] = useState<BrandChannel | null>(null)
   const [canCompetitors, setCanCompetitors] = useState(true)
+  const [canTgListening, setCanTgListening] = useState(true)
+  const [tgListening, setTgListening] = useState<{
+    messages_collected?: number
+    alerts_sent?: number
+    alerts_suppressed?: number
+    health?: { alert_sent?: number; alert_suppressed?: number; digests?: number; suppression_rate?: number }
+  } | null>(null)
 
   const focusChannelId = useMemo(() => {
     const raw = searchParams.get('channel_id')
@@ -173,6 +206,10 @@ export function SmmAnalyticsPage() {
     if (tabParam === 'telegram' || tabParam === 'overview' || tabParam === 'channels' || tabParam === 'messages' || tabParam === 'competitors') {
       setTab(tabParam)
     }
+    const periodParam = searchParams.get('period')
+    if (periodParam === '7d' || periodParam === '30d' || periodParam === '90d') {
+      setPeriod(periodParam)
+    }
   }, [searchParams])
 
   const didApplyUrlBrand = useRef(false)
@@ -204,6 +241,28 @@ export function SmmAnalyticsPage() {
     next.delete('channel_id')
     setSearchParams(next, { replace: true })
   }, [channels, focusChannelId, searchParams, setSearchParams])
+
+  const periodHalfCompare = useMemo(() => {
+    if (!comparePrev || trendPoints.length < 4) return null
+    const mid = Math.floor(trendPoints.length / 2)
+    const first = trendPoints.slice(0, mid)
+    const second = trendPoints.slice(mid)
+    const sumViews = (ps: AnalyticsTrendPoint[]) => ps.reduce((s, p) => s + (p.views || 0), 0)
+    const sumEng = (ps: AnalyticsTrendPoint[]) => ps.reduce((s, p) => s + (p.engagement || 0), 0)
+    const er = (ps: AnalyticsTrendPoint[]) => {
+      const v = sumViews(ps)
+      return v ? Math.round((sumEng(ps) / v) * 10000) / 100 : 0
+    }
+    return {
+      reach: sumViews(first),
+      engagement: sumEng(first),
+      er: er(first),
+      posts: first.reduce((s, p) => s + (p.posts || 0), 0),
+      reach2: sumViews(second),
+      engagement2: sumEng(second),
+      er2: er(second),
+    }
+  }, [comparePrev, trendPoints])
 
   const competitors = channels.filter((c) => c.role === 'competitor')
 
@@ -251,6 +310,18 @@ export function SmmAnalyticsPage() {
   }, [focusChannelId, focusNetwork, visibleChannelStats, visibleNetworks, pipeline.totals])
 
   useEffect(() => {
+    if (!canView) return
+    void (async () => {
+      const plan = await smmService.getPlan().catch(() => null)
+      const feats = (plan?.limits?.features || {}) as Record<string, boolean>
+      setCanCompetitors(Boolean(feats.competitors))
+      setCanBestTimes(Boolean(feats.best_times))
+      setCanChannelStats(feats.channel_stats !== false)
+      setCanTgListening(feats.tg_listening !== false)
+    })()
+  }, [canView])
+
+  useEffect(() => {
     if (!canView || tab === 'telegram') return
     void (async () => {
       setError('')
@@ -258,29 +329,113 @@ export function SmmAnalyticsPage() {
         const plan = await smmService.getPlan().catch(() => null)
         const feats = (plan?.limits?.features || {}) as Record<string, boolean>
         setCanCompetitors(Boolean(feats.competitors))
-        const [ov, list, stats, messagesData, growth] = await Promise.all([
+        setCanBestTimes(Boolean(feats.best_times))
+        setCanChannelStats(feats.channel_stats !== false)
+        setCanTgListening(feats.tg_listening !== false)
+
+        let stats: ChannelStatsResponse = { ...EMPTY_CHANNEL_STATS, period }
+        setChannelStatsBlocked(false)
+        try {
+          stats = await smmService.channelStats(selectedBrandId, period)
+        } catch (err: unknown) {
+          const status = (err as { response?: { status?: number } })?.response?.status
+          if (status === 402) setChannelStatsBlocked(true)
+          else throw err
+        }
+
+        const [
+          ov,
+          list,
+          messagesData,
+          growth,
+          trends,
+          funnelData,
+          cohortData,
+          commentsData,
+          insightsData,
+        ] = await Promise.all([
           smmService.analyticsOverview(selectedBrandId, period, focusChannelId),
           smmService.analyticsPosts(selectedBrandId, 'er', focusChannelId),
-          smmService.channelStats(selectedBrandId, period).catch(() => ({
-            ...EMPTY_CHANNEL_STATS,
-            period,
-          })),
           smmService.analyticsMessages(selectedBrandId, period, focusChannelId).catch(() => ({
             posts: [],
             events: [],
           })),
-          smmService.analyticsGrowth(selectedBrandId).catch(() => ({ points: [], subscriber_growth: 0 })),
+          smmService.analyticsGrowth(selectedBrandId, focusChannelId, period).catch(() => ({
+            points: [],
+            subscriber_growth: 0,
+          })),
+          smmService.analyticsPostTrends(selectedBrandId, period, focusChannelId).catch(() => ({
+            points: [],
+          })),
+          smmService.analyticsFunnel(selectedBrandId, period, focusChannelId).catch(() => null),
+          smmService.analyticsCohort(selectedBrandId, period, focusChannelId).catch(() => null),
+          smmService.analyticsComments(selectedBrandId, period, focusChannelId).catch(() => null),
+          smmService.analyticsInsights(selectedBrandId, period, focusChannelId).catch(() => ({
+            insights: [],
+          })),
         ])
         setOverview(ov)
         setPosts(list)
         setPipeline(stats)
         setMessageEvents(messagesData.events ?? [])
         setGrowthPoints(growth.points ?? [])
+        setTrendPoints(trends.points ?? [])
+        setFunnel(funnelData)
+        setCohort(cohortData)
+        setCommentsSummary(commentsData)
+        setInsights(insightsData.insights ?? [])
+
+        if (feats.best_times) {
+          const bt = await smmService.bestTimes(selectedBrandId, focusChannelId).catch(() => ({ slots: [] }))
+          setBestSlots(bt.slots ?? [])
+        } else {
+          setBestSlots([])
+        }
+
+        if (compareBrandId && compareBrandId !== selectedBrandId) {
+          const other = await smmService
+            .analyticsOverview(compareBrandId, period, null)
+            .catch(() => null)
+          setCompareOverview(other)
+        } else {
+          setCompareOverview(null)
+        }
+
+        // TG Listening SKU strip (ops) — shared period, shown on Overview
+        try {
+          const tgPeriod = period === '90d' ? '30d' : period
+          const [tgOv, tgHealth] = await Promise.all([
+            telegramService.getAnalyticsOverview(tgPeriod, focusChannel?.external_id || undefined),
+            telegramService.getAnalyticsHealth('24h'),
+          ])
+          setTgListening({
+            messages_collected: tgOv?.messages_collected,
+            alerts_sent: tgOv?.alerts_sent,
+            alerts_suppressed: tgOv?.alerts_suppressed,
+            health: tgHealth,
+          })
+        } catch {
+          setTgListening(null)
+        }
       } catch (err) {
         setError(getErrorMessage(err))
       }
     })()
-  }, [canView, selectedBrandId, period, tab, focusChannelId])
+  }, [canView, selectedBrandId, period, tab, focusChannelId, compareBrandId, focusChannel?.external_id])
+
+  async function handleExportCsv() {
+    try {
+      const blob = await smmService.exportAnalyticsCsv(selectedBrandId, period, focusChannelId)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'smm-analytics.csv'
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      setError(getErrorMessage(err))
+    }
+  }
 
   async function handleAddCompetitor() {
     if (!selectedBrandId) return
@@ -329,7 +484,7 @@ export function SmmAnalyticsPage() {
     <PageContainer>
       <PageHeader
         title="Analytics"
-        description="Сводка пайплайна: собрано, обработано и отправлено — по бренду, соцсети и каналу"
+        description="Engagement (охват/ER) и Telegram Listening (сбор/алерты/health) — общие фильтры периода и канала"
       />
       {error && <Alert variant="error">{error}</Alert>}
       {focusChannel && (
@@ -351,7 +506,7 @@ export function SmmAnalyticsPage() {
 
       <div className="flex flex-wrap gap-2 mb-4">
         <Button variant={tab === 'overview' ? 'primary' : 'secondary'} onClick={() => setTab('overview')}>
-          Сводка
+          Engagement
         </Button>
         <Button variant={tab === 'channels' ? 'primary' : 'secondary'} onClick={() => setTab('channels')}>
           Каналы
@@ -362,44 +517,56 @@ export function SmmAnalyticsPage() {
         <Button
           variant={tab === 'competitors' ? 'primary' : 'secondary'}
           onClick={() => setTab('competitors')}
-          disabled={!canCompetitors}
-          title={!canCompetitors ? 'Competitors require Full plan' : undefined}
         >
           Competitors
         </Button>
         <Button variant={tab === 'telegram' ? 'primary' : 'secondary'} onClick={() => setTab('telegram')}>
-          Telegram
+          TG Listening
         </Button>
-        {!canCompetitors && (
-          <Link to="/pricing" className="text-sm text-primary-400 hover:underline self-center">
-            Upgrade for competitors
-          </Link>
+        {(tab === 'overview' || tab === 'channels' || tab === 'messages') && (
+          <>
+            <Button variant="secondary" onClick={() => void handleExportCsv()}>
+              Export CSV
+            </Button>
+            <Button variant="secondary" className="print:hidden" onClick={() => window.print()}>
+              Print / PDF
+            </Button>
+          </>
         )}
       </div>
 
-      {(tab === 'overview' || tab === 'channels' || tab === 'messages') && (
+      {(tab === 'overview' || tab === 'channels' || tab === 'messages' || tab === 'telegram') && (
         <div className="grid gap-2 sm:grid-cols-3 lg:max-w-3xl mb-4">
           <Select
             value={period}
-            onChange={(e) => setPeriod(e.target.value)}
+            onChange={(e) => {
+              setPeriod(e.target.value)
+              patchSearch({ period: e.target.value })
+            }}
             aria-label="Период"
           >
             <option value="7d">7 дней</option>
             <option value="30d">30 дней</option>
             <option value="90d">90 дней</option>
           </Select>
-          <Select
-            value={focusNetwork ?? ''}
-            onChange={(e) => setNetworkFilter(e.target.value || null)}
-            aria-label="Соцсеть"
-          >
-            <option value="">Все соцсети</option>
-            {networkOptions.map((net) => (
-              <option key={net} value={net}>
-                {networkLabel(net)}
-              </option>
-            ))}
-          </Select>
+          {tab !== 'telegram' ? (
+            <Select
+              value={focusNetwork ?? ''}
+              onChange={(e) => setNetworkFilter(e.target.value || null)}
+              aria-label="Соцсеть"
+            >
+              <option value="">Все соцсети</option>
+              {networkOptions.map((net) => (
+                <option key={net} value={net}>
+                  {networkLabel(net)}
+                </option>
+              ))}
+            </Select>
+          ) : (
+            <div className="rounded-md border border-[var(--border-color)] bg-[var(--bg-secondary)] px-3 py-2 text-sm text-[var(--text-muted)]">
+              Telegram ops
+            </div>
+          )}
           <Select
             value={focusChannelId != null ? String(focusChannelId) : ''}
             onChange={(e) => {
@@ -418,7 +585,10 @@ export function SmmAnalyticsPage() {
             aria-label="Канал"
           >
             <option value="">Все каналы</option>
-            {filterChannels.map((c) => (
+            {(tab === 'telegram'
+              ? filterChannels.filter((c) => c.network === 'tg')
+              : filterChannels
+            ).map((c) => (
               <option key={c.id} value={c.id}>
                 {c.title || c.external_id} · {networkLabel(c.network)}
                 {!selectedBrandId && c.brand_name ? ` · ${c.brand_name}` : ''}
@@ -429,29 +599,40 @@ export function SmmAnalyticsPage() {
       )}
 
       {tab === 'telegram' && (
-        <TelegramAnalyticsPanel chatIdFilter={focusChannel?.external_id || null} />
+        <PlanGate allowed={canTgListening} featureLabel="Telegram Listening">
+          <TelegramAnalyticsPanel
+            chatIdFilter={focusChannel?.external_id || null}
+            period={period === '90d' ? '30d' : period}
+            onPeriodChange={(p) => {
+              setPeriod(p)
+              patchSearch({ period: p })
+            }}
+          />
+        </PlanGate>
       )}
 
       {tab === 'channels' && (
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle>Каналы</CardTitle>
-            <CardDescription>
-              Собрано и отправлено — по счётчикам канала. Обработано на этом уровне не считается: у постов нет привязки к каналу.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <PipelineChannelTable
-              rows={visibleChannelStats}
-              focusChannelId={focusChannelId}
-              selectedBrandId={selectedBrandId}
-              showBrand={!selectedBrandId}
-              onSelectChannel={(id) =>
-                setChannelFilter(focusChannelId === id ? null : id)
-              }
-            />
-          </CardContent>
-        </Card>
+        <PlanGate allowed={canChannelStats && !channelStatsBlocked} featureLabel="Channel stats">
+          <Card className="mb-6">
+            <CardHeader>
+              <CardTitle>Каналы</CardTitle>
+              <CardDescription>
+                Собрано / обработано / отправлено по счётчикам канала (brand_id / channel_id на постах).
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <PipelineChannelTable
+                rows={visibleChannelStats}
+                focusChannelId={focusChannelId}
+                selectedBrandId={selectedBrandId}
+                showBrand={!selectedBrandId}
+                onSelectChannel={(id) =>
+                  setChannelFilter(focusChannelId === id ? null : id)
+                }
+              />
+            </CardContent>
+          </Card>
+        </PlanGate>
       )}
 
       {tab === 'messages' && (
@@ -509,7 +690,11 @@ export function SmmAnalyticsPage() {
                   </thead>
                   <tbody>
                     {posts.map((p) => (
-                      <tr key={`${p.network}-${p.id}`} className="border-b border-[var(--border-color)]">
+                      <tr
+                        key={`${p.network}-${p.id}`}
+                        className="border-b border-[var(--border-color)] cursor-pointer hover:bg-[var(--bg-tertiary)]/50"
+                        onClick={() => setDrillPost(p)}
+                      >
                         <td className="py-2 pr-2 uppercase">{p.network}</td>
                         <td className="py-2 pr-2">{p.channel_title || p.channel_external_id || '—'}</td>
                         <td className="py-2 pr-2 whitespace-nowrap">
@@ -647,6 +832,7 @@ export function SmmAnalyticsPage() {
             </Card>
           </div>
 
+          <PlanGate allowed={canChannelStats && !channelStatsBlocked} featureLabel="Channel stats" soft>
           <Card>
             <CardHeader>
               <CardTitle>По каналам</CardTitle>
@@ -663,53 +849,165 @@ export function SmmAnalyticsPage() {
               />
             </CardContent>
           </Card>
+          </PlanGate>
+
+          <div className="flex flex-wrap gap-3 items-center text-sm mb-2">
+            <label className="inline-flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={comparePrev}
+                onChange={(e) => setComparePrev(e.target.checked)}
+              />
+              Сравнить половины периода (1-я vs 2-я)
+            </label>
+            {brands.length >= 2 && (
+              <Select
+                value={compareBrandId != null ? String(compareBrandId) : ''}
+                onChange={(e) => setCompareBrandId(e.target.value ? Number(e.target.value) : null)}
+                aria-label="Сравнить с брендом"
+              >
+                <option value="">Без сравнения бренда</option>
+                {brands
+                  .filter((b) => b.id !== selectedBrandId)
+                  .map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name}
+                    </option>
+                  ))}
+              </Select>
+            )}
+          </div>
+
+          {insights.length > 0 && (
+            <div className="grid gap-2 mb-4">
+              {insights.map((ins) => (
+                <Alert key={ins.type + ins.title} variant={ins.severity === 'warning' ? 'warning' : 'info'}>
+                  <strong>{ins.title}</strong> — {ins.message}
+                </Alert>
+              ))}
+            </div>
+          )}
+
+          {tgListening && (
+            <PlanGate allowed={canTgListening} featureLabel="Telegram Listening" soft>
+              <Card className="mb-4">
+                <CardHeader>
+                  <CardTitle>Telegram Listening</CardTitle>
+                  <CardDescription>
+                    Мониторинг конкурентов, алерты и дайджесты ·{' '}
+                    <button
+                      type="button"
+                      className="underline text-primary-400"
+                      onClick={() => {
+                        setTab('telegram')
+                        patchSearch({ tab: 'telegram' })
+                      }}
+                    >
+                      подробнее
+                    </button>
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 text-sm">
+                    <div className="rounded-lg border border-[var(--border-color)] p-3">
+                      <p className="text-xs text-[var(--text-muted)]">Collected</p>
+                      <p className="text-xl font-semibold">{tgListening.messages_collected ?? 0}</p>
+                    </div>
+                    <div className="rounded-lg border border-[var(--border-color)] p-3">
+                      <p className="text-xs text-[var(--text-muted)]">Alerts sent</p>
+                      <p className="text-xl font-semibold">{tgListening.alerts_sent ?? 0}</p>
+                    </div>
+                    <div className="rounded-lg border border-[var(--border-color)] p-3">
+                      <p className="text-xs text-[var(--text-muted)]">Suppressed</p>
+                      <p className="text-xl font-semibold">{tgListening.alerts_suppressed ?? 0}</p>
+                    </div>
+                    <div className="rounded-lg border border-[var(--border-color)] p-3">
+                      <p className="text-xs text-[var(--text-muted)]">Health 24h</p>
+                      <p className="text-sm font-medium">
+                        digests {tgListening.health?.digests ?? 0}
+                        {tgListening.health?.suppression_rate != null
+                          ? ` · ${(tgListening.health.suppression_rate * 100).toFixed(0)}% suppress`
+                          : ''}
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </PlanGate>
+          )}
 
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
             {[
-              ['Охват', overview?.reach],
-              ['Вовлечённость', overview?.engagement],
-              ['ER %', overview?.er],
-              ['Посты', overview?.posts],
-              ['Подписчики Δ', overview?.subscriber_growth],
-            ].map(([label, value]) => (
+              ['Охват', overview?.reach, compareOverview?.reach, periodHalfCompare?.reach],
+              ['Вовлечённость', overview?.engagement, compareOverview?.engagement, periodHalfCompare?.engagement],
+              ['ER %', overview?.er, compareOverview?.er, periodHalfCompare?.er],
+              ['Посты', overview?.posts, compareOverview?.posts, periodHalfCompare?.posts],
+              ['Подписчики Δ', overview?.subscriber_growth, compareOverview?.subscriber_growth, null],
+            ].map(([label, value, other, half]) => (
               <Card key={String(label)}>
                 <CardContent className="p-4">
                   <p className="text-xs text-[var(--text-muted)]">{label}</p>
                   <p className="text-2xl font-semibold">{value ?? '—'}</p>
+                  {compareOverview && (
+                    <p className="text-xs text-[var(--text-muted)] mt-1">vs бренд: {other ?? '—'}</p>
+                  )}
+                  {periodHalfCompare && half != null && (
+                    <p className="text-xs text-[var(--text-muted)] mt-1">1-я пол. периода: {half}</p>
+                  )}
                 </CardContent>
               </Card>
             ))}
           </div>
-          {growthPoints.length > 0 && (
-            <Card className="mb-6">
+
+          <AnalyticsChartsSection
+            trendPoints={trendPoints}
+            growthPoints={growthPoints}
+            funnel={funnel}
+            cohort={cohort}
+          />
+
+          <div className="grid gap-4 lg:grid-cols-2 mt-4">
+            <Card>
               <CardHeader>
-                <CardTitle>Рост подписчиков</CardTitle>
+                <CardTitle>Комментарии</CardTitle>
+                <CardDescription>
+                  Всего {commentsSummary?.total ?? 0} · без ответа {commentsSummary?.unanswered ?? 0}
+                  {commentsSummary?.median_reply_hours != null
+                    ? ` · медиана ответа ${commentsSummary.median_reply_hours} ч`
+                    : ''}
+                </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="text-left text-[var(--text-muted)] border-b border-[var(--border-color)]">
-                        <th className="py-2 pr-2">Дата</th>
-                        <th className="py-2">Подписчики</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {growthPoints.map((p) => (
-                        <tr key={p.date} className="border-b border-[var(--border-color)]">
-                          <td className="py-2 pr-2">{p.date}</td>
-                          <td className="py-2">{p.subscribers}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <CommentsVolumeChart points={commentsSummary?.by_day || []} />
+                {commentsSummary && Object.keys(commentsSummary.by_sentiment || {}).length > 0 && (
+                  <p className="text-xs text-[var(--text-muted)] mt-2">
+                    Sentiment:{' '}
+                    {Object.entries(commentsSummary.by_sentiment)
+                      .map(([k, v]) => `${k} ${v}`)
+                      .join(' · ')}
+                  </p>
+                )}
               </CardContent>
             </Card>
-          )}
-          <Card>
+            <PlanGate allowed={canBestTimes} featureLabel="Best times" soft>
+              <Card>
+                <CardHeader>
+                  <CardTitle>Best times</CardTitle>
+                  <CardDescription>
+                    {focusChannelId ? 'Для выбранного канала' : 'По опубликованным TG-постам бренда'}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <BestTimesHeatmap slots={bestSlots} />
+                </CardContent>
+              </Card>
+            </PlanGate>
+          </div>
+
+          <Card className="mt-4">
             <CardHeader>
               <CardTitle>Лучшие посты</CardTitle>
+              <CardDescription>Кликните по строке для истории метрик и комментариев</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="overflow-x-auto">
@@ -718,38 +1016,33 @@ export function SmmAnalyticsPage() {
                     <tr className="text-left text-[var(--text-muted)] border-b border-[var(--border-color)]">
                       <th className="py-2 pr-2">Сеть</th>
                       <th className="py-2 pr-2">Канал</th>
-                      <th className="py-2 pr-2">Название</th>
                       <th className="py-2 pr-2">Опубликован</th>
+                      <th className="py-2 pr-2">Views</th>
                       <th className="py-2 pr-2">Пост</th>
                       <th className="py-2">ER</th>
                     </tr>
                   </thead>
                   <tbody>
                     {posts.map((p) => (
-                      <tr key={`${p.network}-${p.id}`} className="border-b border-[var(--border-color)] align-top">
-                        <td className="py-2 pr-2 text-[var(--text-muted)]">{networkLabel(p.network)}</td>
+                      <tr
+                        key={`${p.network}-${p.id}`}
+                        className="border-b border-[var(--border-color)] align-top cursor-pointer hover:bg-[var(--bg-tertiary)]/50"
+                        onClick={() => setDrillPost(p)}
+                      >
+                        <td className="py-2 pr-2 uppercase">{p.network}</td>
+                        <td className="py-2 pr-2">{p.channel_title || p.channel_external_id || '—'}</td>
                         <td className="py-2 pr-2 whitespace-nowrap">
-                          {p.channel_id ?? p.channel_external_id ?? '—'}
+                          {p.published_at ? formatDateTime(p.published_at) : '—'}
                         </td>
-                        <td className="py-2 pr-2">
-                          {p.channel_title || '—'}
-                          {p.channel_id && p.channel_external_id ? (
-                            <span className="block text-xs text-[var(--text-muted)]">{p.channel_external_id}</span>
-                          ) : null}
-                        </td>
-                        <td className="py-2 pr-2 whitespace-nowrap">
-                          {formatDateTime(p.published_at || p.created_at)}
-                        </td>
-                        <td className="py-2 pr-2 min-w-[12rem] max-w-md">{p.text || '—'}</td>
-                        <td className="py-2 whitespace-nowrap text-[var(--text-muted)]">
-                          {p.er}% · {p.views} views
-                        </td>
+                        <td className="py-2 pr-2">{p.views}</td>
+                        <td className="py-2 pr-2 max-w-md truncate">{p.text}</td>
+                        <td className="py-2">{p.er}%</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
                 {posts.length === 0 && (
-                  <p className="text-sm text-[var(--text-muted)] py-4">Нет данных</p>
+                  <p className="text-sm text-[var(--text-muted)] py-4">Нет постов с метриками</p>
                 )}
               </div>
             </CardContent>
@@ -757,15 +1050,17 @@ export function SmmAnalyticsPage() {
         </>
       )}
 
+      <PostDetailDrawer post={drillPost} onClose={() => setDrillPost(null)} />
+
       {tab === 'competitors' && (
         <PlanGate allowed={canCompetitors} featureLabel="Competitors">
         <div className="space-y-3">
           <Alert variant="info">
-            Полноценный мониторинг конкурентов — в разделе{' '}
+            Полноценный мониторинг — в{' '}
             <Link to="/competitors" className="underline">
               Competitors
             </Link>
-            : дайджесты, compare и алерты.
+            : cadence, best time, темы, viral alerts и идеи постов.
           </Alert>
         <div className="grid gap-4 lg:grid-cols-2">
           <Card>

@@ -6,7 +6,7 @@ import hashlib
 import json
 import logging
 import re
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any, Optional
 from urllib.parse import urlparse
 
@@ -20,6 +20,15 @@ COMPETITOR_DEFAULT_THEMES = [
     "контент",
     "другое",
 ]
+THEME_KEYWORD_HINTS: dict[str, tuple[str, ...]] = {
+    "продукт": ("продукт", "запуск", "релиз", "обновлен", "feature", "новый функционал"),
+    "акция": ("скидк", "акци", "промо", "купон", "распродаж", "%", "бесплатн", "sale"),
+    "новость": ("новост", "анонс", "сегодня", "вчера", "breaking", "сообщаем"),
+    "контент": ("гайд", "совет", "как ", "подборк", "лайфхак", "обзор", "чеклист"),
+}
+DEFAULT_VIRAL_MULTIPLIER = 3.0
+DEFAULT_VIRAL_MIN_VIEWS = 500
+COMPETITOR_METRIC_REFRESH_HOURS = 72
 
 
 def _text_hash(text: str) -> Optional[str]:
@@ -40,6 +49,15 @@ def _period_since(period: str) -> datetime:
     return now - timedelta(hours=24)
 
 
+def _period_days(period: str) -> float:
+    raw = (period or "24h").strip().lower()
+    if raw in ("7d", "7day", "week"):
+        return 7.0
+    if raw in ("30d", "30day", "month"):
+        return 30.0
+    return 1.0
+
+
 def _competitor_sync_interval(processing: Any) -> int:
     raw = processing
     if isinstance(raw, str):
@@ -56,21 +74,83 @@ def _competitor_sync_interval(processing: Any) -> int:
     return max(5, min(val, 24 * 60))
 
 
-def _texts_stats(texts: list[str]) -> dict[str, Any]:
+def _engagement_score(views: int, likes: int, comments: int, reposts: int) -> float:
+    return float(views + likes * 3 + comments * 5 + reposts * 4)
+
+
+def _percentile(sorted_vals: list[float], p: float) -> Optional[float]:
+    if not sorted_vals:
+        return None
+    if len(sorted_vals) == 1:
+        return float(sorted_vals[0])
+    idx = (len(sorted_vals) - 1) * p
+    lo = int(idx)
+    hi = min(lo + 1, len(sorted_vals) - 1)
+    frac = idx - lo
+    return round(sorted_vals[lo] * (1 - frac) + sorted_vals[hi] * frac, 2)
+
+
+def _keyword_theme(text: str) -> Optional[str]:
+    lowered = (text or "").lower()
+    if not lowered.strip():
+        return None
+    for theme, hints in THEME_KEYWORD_HINTS.items():
+        if any(h in lowered for h in hints):
+            return theme
+    return None
+
+
+def _texts_stats(
+    texts: list[str], *, period_days: Optional[float] = None
+) -> dict[str, Any]:
     lengths = [len(t) for t in texts if t]
     count = len(lengths)
     avg_len = round(sum(lengths) / count, 1) if count else 0.0
+    posts_per_day: Optional[float] = None
+    if period_days and period_days > 0:
+        posts_per_day = round(count / period_days, 2)
     return {
         "posts_count": count,
         "avg_length": avg_len,
-        "posts_per_day": None,
+        "posts_per_day": posts_per_day,
     }
 
 
-def _posts_stats(posts: list[dict]) -> dict[str, Any]:
+def _posts_stats(
+    posts: list[dict], *, period_days: Optional[float] = None
+) -> dict[str, Any]:
     texts = [(p.get("text") or "") for p in posts]
-    stats = _texts_stats(texts)
-    return stats
+    return _texts_stats(texts, period_days=period_days)
+
+
+def _parse_alert_rules(raw: Any) -> list[dict[str, Any]]:
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            return []
+    if not isinstance(raw, list):
+        return []
+    return [r for r in raw if isinstance(r, dict)]
+
+
+def _viral_rule_params(alert_rules: Any) -> tuple[float, int]:
+    multiplier = DEFAULT_VIRAL_MULTIPLIER
+    min_views = DEFAULT_VIRAL_MIN_VIEWS
+    for rule in _parse_alert_rules(alert_rules):
+        kind = str(rule.get("type") or rule.get("kind") or "").lower()
+        if kind not in ("viral", "viral_post", "competitor_viral"):
+            continue
+        try:
+            multiplier = float(rule.get("multiplier") or multiplier)
+        except (TypeError, ValueError):
+            pass
+        try:
+            min_views = int(rule.get("min_views") or min_views)
+        except (TypeError, ValueError):
+            pass
+        break
+    return max(1.0, multiplier), max(0, min_views)
 
 from database import get_db_connection, release_db_connection
 from exceptions import QuotaExceededError
@@ -304,6 +384,37 @@ def _posts_channel_where(network: str, external_id: Any, table_alias: str = "") 
     return "(" + " OR ".join(parts) + ")", params
 
 
+def _posts_channels_where(
+    network: str, channels: list[dict], table_alias: str = ""
+) -> tuple[str, list[Any]]:
+    """OR together channel match clauses for brand-scoped analytics."""
+    net_channels = [
+        c for c in channels if c.get("network") == network and str(c.get("external_id") or "").strip()
+    ]
+    if not net_channels:
+        return "FALSE", []
+    parts: list[str] = []
+    params: list[Any] = []
+    for ch in net_channels:
+        extra, extra_params = _posts_channel_where(network, ch.get("external_id"), table_alias)
+        if extra == "FALSE":
+            continue
+        parts.append(extra)
+        params.extend(extra_params)
+    if not parts:
+        return "FALSE", []
+    return "(" + " OR ".join(parts) + ")", params
+
+
+def _analytics_period_days(period: str) -> int:
+    raw = (period or "7d").strip().lower()
+    if raw in ("90d", "90day"):
+        return 90
+    if raw in ("30d", "30day", "month"):
+        return 30
+    return 7
+
+
 def _row_channel(r: tuple) -> dict[str, Any]:
     # Supports ops, comments, and channel-flow config columns
     out = {
@@ -444,6 +555,7 @@ def _row_job(r: tuple) -> dict[str, Any]:
         "assigned_to": None,
         "rejection_comment": None,
         "created_by_user_id": None,
+        "series_id": None,
     }
     if len(r) > 11:
         out["retry_count"] = int(r[11] or 0)
@@ -455,13 +567,15 @@ def _row_job(r: tuple) -> dict[str, Any]:
         out["rejection_comment"] = r[14]
     if len(r) > 15:
         out["created_by_user_id"] = r[15]
+    if len(r) > 16:
+        out["series_id"] = r[16]
     return out
 
 
 JOB_COLUMNS = """
 id, user_id, brand_id, source_text, media, targets, adapters_result,
 publish_at, status, created_at, updated_at, retry_count, last_error,
-assigned_to, rejection_comment, created_by_user_id
+assigned_to, rejection_comment, created_by_user_id, series_id
 """
 
 def _row_automation(r: tuple) -> dict[str, Any]:
@@ -719,6 +833,23 @@ class SmmService:
         finally:
             await release_db_connection(conn)
 
+    async def count_competitor_channels(self, user_id: int) -> int:
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT COUNT(*) FROM smm_brand_channels c
+                    JOIN smm_brands b ON b.id = c.brand_id
+                    WHERE b.user_id = %s AND c.role = 'competitor'
+                    """,
+                    (user_id,),
+                )
+                row = await cur.fetchone()
+                return int(row[0]) if row else 0
+        finally:
+            await release_db_connection(conn)
+
     async def add_channel(
         self,
         user_id: int,
@@ -758,6 +889,8 @@ class SmmService:
             kind = "public"
             if role == "competitor":
                 await ensure_smm_feature(owner_id, "competitors")
+                count = await self.count_competitor_channels(owner_id)
+                await ensure_smm_limit(owner_id, "max_competitor_channels", count, units=1)
             ext = new_url_channel_external_id()
             page_url = (initial_url or "").strip()
             if not page_url and title and str(title).strip().lower().startswith(("http://", "https://")):
@@ -790,6 +923,8 @@ class SmmService:
                 await ensure_smm_limit(owner_id, "max_own_channels", count, units=1)
             if role == "competitor":
                 await ensure_smm_feature(owner_id, "competitors")
+                count = await self.count_competitor_channels(owner_id)
+                await ensure_smm_limit(owner_id, "max_competitor_channels", count, units=1)
             # Selenium / OAuth platforms: default kind for public pages
             if network in ("instagram", "threads", "tw", "dzen", "wp") and kind == "channel":
                 kind = "public"
@@ -975,6 +1110,14 @@ class SmmService:
             if existing.get("role") != "competitor" and fields.get("role") != "competitor":
                 if fields.get("alert_enabled") is True:
                     fields["alert_enabled"] = False
+
+        if (
+            fields.get("role") == "competitor"
+            and existing.get("role") != "competitor"
+        ):
+            await ensure_smm_feature(owner_id, "competitors")
+            count = await self.count_competitor_channels(owner_id)
+            await ensure_smm_limit(owner_id, "max_competitor_channels", count, units=1)
 
         await platform_auth_service.validate_channel_update(owner_id, existing, fields)
 
@@ -2206,13 +2349,22 @@ class SmmService:
         adapter_overrides: Optional[dict] = None,
         charge_quota: bool = False,
         assigned_to: Optional[int] = None,
+        series_id: Optional[int] = None,
     ) -> dict:
         media = media or []
         targets = targets or []
         from services.demo_seed_service import is_demo_external_id
-        from services.team_access import brand_credential_user_id
+        from services.team_access import (
+            brand_credential_user_id,
+            can_edit_brand_content,
+            is_owner_role,
+            brand_role_for_user,
+            normalize_role,
+        )
 
         brand = await self.get_brand(user_id, brand_id) if brand_id else None
+        if brand and not await can_edit_brand_content(user_id, brand):
+            raise PermissionError("Viewer/Approver cannot create publish jobs")
         # Jobs publish with brand-owner credentials; actor may be a team member.
         actor_id = user_id
         credential_user_id = (
@@ -2224,6 +2376,22 @@ class SmmService:
         is_demo_brand = bool(brand and brand.get("is_demo"))
         if is_demo_brand and status in ("ready", "scheduled", "publishing"):
             status = "draft"
+
+        # Workspace approval: Editors cannot skip to ready/scheduled.
+        tariff_preview = await get_user_tariff(credential_user_id)
+        if (
+            brand
+            and brand.get("group_id")
+            and plan_feature(tariff_preview, "approval_workflow", False)
+            and status in ("ready", "scheduled")
+        ):
+            role = await brand_role_for_user(user_id, brand)
+            if normalize_role(role) == "editor" or (
+                not is_owner_role(role)
+                and await self._group_has_approver(int(brand["group_id"]))
+            ):
+                status = "pending_approval"
+                await ensure_smm_feature(credential_user_id, "approval_workflow")
         for t in targets:
             if is_demo_external_id(t.get("external_id")) and status in (
                 "ready",
@@ -2323,8 +2491,8 @@ class SmmService:
                     f"""
                     INSERT INTO smm_publish_jobs
                         (user_id, brand_id, source_text, media, targets, adapters_result,
-                         publish_at, status, assigned_to, created_by_user_id)
-                    VALUES (%s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s, %s, %s, %s)
+                         publish_at, status, assigned_to, created_by_user_id, series_id)
+                    VALUES (%s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s, %s, %s, %s, %s)
                     RETURNING {JOB_COLUMNS}
                     """,
                     (
@@ -2338,12 +2506,16 @@ class SmmService:
                         status,
                         assigned_to,
                         created_by_user_id,
+                        series_id,
                     ),
                 )
                 row = await cur.fetchone()
-                return _row_job(row)
+                created = _row_job(row)
         finally:
             await release_db_connection(conn)
+        if created:
+            await self._record_job_revision(actor_id, created, "created")
+        return created
 
     async def list_jobs(
         self,
@@ -2357,6 +2529,7 @@ class SmmService:
         network: Optional[str] = None,
         assigned_to: Optional[int] = None,
         assigned_to_me: bool = False,
+        series_id: Optional[int] = None,
     ) -> list[dict]:
         from services.team_access import shared_brand_ids
 
@@ -2367,6 +2540,9 @@ class SmmService:
         if brand_id is not None:
             conditions.append("brand_id = %s")
             params.append(brand_id)
+        if series_id is not None:
+            conditions.append("series_id = %s")
+            params.append(series_id)
         if date_from:
             conditions.append("COALESCE(publish_at, created_at) >= %s::timestamptz")
             params.append(date_from)
@@ -2441,12 +2617,59 @@ class SmmService:
             "adapters_result",
             "assigned_to",
             "rejection_comment",
+            "series_id",
         }
+        skip_edit_check = bool(fields.pop("_skip_edit_check", False))
+        revision_summary = fields.pop("_revision_summary", None)
+        skip_revision = bool(fields.pop("_skip_revision", False))
+        job = await self.get_job(user_id, job_id)
+        if not job:
+            return None
+        if not skip_edit_check:
+            await self._assert_can_edit_job(user_id, job)
+            # Editors cannot self-promote past approval when workflow is on.
+            if "status" in fields and fields["status"] in (
+                "ready",
+                "scheduled",
+                "publishing",
+            ):
+                brand = None
+                if job.get("brand_id"):
+                    brand = await self.get_brand(user_id, int(job["brand_id"]))
+                if brand and brand.get("group_id"):
+                    from services.team_access import (
+                        brand_role_for_user,
+                        is_owner_role,
+                        normalize_role,
+                    )
+
+                    tariff = await get_user_tariff(int(job["user_id"]))
+                    if plan_feature(tariff, "approval_workflow", False):
+                        role = await brand_role_for_user(user_id, brand)
+                        if not is_owner_role(role) and normalize_role(role) != "approver":
+                            fields["status"] = "pending_approval"
+
         if "publish_at" in fields and fields["publish_at"]:
             tariff = await get_user_tariff(user_id)
             if not plan_feature(tariff, "schedule", True):
                 raise QuotaExceededError(resource="feature:schedule", limit=0, used=0)
             pub_raw = fields["publish_at"]
+            # Date-only (YYYY-MM-DD): preserve existing hours/minutes from the job.
+            if isinstance(pub_raw, str) and len(pub_raw) == 10 and pub_raw[4] == "-" and pub_raw[7] == "-":
+                existing = job.get("publish_at")
+                hour, minute = 12, 0
+                if existing:
+                    try:
+                        prev = datetime.fromisoformat(str(existing).replace("Z", "+00:00"))
+                        hour, minute = prev.hour, prev.minute
+                    except ValueError:
+                        pass
+                try:
+                    day = date.fromisoformat(pub_raw)
+                    pub_raw = datetime(day.year, day.month, day.day, hour, minute).isoformat()
+                    fields["publish_at"] = pub_raw
+                except ValueError:
+                    pass
             try:
                 pub_at = (
                     datetime.fromisoformat(pub_raw.replace("Z", "+00:00"))
@@ -2482,7 +2705,7 @@ class SmmService:
                         params.append(None)
                 else:
                     params.append(val)
-            elif key in ("assigned_to", "rejection_comment"):
+            elif key in ("assigned_to", "rejection_comment", "series_id"):
                 updates.append(f"{key} = %s")
                 params.append(val)
             elif val is None:
@@ -2491,9 +2714,6 @@ class SmmService:
                 updates.append(f"{key} = %s")
                 params.append(val)
         if not updates:
-            return None
-        job = await self.get_job(user_id, job_id)
-        if not job:
             return None
         owner_id = int(job["user_id"])
         updates.append("updated_at = CURRENT_TIMESTAMP")
@@ -2510,9 +2730,49 @@ class SmmService:
                     params,
                 )
                 row = await cur.fetchone()
-                return _row_job(row) if row else None
+                updated = _row_job(row) if row else None
         finally:
             await release_db_connection(conn)
+        if updated and not skip_revision:
+            summary = revision_summary
+            if not summary:
+                changed = [k for k in fields if k in allowed]
+                summary = "updated:" + ",".join(changed[:6]) if changed else "updated"
+            await self._record_job_revision(user_id, updated, summary)
+        return updated
+
+    async def _record_job_revision(
+        self, user_id: int, job: dict, change_summary: str
+    ) -> None:
+        """Persist a snapshot after successful job mutation (best-effort)."""
+        try:
+            conn = await get_db_connection()
+            try:
+                async with conn.cursor() as cur:
+                    await cur.execute(
+                        """
+                        INSERT INTO smm_job_revisions (
+                            job_id, user_id, source_text, media, targets,
+                            publish_at, status, change_summary
+                        ) VALUES (
+                            %s, %s, %s, %s::jsonb, %s::jsonb, %s, %s, %s
+                        )
+                        """,
+                        (
+                            int(job["id"]),
+                            user_id,
+                            job.get("source_text") or "",
+                            json.dumps(job.get("media") or []),
+                            json.dumps(job.get("targets") or []),
+                            job.get("publish_at"),
+                            job.get("status"),
+                            (change_summary or "updated")[:500],
+                        ),
+                    )
+            finally:
+                await release_db_connection(conn)
+        except Exception:
+            logger.exception("Failed to record job revision for job %s", job.get("id"))
 
     async def import_csv(self, user_id: int, brand_id: Optional[int], content: str) -> dict:
         from services.csv_posts_import import (
@@ -2695,24 +2955,37 @@ class SmmService:
         period: str = "7d",
         channel_id: Optional[int] = None,
     ) -> dict:
-        days = 7 if period == "7d" else (30 if period == "30d" else 7)
+        days = _analytics_period_days(period)
         since = datetime.utcnow() - timedelta(days=days)
-        channel = await self.get_channel(user_id, channel_id) if channel_id else None
-        if channel_id and not channel:
-            return {
-                "period": period,
-                "brand_id": brand_id,
-                "channel_id": channel_id,
-                "reach": 0,
-                "engagement": 0,
-                "er": 0.0,
-                "posts": 0,
-                "subscriber_growth": 0,
-                "by_network": {
-                    "tg": {"views": 0, "likes": 0, "comments": 0, "reposts": 0, "posts": 0},
-                    "vk": {"views": 0, "likes": 0, "comments": 0, "reposts": 0, "posts": 0},
-                },
-            }
+        empty = {
+            "period": period,
+            "brand_id": brand_id,
+            "channel_id": channel_id,
+            "reach": 0,
+            "engagement": 0,
+            "er": 0.0,
+            "posts": 0,
+            "subscriber_growth": 0,
+            "by_network": {
+                "tg": {"views": 0, "likes": 0, "comments": 0, "reposts": 0, "posts": 0},
+                "vk": {"views": 0, "likes": 0, "comments": 0, "reposts": 0, "posts": 0},
+            },
+        }
+        channels = await self.list_all_channels(user_id, brand_id)
+        channel: Optional[dict] = None
+        if channel_id:
+            channel = next((c for c in channels if c.get("id") == channel_id), None)
+            if not channel:
+                channel = await self.get_channel(user_id, channel_id)
+            if not channel:
+                return empty
+            if brand_id and channel.get("brand_id") != brand_id:
+                return empty
+            channels = [channel]
+        elif brand_id is not None and not channels:
+            return empty
+
+        scope_channels = channels if (brand_id is not None or channel_id) else None
         empty_row = (0, 0, 0, 0, 0)
         conn = await get_db_connection()
         try:
@@ -2722,8 +2995,8 @@ class SmmService:
                 if channel is None or channel.get("network") == "tg":
                     where = "user_id = %s AND created_at >= %s AND status != 'deleted'"
                     params: list[Any] = [user_id, since]
-                    if channel:
-                        extra, extra_params = _posts_channel_where("tg", channel.get("external_id"))
+                    if scope_channels is not None:
+                        extra, extra_params = _posts_channels_where("tg", scope_channels)
                         where = f"{where} AND {extra}"
                         params.extend(extra_params)
                     await cur.execute(
@@ -2739,8 +3012,8 @@ class SmmService:
                 if channel is None or channel.get("network") == "vk":
                     where = "user_id = %s AND created_at >= %s AND status != 'deleted'"
                     params = [user_id, since]
-                    if channel:
-                        extra, extra_params = _posts_channel_where("vk", channel.get("external_id"))
+                    if scope_channels is not None:
+                        extra, extra_params = _posts_channels_where("vk", scope_channels)
                         where = f"{where} AND {extra}"
                         params.extend(extra_params)
                     await cur.execute(
@@ -2762,6 +3035,7 @@ class SmmService:
             )
             total_posts = int(tg_count) + int(vk_count)
             er = round((total_eng / total_views) * 100, 2) if total_views else 0.0
+            growth = await self.analytics_growth(user_id, brand_id, channel_id)
             return {
                 "period": period,
                 "brand_id": brand_id,
@@ -2770,9 +3044,7 @@ class SmmService:
                 "engagement": total_eng,
                 "er": er,
                 "posts": total_posts,
-                "subscriber_growth": (
-                    await self.analytics_growth(user_id, brand_id)
-                ).get("subscriber_growth", 0),
+                "subscriber_growth": growth.get("subscriber_growth", 0),
                 "by_network": {
                     "tg": {
                         "views": int(tg_views),
@@ -2806,6 +3078,7 @@ class SmmService:
             channels = [c for c in channels if c.get("id") == channel_id]
             if not channels:
                 return []
+        require_match = brand_id is not None or channel_id is not None
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
@@ -2813,12 +3086,12 @@ class SmmService:
                     """
                     SELECT id, post_text, views, likes, comments, reposts, 'tg' AS network,
                            created_at, post_date, publish_at, telegram_chat_id, domain, title,
-                           target_channels
+                           target_channels, telegram_message_id::bigint
                     FROM tg_posts WHERE user_id = %s AND status != 'deleted'
                     UNION ALL
                     SELECT id, post_text, views, likes, comments, reposts, 'vk' AS network,
                            created_at, post_date, publish_at, NULL::text, domain, title,
-                           target_groups
+                           target_groups, published_vk_post_id::bigint
                     FROM vk_posts WHERE user_id = %s AND status != 'deleted'
                     """,
                     (user_id, user_id),
@@ -2832,8 +3105,11 @@ class SmmService:
                 network = r[6]
                 created_at, post_date, publish_at = r[7], r[8], r[9]
                 chat_ref, domain, title, targets = r[10], r[11], r[12], r[13]
+                external_post_id = r[14]
                 published_at = publish_at or post_date or created_at
                 matched = _match_channel(channels, network, chat_ref, domain, targets)
+                if require_match and not matched:
+                    continue
                 if channel_id and (not matched or matched.get("id") != channel_id):
                     continue
                 fallback_tokens = _iter_channel_tokens(chat_ref) + _iter_channel_tokens(domain)
@@ -2860,7 +3136,10 @@ class SmmService:
                         "channel_id": matched["id"] if matched else None,
                         "channel_external_id": str(channel_external) if channel_external else None,
                         "channel_title": channel_title,
-                        "brand_id": brand_id,
+                        "brand_id": matched.get("brand_id") if matched else brand_id,
+                        "external_post_id": (
+                            int(external_post_id) if external_post_id is not None else None
+                        ),
                     }
                 )
             key = "er" if sort == "er" else "views"
@@ -2869,12 +3148,26 @@ class SmmService:
         finally:
             await release_db_connection(conn)
 
-    async def analytics_growth(self, user_id: int, brand_id: Optional[int]) -> dict:
+    async def analytics_growth(
+        self,
+        user_id: int,
+        brand_id: Optional[int],
+        channel_id: Optional[int] = None,
+        period: str = "30d",
+    ) -> dict:
         channels = await self.list_all_channels(user_id, brand_id)
+        if channel_id:
+            channels = [c for c in channels if c.get("id") == channel_id]
         if not channels:
-            return {"brand_id": brand_id, "points": [], "subscriber_growth": 0}
+            return {
+                "brand_id": brand_id,
+                "channel_id": channel_id,
+                "points": [],
+                "subscriber_growth": 0,
+            }
         channel_ids = [c["id"] for c in channels]
-        since = datetime.utcnow() - timedelta(days=30)
+        days = _analytics_period_days(period or "30d")
+        since = datetime.utcnow() - timedelta(days=days)
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
@@ -2899,7 +3192,12 @@ class SmmService:
         growth = 0
         if len(points) >= 2:
             growth = points[-1]["subscribers"] - points[0]["subscribers"]
-        return {"brand_id": brand_id, "points": points, "subscriber_growth": growth}
+        return {
+            "brand_id": brand_id,
+            "channel_id": channel_id,
+            "points": points,
+            "subscriber_growth": growth,
+        }
 
     async def analytics_messages(
         self,
@@ -2973,12 +3271,717 @@ class SmmService:
             )
         return {"posts": posts, "events": events}
 
+    async def analytics_post_trends(
+        self,
+        user_id: int,
+        brand_id: Optional[int] = None,
+        period: str = "7d",
+        channel_id: Optional[int] = None,
+    ) -> dict:
+        """Daily aggregates from smm_post_metric_snapshots for brand/channel scope."""
+        days = _analytics_period_days(period)
+        since = datetime.utcnow() - timedelta(days=days)
+        channels = await self.list_all_channels(user_id, brand_id)
+        if channel_id:
+            channels = [c for c in channels if c.get("id") == channel_id]
+            if not channels:
+                return {"period": period, "brand_id": brand_id, "channel_id": channel_id, "points": []}
+
+        post_ids_by_platform: dict[str, set[int]] = {"tg": set(), "vk": set()}
+        if brand_id is not None or channel_id is not None:
+            posts = await self.analytics_posts(
+                user_id, brand_id, sort="views", limit=500, channel_id=channel_id
+            )
+            for p in posts:
+                net = p.get("network")
+                if net in post_ids_by_platform and p.get("id") is not None:
+                    post_ids_by_platform[net].add(int(p["id"]))
+            if not post_ids_by_platform["tg"] and not post_ids_by_platform["vk"]:
+                return {"period": period, "brand_id": brand_id, "channel_id": channel_id, "points": []}
+
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                where = "user_id = %s AND captured_at >= %s"
+                params: list[Any] = [user_id, since]
+                id_filters: list[str] = []
+                for platform, ids in post_ids_by_platform.items():
+                    if brand_id is None and channel_id is None:
+                        continue
+                    if not ids:
+                        continue
+                    id_filters.append(f"(platform = %s AND post_id = ANY(%s))")
+                    params.extend([platform, list(ids)])
+                if id_filters:
+                    where += " AND (" + " OR ".join(id_filters) + ")"
+                await cur.execute(
+                    f"""
+                    SELECT DATE(captured_at) AS day,
+                           COALESCE(SUM(views), 0),
+                           COALESCE(SUM(likes), 0),
+                           COALESCE(SUM(comments), 0),
+                           COALESCE(SUM(reposts), 0),
+                           COUNT(DISTINCT (platform, post_id))
+                    FROM (
+                        SELECT DISTINCT ON (platform, post_id, DATE(captured_at))
+                               platform, post_id, views, likes, comments, reposts, captured_at
+                        FROM smm_post_metric_snapshots
+                        WHERE {where}
+                        ORDER BY platform, post_id, DATE(captured_at), captured_at DESC
+                    ) latest
+                    GROUP BY DATE(captured_at)
+                    ORDER BY day ASC
+                    """,
+                    params,
+                )
+                rows = await cur.fetchall()
+        finally:
+            await release_db_connection(conn)
+
+        points = []
+        for r in rows:
+            views = int(r[1] or 0)
+            likes = int(r[2] or 0)
+            comments = int(r[3] or 0)
+            reposts = int(r[4] or 0)
+            eng = likes + comments + reposts
+            er = round((eng / views) * 100, 2) if views else 0.0
+            day = r[0].isoformat() if hasattr(r[0], "isoformat") else str(r[0])
+            points.append(
+                {
+                    "date": day,
+                    "views": views,
+                    "likes": likes,
+                    "comments": comments,
+                    "reposts": reposts,
+                    "engagement": eng,
+                    "er": er,
+                    "posts": int(r[5] or 0),
+                }
+            )
+        return {
+            "period": period,
+            "brand_id": brand_id,
+            "channel_id": channel_id,
+            "points": points,
+        }
+
+    async def analytics_post_detail(
+        self,
+        user_id: int,
+        platform: str,
+        post_id: int,
+    ) -> Optional[dict]:
+        if platform not in ("tg", "vk"):
+            return None
+        table = "tg_posts" if platform == "tg" else "vk_posts"
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                if platform == "tg":
+                    await cur.execute(
+                        f"""
+                        SELECT id, post_text, views, likes, comments, reposts, status,
+                               created_at, publish_at, telegram_chat_id, domain,
+                               telegram_message_id, target_channels
+                        FROM {table}
+                        WHERE id = %s AND user_id = %s AND status != 'deleted'
+                        """,
+                        (post_id, user_id),
+                    )
+                else:
+                    await cur.execute(
+                        f"""
+                        SELECT id, post_text, views, likes, comments, reposts, status,
+                               created_at, publish_at, NULL::text, domain,
+                               published_vk_post_id, target_groups
+                        FROM {table}
+                        WHERE id = %s AND user_id = %s AND status != 'deleted'
+                        """,
+                        (post_id, user_id),
+                    )
+                row = await cur.fetchone()
+                if not row:
+                    return None
+                await cur.execute(
+                    """
+                    SELECT views, likes, comments, reposts, captured_at
+                    FROM smm_post_metric_snapshots
+                    WHERE user_id = %s AND platform = %s AND post_id = %s
+                    ORDER BY captured_at ASC
+                    """,
+                    (user_id, platform, post_id),
+                )
+                snap_rows = await cur.fetchall()
+        finally:
+            await release_db_connection(conn)
+
+        channels = await self.list_all_channels(user_id, None)
+        matched = _match_channel(channels, platform, row[9], row[10], row[12])
+        views = int(row[2] or 0)
+        eng = int(row[3] or 0) + int(row[4] or 0) + int(row[5] or 0)
+        series = [
+            {
+                "captured_at": _iso_dt(s[4]),
+                "views": int(s[0] or 0),
+                "likes": int(s[1] or 0),
+                "comments": int(s[2] or 0),
+                "reposts": int(s[3] or 0),
+            }
+            for s in snap_rows
+        ]
+        comments = await self._comments_for_post(
+            user_id,
+            platform,
+            channel_id=matched["id"] if matched else None,
+            external_msg_id=row[11],
+        )
+        return {
+            "id": row[0],
+            "platform": platform,
+            "text": row[1] or "",
+            "views": views,
+            "likes": int(row[3] or 0),
+            "comments": int(row[4] or 0),
+            "reposts": int(row[5] or 0),
+            "er": round((eng / views) * 100, 2) if views else 0.0,
+            "status": row[6],
+            "created_at": _iso_dt(row[7]),
+            "published_at": _iso_dt(row[8] or row[7]),
+            "channel_id": matched["id"] if matched else None,
+            "channel_title": (
+                (matched.get("title") or matched.get("external_id")) if matched else row[10]
+            ),
+            "series": series,
+            "inbox_comments": comments,
+        }
+
+    async def _comments_for_post(
+        self,
+        user_id: int,
+        platform: str,
+        *,
+        channel_id: Optional[int],
+        external_msg_id: Any,
+        limit: int = 50,
+    ) -> list[dict]:
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                where = "user_id = %s AND network = %s AND type = 'comment'"
+                params: list[Any] = [user_id, platform]
+                if channel_id:
+                    where += " AND channel_id = %s"
+                    params.append(channel_id)
+                if external_msg_id is not None:
+                    where += (
+                        " AND ("
+                        " (meta->>'reply_to_msg_id') = %s"
+                        " OR thread_id = %s"
+                        ")"
+                    )
+                    params.extend([str(external_msg_id), str(external_msg_id)])
+                params.append(limit)
+                await cur.execute(
+                    f"""
+                    SELECT id, author, text, status, created_at, meta, channel_id
+                    FROM smm_inbox_items
+                    WHERE {where}
+                    ORDER BY created_at DESC
+                    LIMIT %s
+                    """,
+                    params,
+                )
+                rows = await cur.fetchall()
+        finally:
+            await release_db_connection(conn)
+        out = []
+        for r in rows:
+            meta = r[5]
+            if isinstance(meta, str):
+                try:
+                    meta = json.loads(meta)
+                except (json.JSONDecodeError, TypeError):
+                    meta = {}
+            out.append(
+                {
+                    "id": r[0],
+                    "author": r[1],
+                    "text": r[2],
+                    "status": r[3],
+                    "created_at": _iso_dt(r[4]),
+                    "sentiment": (meta or {}).get("sentiment") if isinstance(meta, dict) else None,
+                    "channel_id": r[6],
+                }
+            )
+        return out
+
+    async def analytics_comments(
+        self,
+        user_id: int,
+        brand_id: Optional[int] = None,
+        period: str = "7d",
+        channel_id: Optional[int] = None,
+    ) -> dict:
+        days = _analytics_period_days(period)
+        since = datetime.utcnow() - timedelta(days=days)
+        channels = await self.list_all_channels(user_id, brand_id)
+        if channel_id:
+            channels = [c for c in channels if c.get("id") == channel_id]
+        channel_ids = [int(c["id"]) for c in channels] if (brand_id is not None or channel_id) else None
+
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                where = "user_id = %s AND type = 'comment' AND created_at >= %s"
+                params: list[Any] = [user_id, since]
+                if channel_ids is not None:
+                    if not channel_ids:
+                        return {
+                            "period": period,
+                            "brand_id": brand_id,
+                            "channel_id": channel_id,
+                            "total": 0,
+                            "unanswered": 0,
+                            "median_reply_hours": None,
+                            "by_day": [],
+                            "by_channel": [],
+                            "by_sentiment": {},
+                        }
+                    where += " AND channel_id = ANY(%s)"
+                    params.append(channel_ids)
+                await cur.execute(
+                    f"""
+                    SELECT id, channel_id, status, created_at, meta, text
+                    FROM smm_inbox_items
+                    WHERE {where}
+                    ORDER BY created_at ASC
+                    """,
+                    params,
+                )
+                rows = await cur.fetchall()
+        finally:
+            await release_db_connection(conn)
+
+        by_day: dict[str, int] = {}
+        by_channel: dict[int, int] = {}
+        by_sentiment: dict[str, int] = {}
+        unanswered = 0
+        reply_hours: list[float] = []
+        title_by_id = {
+            int(c["id"]): (c.get("title") or c.get("external_id") or str(c["id"]))
+            for c in channels
+        }
+
+        for r in rows:
+            created = r[3]
+            day = created.date().isoformat() if created else ""
+            if day:
+                by_day[day] = by_day.get(day, 0) + 1
+            cid = int(r[1]) if r[1] is not None else 0
+            by_channel[cid] = by_channel.get(cid, 0) + 1
+            status = r[2] or "new"
+            if status in ("new", "read", "in_progress", "reply_failed"):
+                unanswered += 1
+            meta = r[4]
+            if isinstance(meta, str):
+                try:
+                    meta = json.loads(meta)
+                except (json.JSONDecodeError, TypeError):
+                    meta = {}
+            if isinstance(meta, dict):
+                sent = meta.get("sentiment")
+                if sent:
+                    key = str(sent).lower()
+                    by_sentiment[key] = by_sentiment.get(key, 0) + 1
+                replied_at = meta.get("replied_at")
+                if status == "replied" and replied_at and created:
+                    try:
+                        if isinstance(replied_at, str):
+                            rt = datetime.fromisoformat(replied_at.replace("Z", ""))
+                        else:
+                            rt = replied_at
+                        delta_h = (rt - created).total_seconds() / 3600.0
+                        if delta_h >= 0:
+                            reply_hours.append(delta_h)
+                    except Exception:
+                        pass
+
+        median_reply = None
+        if reply_hours:
+            reply_hours.sort()
+            mid = len(reply_hours) // 2
+            if len(reply_hours) % 2:
+                median_reply = round(reply_hours[mid], 2)
+            else:
+                median_reply = round((reply_hours[mid - 1] + reply_hours[mid]) / 2, 2)
+
+        return {
+            "period": period,
+            "brand_id": brand_id,
+            "channel_id": channel_id,
+            "total": len(rows),
+            "unanswered": unanswered,
+            "median_reply_hours": median_reply,
+            "by_day": [{"date": d, "count": by_day[d]} for d in sorted(by_day)],
+            "by_channel": [
+                {
+                    "channel_id": cid or None,
+                    "title": title_by_id.get(cid, "—"),
+                    "count": cnt,
+                }
+                for cid, cnt in sorted(by_channel.items(), key=lambda x: -x[1])
+            ],
+            "by_sentiment": by_sentiment,
+        }
+
+    async def analytics_funnel(
+        self,
+        user_id: int,
+        brand_id: Optional[int] = None,
+        period: str = "7d",
+        channel_id: Optional[int] = None,
+    ) -> dict:
+        stats = await self.channel_stats(user_id, brand_id, period)
+        overview = await self.analytics_overview(user_id, brand_id, period, channel_id)
+        collected = int(stats.get("totals", {}).get("collected") or 0)
+        processed = stats.get("totals", {}).get("processed")
+        sent = int(stats.get("totals", {}).get("sent") or 0)
+        if channel_id:
+            ch_row = next(
+                (c for c in stats.get("channels") or [] if c.get("channel_id") == channel_id),
+                None,
+            )
+            if ch_row:
+                collected = int(ch_row.get("collected") or 0)
+                processed = ch_row.get("processed")
+                sent = int(ch_row.get("sent") or 0)
+        return {
+            "period": period,
+            "brand_id": brand_id,
+            "channel_id": channel_id,
+            "steps": [
+                {"key": "collected", "label": "Collected", "value": collected},
+                {
+                    "key": "processed",
+                    "label": "Processed",
+                    "value": int(processed) if processed is not None else None,
+                },
+                {"key": "published", "label": "Published / sent", "value": sent},
+                {"key": "reach", "label": "Reach (views)", "value": int(overview.get("reach") or 0)},
+                {
+                    "key": "engagement",
+                    "label": "Engagement",
+                    "value": int(overview.get("engagement") or 0),
+                },
+            ],
+        }
+
+    async def analytics_cohort(
+        self,
+        user_id: int,
+        brand_id: Optional[int] = None,
+        period: str = "30d",
+        channel_id: Optional[int] = None,
+    ) -> dict:
+        """% of final views reached by +1h / +24h / +7d from publish time."""
+        days = _analytics_period_days(period)
+        since = datetime.utcnow() - timedelta(days=days)
+        posts = await self.analytics_posts(
+            user_id, brand_id, sort="views", limit=200, channel_id=channel_id
+        )
+        posts = [
+            p
+            for p in posts
+            if p.get("published_at") and p.get("id") and p.get("network") in ("tg", "vk")
+        ]
+        if not posts:
+            return {
+                "period": period,
+                "brand_id": brand_id,
+                "channel_id": channel_id,
+                "sample_size": 0,
+                "retention": {"1h": 0.0, "24h": 0.0, "7d": 0.0},
+            }
+
+        # Filter by publish window
+        filtered = []
+        for p in posts:
+            try:
+                pub = datetime.fromisoformat(str(p["published_at"]).replace("Z", ""))
+            except Exception:
+                continue
+            if pub >= since:
+                filtered.append({**p, "_pub": pub})
+        if not filtered:
+            return {
+                "period": period,
+                "brand_id": brand_id,
+                "channel_id": channel_id,
+                "sample_size": 0,
+                "retention": {"1h": 0.0, "24h": 0.0, "7d": 0.0},
+            }
+
+        ratios = {"1h": [], "24h": [], "7d": []}
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                for p in filtered[:100]:
+                    await cur.execute(
+                        """
+                        SELECT views, captured_at
+                        FROM smm_post_metric_snapshots
+                        WHERE user_id = %s AND platform = %s AND post_id = %s
+                        ORDER BY captured_at ASC
+                        """,
+                        (user_id, p["network"], p["id"]),
+                    )
+                    snaps = await cur.fetchall()
+                    if not snaps:
+                        continue
+                    final_views = max(int(s[0] or 0) for s in snaps)
+                    if final_views <= 0:
+                        continue
+                    pub = p["_pub"]
+                    for label, hours in (("1h", 1), ("24h", 24), ("7d", 168)):
+                        cutoff = pub + timedelta(hours=hours)
+                        views_at = 0
+                        for views, captured in snaps:
+                            if captured and captured <= cutoff:
+                                views_at = int(views or 0)
+                            else:
+                                break
+                        ratios[label].append(views_at / final_views)
+        finally:
+            await release_db_connection(conn)
+
+        def _avg(vals: list[float]) -> float:
+            return round((sum(vals) / len(vals)) * 100, 1) if vals else 0.0
+
+        return {
+            "period": period,
+            "brand_id": brand_id,
+            "channel_id": channel_id,
+            "sample_size": max(len(ratios["1h"]), len(ratios["24h"]), len(ratios["7d"])),
+            "retention": {
+                "1h": _avg(ratios["1h"]),
+                "24h": _avg(ratios["24h"]),
+                "7d": _avg(ratios["7d"]),
+            },
+        }
+
+    async def analytics_insights(
+        self,
+        user_id: int,
+        brand_id: Optional[int] = None,
+        period: str = "7d",
+        channel_id: Optional[int] = None,
+    ) -> dict:
+        days = _analytics_period_days(period)
+        current = await self.analytics_overview(user_id, brand_id, period, channel_id)
+        # Prior window of same length ending at start of current
+        # Approximate by fetching longer trends
+        trends = await self.analytics_post_trends(user_id, brand_id, period, channel_id)
+        points = trends.get("points") or []
+        insights: list[dict] = []
+
+        if len(points) >= 4:
+            mid = len(points) // 2
+            first = points[:mid]
+            second = points[mid:]
+
+            def _er(ps: list) -> float:
+                views = sum(p.get("views") or 0 for p in ps)
+                eng = sum(p.get("engagement") or 0 for p in ps)
+                return (eng / views * 100) if views else 0.0
+
+            er_first = _er(first)
+            er_second = _er(second)
+            if er_first > 0 and er_second < er_first * 0.7:
+                insights.append(
+                    {
+                        "type": "er_drop",
+                        "severity": "warning",
+                        "title": "ER упал",
+                        "message": (
+                            f"ER снизился с {er_first:.1f}% до {er_second:.1f}% "
+                            f"во второй половине периода."
+                        ),
+                    }
+                )
+
+        growth = await self.analytics_growth(user_id, brand_id, channel_id, period)
+        g_points = growth.get("points") or []
+        if len(g_points) >= 2:
+            delta = g_points[-1]["subscribers"] - g_points[-2]["subscribers"]
+            if delta <= -10:
+                insights.append(
+                    {
+                        "type": "subscriber_drop",
+                        "severity": "warning",
+                        "title": "Подписчики −N за день",
+                        "message": f"За последний день подписчики изменились на {delta}.",
+                    }
+                )
+
+        # Flat views posts: last two snapshots equal within 24h for top posts
+        posts = await self.analytics_posts(
+            user_id, brand_id, sort="views", limit=15, channel_id=channel_id
+        )
+        flat_count = 0
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                cutoff = datetime.utcnow() - timedelta(hours=24)
+                for p in posts:
+                    if not p.get("id") or p.get("network") not in ("tg", "vk"):
+                        continue
+                    await cur.execute(
+                        """
+                        SELECT views, captured_at
+                        FROM smm_post_metric_snapshots
+                        WHERE user_id = %s AND platform = %s AND post_id = %s
+                          AND captured_at >= %s
+                        ORDER BY captured_at ASC
+                        """,
+                        (user_id, p["network"], p["id"], cutoff),
+                    )
+                    snaps = await cur.fetchall()
+                    if len(snaps) >= 2 and int(snaps[0][0] or 0) == int(snaps[-1][0] or 0):
+                        flat_count += 1
+        finally:
+            await release_db_connection(conn)
+        if flat_count >= 3:
+            insights.append(
+                {
+                    "type": "flat_views",
+                    "severity": "info",
+                    "title": "Посты без роста views",
+                    "message": f"{flat_count} постов не нарастили просмотры за последние 24ч.",
+                }
+            )
+
+        if current.get("posts") and current.get("reach") == 0:
+            insights.append(
+                {
+                    "type": "no_reach",
+                    "severity": "info",
+                    "title": "Нет просмотров",
+                    "message": "Есть посты за период, но reach = 0. Запустите обновление метрик.",
+                }
+            )
+
+        return {
+            "period": period,
+            "brand_id": brand_id,
+            "channel_id": channel_id,
+            "insights": insights,
+        }
+
+    def export_analytics_csv(
+        self,
+        overview: dict,
+        posts: list[dict],
+        funnel: Optional[dict] = None,
+        growth: Optional[dict] = None,
+    ) -> str:
+        import csv
+        import io
+
+        buf = io.StringIO()
+        writer = csv.writer(buf)
+        writer.writerow(["section", "key", "value"])
+        for key in (
+            "period",
+            "brand_id",
+            "channel_id",
+            "reach",
+            "engagement",
+            "er",
+            "posts",
+            "subscriber_growth",
+        ):
+            writer.writerow(["overview", key, overview.get(key, "")])
+        by_net = overview.get("by_network") or {}
+        for net, vals in by_net.items():
+            if isinstance(vals, dict):
+                for k, v in vals.items():
+                    writer.writerow(["network", f"{net}.{k}", v])
+        if funnel:
+            for step in funnel.get("steps") or []:
+                writer.writerow(["funnel", step.get("key"), step.get("value")])
+        if growth:
+            writer.writerow(["growth", "subscriber_growth", growth.get("subscriber_growth", "")])
+            for pt in growth.get("points") or []:
+                writer.writerow(["growth_point", pt.get("date"), pt.get("subscribers")])
+        for p in posts:
+            writer.writerow(
+                [
+                    "post",
+                    f"{p.get('network')}:{p.get('id')}",
+                    json.dumps(
+                        {
+                            "views": p.get("views"),
+                            "likes": p.get("likes"),
+                            "comments": p.get("comments"),
+                            "reposts": p.get("reposts"),
+                            "er": p.get("er"),
+                            "text": (p.get("text") or "")[:120],
+                        },
+                        ensure_ascii=False,
+                    ),
+                ]
+            )
+        return buf.getvalue()
+
+    async def request_post_engagement_refresh(
+        self, user_id: int, platform: str, post_id: int
+    ) -> dict:
+        """Ask tg-bot / vk-bot to deep-refresh one post's metrics."""
+        import httpx
+        from config import settings
+
+        if platform not in ("tg", "vk"):
+            return {"ok": False, "error": "unsupported_platform"}
+        detail = await self.analytics_post_detail(user_id, platform, post_id)
+        if not detail:
+            return {"ok": False, "error": "post_not_found"}
+
+        if platform == "tg":
+            base = (settings.TG_BOT_SERVICE_URL or "").rstrip("/")
+            path = "/tg/engagement/refresh-one"
+        else:
+            base = (settings.VK_BOT_SERVICE_URL or "").rstrip("/")
+            path = "/vk/engagement/refresh-one"
+        if not base:
+            return {"ok": False, "error": "bot_url_missing", "queued": False}
+        try:
+            async with httpx.AsyncClient(timeout=45.0) as client:
+                resp = await client.post(
+                    f"{base}{path}",
+                    json={"user_id": user_id, "post_id": post_id},
+                )
+            if resp.status_code >= 400:
+                return {
+                    "ok": False,
+                    "error": resp.text[:300],
+                    "queued": False,
+                    "status_code": resp.status_code,
+                }
+            data = resp.json() if resp.content else {}
+            return {"ok": True, "result": data}
+        except Exception as exc:
+            return {"ok": False, "error": str(exc), "queued": True}
+
     async def sync_competitor_snapshots(self, user_id: Optional[int] = None) -> dict:
         """Import recent competitor/source posts from platform tables into snapshots."""
         inserted = 0
+        updated = 0
         alerts = 0
+        viral_alerts = 0
         skipped_interval = 0
         new_rows: list[dict[str, Any]] = []
+        viral_rows: list[dict[str, Any]] = []
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
@@ -2987,7 +3990,7 @@ class SmmService:
                         """
                         SELECT c.id, c.network, c.external_id, b.user_id, c.role,
                                c.brand_id, c.title, c.alert_enabled, c.alert_delivery,
-                               c.processing
+                               c.processing, c.alert_rules
                         FROM smm_brand_channels c
                         JOIN smm_brands b ON b.id = c.brand_id
                         WHERE b.user_id = %s AND c.role IN ('competitor', 'source')
@@ -2999,7 +4002,7 @@ class SmmService:
                         """
                         SELECT c.id, c.network, c.external_id, b.user_id, c.role,
                                c.brand_id, c.title, c.alert_enabled, c.alert_delivery,
-                               c.processing
+                               c.processing, c.alert_rules
                         FROM smm_brand_channels c
                         JOIN smm_brands b ON b.id = c.brand_id
                         WHERE c.role IN ('competitor', 'source')
@@ -3021,6 +4024,7 @@ class SmmService:
                 alert_enabled,
                 alert_delivery,
                 processing,
+                alert_rules,
             ) = row
             interval_min = _competitor_sync_interval(processing)
             last_collected = await self._competitor_last_collected(ch_id)
@@ -3037,32 +4041,59 @@ class SmmService:
             posts = await self._fetch_competitor_source_posts(
                 uid, str(network), str(external_id)
             )
+            median_views = None
+            if role == "competitor":
+                median_views = await self._competitor_median_views(ch_id, days=7)
+            viral_mult, viral_min = _viral_rule_params(alert_rules)
+            delivery = alert_delivery
+            if isinstance(delivery, str):
+                try:
+                    delivery = json.loads(delivery)
+                except (json.JSONDecodeError, TypeError):
+                    delivery = {}
+            if not isinstance(delivery, dict):
+                delivery = {}
+
             for post in posts:
-                snap = await self._insert_competitor_snapshot(ch_id, post)
+                snap = await self._upsert_competitor_snapshot(ch_id, post)
                 if not snap:
                     continue
-                inserted += 1
-                delivery = alert_delivery
-                if isinstance(delivery, str):
-                    try:
-                        delivery = json.loads(delivery)
-                    except (json.JSONDecodeError, TypeError):
-                        delivery = {}
-                if not isinstance(delivery, dict):
-                    delivery = {}
-                if role == "competitor":
-                    new_rows.append(
-                        {
-                            "channel_id": ch_id,
-                            "brand_id": brand_id,
-                            "user_id": uid,
-                            "network": network,
-                            "title": title,
-                            "alert_enabled": bool(alert_enabled),
-                            "alert_delivery": delivery,
-                            "snapshot": snap,
-                        }
-                    )
+                if snap.get("is_new"):
+                    inserted += 1
+                    if role == "competitor":
+                        new_rows.append(
+                            {
+                                "channel_id": ch_id,
+                                "brand_id": brand_id,
+                                "user_id": uid,
+                                "network": network,
+                                "title": title,
+                                "alert_enabled": bool(alert_enabled),
+                                "alert_delivery": delivery,
+                                "snapshot": snap,
+                            }
+                        )
+                elif snap.get("metrics_updated"):
+                    updated += 1
+
+                if role == "competitor" and bool(alert_enabled):
+                    if self._is_viral_snapshot(
+                        snap, median_views=median_views, multiplier=viral_mult, min_views=viral_min
+                    ):
+                        viral_rows.append(
+                            {
+                                "channel_id": ch_id,
+                                "brand_id": brand_id,
+                                "user_id": uid,
+                                "network": network,
+                                "title": title,
+                                "alert_enabled": True,
+                                "alert_delivery": delivery,
+                                "snapshot": snap,
+                                "median_views": median_views,
+                                "multiplier": viral_mult,
+                            }
+                        )
 
         for item in new_rows:
             if not item.get("alert_enabled"):
@@ -3078,10 +4109,24 @@ class SmmService:
                     exc,
                 )
 
+        for item in viral_rows:
+            try:
+                ok = await self._alert_competitor_viral_post(item)
+                if ok:
+                    viral_alerts += 1
+            except Exception as exc:
+                logger.warning(
+                    "Competitor viral alert failed channel=%s: %s",
+                    item.get("channel_id"),
+                    exc,
+                )
+
         return {
             "inserted": inserted,
+            "updated": updated,
             "channels": len(channels),
             "alerts": alerts,
+            "viral_alerts": viral_alerts,
             "skipped_interval": skipped_interval,
         }
 
@@ -3121,7 +4166,7 @@ class SmmService:
                         FROM vk_posts
                         WHERE user_id = %s AND domain IN ({placeholders})
                         ORDER BY post_date DESC NULLS LAST
-                        LIMIT 20
+                        LIMIT 40
                         """,
                         (user_id, *variants),
                     )
@@ -3143,7 +4188,7 @@ class SmmService:
                                  OR url LIKE %s
                               )
                             ORDER BY COALESCE(post_date, created_at) DESC NULLS LAST
-                            LIMIT 20
+                            LIMIT 40
                             """,
                             (
                                 user_id,
@@ -3162,7 +4207,7 @@ class SmmService:
                         FROM tg_posts
                         WHERE user_id = %s AND domain = %s
                         ORDER BY post_date DESC NULLS LAST
-                        LIMIT 20
+                        LIMIT 40
                         """,
                         (user_id, ext),
                     )
@@ -3192,38 +4237,205 @@ class SmmService:
         finally:
             await release_db_connection(conn)
 
-    async def _insert_competitor_snapshot(
-        self, channel_id: int, post: dict[str, Any]
-    ) -> Optional[dict[str, Any]]:
-        """Insert snapshot if new by external_post_id or text_hash. Returns row or None."""
-        ext_post_id = str(post.get("external_post_id") or "").strip() or None
-        text = post.get("post_text") or ""
-        text_hash = post.get("text_hash") or _text_hash(text)
+    async def _competitor_median_views(
+        self, channel_id: int, *, days: int = 7
+    ) -> Optional[float]:
+        since = datetime.utcnow() - timedelta(days=days)
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
-                if ext_post_id:
-                    await cur.execute(
-                        """
-                        SELECT id FROM smm_competitor_snapshots
-                        WHERE channel_id = %s AND external_post_id = %s
-                        LIMIT 1
-                        """,
-                        (channel_id, ext_post_id),
+                await cur.execute(
+                    """
+                    SELECT views FROM smm_competitor_snapshots
+                    WHERE channel_id = %s
+                      AND COALESCE(posted_at, collected_at) >= %s
+                      AND COALESCE(views, 0) > 0
+                    ORDER BY views
+                    """,
+                    (channel_id, since),
+                )
+                rows = await cur.fetchall()
+                vals = [float(r[0] or 0) for r in rows]
+                return _percentile(vals, 0.5)
+        finally:
+            await release_db_connection(conn)
+
+    def _is_viral_snapshot(
+        self,
+        snap: dict[str, Any],
+        *,
+        median_views: Optional[float],
+        multiplier: float,
+        min_views: int,
+    ) -> bool:
+        views = int(snap.get("views") or 0)
+        if views < min_views:
+            return False
+        if median_views is None or median_views <= 0:
+            # Absolute floor only when no baseline yet
+            return views >= max(min_views * 2, min_views)
+        threshold = median_views * multiplier
+        grew = False
+        before = snap.get("views_before")
+        if before is not None:
+            try:
+                grew = views > int(before)
+            except (TypeError, ValueError):
+                grew = False
+        # New posts can be viral immediately; updates need growth
+        if snap.get("is_new"):
+            return views >= threshold
+        return grew and views >= threshold
+
+    async def _upsert_competitor_snapshot(
+        self, channel_id: int, post: dict[str, Any]
+    ) -> Optional[dict[str, Any]]:
+        """Insert or update snapshot metrics. Returns row dict with is_new/metrics_updated."""
+        ext_post_id = str(post.get("external_post_id") or "").strip() or None
+        text = post.get("post_text") or ""
+        text_hash = post.get("text_hash") or _text_hash(text)
+        new_views = int(post.get("views") or 0)
+        new_likes = int(post.get("likes") or 0)
+        new_comments = int(post.get("comments") or 0)
+        new_reposts = int(post.get("reposts") or 0)
+        post_url = post.get("post_url")
+        posted_at = post.get("posted_at")
+
+        def _row_dict(
+            row: tuple,
+            *,
+            is_new: bool,
+            metrics_updated: bool,
+            views_before: Optional[int] = None,
+        ) -> dict[str, Any]:
+            return {
+                "id": row[0],
+                "external_post_id": row[1],
+                "text": row[2],
+                "url": row[3],
+                "text_hash": row[4],
+                "views": row[5],
+                "likes": row[6],
+                "comments": row[7],
+                "reposts": row[8],
+                "posted_at": row[9].isoformat() if row[9] else None,
+                "collected_at": row[10].isoformat() if row[10] else None,
+                "is_new": is_new,
+                "metrics_updated": metrics_updated,
+                "views_before": views_before,
+            }
+
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                existing = None
+                select_sql = """
+                        SELECT id, external_post_id, post_text, post_url, text_hash,
+                               views, likes, comments, reposts, posted_at, collected_at
+                        FROM smm_competitor_snapshots
+                """
+                select_legacy = """
+                        SELECT id, external_post_id, post_text, NULL::text, NULL::text,
+                               views, likes, comments, reposts, posted_at, collected_at
+                        FROM smm_competitor_snapshots
+                """
+                try:
+                    if ext_post_id:
+                        await cur.execute(
+                            select_sql
+                            + " WHERE channel_id = %s AND external_post_id = %s LIMIT 1",
+                            (channel_id, ext_post_id),
+                        )
+                        existing = await cur.fetchone()
+                    if existing is None and text_hash:
+                        await cur.execute(
+                            select_sql
+                            + " WHERE channel_id = %s AND text_hash = %s LIMIT 1",
+                            (channel_id, text_hash),
+                        )
+                        existing = await cur.fetchone()
+                except Exception as exc:
+                    msg = str(exc).lower()
+                    if "post_url" not in msg and "text_hash" not in msg and "column" not in msg:
+                        raise
+                    if ext_post_id:
+                        await cur.execute(
+                            select_legacy
+                            + " WHERE channel_id = %s AND external_post_id = %s LIMIT 1",
+                            (channel_id, ext_post_id),
+                        )
+                        existing = await cur.fetchone()
+                    if existing is None and text_hash:
+                        # text_hash column missing — skip hash lookup
+                        existing = existing
+
+                if existing:
+                    old_views = int(existing[5] or 0)
+                    old_likes = int(existing[6] or 0)
+                    old_comments = int(existing[7] or 0)
+                    old_reposts = int(existing[8] or 0)
+                    changed = (
+                        new_views != old_views
+                        or new_likes != old_likes
+                        or new_comments != old_comments
+                        or new_reposts != old_reposts
                     )
-                    if await cur.fetchone():
+                    if not changed:
+                        return _row_dict(
+                            existing, is_new=False, metrics_updated=False, views_before=old_views
+                        )
+                    try:
+                        await cur.execute(
+                            """
+                            UPDATE smm_competitor_snapshots
+                            SET views = %s, likes = %s, comments = %s, reposts = %s,
+                                post_url = COALESCE(%s, post_url),
+                                post_text = CASE WHEN %s <> '' THEN %s ELSE post_text END
+                            WHERE id = %s
+                            RETURNING id, external_post_id, post_text, post_url, text_hash,
+                                      views, likes, comments, reposts, posted_at, collected_at
+                            """,
+                            (
+                                new_views,
+                                new_likes,
+                                new_comments,
+                                new_reposts,
+                                post_url,
+                                text,
+                                text,
+                                existing[0],
+                            ),
+                        )
+                    except Exception as exc:
+                        msg = str(exc).lower()
+                        if "post_url" not in msg and "column" not in msg:
+                            raise
+                        await cur.execute(
+                            """
+                            UPDATE smm_competitor_snapshots
+                            SET views = %s, likes = %s, comments = %s, reposts = %s,
+                                post_text = CASE WHEN %s <> '' THEN %s ELSE post_text END
+                            WHERE id = %s
+                            RETURNING id, external_post_id, post_text, NULL::text, NULL::text,
+                                      views, likes, comments, reposts, posted_at, collected_at
+                            """,
+                            (
+                                new_views,
+                                new_likes,
+                                new_comments,
+                                new_reposts,
+                                text,
+                                text,
+                                existing[0],
+                            ),
+                        )
+                    row = await cur.fetchone()
+                    if not row:
                         return None
-                if text_hash:
-                    await cur.execute(
-                        """
-                        SELECT id FROM smm_competitor_snapshots
-                        WHERE channel_id = %s AND text_hash = %s
-                        LIMIT 1
-                        """,
-                        (channel_id, text_hash),
+                    return _row_dict(
+                        row, is_new=False, metrics_updated=True, views_before=old_views
                     )
-                    if await cur.fetchone():
-                        return None
+
                 try:
                     await cur.execute(
                         """
@@ -3238,19 +4450,18 @@ class SmmService:
                             channel_id,
                             ext_post_id,
                             text,
-                            post.get("post_url"),
+                            post_url,
                             text_hash,
-                            post.get("views", 0),
-                            post.get("likes", 0),
-                            post.get("comments", 0),
-                            post.get("reposts", 0),
-                            post.get("posted_at"),
+                            new_views,
+                            new_likes,
+                            new_comments,
+                            new_reposts,
+                            posted_at,
                         ),
                     )
                 except Exception as exc:
                     msg = str(exc).lower()
                     if "post_url" in msg or "text_hash" in msg or "column" in msg:
-                        # Patch not applied yet — fall back to legacy columns
                         await cur.execute(
                             """
                             INSERT INTO smm_competitor_snapshots
@@ -3264,11 +4475,11 @@ class SmmService:
                                 channel_id,
                                 ext_post_id,
                                 text,
-                                post.get("views", 0),
-                                post.get("likes", 0),
-                                post.get("comments", 0),
-                                post.get("reposts", 0),
-                                post.get("posted_at"),
+                                new_views,
+                                new_likes,
+                                new_comments,
+                                new_reposts,
+                                posted_at,
                             ),
                         )
                     elif "unique" in msg or "duplicate" in msg:
@@ -3278,21 +4489,18 @@ class SmmService:
                 row = await cur.fetchone()
                 if not row:
                     return None
-                return {
-                    "id": row[0],
-                    "external_post_id": row[1],
-                    "text": row[2],
-                    "url": row[3],
-                    "text_hash": row[4],
-                    "views": row[5],
-                    "likes": row[6],
-                    "comments": row[7],
-                    "reposts": row[8],
-                    "posted_at": row[9].isoformat() if row[9] else None,
-                    "collected_at": row[10].isoformat() if row[10] else None,
-                }
+                return _row_dict(row, is_new=True, metrics_updated=False, views_before=None)
         finally:
             await release_db_connection(conn)
+
+    async def _insert_competitor_snapshot(
+        self, channel_id: int, post: dict[str, Any]
+    ) -> Optional[dict[str, Any]]:
+        """Backward-compatible insert — only returns row when newly created."""
+        snap = await self._upsert_competitor_snapshot(channel_id, post)
+        if not snap or not snap.get("is_new"):
+            return None
+        return snap
 
     async def _alert_competitor_new_post(self, item: dict[str, Any]) -> bool:
         """Create inbox alert for a new competitor post (dedup via external_msg_id)."""
@@ -3323,10 +4531,79 @@ class SmmService:
             text = f"{text}:\n{preview}"
         meta = {
             "kind": "competitor_new_post",
+            "viral": False,
             "snapshot_id": snap.get("id"),
             "text_hash": snap.get("text_hash"),
             "post_url": snap.get("url"),
             "posted_at": snap.get("posted_at"),
+            "views": snap.get("views"),
+            "tg_channel_to_post": delivery.get("channel_to_post"),
+            "alert_targets": delivery.get("alert_targets") or [],
+            "alert_text": delivery.get("alert_text"),
+        }
+        result = await self.ingest_inbox_item(
+            int(item["user_id"]),
+            {
+                "brand_id": item.get("brand_id"),
+                "network": network,
+                "channel_id": item.get("channel_id"),
+                "type": "competitor_post",
+                "author": title,
+                "text": text,
+                "external_msg_id": external_msg_id,
+                "status": "new",
+                "meta": meta,
+            },
+        )
+        if result.get("deduped"):
+            return False
+        if item.get("channel_id"):
+            await self.bump_channel_counter(
+                int(item["user_id"]), int(item["channel_id"]), alerts_sent=1
+            )
+        return True
+
+    async def _alert_competitor_viral_post(self, item: dict[str, Any]) -> bool:
+        """Inbox alert for viral competitor content (one per snapshot)."""
+        snap = item.get("snapshot") or {}
+        snap_id = snap.get("id")
+        if not snap_id:
+            return False
+        network = str(item.get("network") or "tg")
+        if network not in (
+            "tg",
+            "vk",
+            "url",
+            "instagram",
+            "threads",
+            "tw",
+            "dzen",
+            "wp",
+        ):
+            network = "tg"
+        external_msg_id = f"comp:viral:{item['channel_id']}:{snap_id}"
+        delivery = item.get("alert_delivery") or {}
+        if not isinstance(delivery, dict):
+            delivery = {}
+        preview = (snap.get("text") or "").strip()
+        if len(preview) > 400:
+            preview = preview[:397] + "..."
+        title = item.get("title") or f"channel {item['channel_id']}"
+        views = int(snap.get("views") or 0)
+        text = f"Виральный пост конкурента «{title}» · {views} views"
+        if preview:
+            text = f"{text}:\n{preview}"
+        meta = {
+            "kind": "competitor_viral_post",
+            "viral": True,
+            "snapshot_id": snap_id,
+            "text_hash": snap.get("text_hash"),
+            "post_url": snap.get("url"),
+            "posted_at": snap.get("posted_at"),
+            "views": views,
+            "views_before": snap.get("views_before"),
+            "median_views": item.get("median_views"),
+            "multiplier": item.get("multiplier"),
             "tg_channel_to_post": delivery.get("channel_to_post"),
             "alert_targets": delivery.get("alert_targets") or [],
             "alert_text": delivery.get("alert_text"),
@@ -3361,21 +4638,45 @@ class SmmService:
         horizon_days: int = 30,
     ) -> dict:
         since = datetime.utcnow() - timedelta(days=horizon_days)
+        channels = await self.list_all_channels(user_id, brand_id)
+        if channel_id:
+            channels = [c for c in channels if c.get("id") == channel_id]
+        tg_channels = [c for c in channels if c.get("network") == "tg"]
+        default_slots = [
+            {"weekday": 2, "hour": 10, "score": 50.0},
+            {"weekday": 3, "hour": 12, "score": 48.0},
+            {"weekday": 4, "hour": 18, "score": 55.0},
+            {"weekday": 1, "hour": 9, "score": 40.0},
+        ]
+        if brand_id is not None or channel_id is not None:
+            if not tg_channels:
+                return {
+                    "brand_id": brand_id,
+                    "channel_id": channel_id,
+                    "horizon_days": horizon_days,
+                    "slots": default_slots,
+                }
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
+                where = "user_id = %s AND COALESCE(publish_at, created_at) >= %s AND status != 'deleted'"
+                params: list[Any] = [user_id, since]
+                if brand_id is not None or channel_id is not None:
+                    extra, extra_params = _posts_channels_where("tg", tg_channels)
+                    where = f"{where} AND {extra}"
+                    params.extend(extra_params)
                 await cur.execute(
-                    """
+                    f"""
                     SELECT EXTRACT(DOW FROM COALESCE(publish_at, created_at)) AS dow,
                            EXTRACT(HOUR FROM COALESCE(publish_at, created_at)) AS hour,
                            AVG(views + likes * 3 + comments * 5 + reposts * 4) AS score
                     FROM tg_posts
-                    WHERE user_id = %s AND COALESCE(publish_at, created_at) >= %s
+                    WHERE {where}
                     GROUP BY dow, hour
                     ORDER BY score DESC NULLS LAST
                     LIMIT 24
                     """,
-                    (user_id, since),
+                    params,
                 )
                 rows = await cur.fetchall()
             slots = [
@@ -3387,13 +4688,7 @@ class SmmService:
                 for r in rows
             ]
             if not slots:
-                # Default heuristic peaks
-                slots = [
-                    {"weekday": 2, "hour": 10, "score": 50.0},
-                    {"weekday": 3, "hour": 12, "score": 48.0},
-                    {"weekday": 4, "hour": 18, "score": 55.0},
-                    {"weekday": 1, "hour": 9, "score": 40.0},
-                ]
+                slots = default_slots
             return {
                 "brand_id": brand_id,
                 "channel_id": channel_id,
@@ -3515,6 +4810,175 @@ class SmmService:
             "fallback": fallback,
         }
 
+    async def competitor_insights(
+        self,
+        user_id: int,
+        channel_id: int,
+        period: str = "7d",
+        *,
+        with_ai: bool = True,
+    ) -> dict:
+        """Cadence, best posting slots, and theme mix for a competitor channel."""
+        await ensure_smm_feature(user_id, "competitors")
+        ch = await self.get_channel(user_id, channel_id)
+        if not ch or ch.get("role") != "competitor":
+            raise ValueError("Competitor channel not found")
+        if period not in ("7d", "30d"):
+            period = "7d"
+        since = _period_since(period)
+        days = _period_days(period)
+        posts = await self.competitor_posts(user_id, channel_id, since=since, limit=500)
+        cadence = self._competitor_cadence(posts, days)
+        best_slots = self._competitor_best_slots(posts)
+        themes = await self._competitor_themes_cached(
+            user_id, channel_id, ch, posts, period, with_ai=with_ai
+        )
+        return {
+            "channel_id": channel_id,
+            "period": period,
+            "since": since.isoformat() + "Z",
+            "cadence": cadence,
+            "best_slots": best_slots,
+            "themes": themes,
+            "posts_count": len(posts),
+        }
+
+    def _competitor_cadence(
+        self, posts: list[dict], period_days: float
+    ) -> dict[str, Any]:
+        stats = _posts_stats(posts, period_days=period_days)
+        weekday_hist = [0] * 7
+        hour_hist = [0] * 24
+        timestamps: list[datetime] = []
+        for p in posts:
+            raw = p.get("posted_at") or p.get("collected_at")
+            if not raw:
+                continue
+            try:
+                if isinstance(raw, datetime):
+                    dt = raw.replace(tzinfo=None) if raw.tzinfo else raw
+                else:
+                    dt = datetime.fromisoformat(str(raw).replace("Z", "+00:00")).replace(
+                        tzinfo=None
+                    )
+            except ValueError:
+                continue
+            timestamps.append(dt)
+            dow = int(dt.strftime("%w"))  # 0=Sunday … 6=Saturday
+            weekday_hist[dow] += 1
+            hour_hist[dt.hour] += 1
+
+        intervals: list[float] = []
+        ordered = sorted(timestamps)
+        for i in range(1, len(ordered)):
+            delta_h = (ordered[i] - ordered[i - 1]).total_seconds() / 3600.0
+            if delta_h > 0:
+                intervals.append(delta_h)
+        intervals_sorted = sorted(intervals)
+        return {
+            "posts_count": stats["posts_count"],
+            "posts_per_day": stats["posts_per_day"],
+            "avg_length": stats["avg_length"],
+            "weekday_histogram": weekday_hist,
+            "hour_histogram": hour_hist,
+            "interval_hours_median": _percentile(intervals_sorted, 0.5),
+            "interval_hours_p90": _percentile(intervals_sorted, 0.9),
+        }
+
+    def _competitor_best_slots(
+        self, posts: list[dict], *, limit: int = 24
+    ) -> list[dict[str, Any]]:
+        buckets: dict[tuple[int, int], list[float]] = {}
+        for p in posts:
+            raw = p.get("posted_at") or p.get("collected_at")
+            if not raw:
+                continue
+            try:
+                if isinstance(raw, datetime):
+                    dt = raw.replace(tzinfo=None) if raw.tzinfo else raw
+                else:
+                    dt = datetime.fromisoformat(str(raw).replace("Z", "+00:00")).replace(
+                        tzinfo=None
+                    )
+            except ValueError:
+                continue
+            dow = int(dt.strftime("%w"))
+            hour = dt.hour
+            score = _engagement_score(
+                int(p.get("views") or 0),
+                int(p.get("likes") or 0),
+                int(p.get("comments") or 0),
+                int(p.get("reposts") or 0),
+            )
+            buckets.setdefault((dow, hour), []).append(score)
+        ranked = [
+            {
+                "weekday": dow,
+                "hour": hour,
+                "score": round(sum(vals) / len(vals), 2),
+                "posts": len(vals),
+            }
+            for (dow, hour), vals in buckets.items()
+            if vals
+        ]
+        ranked.sort(key=lambda x: x["score"], reverse=True)
+        return ranked[:limit]
+
+    async def _competitor_themes_cached(
+        self,
+        user_id: int,
+        channel_id: int,
+        channel: dict,
+        posts: list[dict],
+        period: str,
+        *,
+        with_ai: bool,
+    ) -> list[dict[str, Any]]:
+        processing = channel.get("processing") or {}
+        if isinstance(processing, str):
+            try:
+                processing = json.loads(processing)
+            except (json.JSONDecodeError, TypeError):
+                processing = {}
+        if not isinstance(processing, dict):
+            processing = {}
+        cache = processing.get("theme_cache")
+        if isinstance(cache, dict) and cache.get("period") == period:
+            updated = cache.get("updated_at")
+            themes = cache.get("themes")
+            if isinstance(themes, list) and updated:
+                try:
+                    updated_dt = datetime.fromisoformat(
+                        str(updated).replace("Z", "+00:00")
+                    ).replace(tzinfo=None)
+                    if datetime.utcnow() - updated_dt < timedelta(hours=12):
+                        return [
+                            {"theme": str(t.get("theme")), "count": int(t.get("count") or 0)}
+                            for t in themes
+                            if isinstance(t, dict) and t.get("theme")
+                        ]
+                except ValueError:
+                    pass
+
+        themes = await self._competitor_top_themes(
+            user_id, posts, with_ai=with_ai, batch=True
+        )
+        processing["theme_cache"] = {
+            "period": period,
+            "updated_at": datetime.utcnow().isoformat() + "Z",
+            "themes": themes,
+        }
+        try:
+            await self.update_channel(
+                user_id,
+                int(channel["brand_id"]),
+                channel_id,
+                processing=processing,
+            )
+        except Exception as exc:
+            logger.warning("Failed to persist theme_cache channel=%s: %s", channel_id, exc)
+        return themes
+
     async def competitor_diff(
         self,
         user_id: int,
@@ -3564,15 +5028,25 @@ class SmmService:
         if not brand:
             raise ValueError("Brand not found")
         since = _period_since(period)
+        days = _period_days(period)
         comp_posts = await self.competitor_posts(
             user_id, competitor_channel_id, since=since, limit=200
         )
         if not comp_posts and not await self.get_channel(user_id, competitor_channel_id):
             raise ValueError("Competitor channel not found")
 
-        own_stats = await self._own_post_stats(user_id, brand_id, since)
-        comp_stats = _posts_stats(comp_posts)
-        themes = await self._competitor_top_themes(user_id, comp_posts)
+        own_stats = await self._own_post_stats(user_id, brand_id, since, period_days=days)
+        comp_stats = _posts_stats(comp_posts, period_days=days)
+        themes = await self._competitor_top_themes(user_id, comp_posts, batch=True)
+        comp_slots = self._competitor_best_slots(comp_posts, limit=12)
+        own_best = await self.best_times(user_id, brand_id=brand_id, horizon_days=int(days))
+        own_slots = own_best.get("slots") or []
+        own_keys = {(int(s["weekday"]), int(s["hour"])) for s in own_slots[:12]}
+        overlap = [
+            s
+            for s in comp_slots
+            if (int(s["weekday"]), int(s["hour"])) in own_keys
+        ][:8]
 
         return {
             "brand_id": brand_id,
@@ -3582,10 +5056,18 @@ class SmmService:
             "own": own_stats,
             "competitor": comp_stats,
             "top_themes": themes,
+            "competitor_best_slots": comp_slots,
+            "own_best_slots": own_slots[:12],
+            "slot_overlap": overlap,
         }
 
     async def _own_post_stats(
-        self, user_id: int, brand_id: int, since: datetime
+        self,
+        user_id: int,
+        brand_id: int,
+        since: datetime,
+        *,
+        period_days: Optional[float] = None,
     ) -> dict[str, Any]:
         channels = await self.list_channels(user_id, brand_id)
         own = [c for c in channels if c.get("role") == "own"]
@@ -3627,43 +5109,94 @@ class SmmService:
                             texts.append(str(r[0]))
         finally:
             await release_db_connection(conn)
-        return _texts_stats(texts)
+        if period_days is None:
+            period_days = max(1.0, (datetime.utcnow() - since).total_seconds() / 86400.0)
+        return _texts_stats(texts, period_days=period_days)
 
     async def _competitor_top_themes(
-        self, user_id: int, posts: list[dict]
+        self,
+        user_id: int,
+        posts: list[dict],
+        *,
+        with_ai: bool = True,
+        batch: bool = False,
     ) -> list[dict[str, Any]]:
         if not posts:
             return []
         counts: dict[str, int] = {}
-        sample = posts[:12]
-        try:
-            from services.quota_service import ensure_ai_calls_quota
-            from shared.ai_client import classify
+        sample = posts[:24]
+        unclassified: list[str] = []
+        for p in sample:
+            text = (p.get("text") or "").strip()
+            if not text:
+                continue
+            theme = _keyword_theme(text)
+            if theme:
+                counts[theme] = counts.get(theme, 0) + 1
+            else:
+                unclassified.append(text)
 
-            await ensure_ai_calls_quota(user_id)
-            for p in sample:
-                text = (p.get("text") or "").strip()
-                if not text:
-                    continue
-                try:
-                    result = await classify(text, COMPETITOR_DEFAULT_THEMES)
-                    cat = str(result.get("category") or "другое")
-                    counts[cat] = counts.get(cat, 0) + 1
-                except Exception:
+        if with_ai and unclassified:
+            try:
+                from services.quota_service import ensure_ai_calls_quota
+                from shared.ai_client import classify, complete
+
+                await ensure_ai_calls_quota(user_id)
+                if batch and len(unclassified) > 1:
+                    cats = ", ".join(COMPETITOR_DEFAULT_THEMES)
+                    blob = "\n---\n".join(t[:400] for t in unclassified[:12])
+                    prompt = (
+                        f"Для каждого фрагмента (разделитель ---) выбери одну категорию "
+                        f"из списка: {cats}.\n"
+                        f'Ответь JSON: {{"categories": ["..."]}} — массив той же длины.\n\n'
+                        f"{blob}"
+                    )
+                    try:
+                        from shared.ai_client import _extract_json
+
+                        raw = await complete(
+                            prompt,
+                            system="Ты классификатор SMM-тем. Отвечай только JSON.",
+                            max_tokens=256,
+                        )
+                        data = _extract_json(raw)
+                        cats_out = data.get("categories") if isinstance(data, dict) else None
+                        if isinstance(cats_out, list) and cats_out:
+                            for cat in cats_out:
+                                label = str(cat or "другое")
+                                if label not in COMPETITOR_DEFAULT_THEMES:
+                                    label = "другое"
+                                counts[label] = counts.get(label, 0) + 1
+                        else:
+                            raise ValueError("empty categories")
+                    except Exception:
+                        for text in unclassified[:8]:
+                            result = await classify(text, COMPETITOR_DEFAULT_THEMES)
+                            cat = str(result.get("category") or "другое")
+                            counts[cat] = counts.get(cat, 0) + 1
+                else:
+                    for text in unclassified[:8]:
+                        result = await classify(text, COMPETITOR_DEFAULT_THEMES)
+                        cat = str(result.get("category") or "другое")
+                        counts[cat] = counts.get(cat, 0) + 1
+            except QuotaExceededError:
+                for _ in unclassified:
                     counts["другое"] = counts.get("другое", 0) + 1
-        except QuotaExceededError:
-            # Frequency-only compare without themes when quota exhausted
-            return []
-        except Exception as exc:
-            logger.warning("Competitor theme classify failed: %s", exc)
-            return []
+            except Exception as exc:
+                logger.warning("Competitor theme classify failed: %s", exc)
+                for _ in unclassified:
+                    counts["другое"] = counts.get("другое", 0) + 1
+        else:
+            for _ in unclassified:
+                counts["другое"] = counts.get("другое", 0) + 1
+
         ranked = sorted(counts.items(), key=lambda x: x[1], reverse=True)
         return [{"theme": k, "count": v} for k, v in ranked]
 
     async def add_competitor_snapshot(
         self, channel_id: int, data: dict
     ) -> dict:
-        snap = await self._insert_competitor_snapshot(
+        snap = await self._upsert_competitor_snapshot(
             channel_id,
             {
                 "external_post_id": data.get("external_post_id"),
@@ -3679,7 +5212,158 @@ class SmmService:
         )
         if not snap:
             return {"id": None, "deduped": True}
+        if not snap.get("is_new"):
+            return {"id": snap["id"], "deduped": True, "updated": snap.get("metrics_updated")}
         return {"id": snap["id"]}
+
+    async def competitor_ideas(
+        self,
+        user_id: int,
+        channel_id: int,
+        *,
+        brand_id: Optional[int] = None,
+        limit: int = 6,
+    ) -> dict:
+        """Generate post-idea cards from competitor themes and top posts (no autopublish)."""
+        await ensure_smm_feature(user_id, "competitors")
+        if not plan_feature(await get_user_tariff(user_id), "ai_composer", False):
+            raise QuotaExceededError(resource="feature:ai_composer", limit=0, used=0)
+
+        ch = await self.get_channel(user_id, channel_id)
+        if not ch or ch.get("role") != "competitor":
+            raise ValueError("Competitor channel not found")
+        bid = brand_id or int(ch["brand_id"])
+        brand = await self.get_brand(user_id, bid)
+        if not brand:
+            raise ValueError("Brand not found")
+
+        since = _period_since("7d")
+        posts = await self.competitor_posts(user_id, channel_id, since=since, limit=80)
+        if not posts:
+            return {
+                "channel_id": channel_id,
+                "brand_id": bid,
+                "ideas": [],
+                "fallback": False,
+                "message": "Нет постов конкурента за 7 дней",
+            }
+
+        themes = await self._competitor_top_themes(
+            user_id, posts, with_ai=True, batch=True
+        )
+        ranked_posts = sorted(
+            posts,
+            key=lambda p: _engagement_score(
+                int(p.get("views") or 0),
+                int(p.get("likes") or 0),
+                int(p.get("comments") or 0),
+                int(p.get("reposts") or 0),
+            ),
+            reverse=True,
+        )[:8]
+        theme_line = ", ".join(
+            f"{t['theme']}({t['count']})" for t in themes[:5]
+        ) or "общее"
+        sources = []
+        for p in ranked_posts:
+            snippet = re.sub(r"\s+", " ", (p.get("text") or "").strip())[:280]
+            if not snippet:
+                continue
+            sources.append(
+                {
+                    "id": p.get("id"),
+                    "views": p.get("views") or 0,
+                    "snippet": snippet,
+                }
+            )
+        tone = (brand.get("tone_of_voice") or "").strip() or "нейтральный профессиональный"
+        style = (brand.get("style_notes") or "").strip()
+        brand_name = brand.get("name") or "бренд"
+
+        ideas: list[dict[str, Any]] = []
+        fallback = False
+        try:
+            from services.quota_service import ensure_ai_calls_quota
+            from shared.ai_client import complete, _extract_json
+
+            await ensure_ai_calls_quota(user_id)
+            src_blob = "\n".join(
+                f"- [{s['id']}] ({s['views']} views) {s['snippet']}" for s in sources
+            )
+            prompt = (
+                f"Бренд: {brand_name}. Тон: {tone}. "
+                f"{('Стиль: ' + style + '. ') if style else ''}"
+                f"Темы конкурента за неделю: {theme_line}.\n"
+                f"Топ постов конкурента:\n{src_blob}\n\n"
+                f"Сгенерируй {limit} идей для наших постов (не копируй тексты конкурента).\n"
+                "Ответь JSON: "
+                '{"ideas":[{"title":"...","angle":"...","hook":"...","theme":"...","source_snapshot_ids":[1]}]}'
+            )
+            raw = await complete(
+                prompt,
+                system=(
+                    "Ты SMM-стратег. Предлагаешь оригинальные углы контента на основе "
+                    "трендов конкурентов. Только JSON, без markdown."
+                ),
+                max_tokens=900,
+            )
+            data = _extract_json(raw)
+            raw_ideas = data.get("ideas") if isinstance(data, dict) else None
+            if isinstance(raw_ideas, list):
+                for item in raw_ideas[:limit]:
+                    if not isinstance(item, dict):
+                        continue
+                    title = str(item.get("title") or "").strip()
+                    if not title:
+                        continue
+                    src_ids = item.get("source_snapshot_ids") or []
+                    if not isinstance(src_ids, list):
+                        src_ids = []
+                    clean_ids = []
+                    for sid in src_ids[:5]:
+                        try:
+                            clean_ids.append(int(sid))
+                        except (TypeError, ValueError):
+                            continue
+                    ideas.append(
+                        {
+                            "title": title[:200],
+                            "angle": str(item.get("angle") or "").strip()[:500],
+                            "hook": str(item.get("hook") or "").strip()[:500],
+                            "theme": str(
+                                item.get("theme")
+                                or (themes[0]["theme"] if themes else "другое")
+                            )[:80],
+                            "source_snapshot_ids": clean_ids,
+                        }
+                    )
+        except QuotaExceededError:
+            raise
+        except Exception as exc:
+            logger.warning("Competitor ideas AI fallback: %s", exc)
+            fallback = True
+
+        if not ideas:
+            fallback = True
+            for i, src in enumerate(sources[:limit]):
+                theme = themes[i % len(themes)]["theme"] if themes else "контент"
+                ideas.append(
+                    {
+                        "title": f"Свой взгляд на тему «{theme}»",
+                        "angle": f"Ответьте на обсуждаемое у конкурента, с позицией {brand_name}",
+                        "hook": src["snippet"][:160],
+                        "theme": theme,
+                        "source_snapshot_ids": [int(src["id"])] if src.get("id") else [],
+                    }
+                )
+
+        return {
+            "channel_id": channel_id,
+            "brand_id": bid,
+            "themes": themes,
+            "ideas": ideas,
+            "fallback": fallback,
+        }
 
     async def list_competitors(
         self, user_id: int, brand_id: Optional[int] = None
@@ -3762,10 +5446,14 @@ class SmmService:
                 inbox_by_channel = {int(r[0]): int(r[1] or 0) for r in await cur.fetchall()}
 
                 processed_by_network: dict[str, int] = {}
+                processed_by_brand: dict[int, int] = {}
+                processed_by_channel: dict[int, int] = {}
                 try:
                     await cur.execute(
                         """
                         SELECT COALESCE(NULLIF(source_platform, ''), 'other') AS net,
+                               brand_id,
+                               channel_id,
                                COUNT(*) FILTER (
                                    WHERE status IN (
                                        'processing', 'ready', 'review',
@@ -3774,15 +5462,24 @@ class SmmService:
                                )
                         FROM posts
                         WHERE user_id = %s AND created_at >= %s
-                        GROUP BY 1
+                        GROUP BY 1, 2, 3
                         """,
                         (user_id, since_dt),
                     )
-                    processed_by_network = {
-                        str(r[0] or "other"): int(r[1] or 0) for r in await cur.fetchall()
-                    }
+                    for r in await cur.fetchall():
+                        net = str(r[0] or "other")
+                        cnt = int(r[3] or 0)
+                        processed_by_network[net] = processed_by_network.get(net, 0) + cnt
+                        if r[1] is not None:
+                            bid = int(r[1])
+                            processed_by_brand[bid] = processed_by_brand.get(bid, 0) + cnt
+                        if r[2] is not None:
+                            cid = int(r[2])
+                            processed_by_channel[cid] = processed_by_channel.get(cid, 0) + cnt
                 except Exception:
                     processed_by_network = {}
+                    processed_by_brand = {}
+                    processed_by_channel = {}
         finally:
             await release_db_connection(conn)
 
@@ -3792,6 +5489,7 @@ class SmmService:
             c = counters.get(cid, {"sent": 0, "received": 0, "failed": 0, "alerts_sent": 0})
             received = c["received"] or inbox_by_channel.get(cid, 0)
             sent = c["sent"]
+            processed_val = processed_by_channel.get(cid)
             rows.append(
                 {
                     "channel_id": cid,
@@ -3804,7 +5502,7 @@ class SmmService:
                     "sent": sent,
                     "received": received,
                     "collected": received,
-                    "processed": None,
+                    "processed": processed_val,
                     "failed": c["failed"],
                     "alerts_sent": c["alerts_sent"],
                     "conversion_pct": round((sent / received * 100) if received else 0.0, 1),
@@ -3866,9 +5564,12 @@ class SmmService:
             by_network_map[net]["processed"] = processed
             totals["processed"] += processed
 
-        # posts has source_platform, not brand_id — do not invent per-brand processed.
         for brand_row in by_brand_map.values():
-            brand_row["processed"] = None
+            bid = brand_row.get("brand_id")
+            if bid is not None and int(bid) in processed_by_brand:
+                brand_row["processed"] = processed_by_brand[int(bid)]
+            else:
+                brand_row["processed"] = None
 
         return {
             "period": period,
@@ -4248,6 +5949,7 @@ class SmmService:
         await self.update_job(user_id, job_id, status="publishing")
         ok = 0
         fail = 0
+        wake_networks: set[str] = set()
         for t in targets:
             network = normalize_network(t.get("network"))
             external_id = str(t.get("external_id") or "")
@@ -4312,35 +6014,51 @@ class SmmService:
 
                 if network == "tg":
                     await ensure_monthly_post_quota(user_id, units=1)
-                    await post_service.create_tg_post_record(
+                    created = await post_service.create_tg_post_record(
                         user_id=user_id,
                         text=body_text,
                         images=media if media else None,
                         to_tg=True,
                         publish_at=None,
                         target_channels=[external_id] if external_id else None,
+                        brand_id=job.get("brand_id") or ch.get("brand_id"),
+                        channel_id=ch.get("id"),
                         skip_quota=True,
+                    )
+                    await self._promote_smm_post_ready(
+                        "tg", created, from_status="collected", job_id=job_id, user_id=user_id
                     )
                 elif network == "vk":
                     await ensure_monthly_post_quota(user_id, units=1)
-                    await post_service.create_vk_post_record(
+                    created = await post_service.create_vk_post_record(
                         user_id=user_id,
                         text=body_text,
                         images=media,
                         to_vk=True,
                         target_groups=[external_id] if external_id else None,
+                        brand_id=job.get("brand_id") or ch.get("brand_id"),
+                        channel_id=ch.get("id"),
                         skip_quota=True,
                     )
+                    await self._promote_smm_post_ready(
+                        "vk", created, from_status="created", job_id=job_id, user_id=user_id
+                    )
                 elif network == "tw":
-                    await post_service.create_tw_post_record(
+                    created = await post_service.create_tw_post_record(
                         user_id=user_id,
                         text=body_text,
                         to_tw=True,
                         target_channels=[external_id] if external_id else None,
                     )
+                    await self._stamp_post_tenancy(
+                        "tw_posts", created, job.get("brand_id") or ch.get("brand_id"), ch.get("id")
+                    )
+                    await self._promote_smm_post_ready(
+                        "tw", created, from_status="collected", job_id=job_id, user_id=user_id
+                    )
                 elif network == "wp":
                     await ensure_monthly_post_quota(user_id, units=1)
-                    await post_service.create_wp_post_record(
+                    created = await post_service.create_wp_post_record(
                         user_id=user_id,
                         text=body_text,
                         to_wp=True,
@@ -4348,36 +6066,74 @@ class SmmService:
                         status="ready",
                         skip_quota=True,
                     )
+                    await self._stamp_post_tenancy(
+                        "wp_posts", created, job.get("brand_id") or ch.get("brand_id"), ch.get("id")
+                    )
+                    await self._log_smm_queued(
+                        "wp", created, job_id=job_id, user_id=user_id, from_status="ready"
+                    )
                 elif network == "threads":
-                    await post_service.create_threads_post_record(
+                    created = await post_service.create_threads_post_record(
                         user_id=user_id,
                         text=body_text,
                         images=media if media else None,
                         to_threads=True,
                         target_channels=[external_id] if external_id else None,
                     )
+                    await self._stamp_post_tenancy(
+                        "threads_posts",
+                        created,
+                        job.get("brand_id") or ch.get("brand_id"),
+                        ch.get("id"),
+                    )
+                    await self._promote_smm_post_ready(
+                        "threads",
+                        created,
+                        from_status="collected",
+                        job_id=job_id,
+                        user_id=user_id,
+                    )
                 elif network == "dzen":
-                    await post_service.create_dzen_post_record(
+                    created = await post_service.create_dzen_post_record(
                         user_id=user_id,
                         text=body_text,
                         images=media if media else None,
                         to_dzen=True,
                         target_channels=[external_id] if external_id else None,
                     )
+                    await self._stamp_post_tenancy(
+                        "dzen_posts", created, job.get("brand_id") or ch.get("brand_id"), ch.get("id")
+                    )
+                    await self._promote_smm_post_ready(
+                        "dzen", created, from_status="collected", job_id=job_id, user_id=user_id
+                    )
                 elif network == "instagram":
-                    await post_service.create_instagram_post_record(
+                    created = await post_service.create_instagram_post_record(
                         user_id=user_id,
                         caption=body_text,
                         images=media if media else None,
                         to_instagram=True,
                         target_channels=[external_id] if external_id else None,
                     )
+                    await self._stamp_post_tenancy(
+                        "instagram_posts",
+                        created,
+                        job.get("brand_id") or ch.get("brand_id"),
+                        ch.get("id"),
+                    )
+                    await self._log_smm_queued(
+                        "instagram", created, job_id=job_id, user_id=user_id, from_status="ready"
+                    )
                 else:
                     raise ValueError(f"Unsupported network {network}")
-                per_target[key] = {"status": "published"}
+                post_id = int(created["id"]) if created and created.get("id") is not None else None
+                per_target[key] = {
+                    "status": "queued",
+                    "post_id": post_id,
+                    "platform": network,
+                }
                 ok += 1
-                if ch:
-                    await self.bump_channel_counter(user_id, ch["id"], sent=1)
+                wake_networks.add(network)
             except Exception as exc:
                 per_target[key] = {"status": "failed", "error": str(exc)}
                 fail += 1
@@ -4385,20 +6141,20 @@ class SmmService:
                     await self.bump_channel_counter(user_id, ch["id"], failed=1)
 
         adapters_out = {**adapters, "targets": per_target}
-        if fail == 0:
-            final = "published"
-        elif ok == 0:
-            final = "failed"
-        else:
-            final = "partial"
-        tariff = await get_user_tariff(user_id)
-        max_retry = 3 if tariff == "full" else (2 if tariff == "standard" else 0)
+        # Job stays publishing while any target is queued; bots close via publish-result.
         retry = int(job.get("retry_count") or 0)
         last_error = None
-        if final == "failed" and retry < max_retry:
-            final = "ready"
-            retry += 1
-            last_error = "retry scheduled"
+        if ok == 0:
+            final = "failed"
+            last_error = "materialize failed"
+            tariff = await get_user_tariff(user_id)
+            max_retry = 3 if tariff == "full" else (2 if tariff == "standard" else 0)
+            if retry < max_retry:
+                final = "ready"
+                retry += 1
+                last_error = "retry scheduled"
+        else:
+            final = "publishing"
         updated = await self.update_job(
             user_id,
             job_id,
@@ -4414,11 +6170,448 @@ class SmmService:
                     SET retry_count = %s, last_error = %s, updated_at = CURRENT_TIMESTAMP
                     WHERE id = %s
                     """,
-                    (retry, last_error or (None if final != "failed" else "publish failed"), job_id),
+                    (retry, last_error, job_id),
                 )
         finally:
             await release_db_connection(conn)
+        if wake_networks:
+            await self._wake_publish_bots(wake_networks)
         return updated or job
+
+    async def _promote_smm_post_ready(
+        self,
+        platform: str,
+        created: Optional[dict],
+        *,
+        from_status: str,
+        job_id: int,
+        user_id: int,
+    ) -> None:
+        """SMM content is already adapted — skip collector/processor, publish from ready."""
+        if not created or not created.get("id"):
+            return
+        table = self._PLATFORM_POST_TABLE.get(platform)
+        if not table:
+            return
+        post_id = int(created["id"])
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    f"""
+                    UPDATE {table}
+                    SET status = 'ready', updated_at = CURRENT_TIMESTAMP
+                    WHERE id = %s
+                    """,
+                    (post_id,),
+                )
+        finally:
+            await release_db_connection(conn)
+        await self._log_smm_queued(
+            platform, created, job_id=job_id, user_id=user_id, from_status=from_status
+        )
+
+    async def _log_smm_queued(
+        self,
+        platform: str,
+        created: Optional[dict],
+        *,
+        job_id: int,
+        user_id: int,
+        from_status: str,
+    ) -> None:
+        if not created or not created.get("id"):
+            return
+        from services.post_lifecycle_service import log_post_lifecycle_event
+
+        await log_post_lifecycle_event(
+            platform=platform,
+            post_id=int(created["id"]),
+            user_id=user_id,
+            job_id=job_id,
+            from_status=from_status,
+            to_status="ready",
+            actor="smm.execute_job",
+            payload={"job_id": job_id},
+        )
+
+    async def _wake_publish_bots(self, networks: set[str]) -> None:
+        """Fire-and-forget wake so bots do not wait for PUBLISH_INTERVAL_SEC."""
+        from config import settings
+        from shared.bot_internal import wake_publish_now
+
+        url_by_network = {
+            "tg": settings.TG_BOT_SERVICE_URL,
+            "vk": settings.VK_BOT_SERVICE_URL,
+            "wp": settings.WP_BOT_SERVICE_URL,
+            "tw": settings.TW_BOT_SERVICE_URL,
+            "instagram": settings.INSTAGRAM_BOT_SERVICE_URL,
+            "dzen": settings.DZEN_BOT_SERVICE_URL,
+            "threads": settings.THREADS_BOT_SERVICE_URL,
+        }
+        for network in networks:
+            base = url_by_network.get(network) or ""
+            if not base:
+                continue
+            try:
+                await wake_publish_now(base)
+            except Exception as exc:
+                logger.debug("wake bot %s failed: %s", network, exc)
+
+    async def _reconcile_job_after_publish_result(
+        self,
+        platform: str,
+        post_id: int,
+        *,
+        ok: bool,
+        error: Optional[str] = None,
+    ) -> None:
+        """Close smm_publish_jobs when all queued targets reach a terminal status."""
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT id, user_id, adapters_result, status
+                    FROM smm_publish_jobs
+                    WHERE status IN ('publishing', 'partial')
+                      AND adapters_result ? 'targets'
+                      AND EXISTS (
+                        SELECT 1
+                        FROM jsonb_each(adapters_result->'targets') AS t(k, v)
+                        WHERE (v->>'post_id')::int = %s
+                          AND COALESCE(v->>'platform', split_part(t.k, ':', 1)) = %s
+                      )
+                    ORDER BY id DESC
+                    LIMIT 5
+                    """,
+                    (post_id, platform),
+                )
+                rows = await cur.fetchall()
+        finally:
+            await release_db_connection(conn)
+
+        if not rows:
+            return
+
+        terminal = {"published", "failed", "skipped"}
+        for job_id, user_id, adapters_raw, _job_status in rows:
+            adapters = adapters_raw if isinstance(adapters_raw, dict) else {}
+            if isinstance(adapters_raw, str):
+                try:
+                    adapters = json.loads(adapters_raw)
+                except (json.JSONDecodeError, TypeError):
+                    adapters = {}
+            targets = adapters.get("targets") if isinstance(adapters.get("targets"), dict) else {}
+            changed = False
+            for key, meta in list(targets.items()):
+                if not isinstance(meta, dict):
+                    continue
+                meta_platform = str(meta.get("platform") or key.split(":", 1)[0])
+                try:
+                    meta_post_id = int(meta.get("post_id")) if meta.get("post_id") is not None else None
+                except (TypeError, ValueError):
+                    meta_post_id = None
+                if meta_platform != platform or meta_post_id != post_id:
+                    continue
+                if meta.get("status") in terminal:
+                    continue
+                meta = {
+                    **meta,
+                    "status": "published" if ok else "failed",
+                    "platform": platform,
+                    "post_id": post_id,
+                }
+                if error and not ok:
+                    meta["error"] = error
+                targets[key] = meta
+                changed = True
+            if not changed:
+                continue
+            statuses = [
+                str(m.get("status") or "")
+                for m in targets.values()
+                if isinstance(m, dict)
+            ]
+            if any(s == "queued" for s in statuses):
+                final = "publishing"
+            elif statuses and all(s == "published" for s in statuses):
+                final = "published"
+            elif statuses and all(s in ("failed", "skipped") for s in statuses):
+                final = "failed"
+            elif any(s == "published" for s in statuses):
+                final = "partial"
+            else:
+                final = "publishing"
+            adapters_out = {**adapters, "targets": targets}
+            await self.update_job(
+                int(user_id),
+                int(job_id),
+                status=final,
+                adapters_result=adapters_out,
+            )
+            if final == "failed":
+                conn2 = await get_db_connection()
+                try:
+                    async with conn2.cursor() as cur:
+                        await cur.execute(
+                            """
+                            UPDATE smm_publish_jobs
+                            SET last_error = COALESCE(%s, last_error),
+                                updated_at = CURRENT_TIMESTAMP
+                            WHERE id = %s
+                            """,
+                            (error or "publish failed", job_id),
+                        )
+                finally:
+                    await release_db_connection(conn2)
+
+    async def _stamp_post_tenancy(
+        self,
+        table: str,
+        created: Optional[dict],
+        brand_id: Any,
+        channel_id: Any,
+    ) -> None:
+        if not created or not created.get("id"):
+            return
+        if brand_id is None and channel_id is None:
+            return
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    f"""
+                    UPDATE {table}
+                    SET brand_id = COALESCE(%s, brand_id),
+                        channel_id = COALESCE(%s, channel_id),
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = %s
+                    """,
+                    (brand_id, channel_id, created["id"]),
+                )
+        finally:
+            await release_db_connection(conn)
+
+    _PLATFORM_POST_TABLE = {
+        "tg": "tg_posts",
+        "vk": "vk_posts",
+        "wp": "wp_posts",
+        "tw": "tw_posts",
+        "dzen": "dzen_posts",
+        "instagram": "instagram_posts",
+        "threads": "threads_posts",
+        "url": "url_posts",
+    }
+
+    _PLATFORM_READY_FLAG = {
+        "tg": "to_tg",
+        "vk": "to_vk",
+        "wp": "to_wp",
+        "tw": "to_tw",
+        "dzen": "to_dzen",
+        "instagram": "to_instagram",
+        "threads": "to_threads",
+    }
+
+    async def claim_ready_posts(
+        self,
+        platform: str,
+        *,
+        limit: int = 20,
+        user_id: Optional[int] = None,
+    ) -> list[dict]:
+        """Atomically claim ready network posts for bot publish (ready -> publishing)."""
+        table = self._PLATFORM_POST_TABLE.get(platform)
+        if not table:
+            return []
+        flag_col = self._PLATFORM_READY_FLAG.get(platform)
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute("BEGIN")
+                where = "status = 'ready'"
+                params: list[Any] = []
+                if user_id is not None:
+                    where += " AND user_id = %s"
+                    params.append(user_id)
+                if flag_col:
+                    # Prefer rows flagged for this network; allow NULL for legacy rows.
+                    where += f" AND ({flag_col} IS NULL OR {flag_col} = TRUE)"
+                params.append(limit)
+                await cur.execute(
+                    f"""
+                    SELECT *
+                    FROM {table}
+                    WHERE {where}
+                    ORDER BY COALESCE(publish_at, created_at) ASC NULLS LAST
+                    LIMIT %s
+                    FOR UPDATE SKIP LOCKED
+                    """,
+                    params,
+                )
+                rows = await cur.fetchall()
+                if not rows:
+                    await cur.execute("COMMIT")
+                    return []
+                columns = [col.name for col in cur.description]
+                ids = [r[columns.index("id")] for r in rows]
+                placeholders = ", ".join(["%s"] * len(ids))
+                await cur.execute(
+                    f"""
+                    UPDATE {table}
+                    SET status = 'publishing', updated_at = CURRENT_TIMESTAMP
+                    WHERE id IN ({placeholders})
+                    """,
+                    ids,
+                )
+                await cur.execute("COMMIT")
+                out: list[dict] = []
+                for row in rows:
+                    item = dict(zip(columns, row))
+                    for key in ("images", "target_channels", "target_groups"):
+                        val = item.get(key)
+                        if isinstance(val, str):
+                            try:
+                                item[key] = json.loads(val)
+                            except (json.JSONDecodeError, TypeError):
+                                item[key] = [] if key != "images" else []
+                    item["targets"] = item.get("target_groups") if platform == "vk" else item.get(
+                        "target_channels"
+                    )
+                    if not isinstance(item.get("targets"), list):
+                        item["targets"] = item.get("targets") or []
+                    item["platform"] = platform
+                    item["table"] = table
+                    item["status"] = "publishing"
+                    out.append(item)
+                try:
+                    from services.post_lifecycle_service import log_post_lifecycle_event
+
+                    for item in out:
+                        await log_post_lifecycle_event(
+                            platform=platform,
+                            post_id=int(item["id"]),
+                            user_id=item.get("user_id"),
+                            from_status="ready",
+                            to_status="publishing",
+                            actor="smm.claim_ready_posts",
+                        )
+                except Exception:
+                    pass
+                return out
+        except Exception:
+            try:
+                async with conn.cursor() as cur:
+                    await cur.execute("ROLLBACK")
+            except Exception:
+                pass
+            raise
+        finally:
+            await release_db_connection(conn)
+
+    async def apply_publish_result(
+        self,
+        platform: str,
+        post_id: int,
+        *,
+        ok: bool = True,
+        external_id: Optional[str] = None,
+        error: Optional[str] = None,
+    ) -> bool:
+        table = self._PLATFORM_POST_TABLE.get(platform)
+        if not table:
+            return False
+        status = "published" if ok else "failed"
+        user_id: Optional[int] = None
+        from_status: Optional[str] = None
+        already_terminal = False
+        updated = False
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    f"SELECT user_id, status FROM {table} WHERE id = %s",
+                    (post_id,),
+                )
+                prev = await cur.fetchone()
+                if prev:
+                    user_id = prev[0]
+                    from_status = str(prev[1]) if prev[1] is not None else None
+                already_terminal = from_status in (
+                    "published",
+                    "failed",
+                    "error",
+                    "review",
+                    "deleted",
+                )
+                if already_terminal:
+                    # Bot already wrote platform-specific status; do not clobber.
+                    updated = True
+                elif platform == "tg" and external_id and ok:
+                    await cur.execute(
+                        f"""
+                        UPDATE {table}
+                        SET status = %s,
+                            telegram_message_id = COALESCE(%s, telegram_message_id),
+                            updated_at = CURRENT_TIMESTAMP
+                        WHERE id = %s
+                        """,
+                        (status, external_id if str(external_id).isdigit() else None, post_id),
+                    )
+                    updated = cur.rowcount > 0
+                elif platform == "wp" and external_id and ok:
+                    await cur.execute(
+                        f"""
+                        UPDATE {table}
+                        SET status = %s,
+                            url = COALESCE(%s, url),
+                            updated_at = CURRENT_TIMESTAMP
+                        WHERE id = %s
+                        """,
+                        (status, external_id, post_id),
+                    )
+                    updated = cur.rowcount > 0
+                else:
+                    await cur.execute(
+                        f"""
+                        UPDATE {table}
+                        SET status = %s, updated_at = CURRENT_TIMESTAMP
+                        WHERE id = %s
+                        """,
+                        (status, post_id),
+                    )
+                    updated = cur.rowcount > 0
+        finally:
+            await release_db_connection(conn)
+
+        if updated:
+            try:
+                from services.post_lifecycle_service import log_post_lifecycle_event
+
+                await log_post_lifecycle_event(
+                    platform=platform,
+                    post_id=post_id,
+                    user_id=user_id,
+                    from_status=from_status,
+                    to_status=status if not already_terminal else (from_status or status),
+                    actor="smm.publish_result",
+                    payload={"ok": ok, "error": error, "external_id": external_id},
+                )
+            except Exception:
+                pass
+            try:
+                await self._reconcile_job_after_publish_result(
+                    platform, post_id, ok=ok, error=error
+                )
+            except Exception as exc:
+                logger.debug(
+                    "job reconcile failed platform=%s post_id=%s: %s",
+                    platform,
+                    post_id,
+                    exc,
+                )
+        return updated
 
     async def run_due_jobs(self, limit: int = 50) -> dict:
         jobs = await self.fetch_due_jobs(limit)
@@ -4588,6 +6781,7 @@ class SmmService:
         job = await self.get_job(user_id, job_id)
         if not job:
             return None
+        await self._assert_can_approve_job(user_id, job)
         if job.get("status") not in ("pending_approval", "draft", "rejected"):
             raise ValueError(f"Cannot approve job in status {job.get('status')}")
         from services.demo_seed_service import is_demo_external_id
@@ -4610,6 +6804,9 @@ class SmmService:
             job_id,
             status=next_status,
             rejection_comment=None,
+            _skip_edit_check=True,
+            _skip_revision=False,
+            _revision_summary="approved",
         )
 
     async def reject_job(
@@ -4619,6 +6816,7 @@ class SmmService:
         job = await self.get_job(user_id, job_id)
         if not job:
             return None
+        await self._assert_can_approve_job(user_id, job)
         if job.get("status") not in ("pending_approval", "draft"):
             raise ValueError(f"Cannot reject job in status {job.get('status')}")
         return await self.update_job(
@@ -4626,13 +6824,115 @@ class SmmService:
             job_id,
             status="rejected",
             rejection_comment=(comment or "").strip() or None,
+            _skip_edit_check=True,
+            _revision_summary="rejected",
         )
+
+    async def _group_has_approver(
+        self, group_id: int, *, exclude_user_id: Optional[int] = None
+    ) -> bool:
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                if exclude_user_id is not None:
+                    await cur.execute(
+                        """
+                        SELECT 1 FROM group_members
+                        WHERE group_id = %s
+                          AND role_in_group IN ('owner', 'approver')
+                          AND user_id <> %s
+                        LIMIT 1
+                        """,
+                        (group_id, exclude_user_id),
+                    )
+                else:
+                    await cur.execute(
+                        """
+                        SELECT 1 FROM group_members
+                        WHERE group_id = %s
+                          AND role_in_group IN ('owner', 'approver')
+                        LIMIT 1
+                        """,
+                        (group_id,),
+                    )
+                return await cur.fetchone() is not None
+        finally:
+            await release_db_connection(conn)
+
+    async def _assert_can_edit_job(self, user_id: int, job: dict) -> None:
+        from services.team_access import can_edit_brand_content
+
+        brand_id = job.get("brand_id")
+        if not brand_id:
+            return
+        brand = await self.get_brand(user_id, int(brand_id))
+        if not brand:
+            raise PermissionError("Brand not accessible")
+        if int(brand.get("user_id") or 0) == int(user_id) and not brand.get("group_id"):
+            return
+        if not await can_edit_brand_content(user_id, brand):
+            raise PermissionError("Viewer/Approver cannot edit publish jobs")
+
+    async def _assert_can_approve_job(self, user_id: int, job: dict) -> None:
+        from services.team_access import (
+            can_approve_brand_content,
+            is_owner_role,
+            brand_role_for_user,
+        )
+
+        brand = None
+        if job.get("brand_id"):
+            brand = await self.get_brand(user_id, int(job["brand_id"]))
+        if brand is None:
+            # Solo job without brand: allow
+            return
+        if not await can_approve_brand_content(user_id, brand):
+            raise PermissionError("Only Owner or Approver can approve jobs")
+
+        author_id = job.get("created_by_user_id") or job.get("user_id")
+        if author_id is not None and int(author_id) == int(user_id):
+            gid = brand.get("group_id")
+            role = await brand_role_for_user(user_id, brand)
+            if gid and await self._group_has_approver(
+                int(gid), exclude_user_id=user_id
+            ):
+                raise PermissionError(
+                    "Cannot approve your own post when another Approver/Owner exists"
+                )
+            if gid and not is_owner_role(role):
+                raise PermissionError("Cannot approve your own post")
 
     async def assign_job(
         self, user_id: int, job_id: int, assigned_to: Optional[int]
     ) -> Optional[dict]:
         await ensure_smm_feature(user_id, "approval_workflow")
-        return await self.update_job(user_id, job_id, assigned_to=assigned_to)
+        job = await self.get_job(user_id, job_id)
+        if not job:
+            return None
+        brand = None
+        if job.get("brand_id"):
+            brand = await self.get_brand(user_id, int(job["brand_id"]))
+        from services.team_access import (
+            can_approve_brand_content,
+            can_edit_brand_content,
+        )
+
+        can_act = False
+        if brand is None or int(brand.get("user_id") or 0) == int(user_id):
+            can_act = True
+        elif await can_approve_brand_content(user_id, brand):
+            can_act = True
+        elif await can_edit_brand_content(user_id, brand):
+            can_act = True
+        if not can_act:
+            raise PermissionError("Cannot assign this job")
+        return await self.update_job(
+            user_id,
+            job_id,
+            assigned_to=assigned_to,
+            _skip_edit_check=True,
+            _revision_summary="assigned",
+        )
 
     async def bulk_approve_jobs(self, user_id: int, job_ids: list[int]) -> dict:
         await ensure_smm_feature(user_id, "approval_workflow")
@@ -4687,6 +6987,241 @@ class SmmService:
                 return _row_job(row) if row else None
         finally:
             await release_db_connection(conn)
+
+    async def list_job_comments(self, user_id: int, job_id: int) -> list[dict]:
+        job = await self.get_job(user_id, job_id)
+        if not job:
+            raise PermissionError("Job not found")
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT id, job_id, user_id, parent_id, body, anchor,
+                           resolved_at, created_at, updated_at
+                    FROM smm_job_comments
+                    WHERE job_id = %s
+                    ORDER BY created_at ASC
+                    """,
+                    (job_id,),
+                )
+                rows = await cur.fetchall()
+        finally:
+            await release_db_connection(conn)
+        out = []
+        for r in rows:
+            anchor = r[5]
+            if isinstance(anchor, str):
+                try:
+                    anchor = json.loads(anchor)
+                except json.JSONDecodeError:
+                    anchor = None
+            out.append(
+                {
+                    "id": r[0],
+                    "job_id": r[1],
+                    "user_id": r[2],
+                    "parent_id": r[3],
+                    "body": r[4],
+                    "anchor": anchor,
+                    "resolved_at": r[6].isoformat() if r[6] else None,
+                    "created_at": r[7].isoformat() if r[7] else None,
+                    "updated_at": r[8].isoformat() if r[8] else None,
+                }
+            )
+        return out
+
+    async def add_job_comment(
+        self,
+        user_id: int,
+        job_id: int,
+        body: str,
+        *,
+        parent_id: Optional[int] = None,
+        anchor: Optional[dict] = None,
+    ) -> dict:
+        job = await self.get_job(user_id, job_id)
+        if not job:
+            raise PermissionError("Job not found")
+        text = (body or "").strip()
+        if not text:
+            raise ValueError("Comment body is required")
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    INSERT INTO smm_job_comments (
+                        job_id, user_id, parent_id, body, anchor
+                    ) VALUES (%s, %s, %s, %s, %s::jsonb)
+                    RETURNING id, job_id, user_id, parent_id, body, anchor,
+                              resolved_at, created_at, updated_at
+                    """,
+                    (
+                        job_id,
+                        user_id,
+                        parent_id,
+                        text,
+                        json.dumps(anchor) if anchor is not None else None,
+                    ),
+                )
+                r = await cur.fetchone()
+        finally:
+            await release_db_connection(conn)
+        if not r:
+            raise RuntimeError("Failed to create comment")
+        anchor_out = r[5]
+        if isinstance(anchor_out, str):
+            try:
+                anchor_out = json.loads(anchor_out)
+            except json.JSONDecodeError:
+                anchor_out = None
+        return {
+            "id": r[0],
+            "job_id": r[1],
+            "user_id": r[2],
+            "parent_id": r[3],
+            "body": r[4],
+            "anchor": anchor_out,
+            "resolved_at": r[6].isoformat() if r[6] else None,
+            "created_at": r[7].isoformat() if r[7] else None,
+            "updated_at": r[8].isoformat() if r[8] else None,
+        }
+
+    async def resolve_job_comment(
+        self, user_id: int, job_id: int, comment_id: int, resolved: bool = True
+    ) -> Optional[dict]:
+        job = await self.get_job(user_id, job_id)
+        if not job:
+            raise PermissionError("Job not found")
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    UPDATE smm_job_comments
+                    SET resolved_at = CASE WHEN %s THEN CURRENT_TIMESTAMP ELSE NULL END,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = %s AND job_id = %s
+                    RETURNING id, job_id, user_id, parent_id, body, anchor,
+                              resolved_at, created_at, updated_at
+                    """,
+                    (resolved, comment_id, job_id),
+                )
+                r = await cur.fetchone()
+        finally:
+            await release_db_connection(conn)
+        if not r:
+            return None
+        anchor_out = r[5]
+        if isinstance(anchor_out, str):
+            try:
+                anchor_out = json.loads(anchor_out)
+            except json.JSONDecodeError:
+                anchor_out = None
+        return {
+            "id": r[0],
+            "job_id": r[1],
+            "user_id": r[2],
+            "parent_id": r[3],
+            "body": r[4],
+            "anchor": anchor_out,
+            "resolved_at": r[6].isoformat() if r[6] else None,
+            "created_at": r[7].isoformat() if r[7] else None,
+            "updated_at": r[8].isoformat() if r[8] else None,
+        }
+
+    async def list_job_revisions(self, user_id: int, job_id: int) -> list[dict]:
+        job = await self.get_job(user_id, job_id)
+        if not job:
+            raise PermissionError("Job not found")
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT id, job_id, user_id, source_text, media, targets,
+                           publish_at, status, change_summary, created_at
+                    FROM smm_job_revisions
+                    WHERE job_id = %s
+                    ORDER BY created_at DESC
+                    LIMIT 100
+                    """,
+                    (job_id,),
+                )
+                rows = await cur.fetchall()
+        finally:
+            await release_db_connection(conn)
+
+        def _j(val):
+            if isinstance(val, str):
+                try:
+                    return json.loads(val)
+                except json.JSONDecodeError:
+                    return val
+            return val
+
+        return [
+            {
+                "id": r[0],
+                "job_id": r[1],
+                "user_id": r[2],
+                "source_text": r[3],
+                "media": _j(r[4]) or [],
+                "targets": _j(r[5]) or [],
+                "publish_at": r[6].isoformat() if r[6] else None,
+                "status": r[7],
+                "change_summary": r[8],
+                "created_at": r[9].isoformat() if r[9] else None,
+            }
+            for r in rows
+        ]
+
+    async def restore_job_revision(
+        self, user_id: int, job_id: int, revision_id: int
+    ) -> Optional[dict]:
+        job = await self.get_job(user_id, job_id)
+        if not job:
+            return None
+        await self._assert_can_edit_job(user_id, job)
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT source_text, media, targets, publish_at, status
+                    FROM smm_job_revisions
+                    WHERE id = %s AND job_id = %s
+                    """,
+                    (revision_id, job_id),
+                )
+                row = await cur.fetchone()
+        finally:
+            await release_db_connection(conn)
+        if not row:
+            raise ValueError("Revision not found")
+
+        def _j(val):
+            if isinstance(val, str):
+                try:
+                    return json.loads(val)
+                except json.JSONDecodeError:
+                    return val
+            return val
+
+        media = _j(row[1]) or []
+        targets = _j(row[2]) or []
+        publish_at = row[3].isoformat() if row[3] else None
+        # Restore content fields; keep current workflow status unless draft/rejected
+        return await self.update_job(
+            user_id,
+            job_id,
+            source_text=row[0] or "",
+            media=media,
+            targets=targets,
+            publish_at=publish_at,
+            _revision_summary=f"restored:revision:{revision_id}",
+        )
 
     async def run_automation(
         self, user_id: int, automation_id: int, limit: int = 10

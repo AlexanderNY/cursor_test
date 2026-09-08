@@ -1,0 +1,52 @@
+# nine_to_eighteen_smoke — публичные страницы 9to18 (без логина).
+# TARGET_UI_URL=http://host.docker.internal:8200  (или https://9to18.ru)
+# Загрузка: Scenarios → Upload.
+
+name: nine_to_eighteen_smoke
+steps:
+  - action: goto
+    path: /
+  - action: wait
+    ms: 800
+  - action: assert_text
+    selector: body
+    contains: 9to18
+  - action: screenshot
+    name: home
+
+  - action: goto
+    path: /game/learn
+  - action: wait_url
+    contains: /game/learn
+  - action: assert_text
+    selector: body
+    contains: Learn
+  - action: screenshot
+    name: learn_index
+
+  - action: goto
+    path: /game/learning-map
+  - action: wait_url
+    contains: /game/learning-map
+  - action: assert_text
+    selector: body
+    contains: Карта
+  - action: screenshot
+    name: learning_map
+
+  - action: goto
+    path: /game/bowl
+  - action: wait_url
+    contains: /game/bowl
+  - action: screenshot
+    name: bowl
+
+  - action: goto
+    path: /app/e2e-tester
+  - action: wait_url
+    contains: /app/e2e-tester
+  - action: assert_text
+    selector: body
+    contains: E2E
+  - action: screenshot
+    name: e2e_blog

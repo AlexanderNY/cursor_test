@@ -3,6 +3,7 @@
 import json
 import logging
 from datetime import datetime
+from typing import Any, Optional
 
 from database import get_db_connection
 from config import settings, SOURCE_TABLES
@@ -113,6 +114,21 @@ class CollectService:
                     record = dict(zip(col_names, row))
                     source_id = record["id"]
 
+                    # Backfill brand/channel from smm_brand_channels when bots didn't set them
+                    if record.get("brand_id") is None or record.get("channel_id") is None:
+                        brand_id, channel_id = await self._resolve_brand_channel(
+                            cur,
+                            user_id=int(record["user_id"]),
+                            platform=platform,
+                            domain=record.get("domain"),
+                            target_channels=record.get("target_channels"),
+                            target_groups=record.get("target_groups"),
+                        )
+                        if record.get("brand_id") is None:
+                            record["brand_id"] = brand_id
+                        if record.get("channel_id") is None:
+                            record["channel_id"] = channel_id
+
                     # 2. Вставить в posts с source_platform / source_id
                     insert_cols = list(_POST_COLUMNS) + [
                         "source_platform",
@@ -163,6 +179,18 @@ class CollectService:
                     inserted = await cur.fetchone()
                     if inserted:
                         actually_collected_ids.append(source_id)
+                        # Persist tenancy back onto the source row when we resolved it
+                        if record.get("brand_id") is not None or record.get("channel_id") is not None:
+                            await cur.execute(
+                                f"""
+                                UPDATE {table}
+                                SET brand_id = COALESCE(brand_id, %s),
+                                    channel_id = COALESCE(channel_id, %s),
+                                    updated_at = CURRENT_TIMESTAMP
+                                WHERE id = %s
+                                """,
+                                (record.get("brand_id"), record.get("channel_id"), source_id),
+                            )
 
                 if actually_collected_ids:
                     ids_placeholder = ", ".join(["%s"] * len(actually_collected_ids))
@@ -183,6 +211,84 @@ class CollectService:
                 raise
             finally:
                 cur.close()
+
+    @staticmethod
+    async def _resolve_brand_channel(
+        cur,
+        *,
+        user_id: int,
+        platform: str,
+        domain: Any,
+        target_channels: Any,
+        target_groups: Any,
+    ) -> tuple[Optional[int], Optional[int]]:
+        """Map post domain/targets to smm_brand_channels for the user."""
+        candidates: list[str] = []
+        for raw in (domain,):
+            if raw is None:
+                continue
+            s = str(raw).strip()
+            if s:
+                candidates.append(s)
+        for blob in (target_channels, target_groups):
+            if blob is None:
+                continue
+            if isinstance(blob, str):
+                try:
+                    blob = json.loads(blob)
+                except (json.JSONDecodeError, TypeError):
+                    blob = [blob]
+            if isinstance(blob, list):
+                for item in blob:
+                    s = str(item).strip()
+                    if s:
+                        candidates.append(s)
+        if not candidates:
+            return None, None
+
+        # Normalize network aliases
+        network = platform
+        if network == "twitter":
+            network = "tw"
+        if network == "wordpress":
+            network = "wp"
+
+        await cur.execute(
+            """
+            SELECT c.id, c.brand_id, c.external_id
+            FROM smm_brand_channels c
+            JOIN smm_brands b ON b.id = c.brand_id
+            WHERE b.user_id = %s AND c.network = %s
+            """,
+            (user_id, network),
+        )
+        rows = await cur.fetchall()
+        if not rows:
+            return None, None
+
+        cand_set = set(candidates)
+        for stripped in list(candidates):
+            cand_set.add(stripped.lstrip("-"))
+            try:
+                n = int(stripped)
+                cand_set.update({str(n), str(abs(n)), str(-abs(n))})
+            except ValueError:
+                pass
+
+        for ch_id, brand_id, external_id in rows:
+            ext = str(external_id or "").strip()
+            if not ext:
+                continue
+            variants = {ext, ext.lstrip("-")}
+            try:
+                n = int(ext)
+                variants.update({str(n), str(abs(n)), str(-abs(n))})
+            except ValueError:
+                pass
+            if variants & cand_set:
+                return int(brand_id) if brand_id is not None else None, int(ch_id)
+
+        return None, None
 
 
 collect_service = CollectService()

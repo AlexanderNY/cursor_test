@@ -40,6 +40,9 @@ class Settings(BaseSettings):
     JWT_SECRET_KEY: str = ""
     JWT_ALGORITHM: str = "HS256"
 
+    # Redis JWT blacklist (shared with auth). Empty = always HTTP check to auth.
+    REDIS_URL: str = ""
+
     # Доверять X-Forwarded-For / X-Real-IP только от этих peer CIDR (через запятую)
     TRUSTED_PROXY_CIDRS: str = "127.0.0.0/8,::1/128,172.20.0.0/16"
     
@@ -98,6 +101,8 @@ RATE_LIMITS_CONFIG: dict[str, dict[str, int]] = {
     "/core/admin/checks/ai": {"requests": 20, "window_seconds": 60},
     "/auth/users": {"requests": 30, "window_seconds": 60},
     "/auth/users/export": {"requests": 20, "window_seconds": 60},
+    "/auth/activity/heartbeat": {"requests": 120, "window_seconds": 60},
+    "/auth/admin/product-metrics": {"requests": 30, "window_seconds": 60},
     "/auth/billing/webhooks/stripe": {"requests": 200, "window_seconds": 60},
     "/wp/posts": {"requests": 30, "window_seconds": 60},
     "/wp/profile": {"requests": 30, "window_seconds": 60},

@@ -20,6 +20,8 @@ export interface AuthTabProps {
   onTelegramUsernameChange: (v: string) => void
   authPhoneNumber: string
   onAuthPhoneNumberChange: (v: string) => void
+  proxyUrl: string
+  onProxyUrlChange: (v: string) => void
   authCode: string
   onAuthCodeChange: (v: string) => void
   authPassword: string
@@ -47,6 +49,8 @@ export function AuthTab({
   onTelegramUsernameChange,
   authPhoneNumber,
   onAuthPhoneNumberChange,
+  proxyUrl,
+  onProxyUrlChange,
   authCode,
   onAuthCodeChange,
   authPassword,
@@ -87,8 +91,20 @@ export function AuthTab({
             <Input label="API Hash" type="text" value={apiHash} onChange={(e) => onApiHashChange(e.target.value)} placeholder="e.g., afd10c198eaa94bc4fe3f82415eb46ee67" />
             <Input label="Логин в Telegram" type="text" value={telegramUsername} onChange={(e) => onTelegramUsernameChange(e.target.value)} placeholder="e.g., @username" />
             <Input label="Номер телефона для авторизации" type="text" value={authPhoneNumber} onChange={(e) => onAuthPhoneNumberChange(e.target.value)} placeholder="e.g., +79001234567" />
+            <Input
+              label="Прокси (SOCKS5/HTTP)"
+              type="text"
+              value={proxyUrl}
+              onChange={(e) => onProxyUrlChange(e.target.value)}
+              placeholder="socks5://host.docker.internal:10808"
+            />
             <p className="text-xs text-[var(--text-muted)]">
               Получите API credentials на my.telegram.org. Номер телефона нужен для первой авторизации в Telegram.
+              При блокировке MTProto укажите SOCKS5/HTTP прокси в формате{' '}
+              <code className="text-[var(--text-secondary)]">socks5://host:port</code>
+              {' '}или{' '}
+              <code className="text-[var(--text-secondary)]">socks5://user:pass@host:port</code>
+              . Хост должен быть доступен из сервиса tg-bot (не из браузера). После сохранения профиль перезагрузится автоматически.
             </p>
             <div className="pt-2">
               <Button type="submit" isLoading={isSavingProfile} className="w-full sm:w-auto">
@@ -153,9 +169,9 @@ export function AuthTab({
           <div className="p-4 rounded-lg border border-red-500/30 bg-red-500/5">
             <p className="text-sm text-red-400">
               Авторизация не удалась. Частая причина — блокировка MTProto: задайте
-              TELEGRAM_PROXY_URL (например socks5://host.docker.internal:10808) для tg-bot
-              и перезапустите контейнер. Также проверьте API ID, API Hash и номер телефона
-              выше, сохраните профиль — код будет запрошен автоматически.
+              SOCKS5/HTTP прокси выше (например socks5://host.docker.internal:10808),
+              проверьте API ID, API Hash и номер телефона, затем сохраните профиль —
+              код будет запрошен автоматически без перезапуска контейнера.
             </p>
           </div>
         )}

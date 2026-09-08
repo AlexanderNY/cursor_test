@@ -128,6 +128,48 @@ async def channel_subscriber_snapshot(body: ChannelSubscriberSnapshotBody) -> di
     return {"ok": True}
 
 
+class ClaimReadyPostsBody(BaseModel):
+    platform: str = Field(
+        ...,
+        pattern="^(tg|vk|wp|tw|dzen|instagram|threads|url)$",
+    )
+    limit: int = Field(20, ge=1, le=100)
+    user_id: Optional[int] = None
+
+
+class PublishResultBody(BaseModel):
+    platform: str = Field(
+        ...,
+        pattern="^(tg|vk|wp|tw|dzen|instagram|threads|url)$",
+    )
+    post_id: int
+    ok: bool = True
+    external_id: Optional[str] = None
+    error: Optional[str] = None
+
+
+@router.post("/smm/posts/claim")
+async def claim_ready_posts(body: ClaimReadyPostsBody) -> dict[str, Any]:
+    """Bots claim ready network posts for publish (preferred over direct DB)."""
+    posts = await smm_service.claim_ready_posts(
+        body.platform, limit=body.limit, user_id=body.user_id
+    )
+    return {"ok": True, "posts": posts}
+
+
+@router.post("/smm/posts/publish-result")
+async def publish_result(body: PublishResultBody) -> dict[str, Any]:
+    """Bots report publish success/failure after claim."""
+    ok = await smm_service.apply_publish_result(
+        body.platform,
+        body.post_id,
+        ok=body.ok,
+        external_id=body.external_id,
+        error=body.error,
+    )
+    return {"ok": ok}
+
+
 @router.post("/smm/competitors/sync")
 async def sync_competitor_snapshots(user_id: Optional[int] = Query(None)):
     return await smm_service.sync_competitor_snapshots(user_id)

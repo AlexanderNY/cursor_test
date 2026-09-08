@@ -22,6 +22,8 @@ export type LearnEpisode = {
   links: LearnLink[]
   diagram: string
   cheatsheet: string
+  /** Unified article body (intro/sections/quiz/anki). Optional on local seed until migrated. */
+  structured?: import('@/data/site/structured-post').StructuredPost | null
 }
 
 export type LearnRubric = {

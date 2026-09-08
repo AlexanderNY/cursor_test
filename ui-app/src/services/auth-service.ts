@@ -14,6 +14,7 @@ import type {
   BillingPlanRequest,
   PromoCode,
   AdminAuditLogEntry,
+  AdminProductMetrics,
 } from '@/types'
 
 export const authService = {
@@ -149,6 +150,17 @@ export const authService = {
     const response = await apiClient.get('/auth/admin/growth/summary', {
       params: { limit },
     })
+    return response.data
+  },
+
+  async sendActivityHeartbeat(clientSessionId: string): Promise<void> {
+    await apiClient.post('/auth/activity/heartbeat', {
+      client_session_id: clientSessionId,
+    })
+  },
+
+  async getProductMetrics(): Promise<AdminProductMetrics> {
+    const response = await apiClient.get<AdminProductMetrics>('/auth/admin/product-metrics')
     return response.data
   },
 
@@ -329,10 +341,18 @@ export const authService = {
     return response.data
   },
 
+
+  async setActiveWorkspace(groupId: number): Promise<import('@/types/auth').User> {
+    const response = await apiClient.put<import('@/types/auth').User>(`/auth/groups/active`, {
+      group_id: groupId,
+    })
+    return response.data
+  },
+
   async addGroupMember(
     groupId: number,
     email: string,
-    role_in_group: 'admin' | 'editor' | 'analyst' | 'manager' | 'author' = 'editor'
+    role_in_group: 'owner' | 'editor' | 'approver' | 'viewer' | 'admin' | 'manager' | 'author' | 'analyst' = 'editor'
   ): Promise<void> {
     await apiClient.post(`/auth/groups/${groupId}/members`, { email, role_in_group })
   },
@@ -341,7 +361,7 @@ export const authService = {
     groupId: number,
     data: {
       email?: string
-      role_in_group?: 'admin' | 'editor' | 'analyst' | 'manager' | 'author'
+      role_in_group?: 'owner' | 'editor' | 'approver' | 'viewer' | 'admin' | 'manager' | 'author' | 'analyst'
       expires_days?: number
     } = {}
   ): Promise<import('@/types/auth').InviteActionResponse> {

@@ -36,6 +36,15 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_column THEN NULL; END $$;
 """
 
+CREATE_USERS_ACTIVE_GROUP_MIGRATION = """
+DO $$ BEGIN
+  ALTER TABLE users ADD COLUMN active_group_id INTEGER
+    REFERENCES groups(id) ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+CREATE INDEX IF NOT EXISTS idx_users_active_group_id
+    ON users(active_group_id) WHERE active_group_id IS NOT NULL;
+"""
+
 CREATE_GROWTH_EVENTS_TABLE = """
 CREATE TABLE IF NOT EXISTS growth_events (
     id SERIAL PRIMARY KEY,
@@ -121,7 +130,7 @@ CREATE TABLE IF NOT EXISTS group_members (
     group_id INTEGER NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     role_in_group VARCHAR(20) NOT NULL
-        CHECK (role_in_group IN ('admin', 'editor', 'analyst')),
+        CHECK (role_in_group IN ('owner', 'editor', 'approver', 'viewer')),
     joined_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (group_id, user_id)
 );
@@ -133,7 +142,7 @@ CREATE TABLE IF NOT EXISTS group_invites (
     group_id INTEGER NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
     email VARCHAR(255),
     role_in_group VARCHAR(20) NOT NULL
-        CHECK (role_in_group IN ('admin', 'editor', 'analyst')),
+        CHECK (role_in_group IN ('owner', 'editor', 'approver', 'viewer')),
     token VARCHAR(64) UNIQUE NOT NULL,
     invited_by_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     status VARCHAR(20) NOT NULL DEFAULT 'pending'
@@ -147,6 +156,60 @@ CREATE INDEX IF NOT EXISTS idx_group_invites_token ON group_invites(token);
 CREATE INDEX IF NOT EXISTS idx_group_invites_group_status ON group_invites(group_id, status);
 CREATE INDEX IF NOT EXISTS idx_group_invites_email
     ON group_invites(email) WHERE email IS NOT NULL;
+"""
+
+# Remap legacy admin/manager/author/analyst → owner/editor/viewer and widen CHECKs.
+GROUP_ROLES_WORKSPACE_MIGRATION = """
+ALTER TABLE group_members DROP CONSTRAINT IF EXISTS group_members_role_in_group_check;
+ALTER TABLE group_invites DROP CONSTRAINT IF EXISTS group_invites_role_in_group_check;
+
+UPDATE group_members gm
+SET role_in_group = 'owner'
+FROM groups g
+WHERE gm.group_id = g.id
+  AND gm.role_in_group IN ('admin', 'manager')
+  AND g.created_by_user_id IS NOT NULL
+  AND gm.user_id = g.created_by_user_id;
+
+UPDATE group_members
+SET role_in_group = 'editor'
+WHERE role_in_group IN ('admin', 'manager', 'author');
+
+UPDATE group_members
+SET role_in_group = 'viewer'
+WHERE role_in_group = 'analyst';
+
+UPDATE group_invites
+SET role_in_group = 'editor'
+WHERE role_in_group IN ('admin', 'manager', 'author');
+
+UPDATE group_invites
+SET role_in_group = 'viewer'
+WHERE role_in_group = 'analyst';
+
+-- Ensure each group with a creator has exactly one owner row when possible.
+UPDATE group_members gm
+SET role_in_group = 'owner'
+FROM groups g
+WHERE gm.group_id = g.id
+  AND g.created_by_user_id IS NOT NULL
+  AND gm.user_id = g.created_by_user_id
+  AND gm.role_in_group <> 'owner'
+  AND NOT EXISTS (
+      SELECT 1 FROM group_members gm2
+      WHERE gm2.group_id = gm.group_id AND gm2.role_in_group = 'owner'
+  );
+
+DO $$ BEGIN
+  ALTER TABLE group_members
+    ADD CONSTRAINT group_members_role_in_group_check
+    CHECK (role_in_group IN ('owner', 'editor', 'approver', 'viewer'));
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE group_invites
+    ADD CONSTRAINT group_invites_role_in_group_check
+    CHECK (role_in_group IN ('owner', 'editor', 'approver', 'viewer'));
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 """
 
 CREATE_PLAN_DEFINITIONS_TABLE = """
@@ -260,6 +323,26 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_billing_events_provider_event_id
     ON billing_events (provider, event_id);
 CREATE INDEX IF NOT EXISTS idx_admin_audit_log_created_at ON admin_audit_log(created_at);
 CREATE INDEX IF NOT EXISTS idx_admin_audit_log_admin_user_id ON admin_audit_log(admin_user_id);
+CREATE INDEX IF NOT EXISTS idx_user_app_sessions_user_heartbeat
+    ON user_app_sessions(user_id, last_heartbeat_at DESC);
+CREATE INDEX IF NOT EXISTS idx_user_app_sessions_heartbeat
+    ON user_app_sessions(last_heartbeat_at DESC);
+CREATE INDEX IF NOT EXISTS idx_user_app_sessions_open
+    ON user_app_sessions(user_id, client_session_id)
+    WHERE is_open;
+"""
+
+CREATE_USER_APP_SESSIONS_TABLE = """
+CREATE TABLE IF NOT EXISTS user_app_sessions (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    client_session_id VARCHAR(64) NOT NULL,
+    tariff VARCHAR(50) NOT NULL DEFAULT 'free',
+    started_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_heartbeat_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    active_seconds INTEGER NOT NULL DEFAULT 0,
+    is_open BOOLEAN NOT NULL DEFAULT TRUE
+);
 """
 
 ALL_TABLES: list[str] = [
@@ -273,6 +356,8 @@ ALL_TABLES: list[str] = [
     CREATE_GROUPS_TABLE,
     CREATE_GROUP_MEMBERS_TABLE,
     CREATE_GROUP_INVITES_TABLE,
+    GROUP_ROLES_WORKSPACE_MIGRATION,
+    CREATE_USERS_ACTIVE_GROUP_MIGRATION,
     CREATE_PLAN_DEFINITIONS_TABLE,
     CREATE_BILLING_EVENTS_TABLE,
     CREATE_GROWTH_EVENTS_TABLE,
@@ -280,5 +365,6 @@ ALL_TABLES: list[str] = [
     CREATE_PROMO_CODES_TABLE,
     CREATE_BILLING_PLAN_REQUESTS_TABLE,
     CREATE_PROMO_CODE_REDEMPTIONS_TABLE,
+    CREATE_USER_APP_SESSIONS_TABLE,
     CREATE_INDEXES,
 ]

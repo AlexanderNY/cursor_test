@@ -44,8 +44,8 @@ export function CalendarTab({
   const [isRescheduling, setIsRescheduling] = useState(false)
 
   const calendarHref = selectedBrandId
-    ? `/calendar?brand=${selectedBrandId}&network=tg`
-    : '/calendar?network=tg'
+    ? `/calendar?view=week&brand=${selectedBrandId}&network=tg`
+    : '/calendar?view=week&network=tg'
 
   const days = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(weekStart)

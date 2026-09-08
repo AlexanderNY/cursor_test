@@ -303,21 +303,7 @@ def _run_extra(name: str, cfg: RunConfig) -> int:
             cwd=REPO_ROOT,
         )
     if name == "e2e":
-        print("\n[extra] e2e-tester...", flush=True)
-        # Sequential: db first, then app (меньше пик + явный порядок)
-        code = _up_stack(
-            compose_file=E2E_COMPOSE,
-            services=["tester-db"],
-            flags=cfg.flags,
-            dry_run=cfg.dry_run,
-            env_file=E2E_ENV,
-            cwd=REPO_ROOT,
-        )
-        if code != 0:
-            return code
-        if cfg.delay > 0 and not cfg.dry_run:
-            print(f"Sleep {cfg.delay:.1f}s...", flush=True)
-            time.sleep(cfg.delay)
+        print("\n[extra] e2e-tester (local SQLite, single container)...", flush=True)
         return _up_stack(
             compose_file=E2E_COMPOSE,
             services=["tester"],

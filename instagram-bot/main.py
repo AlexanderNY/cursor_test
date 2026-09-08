@@ -51,6 +51,16 @@ async def health_check():
     }
 
 
+@app.post("/internal/publish-now")
+async def publish_now():
+    """Wake publisher immediately (skip PUBLISH_INTERVAL_SEC wait)."""
+    global bot_service
+    if not bot_service or not getattr(bot_service, "_post_publisher", None):
+        return {"status": "error", "message": "Bot service not initialized", "published": 0}
+    published = await bot_service._post_publisher.publish_ready_posts()
+    return {"status": "ok", "published": published}
+
+
 class InstagramVerifyCodeBody(BaseModel):
     """Одноразовый код 2FA для следующей попытки входа instagrapi."""
 

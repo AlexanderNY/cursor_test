@@ -10,6 +10,11 @@ import {
   apiScheduleAll,
 } from '@/data/learn/learn-api'
 import { canEditLearn, getLearnAuthSession } from '@/data/learn/learn-auth'
+import {
+  EMPTY_LEARN_STRUCTURED_POST,
+  hydrateLearnStructured,
+  type StructuredPost,
+} from '@/data/site/structured-post'
 
 export type LearnContentFormat = 'markdown' | 'html'
 
@@ -17,6 +22,7 @@ export type LearnPost = LearnEpisode & {
   theoryFormat: LearnContentFormat
   labFormat: LearnContentFormat
   cheatsheetFormat: LearnContentFormat
+  structured: StructuredPost | null
   publishedAt: string
   updatedAt: string
 }
@@ -33,6 +39,7 @@ export type LearnPostInput = {
   cheatsheet: string
   diagram: string
   links: LearnLink[]
+  structured: StructuredPost | null
   theoryFormat: LearnContentFormat
   labFormat: LearnContentFormat
   cheatsheetFormat: LearnContentFormat
@@ -50,9 +57,15 @@ export function seedPostsLocal(): LearnPost[] {
   const updatedAt = new Date(now).toISOString()
   return learnEpisodes.map((episode) => ({
     ...episode,
-    theoryFormat: 'markdown',
-    labFormat: 'markdown',
-    cheatsheetFormat: 'markdown',
+    theoryFormat: 'markdown' as const,
+    labFormat: 'markdown' as const,
+    cheatsheetFormat: 'markdown' as const,
+    structured: hydrateLearnStructured(episode.structured ?? null, {
+      lab: episode.lab,
+      cheatsheet: episode.cheatsheet,
+      cheatsheetFormat: 'markdown',
+      diagram: episode.diagram,
+    }),
     publishedAt: seedPublishedAt(episode.order, now),
     updatedAt,
   }))
@@ -215,13 +228,16 @@ export function createEmptyPost(order: number): LearnPostInput {
     shortTitle: 'Новая',
     rubricId: 'architecture',
     order,
-    theory: '<p>Текст теории</p>',
-    lab: '<p>Условие лабы</p>',
-    cheatsheet: '<p>Шпаргалка</p>',
-    diagram: 'flowchart LR\n  A[Старт] --> B[Финиш]',
+    theory: '',
+    lab: '',
+    cheatsheet: '',
+    diagram: '',
     links: [],
-    theoryFormat: 'html',
-    labFormat: 'html',
+    structured: {
+      ...EMPTY_LEARN_STRUCTURED_POST,
+    },
+    theoryFormat: 'markdown',
+    labFormat: 'markdown',
     cheatsheetFormat: 'html',
     publishedAt,
   }

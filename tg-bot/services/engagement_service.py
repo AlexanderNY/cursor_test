@@ -18,8 +18,51 @@ class EngagementService:
         self.client_manager = client_manager
         self._parser = PostPublisher(client_manager)
 
-    async def refresh_engagement(self, limit: int = 100) -> int:
-        """Обновляет метрики для последних published постов. Возвращает число обновлений."""
+    async def refresh_engagement(
+        self,
+        limit: int = 100,
+        *,
+        hot_days: int = 7,
+        hot_cap: int = 300,
+        sample_older: int = 50,
+    ) -> int:
+        """Hot window (7d) + sample of older posts. Returns number of updates."""
+        rows = await self._select_posts_for_refresh(
+            hot_days=hot_days, hot_cap=hot_cap, sample_older=sample_older, limit=limit
+        )
+        return await self._refresh_rows(rows)
+
+    async def refresh_one(self, user_id: int, post_id: int) -> dict:
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT id, user_id, telegram_message_id, telegram_chat_id
+                    FROM tg_posts
+                    WHERE id = %s AND user_id = %s AND status = 'published'
+                      AND telegram_message_id IS NOT NULL
+                      AND telegram_chat_id IS NOT NULL
+                      AND telegram_chat_id != ''
+                    """,
+                    (post_id, user_id),
+                )
+                row = await cur.fetchone()
+        finally:
+            await release_db_connection(conn)
+        if not row:
+            return {"ok": False, "error": "post_not_found"}
+        updated = await self._refresh_rows([row])
+        return {"ok": updated > 0, "updated": updated}
+
+    async def _select_posts_for_refresh(
+        self,
+        *,
+        hot_days: int,
+        hot_cap: int,
+        sample_older: int,
+        limit: int,
+    ) -> list:
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
@@ -31,15 +74,35 @@ class EngagementService:
                       AND telegram_message_id IS NOT NULL
                       AND telegram_chat_id IS NOT NULL
                       AND telegram_chat_id != ''
-                    ORDER BY updated_at DESC
+                      AND COALESCE(publish_at, created_at) >= NOW() - make_interval(days => %s)
+                    ORDER BY COALESCE(publish_at, created_at) DESC
                     LIMIT %s
                     """,
-                    (limit,),
+                    (hot_days, hot_cap),
                 )
-                rows = await cur.fetchall()
+                hot = list(await cur.fetchall() or [])
+                hot_ids = {r[0] for r in hot}
+                await cur.execute(
+                    """
+                    SELECT id, user_id, telegram_message_id, telegram_chat_id
+                    FROM tg_posts
+                    WHERE status = 'published'
+                      AND telegram_message_id IS NOT NULL
+                      AND telegram_chat_id IS NOT NULL
+                      AND telegram_chat_id != ''
+                      AND COALESCE(publish_at, created_at) < NOW() - make_interval(days => %s)
+                    ORDER BY updated_at ASC NULLS FIRST
+                    LIMIT %s
+                    """,
+                    (hot_days, sample_older),
+                )
+                older = [r for r in (await cur.fetchall() or []) if r[0] not in hot_ids]
+                combined = hot + older
+                return combined[: max(limit, hot_cap + sample_older)]
         finally:
             await release_db_connection(conn)
 
+    async def _refresh_rows(self, rows: list) -> int:
         updated = 0
         metrics_by_post: list[tuple[int, int, int, int, int]] = []
         for post_id, user_id, msg_id, chat_id in rows:
@@ -137,4 +200,3 @@ class EngagementService:
             "reposts": forwards,
             "comments": replies,
         }
-

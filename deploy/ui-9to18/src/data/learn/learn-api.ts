@@ -3,6 +3,7 @@
 import type { LearnPost, LearnPostInput } from '@/data/learn/learn-store'
 import { getLearnAccessToken } from '@/data/learn/learn-auth'
 import { getSiteAccessToken } from '@/data/site/site-auth'
+import { normalizeStructuredPost, hydrateLearnStructured } from '@/data/site/structured-post'
 
 const API_BASE = '/api'
 
@@ -56,6 +57,20 @@ async function request<T>(
 }
 
 function normalizePost(raw: Record<string, unknown>): LearnPost {
+  const theoryFormat =
+    raw.theoryFormat === 'html' || raw.theory_format === 'html' ? 'html' : 'markdown'
+  const labFormat = raw.labFormat === 'html' || raw.lab_format === 'html' ? 'html' : 'markdown'
+  const cheatsheetFormat =
+    raw.cheatsheetFormat === 'html' || raw.cheatsheet_format === 'html' ? 'html' : 'markdown'
+  const lab = String(raw.lab || '')
+  const cheatsheet = String(raw.cheatsheet || '')
+  const diagram = String(raw.diagram || '')
+  const structured = hydrateLearnStructured(normalizeStructuredPost(raw.structured), {
+    lab,
+    cheatsheet,
+    cheatsheetFormat,
+    diagram,
+  })
   return {
     slug: String(raw.slug || ''),
     episode: String(raw.episode || ''),
@@ -64,19 +79,19 @@ function normalizePost(raw: Record<string, unknown>): LearnPost {
     rubricId: (raw.rubricId || raw.rubric_id || 'architecture') as LearnPost['rubricId'],
     order: Number(raw.order ?? raw.sort_order ?? 0),
     theory: String(raw.theory || ''),
-    lab: String(raw.lab || ''),
-    cheatsheet: String(raw.cheatsheet || ''),
-    diagram: String(raw.diagram || ''),
+    lab,
+    cheatsheet,
+    diagram,
     links: Array.isArray(raw.links)
       ? (raw.links as Array<{ label?: string; href?: string }>).map((link) => ({
           label: String(link.label || ''),
           href: String(link.href || '#'),
         }))
       : [],
-    theoryFormat: raw.theoryFormat === 'html' || raw.theory_format === 'html' ? 'html' : 'markdown',
-    labFormat: raw.labFormat === 'html' || raw.lab_format === 'html' ? 'html' : 'markdown',
-    cheatsheetFormat:
-      raw.cheatsheetFormat === 'html' || raw.cheatsheet_format === 'html' ? 'html' : 'markdown',
+    structured,
+    theoryFormat,
+    labFormat,
+    cheatsheetFormat,
     publishedAt: String(raw.publishedAt || raw.published_at || new Date().toISOString()),
     updatedAt: String(raw.updatedAt || raw.updated_at || new Date().toISOString()),
   }

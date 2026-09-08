@@ -69,6 +69,16 @@ UI использует `apiClient` с `baseURL: '/api'`. Vite proxy перен�
 | POST | `/auth/reset-password/confirm` | Подтверждение сброса пароля |
 | POST | `/auth/refresh` | Обновление пары токенов |
 | POST | `/auth/verify` | Верификация email (код) |
+| GET | `/auth/groups/my` | Активный workspace (group) |
+| PUT | `/auth/groups/active` | Переключить `active_group_id` |
+| POST | `/auth/groups` | Создать workspace (создатель = Owner) |
+| POST | `/auth/groups/{id}/invites` | Инвайт: editor / approver / viewer |
+| GET | `/smm/jobs/{id}/comments` | Комментарии к черновику |
+| POST | `/smm/jobs/{id}/comments` | Добавить комментарий (опц. text anchor) |
+| GET | `/smm/jobs/{id}/revisions` | История правок job |
+| POST | `/smm/jobs/{id}/revisions/{rid}/restore` | Восстановить ревизию |
+
+Workspace roles: `owner` | `editor` | `approver` | `viewer` (legacy aliases: admin→owner, author→editor, analyst→viewer). Seats: `max_team_seats` по тарифу создателя группы. Approval: только Owner/Approver; self-approve запрещён, если есть другой Approver/Owner.
 
 ### 1.2 Core (core-service.ts)
 
@@ -308,11 +318,12 @@ UI использует `apiClient` с `baseURL: '/api'`. Vite proxy перен�
 
 ### 4.2 Auth
 
-- **Таблицы:** `users`, `refresh_tokens`, `blacklisted_tokens`, `password_reset_tokens`, `email_verification_tokens`.
+- **Таблицы:** `users` (incl. `active_group_id`), `refresh_tokens`, `blacklisted_tokens`, `password_reset_tokens`, `email_verification_tokens`, `groups`, `group_members` (roles: owner/editor/approver/viewer), `group_invites`.
+- **JWT blacklist hot path:** Redis (`REDIS_URL`) — auth пишет/прогревает, gateway читает `jwt:bl:*`; без Redis — HTTP `/token/blacklist-check` → Postgres.
 
 ### 4.3 Core
 
-- **Таблицы:** `posts`, `tg_*`, `tw_*`, `wp_*`, `vk_*`, `dzen_*`, `instagram_*`, `threads_*`, `url_*`, `cpost_*`, `curl_settings`, `notifications`, SMM/brands/channels (по мере миграций).
+- **Таблицы:** `posts`, `tg_*`, `tw_*`, `wp_*`, `vk_*`, `dzen_*`, `instagram_*`, `threads_*`, `url_*`, `cpost_*`, `curl_settings`, `notifications`, SMM/brands/channels, `smm_publish_jobs`, `smm_job_comments`, `smm_job_revisions` (по мере миграций).
 - Флаги распределения в `posts`: `to_tg`, `to_wp`, `to_vk`, `to_dzen`, `to_instagram`, `to_tw`.
 - Читает `schedule_snapshots` (пишет scheduler).
 

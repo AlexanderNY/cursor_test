@@ -9,6 +9,7 @@ from config import settings, get_cors_origins_list
 from services.proxy_service import initialize_proxy_service
 from middleware.rate_limiter import RateLimitMiddleware
 from middleware.jwt_validator import validate_jwt_middleware
+from shared.token_blacklist_redis import token_blacklist_redis
 from routers import (
     auth_router,
     core_router,
@@ -49,10 +50,13 @@ async def manage_lifespan(app: FastAPI):
     )
     app.state.http_client = http_client
     initialize_proxy_service(http_client)
+    if (settings.REDIS_URL or "").strip():
+        await token_blacklist_redis.connect(settings.REDIS_URL)
     
     yield
     
     # Shutdown
+    await token_blacklist_redis.close()
     await http_client.aclose()
 
 
@@ -153,6 +157,7 @@ async def check_health():
         "status": "healthy",
         "service": "api-gateway",
         "server_time": datetime.utcnow().isoformat() + "Z",
+        "redis_blacklist": token_blacklist_redis.connected,
     }
 
 

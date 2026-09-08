@@ -14,6 +14,8 @@ import type {
   CompetitorCompare,
   CompetitorDigest,
   CompetitorDiff,
+  CompetitorIdeasResponse,
+  CompetitorInsights,
   CompetitorPost,
   InboxItem,
   PublishJob,
@@ -337,6 +339,44 @@ export const smmService = {
     return data
   },
 
+  async listJobComments(jobId: number): Promise<import('@/types/smm').JobComment[]> {
+    const { data } = await apiClient.get<{ comments: import('@/types/smm').JobComment[] }>(
+      `/smm/jobs/${jobId}/comments`,
+    )
+    return data.comments ?? []
+  },
+
+  async addJobComment(
+    jobId: number,
+    payload: { body: string; parent_id?: number | null; anchor?: Record<string, unknown> | null },
+  ): Promise<import('@/types/smm').JobComment> {
+    const { data } = await apiClient.post(`/smm/jobs/${jobId}/comments`, payload)
+    return data
+  },
+
+  async resolveJobComment(
+    jobId: number,
+    commentId: number,
+    resolved = true,
+  ): Promise<import('@/types/smm').JobComment> {
+    const { data } = await apiClient.patch(`/smm/jobs/${jobId}/comments/${commentId}`, {
+      resolved,
+    })
+    return data
+  },
+
+  async listJobRevisions(jobId: number): Promise<import('@/types/smm').JobRevision[]> {
+    const { data } = await apiClient.get<{ revisions: import('@/types/smm').JobRevision[] }>(
+      `/smm/jobs/${jobId}/revisions`,
+    )
+    return data.revisions ?? []
+  },
+
+  async restoreJobRevision(jobId: number, revisionId: number): Promise<PublishJob> {
+    const { data } = await apiClient.post(`/smm/jobs/${jobId}/revisions/${revisionId}/restore`)
+    return data
+  },
+
   async bulkApproveJobs(jobIds: number[]): Promise<{
     approved: number
     job_ids: number[]
@@ -386,6 +426,7 @@ export const smmService = {
     network?: string
     assigned_to?: number
     assigned_to_me?: boolean
+    series_id?: number
   }): Promise<PublishJob[]> {
     const { data } = await apiClient.get('/smm/jobs', { params })
     return data.jobs ?? []
@@ -401,6 +442,7 @@ export const smmService = {
       status?: string
       assigned_to?: number | null
       rejection_comment?: string | null
+      series_id?: number | null
     },
   ): Promise<PublishJob> {
     const { data } = await apiClient.patch(`/smm/jobs/${id}`, payload)
@@ -520,12 +562,124 @@ export const smmService = {
     return data
   },
 
-  async analyticsGrowth(brandId?: number | null): Promise<{
+  async analyticsGrowth(
+    brandId?: number | null,
+    channelId?: number | null,
+    period = '30d',
+  ): Promise<{
     points: { date: string; subscribers: number }[]
     subscriber_growth: number
   }> {
     const { data } = await apiClient.get('/smm/analytics/growth', {
-      params: { brand_id: brandId ?? undefined },
+      params: {
+        brand_id: brandId ?? undefined,
+        channel_id: channelId ?? undefined,
+        period,
+      },
+    })
+    return data
+  },
+
+  async analyticsPostTrends(
+    brandId?: number | null,
+    period = '7d',
+    channelId?: number | null,
+  ): Promise<{ points: import('@/types/smm').AnalyticsTrendPoint[] }> {
+    const { data } = await apiClient.get('/smm/analytics/post-trends', {
+      params: {
+        brand_id: brandId ?? undefined,
+        period,
+        channel_id: channelId ?? undefined,
+      },
+    })
+    return data
+  },
+
+  async analyticsPostDetail(
+    platform: string,
+    postId: number,
+  ): Promise<import('@/types/smm').AnalyticsPostDetail> {
+    const { data } = await apiClient.get(`/smm/analytics/posts/${platform}/${postId}`)
+    return data
+  },
+
+  async analyticsPostRefresh(platform: string, postId: number): Promise<{ ok: boolean; error?: string }> {
+    const { data } = await apiClient.post(`/smm/analytics/posts/${platform}/${postId}/refresh`)
+    return data
+  },
+
+  async analyticsComments(
+    brandId?: number | null,
+    period = '7d',
+    channelId?: number | null,
+  ): Promise<import('@/types/smm').AnalyticsCommentsSummary> {
+    const { data } = await apiClient.get('/smm/analytics/comments', {
+      params: {
+        brand_id: brandId ?? undefined,
+        period,
+        channel_id: channelId ?? undefined,
+      },
+    })
+    return data
+  },
+
+  async analyticsFunnel(
+    brandId?: number | null,
+    period = '7d',
+    channelId?: number | null,
+  ): Promise<import('@/types/smm').AnalyticsFunnel> {
+    const { data } = await apiClient.get('/smm/analytics/funnel', {
+      params: {
+        brand_id: brandId ?? undefined,
+        period,
+        channel_id: channelId ?? undefined,
+      },
+    })
+    return data
+  },
+
+  async analyticsCohort(
+    brandId?: number | null,
+    period = '30d',
+    channelId?: number | null,
+  ): Promise<import('@/types/smm').AnalyticsCohort> {
+    const { data } = await apiClient.get('/smm/analytics/cohort', {
+      params: {
+        brand_id: brandId ?? undefined,
+        period,
+        channel_id: channelId ?? undefined,
+      },
+    })
+    return data
+  },
+
+  async analyticsInsights(
+    brandId?: number | null,
+    period = '7d',
+    channelId?: number | null,
+  ): Promise<{ insights: import('@/types/smm').AnalyticsInsight[] }> {
+    const { data } = await apiClient.get('/smm/analytics/insights', {
+      params: {
+        brand_id: brandId ?? undefined,
+        period,
+        channel_id: channelId ?? undefined,
+      },
+    })
+    return data
+  },
+
+  async exportAnalyticsCsv(
+    brandId?: number | null,
+    period = '7d',
+    channelId?: number | null,
+  ): Promise<Blob> {
+    const { data } = await apiClient.get('/smm/analytics/export', {
+      params: {
+        brand_id: brandId ?? undefined,
+        period,
+        channel_id: channelId ?? undefined,
+      },
+      responseType: 'blob',
     })
     return data
   },
@@ -569,6 +723,7 @@ export const smmService = {
       alert_enabled?: boolean
       alert_delivery?: BrandChannel['alert_delivery']
       sync_interval_min?: number
+      alert_rules?: BrandChannel['alert_rules']
     },
   ): Promise<BrandChannel> {
     const { data } = await apiClient.patch(`/smm/competitors/${channelId}`, payload)
@@ -610,6 +765,25 @@ export const smmService = {
         period,
       },
     })
+    return data
+  },
+
+  async competitorInsights(
+    channelId: number,
+    period: '7d' | '30d' = '7d',
+    withAi = true,
+  ): Promise<CompetitorInsights> {
+    const { data } = await apiClient.get(`/smm/competitors/${channelId}/insights`, {
+      params: { period, with_ai: withAi },
+    })
+    return data
+  },
+
+  async competitorIdeas(
+    channelId: number,
+    payload?: { brand_id?: number; limit?: number },
+  ): Promise<CompetitorIdeasResponse> {
+    const { data } = await apiClient.post(`/smm/competitors/${channelId}/ideas`, payload ?? {})
     return data
   },
 
@@ -798,6 +972,82 @@ export const smmService = {
   }> {
     const { data } = await apiClient.post('/smm/onboarding/seed-demo', null, {
       params: { force },
+    })
+    return data
+  },
+
+  async listContentSeries(
+    brandId: number,
+    activeOnly = false,
+  ): Promise<import('@/types/smm').ContentSeries[]> {
+    const { data } = await apiClient.get(`/smm/brands/${brandId}/series`, {
+      params: activeOnly ? { active_only: true } : undefined,
+    })
+    return data.series ?? []
+  },
+
+  async createContentSeries(
+    brandId: number,
+    payload: {
+      title: string
+      color?: string
+      body?: string
+      template_id?: number | null
+      targets?: { network: string; external_id: string }[]
+      weekdays: number[]
+      publish_time?: string
+      cadence?: import('@/types/smm').ContentSeriesCadence
+      is_active?: boolean
+      starts_on?: string | null
+      ends_on?: string | null
+      expand?: boolean
+    },
+  ): Promise<import('@/types/smm').ContentSeries> {
+    const { data } = await apiClient.post(`/smm/brands/${brandId}/series`, payload)
+    return data
+  },
+
+  async updateContentSeries(
+    id: number,
+    payload: Partial<{
+      title: string
+      color: string
+      body: string
+      template_id: number | null
+      clear_template: boolean
+      targets: { network: string; external_id: string }[]
+      weekdays: number[]
+      publish_time: string
+      cadence: import('@/types/smm').ContentSeriesCadence
+      is_active: boolean
+      starts_on: string | null
+      ends_on: string | null
+      rebuild: boolean
+    }>,
+  ): Promise<import('@/types/smm').ContentSeries> {
+    const { data } = await apiClient.patch(`/smm/series/${id}`, payload)
+    return data
+  },
+
+  async deleteContentSeries(id: number): Promise<void> {
+    await apiClient.delete(`/smm/series/${id}`)
+  },
+
+  async expandContentSeries(
+    id: number,
+  ): Promise<import('@/types/smm').ContentSeriesExpandResult> {
+    const { data } = await apiClient.post(`/smm/series/${id}/expand`)
+    return data
+  },
+
+  async instantiateContentSeries(
+    id: number,
+    publish_at: string,
+    status?: string,
+  ): Promise<PublishJob> {
+    const { data } = await apiClient.post(`/smm/series/${id}/instantiate`, {
+      publish_at,
+      status,
     })
     return data
   },

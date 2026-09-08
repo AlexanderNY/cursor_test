@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
+import { AdminJumpNav, type AdminNavGroup, type AdminNavItem } from '@/components/admin-jump-nav'
 import { PageShell } from '@/components/page-shell'
 import {
   getPublishedPosts,
@@ -37,10 +38,14 @@ type AccountSectionId =
   | 'site-admin'
   | 'learn-cms'
 
-type NavItem = {
+type AccountNavMeta = {
   id: AccountSectionId
   label: string
   hint?: string
+}
+
+function accountHref(id: AccountSectionId): string {
+  return id === 'profile' ? '/account' : `/account?section=${encodeURIComponent(id)}`
 }
 
 function roleFunctions(session: SiteAuthSession): string[] {
@@ -71,7 +76,7 @@ export function SiteAccountPage() {
   const [ok, setOk] = useState('')
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
-  const [searchParams, setSearchParams] = useSearchParams()
+  const [searchParams] = useSearchParams()
   const { posts, isReady: postsReady } = useLearnPosts()
   const { completedSlugs, isReady: progressReady } = useSiteLearnProgress()
   const [study, setStudy] = useState<SiteStudySummary | null>(null)
@@ -131,26 +136,26 @@ export function SiteAccountPage() {
   const doneCount = published.filter((p) => completedSlugs.has(p.slug)).length
   const pct = progressPercent(doneCount, published.length)
 
-  const navItems = useMemo((): NavItem[] => {
+  const accountGroups = useMemo((): AdminNavGroup[] => {
     if (!session) {
       return []
     }
-    const items: NavItem[] = [
+    const cabinetMeta: AccountNavMeta[] = [
       { id: 'profile', label: 'Профиль', hint: 'Роль и возможности' },
       { id: 'study', label: 'Учёба', hint: 'Тесты и anki' },
       { id: 'learn', label: 'Learn', hint: 'Теория и прогресс' },
       { id: 'learning-map', label: 'Карта обучения', hint: 'Mind map · собеседование' },
       { id: 'contact', label: 'Форма связи', hint: 'Написать команде' },
+      { id: 'password', label: 'Смена пароля', hint: 'Безопасность аккаунта' },
     ]
-    for (const slug of managed) {
-      items.push({
-        id: `app:${slug}`,
-        label: `Владелец · ${slug}`,
-        hint: 'Описание и блог',
-      })
-    }
+    const serviceMeta: AccountNavMeta[] = managed.map((slug) => ({
+      id: `app:${slug}`,
+      label: slug,
+      hint: 'Описание и блог',
+    }))
+    const adminMeta: AccountNavMeta[] = []
     if (isSuperAdmin(session)) {
-      items.push(
+      adminMeta.push(
         { id: 'site-admin', label: 'Супер-админ сайта', hint: 'Витрина и пользователи' },
         {
           id: 'learn-cms',
@@ -161,18 +166,53 @@ export function SiteAccountPage() {
         },
       )
     }
-    items.push({ id: 'password', label: 'Смена пароля', hint: 'Безопасность аккаунта' })
-    return items
+    const toNav = (meta: AccountNavMeta[]): AdminNavItem[] =>
+      meta.map((item) => ({
+        id: item.id,
+        label: item.label,
+        href: accountHref(item.id),
+      }))
+    const groups: AdminNavGroup[] = [{ label: 'Кабинет', items: toNav(cabinetMeta) }]
+    if (serviceMeta.length > 0) {
+      groups.push({ label: 'Сервисы', items: toNav(serviceMeta) })
+    }
+    if (adminMeta.length > 0) {
+      groups.push({ label: 'Админ-разделы', items: toNav(adminMeta) })
+    }
+    return groups
   }, [session, managed, learnSession?.role])
 
+  const allMeta = useMemo(
+    () =>
+      accountGroups.flatMap((group) =>
+        group.items.map((item) => {
+          const id = item.id as AccountSectionId
+          const hintById: Partial<Record<AccountSectionId, string>> = {
+            profile: 'Роль и возможности',
+            study: 'Тесты и anki',
+            learn: 'Теория и прогресс',
+            'learning-map': 'Mind map · собеседование',
+            contact: 'Написать команде',
+            password: 'Безопасность аккаунта',
+            'site-admin': 'Витрина и пользователи',
+            'learn-cms': canEditLearn(learnSession?.role)
+              ? 'Сессия CopyParse активна'
+              : 'Вход через сайт или CopyParse',
+          }
+          return {
+            id,
+            label: item.label,
+            hint: id.startsWith('app:') ? 'Описание и блог' : hintById[id],
+          } satisfies AccountNavMeta
+        }),
+      ),
+    [accountGroups, learnSession?.role],
+  )
+
   const sectionParam = searchParams.get('section') || 'profile'
-  const activeId: AccountSectionId = navItems.some((item) => item.id === sectionParam)
+  const activeId: AccountSectionId = allMeta.some((item) => item.id === sectionParam)
     ? (sectionParam as AccountSectionId)
     : 'profile'
-
-  function openSection(id: AccountSectionId) {
-    setSearchParams(id === 'profile' ? {} : { section: id }, { replace: true })
-  }
 
   async function onChangePassword(event: FormEvent) {
     event.preventDefault()
@@ -205,7 +245,7 @@ export function SiteAccountPage() {
   }
 
   const functions = roleFunctions(session)
-  const activeNav = navItems.find((item) => item.id === activeId)
+  const activeNav = allMeta.find((item) => item.id === activeId)
 
   return (
     <PageShell>
@@ -225,26 +265,15 @@ export function SiteAccountPage() {
       </header>
 
       <div className="account-layout">
-        <nav className="account-nav" aria-label="Разделы кабинета">
-          <p className="account-nav-label">Разделы</p>
-          <ul className="account-nav-list">
-            {navItems.map((item) => (
-              <li key={item.id}>
-                <button
-                  type="button"
-                  className={`account-nav-item${activeId === item.id ? ' is-active' : ''}`}
-                  aria-current={activeId === item.id ? 'page' : undefined}
-                  onClick={() => openSection(item.id)}
-                >
-                  <span className="account-nav-item-title">{item.label}</span>
-                  {item.hint ? <span className="account-nav-item-hint">{item.hint}</span> : null}
-                </button>
-              </li>
-            ))}
-          </ul>
+        <div className="account-nav-shell">
+          <AdminJumpNav
+            showGlobal={false}
+            ariaLabel="Разделы кабинета"
+            groups={accountGroups}
+          />
           <button
             type="button"
-            className="account-nav-logout"
+            className="admin-jump-nav-link account-nav-logout-link"
             onClick={() => {
               clearSiteAuthSession()
               window.location.href = '/login'
@@ -252,7 +281,7 @@ export function SiteAccountPage() {
           >
             Выйти
           </button>
-        </nav>
+        </div>
 
         <div className="account-panel" aria-live="polite">
           <header className="account-panel-head">
@@ -272,8 +301,8 @@ export function SiteAccountPage() {
                 ))}
               </ul>
               <p className="learn-section-note">
-                Слева — меню разделов: откройте Learn, карту, связь или админку, если она вам
-                доступна.
+                Сверху — меню разделов в том же стиле, что и админка: Learn, карта, сервисы и
+                админ-пункты, если они вам доступны.
               </p>
             </div>
           ) : null}

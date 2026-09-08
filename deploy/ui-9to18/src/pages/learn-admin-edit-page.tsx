@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
-import { HtmlEditor } from '@/components/html-editor'
+import { AdminJumpNav } from '@/components/admin-jump-nav'
 import { PageShell } from '@/components/page-shell'
+import { StructuredPostEditor } from '@/components/structured-post-editor'
 import { getSortedRubrics, type LearnLink, type LearnRubricId } from '@/data/learn'
 import {
   createEmptyPost,
@@ -14,7 +15,13 @@ import {
   toDatetimeLocalValue,
   type LearnPostInput,
 } from '@/data/learn/learn-store'
-import { plainTextToHtml } from '@/data/learn/sanitize-html'
+import {
+  EMPTY_LEARN_STRUCTURED_POST,
+  hydrateLearnStructured,
+  serializeStructuredPost,
+  type StructuredPost,
+  validateLearnStructuredPost,
+} from '@/data/site/structured-post'
 
 function linksToText(links: LearnLink[]): string {
   return links.map((link) => `${link.label} | ${link.href}`).join('\n')
@@ -32,6 +39,19 @@ function textToLinks(text: string): LearnLink[] {
     })
 }
 
+function theoryFromStructured(post: StructuredPost): string {
+  const parts = [post.intro.trim()]
+  for (const section of post.sections) {
+    if (section.heading.trim()) {
+      parts.push(`## ${section.heading.trim()}`)
+    }
+    if (section.body.trim()) {
+      parts.push(section.body.trim())
+    }
+  }
+  return parts.filter(Boolean).join('\n\n')
+}
+
 export function LearnAdminEditPage() {
   const { slug } = useParams()
   const navigate = useNavigate()
@@ -39,6 +59,7 @@ export function LearnAdminEditPage() {
   const rubrics = getSortedRubrics()
 
   const [form, setForm] = useState<LearnPostInput | null>(null)
+  const [structured, setStructured] = useState<StructuredPost>(EMPTY_LEARN_STRUCTURED_POST)
   const [linksText, setLinksText] = useState('')
   const [error, setError] = useState('')
   const [isSaved, setIsSaved] = useState(false)
@@ -58,6 +79,7 @@ export function LearnAdminEditPage() {
           const empty = createEmptyPost(nextOrder)
           if (!cancelled) {
             setForm(empty)
+            setStructured(empty.structured ?? EMPTY_LEARN_STRUCTURED_POST)
             setLinksText('')
           }
           return
@@ -67,6 +89,12 @@ export function LearnAdminEditPage() {
           if (!cancelled) setMissing(true)
           return
         }
+        const nextStructured = hydrateLearnStructured(existing.structured, {
+          lab: existing.lab,
+          cheatsheet: existing.cheatsheet,
+          cheatsheetFormat: existing.cheatsheetFormat,
+          diagram: existing.diagram,
+        })
         const next: LearnPostInput = {
           slug: existing.slug,
           episode: existing.episode,
@@ -74,22 +102,20 @@ export function LearnAdminEditPage() {
           shortTitle: existing.shortTitle,
           rubricId: existing.rubricId,
           order: existing.order,
-          theory:
-            existing.theoryFormat === 'html' ? existing.theory : plainTextToHtml(existing.theory),
-          lab: existing.labFormat === 'html' ? existing.lab : plainTextToHtml(existing.lab),
-          cheatsheet:
-            existing.cheatsheetFormat === 'html'
-              ? existing.cheatsheet
-              : plainTextToHtml(existing.cheatsheet),
+          theory: existing.theory,
+          lab: existing.lab,
+          cheatsheet: existing.cheatsheet,
           diagram: existing.diagram,
           links: existing.links,
-          theoryFormat: 'html',
-          labFormat: 'html',
-          cheatsheetFormat: 'html',
+          structured: nextStructured,
+          theoryFormat: 'markdown',
+          labFormat: existing.labFormat === 'html' ? 'html' : 'markdown',
+          cheatsheetFormat: existing.cheatsheetFormat === 'html' ? 'html' : 'markdown',
           publishedAt: existing.publishedAt,
         }
         if (!cancelled) {
           setForm(next)
+          setStructured(nextStructured)
           setLinksText(linksToText(next.links))
         }
       } catch (err) {
@@ -148,6 +174,11 @@ export function LearnAdminEditPage() {
       setError('Укажите заголовок')
       return
     }
+    const validation = validateLearnStructuredPost(structured)
+    if (validation.length > 0) {
+      setError(validation.join('; '))
+      return
+    }
 
     setSaving(true)
     setError('')
@@ -161,6 +192,9 @@ export function LearnAdminEditPage() {
           setError('Такой slug уже занят')
           return
         }
+        const firstDiagram = structured.diagrams.find((d) => d.mermaid.trim())?.mermaid || ''
+        const labText = (structured.lab || '').trim()
+        const cheatsheetHtml = (structured.cheatsheetHtml || '').trim()
         const saved = await saveLearnPost({
           ...form,
           slug: normalizedSlug,
@@ -168,8 +202,13 @@ export function LearnAdminEditPage() {
           shortTitle: form.shortTitle.trim() || form.title.trim().slice(0, 24),
           episode: form.episode.trim() || 'S01',
           links: textToLinks(linksText),
-          theoryFormat: 'html',
-          labFormat: 'html',
+          structured,
+          theory: theoryFromStructured(structured),
+          lab: labText,
+          cheatsheet: cheatsheetHtml,
+          diagram: firstDiagram,
+          theoryFormat: 'markdown',
+          labFormat: 'markdown',
           cheatsheetFormat: 'html',
         })
         setIsSaved(true)
@@ -193,10 +232,36 @@ export function LearnAdminEditPage() {
       <header className="learn-header">
         <p className="learn-eyebrow">Learn · Админка</p>
         <h1 className="learn-title">{isNew ? 'Новая запись' : 'Редактирование'}</h1>
+        <p className="learn-section-note">
+          Пять блоков: теория, лаба, Mermaid, тест, HTML-шпаргалка + колода Anki. Одна статья =
+          один лист карты.
+        </p>
+        <p className="learn-section-note">
+          Лист карты:{' '}
+          <code>{`{learn:${form.slug || 'slug'}}`}</code>
+          {' · '}
+          <Link to="/game/learning-map" className="learn-admin-link">
+            Открыть карту обучения
+          </Link>
+        </p>
       </header>
 
+      <AdminJumpNav
+        items={[
+          { id: 'edit-meta', label: 'Мета' },
+          { id: 'edit-theory', label: 'Теория' },
+          { id: 'edit-lab', label: 'Лаба' },
+          { id: 'edit-diagrams', label: 'Схемы' },
+          { id: 'edit-quiz', label: 'Тест' },
+          { id: 'edit-cheatsheet', label: 'Шпаргалка' },
+          { id: 'edit-anki', label: 'Anki' },
+          { id: 'edit-links', label: 'Ссылки' },
+          { id: 'edit-save', label: 'Сохранить' },
+        ]}
+      />
+
       <form className="learn-admin-form" onSubmit={handleSubmit}>
-        <div className="learn-admin-grid">
+        <div id="edit-meta" className="learn-admin-grid admin-jump-target">
           <label className="learn-admin-field">
             <span>Заголовок</span>
             <input
@@ -269,30 +334,16 @@ export function LearnAdminEditPage() {
           </label>
         </div>
 
-        <HtmlEditor
-          label="Теория (HTML)"
-          value={form.theory}
-          onChange={(value) => updateField('theory', value)}
+        <StructuredPostEditor
+          mode="learn"
+          value={structured}
+          onChange={(next) => {
+            setStructured(next)
+            setIsSaved(false)
+          }}
         />
 
-        <HtmlEditor label="Лаба (HTML)" value={form.lab} onChange={(value) => updateField('lab', value)} />
-
-        <HtmlEditor
-          label="Шпаргалка (HTML)"
-          value={form.cheatsheet}
-          onChange={(value) => updateField('cheatsheet', value)}
-        />
-
-        <label className="learn-admin-field">
-          <span>Mermaid</span>
-          <textarea
-            rows={6}
-            value={form.diagram}
-            onChange={(event) => updateField('diagram', event.target.value)}
-          />
-        </label>
-
-        <label className="learn-admin-field">
+        <label id="edit-links" className="learn-admin-field admin-jump-target">
           <span>Ссылки (строка: подпись | url)</span>
           <textarea rows={4} value={linksText} onChange={(event) => setLinksText(event.target.value)} />
         </label>
@@ -300,9 +351,14 @@ export function LearnAdminEditPage() {
         {error ? <p className="learn-section-note" style={{ color: '#b91c1c' }}>{error}</p> : null}
         {isSaved ? <p className="learn-admin-ok">Сохранено</p> : null}
 
-        <button type="submit" className="learn-admin-btn learn-admin-btn-primary" disabled={saving}>
-          {saving ? 'Сохранение…' : 'Сохранить'}
-        </button>
+        <div id="edit-save" className="admin-jump-target">
+          <button type="submit" className="learn-admin-btn learn-admin-btn-primary" disabled={saving}>
+            {saving ? 'Сохранение…' : 'Сохранить'}
+          </button>
+          <p className="learn-section-note" style={{ marginTop: '0.5rem' }}>
+            Превью JSON: {serializeStructuredPost(structured).length} символов
+          </p>
+        </div>
       </form>
     </PageShell>
   )

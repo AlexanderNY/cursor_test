@@ -69,8 +69,9 @@ export function LearningMapPage() {
         <p className="learn-eyebrow">🗺️ Карта обучения</p>
         <h1 className="learn-title">Подготовка к собеседованию</h1>
         <p className="learn-lead">
-          Mind map: масштаб, ветки, теги (фильтр и цвета), пунктирные связи. Клик по листу —
-          описание и Anki. «Выгрузить MD» / Anki ↓ / Anki ▶.
+          Каждый лист — статья Learn. Выберите профиль (аналитик, DevOps, разработчик,
+          тестировщик, владелец продукта), чтобы сузить карту. Anki берётся из карточек
+          связанных статей.
           {loading ? ' Загрузка…' : ` Источник: ${sourceLabel}.`}
         </p>
       </header>

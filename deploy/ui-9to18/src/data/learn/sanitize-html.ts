@@ -2,6 +2,7 @@ const ALLOWED_TAGS = new Set([
   'H1',
   'H2',
   'H3',
+  'H4',
   'P',
   'B',
   'STRONG',
@@ -17,6 +18,14 @@ const ALLOWED_TAGS = new Set([
   'BR',
   'SPAN',
   'DIV',
+  'TABLE',
+  'THEAD',
+  'TBODY',
+  'TFOOT',
+  'TR',
+  'TH',
+  'TD',
+  'HR',
 ])
 
 function isSafeUrl(value: string): boolean {
@@ -47,8 +56,11 @@ function sanitizeElement(element: Element): void {
     const isTitle = name === 'title'
     const isTarget = tag === 'A' && name === 'target'
     const isRel = tag === 'A' && name === 'rel'
+    const isTableSpan =
+      (tag === 'TD' || tag === 'TH') && (name === 'colspan' || name === 'rowspan')
+    const isScope = tag === 'TH' && name === 'scope'
 
-    if (!(isHref || isSrc || isAlt || isTitle || isTarget || isRel)) {
+    if (!(isHref || isSrc || isAlt || isTitle || isTarget || isRel || isTableSpan || isScope)) {
       element.removeAttribute(attr.name)
       continue
     }

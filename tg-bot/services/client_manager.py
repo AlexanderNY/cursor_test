@@ -336,7 +336,9 @@ class TelegramClientManager:
 
             # Создаем клиент с уникальным именем сессии для каждого пользователя
             session_name = f'sessions/tg_session_{user_id}'
-            proxy = parse_telegram_proxy(settings.TELEGRAM_PROXY_URL)
+            proxy = parse_telegram_proxy(
+                (profile.get("proxy_url") or "").strip() or settings.TELEGRAM_PROXY_URL
+            )
             client_kwargs: Dict[str, Any] = {
                 "system_version": "4.16.30-vxASPA",
             }
@@ -368,8 +370,8 @@ class TelegramClientManager:
                 await notification_service.send_error_notification(
                     user_id,
                     "Не удалось подключиться к Telegram (сеть/блокировка MTProto). "
-                    "Нужен SOCKS5/HTTP proxy: задайте TELEGRAM_PROXY_URL "
-                    "(например socks5://host.docker.internal:10808) и перезапустите tg-bot."
+                    "Задайте SOCKS5/HTTP прокси в профиле Telegram "
+                    "(например socks5://host.docker.internal:10808) и сохраните профиль."
                 )
                 try:
                     await client.disconnect()
@@ -420,7 +422,10 @@ class TelegramClientManager:
                         await client.disconnect()
                         return None
                 
-                # Клиент авторизован
+                # Клиент авторизован — синхронизируем auth_state
+                # (мог остаться failed/pending_* после прошлой сетевой ошибки)
+                if auth_state != "authorized":
+                    await self._update_auth_state(user_id, auth_state="authorized")
                 _log_action("Created and connected client for user %s", user_id)
                 return client
             

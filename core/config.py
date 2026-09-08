@@ -42,6 +42,9 @@ class Settings(BaseSettings):
     SCHEDULER_SERVICE_URL: str = "http://localhost:8003"
     COLLECTOR_SERVICE_URL: str = "http://localhost:8009"
     PROCESSOR_SERVICE_URL: str = "http://localhost:8010"
+    INSTAGRAM_BOT_SERVICE_URL: str = "http://localhost:8011"
+    DZEN_BOT_SERVICE_URL: str = "http://localhost:8012"
+    THREADS_BOT_SERVICE_URL: str = "http://localhost:8013"
 
     # Healthcheck: кэш агрегата и circuit breaker для внешних /health
     HEALTHCHECK_CACHE_TTL_SECONDS: int = 45
@@ -78,6 +81,12 @@ class Settings(BaseSettings):
     S3_SECRET_KEY: str = ""
     S3_REGION: str = "us-east-1"
     S3_USE_SSL: bool = False
+
+    # Upload DoS guards (chunked read; reject before buffering unbounded body)
+    MAX_UPLOAD_IMAGE_BYTES: int = 10 * 1024 * 1024  # 10 MiB
+    MAX_UPLOAD_VIDEO_BYTES: int = 50 * 1024 * 1024  # 50 MiB
+    MAX_UPLOAD_IMPORT_BYTES: int = 5 * 1024 * 1024  # 5 MiB (CSV/JSON imports)
+    MAX_UPLOAD_FILES_PER_REQUEST: int = 10
 
     class Config:
         env_file = ".env"

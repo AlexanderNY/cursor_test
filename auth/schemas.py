@@ -36,7 +36,7 @@ class UserGroupSummary(BaseModel):
     """Кратко: одна группа пользователя (может быть несколько)."""
     group_id: int
     group_name: str
-    role_in_group: Literal["admin", "editor", "analyst", "manager", "author"]
+    role_in_group: Literal["owner", "editor", "approver", "viewer", "admin", "manager", "author", "analyst"]
 
 
 class UserProfile(BaseModel):
@@ -51,7 +51,8 @@ class UserProfile(BaseModel):
     created_at: datetime
     group_id: Optional[int] = None
     group_name: Optional[str] = None
-    role_in_group: Optional[Literal["admin", "editor", "analyst", "manager", "author"]] = None
+    role_in_group: Optional[Literal["owner", "editor", "approver", "viewer", "admin", "manager", "author", "analyst"]] = None
+    active_group_id: Optional[int] = None
     groups: Optional[List[UserGroupSummary]] = None
     billing_provider: Optional[str] = None
     billing_customer_id: Optional[str] = None
@@ -122,6 +123,11 @@ class TokenBlacklistCheckResponse(BaseModel):
     blacklisted: bool
 
 
+class ActiveGroupRequest(BaseModel):
+    """Switch active workspace."""
+    group_id: int
+
+
 class GroupCreate(BaseModel):
     """Схема создания группы (менеджер или admin)."""
     name: str = Field(..., min_length=1, max_length=255)
@@ -152,7 +158,7 @@ class GroupMemberResponse(BaseModel):
     username: str
     email: str
     tariff: str
-    role_in_group: Literal["admin", "editor", "analyst", "manager", "author"]
+    role_in_group: Literal["owner", "editor", "approver", "viewer", "admin", "manager", "author", "analyst"]
     joined_at: datetime
 
     class Config:
@@ -166,7 +172,7 @@ class GroupResponse(BaseModel):
     description: Optional[str] = None
     created_at: datetime
     created_by_user_id: Optional[int] = None
-    role_in_group: Optional[Literal["admin", "editor", "analyst", "manager", "author"]] = None
+    role_in_group: Optional[Literal["owner", "editor", "approver", "viewer", "admin", "manager", "author", "analyst"]] = None
     members: Optional[List["GroupMemberResponse"]] = None
 
     class Config:
@@ -176,13 +182,13 @@ class GroupResponse(BaseModel):
 class AddMemberRequest(BaseModel):
     """Добавление участника по email."""
     email: str = Field(..., min_length=1)
-    role_in_group: Literal["admin", "editor", "analyst", "manager", "author"] = "editor"
+    role_in_group: Literal["owner", "editor", "approver", "viewer", "admin", "manager", "author", "analyst"] = "editor"
 
 
 class CreateInviteRequest(BaseModel):
     """Создание invite-ссылки (email опционален)."""
     email: Optional[str] = None
-    role_in_group: Literal["admin", "editor", "analyst", "manager", "author"] = "editor"
+    role_in_group: Literal["owner", "editor", "approver", "viewer", "admin", "manager", "author", "analyst"] = "editor"
     expires_days: int = Field(7, ge=1, le=30)
 
 
@@ -227,7 +233,16 @@ def user_profile_from_user_dict(
     memberships: Optional[list] = None,
 ) -> UserProfile:
     """Собирает UserProfile из строки users и опционально списка групп."""
-    first = memberships[0] if memberships else None
+    active_id = user.get("active_group_id")
+    chosen = None
+    if memberships:
+        if active_id is not None:
+            for m in memberships:
+                if m["group_id"] == active_id:
+                    chosen = m
+                    break
+        if chosen is None:
+            chosen = memberships[0]
     groups_list: Optional[List[UserGroupSummary]] = None
     if memberships:
         groups_list = [
@@ -247,9 +262,10 @@ def user_profile_from_user_dict(
         is_email_verified=user["is_email_verified"],
         is_blocked=bool(user.get("is_blocked", False)),
         created_at=user["created_at"],
-        group_id=first["group_id"] if first else None,
-        group_name=first["group_name"] if first else None,
-        role_in_group=first["role_in_group"] if first else None,
+        group_id=chosen["group_id"] if chosen else None,
+        group_name=chosen["group_name"] if chosen else None,
+        role_in_group=chosen["role_in_group"] if chosen else None,
+        active_group_id=int(active_id) if active_id is not None else (chosen["group_id"] if chosen else None),
         groups=groups_list,
         billing_provider=user.get("billing_provider"),
         billing_customer_id=user.get("billing_customer_id"),
@@ -303,6 +319,21 @@ class PromoCodeCreate(BaseModel):
     valid_from: Optional[datetime] = None
     valid_until: Optional[datetime] = None
     is_active: bool = True
+
+
+class ActivityHeartbeatRequest(BaseModel):
+    client_session_id: str = Field(..., min_length=8, max_length=64)
+
+
+class AdminProductMetrics(BaseModel):
+    active_users_30d: int
+    active_users_60d: int
+    total_active_seconds_30d: int
+    engagement_seconds: float
+    retention: Optional[float] = None
+    paid_active_users_30d: int
+    paid_active_users_60d: int
+    conversion: Optional[float] = None
 
 
 class PromoCodeUpdate(BaseModel):

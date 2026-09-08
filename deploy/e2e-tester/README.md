@@ -42,6 +42,15 @@ docker compose -f deploy/e2e-tester/docker-compose.yml --env-file deploy/e2e-tes
 3. **Credentials** → логин/пароль (только в UI).
 4. **Runs** → Start → HTML/ZIP отчёт.
 
+## Smoke на 9to18 (локально)
+
+1. Поднимите ui-9to18 (порт 8200) и этот tester.
+2. `TARGET_UI_URL=http://host.docker.internal:8200`
+3. Upload [`examples/nine_to_eighteen_smoke.yaml`](examples/nine_to_eighteen_smoke.yaml).
+4. **Runs** → Start.
+
+Сервис **только локальный** (`127.0.0.1:8300`), без облачной панели.
+
 ## Пример: VK Create Post
 
 [`examples/copyparse_vk_create_post.json`](examples/copyparse_vk_create_post.json) — login → home → VKontakte → Create Post `ТЕСТ` → Posts → Refresh → assert.

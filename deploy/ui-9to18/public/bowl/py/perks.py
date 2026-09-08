@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 
 _PERKS: dict = {}
-DEFAULT_PERK_IDS = ("leg", "eye", "tentacle", "spike")
+DEFAULT_PERK_IDS = ("leg", "eye", "tentacle", "spike", "shell", "dash", "anchor")
 
 
 def load_perks_from_json(raw: str) -> None:
@@ -103,6 +103,28 @@ def perk_spike_contact_stats(perk_levels: dict[str, int]) -> tuple[float, float,
         int(stats.get("spike_count", 0)),
         float(stats.get("cooldown", 0.75)),
     )
+
+
+def perk_shell_mults(perk_levels: dict[str, int]) -> tuple[float, float]:
+    stats = get_level_stats("shell", get_player_level(perk_levels, "shell"))
+    return (
+        float(stats.get("damage_taken_mult", 1.0)),
+        float(stats.get("knockback_mult", 1.0)),
+    )
+
+
+def perk_dash_stats(perk_levels: dict[str, int]) -> tuple[float, float, float]:
+    stats = get_level_stats("dash", get_player_level(perk_levels, "dash"))
+    return (
+        float(stats.get("sprint_mult_bonus", 0.0)),
+        float(stats.get("stamina_drain_mult", 1.0)),
+        float(stats.get("iframe_chance", 0.0)),
+    )
+
+
+def perk_pull_resist(perk_levels: dict[str, int]) -> float:
+    stats = get_level_stats("anchor", get_player_level(perk_levels, "anchor"))
+    return max(0.0, min(0.95, float(stats.get("pull_resist", 0.0))))
 
 
 def active_perk_ids(perk_levels: dict[str, int]) -> list[str]:

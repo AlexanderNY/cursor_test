@@ -13,17 +13,19 @@ import { getErrorMessage } from '@/services/api-client'
 import { formatRub } from '@/lib/billing'
 
 const HIGHLIGHT_FEATURES: Record<string, string[]> = {
-  free: ['1 brand', '3 own channels', 'Inbox read', 'AI = 0'],
-  standard: ['AI composer', 'Automations', 'Approval workflow', 'Team seats: 5'],
-  full: ['Competitors', 'High AI quota', 'Webhooks + SLA', 'Team seats: 20'],
+  free: ['1 brand', '3 own channels', 'Schedule 7d', '1 content series', 'AI = 0'],
+  standard: ['AI composer', 'Schedule 30d', '10 series', 'Approval + Team 5'],
+  full: ['Competitors', 'Schedule 90d', '50 series', 'Webhooks + SLA'],
 }
 
 type PlanExtra = BillingPlanDefinition & {
   max_own_channels?: number
+  max_competitor_channels?: number
   max_brands?: number
   max_targets_per_job?: number
   max_automations?: number
   max_team_seats?: number
+  max_content_series?: number
   ai_calls_month?: number
   schedule_horizon_days?: number
   stats_retention_days?: number
@@ -177,6 +179,14 @@ export function PricingPage() {
                     <div>
                       Channels:{' '}
                       <span className="font-medium text-[var(--text-primary)]">{p.max_own_channels}</span>
+                    </div>
+                  )}
+                  {p.max_competitor_channels != null && (
+                    <div>
+                      Competitors:{' '}
+                      <span className="font-medium text-[var(--text-primary)]">
+                        {p.max_competitor_channels}
+                      </span>
                     </div>
                   )}
                   {p.max_brands != null && (

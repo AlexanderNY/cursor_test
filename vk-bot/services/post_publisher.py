@@ -532,6 +532,14 @@ class PostPublisher:
                 )
         finally:
             await release_db_connection(conn)
+        from shared.bot_internal import mark_post_published
+
+        await mark_post_published(
+            settings.CORE_SERVICE_URL or "",
+            platform="vk",
+            post_id=int(post_id),
+            external_id=str(published_vk_post_id) if published_vk_post_id is not None else None,
+        )
 
     async def _update_post_status(self, post_id: int, status: str) -> None:
         conn = await get_db_connection()
@@ -547,6 +555,15 @@ class PostPublisher:
                 )
         finally:
             await release_db_connection(conn)
+        if status in ("error", "failed", "review"):
+            from shared.bot_internal import mark_post_published
+
+            await mark_post_published(
+                settings.CORE_SERVICE_URL or "",
+                platform="vk",
+                post_id=int(post_id),
+                error=f"status={status}",
+            )
 
     async def publish_ready_posts(self) -> int:
         """Публикует все посты со статусом ready. Возвращает количество опубликованных."""

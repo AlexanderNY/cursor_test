@@ -23,6 +23,8 @@ POST_STATUS_CHECK = (
 # Column order used by collector/distribute when copying rows between tables.
 POST_BASE_COLUMNS: tuple[str, ...] = (
     "user_id",
+    "brand_id",
+    "channel_id",
     "domain",
     "url",
     "title",
@@ -54,6 +56,8 @@ POST_BASE_COLUMNS: tuple[str, ...] = (
 # SQL column definitions for CREATE TABLE generation.
 POST_BASE_COLUMN_DEFS: dict[str, str] = {
     "user_id": "INTEGER NOT NULL",
+    "brand_id": "INTEGER",
+    "channel_id": "INTEGER",
     "domain": "VARCHAR(255)",
     "url": "TEXT",
     "title": "VARCHAR(500)",
@@ -81,6 +85,20 @@ POST_BASE_COLUMN_DEFS: dict[str, str] = {
     "target_channels": "JSONB DEFAULT '[]'",
     "target_groups": "JSONB DEFAULT '[]'",
 }
+
+# All post-like tables that need brand_id / channel_id migration.
+POST_TENANCY_TABLES: tuple[str, ...] = (
+    "posts",
+    "tg_posts",
+    "tw_posts",
+    "wp_posts",
+    "vk_posts",
+    "url_posts",
+    "cpost_posts",
+    "threads_posts",
+    "dzen_posts",
+    "instagram_posts",
+)
 
 # Tables counted by quota_service (must stay in sync with quota logic).
 QUOTA_POST_TABLES: tuple[str, ...] = (

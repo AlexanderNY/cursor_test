@@ -4,6 +4,7 @@ interface MenuScreenProps {
   onContinue: () => void
   onGuide: () => void
   onCharacterEditor: () => void
+  onOrders: () => void
   onSettings: () => void
   onExit: () => void
 }
@@ -14,6 +15,7 @@ export function MenuScreen({
   onContinue,
   onGuide,
   onCharacterEditor,
+  onOrders,
   onSettings,
   onExit,
 }: MenuScreenProps) {
@@ -25,7 +27,9 @@ export function MenuScreen({
           <span className="bowl-brand-domain">9to18.ru</span>
         </div>
         <h1 className="bowl-title">Bowl 2D</h1>
-        <p className="bowl-subtitle">Собирайте точки, избегайте врагов, следите за весом.</p>
+        <p className="bowl-subtitle">
+          Собирайте точки, берите перки (включая панцирь, рывок+ и якорь), оформляйте заказы между матчами.
+        </p>
 
         <div className="bowl-menu-actions">
           <button type="button" className="bowl-btn bowl-btn-primary" onClick={onNewGame}>
@@ -38,6 +42,9 @@ export function MenuScreen({
             disabled={!canContinue}
           >
             Продолжить
+          </button>
+          <button type="button" className="bowl-btn" onClick={onOrders}>
+            Заказы
           </button>
           <button type="button" className="bowl-btn" onClick={onGuide}>
             Справочник

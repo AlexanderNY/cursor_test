@@ -237,6 +237,21 @@ class PostPublisher:
                 )
         finally:
             await release_db_connection(conn)
+        from shared.bot_internal import mark_post_published
+
+        if status == "published":
+            await mark_post_published(
+                settings.CORE_SERVICE_URL or "",
+                platform="instagram",
+                post_id=int(post_id),
+            )
+        elif status in ("failed", "error"):
+            await mark_post_published(
+                settings.CORE_SERVICE_URL or "",
+                platform="instagram",
+                post_id=int(post_id),
+                error=f"status={status}",
+            )
 
     async def publish_ready_posts(self) -> int:
         """Публикует посты со статусом ready: один login на user_id."""

@@ -519,22 +519,6 @@ class PostPublisher:
         finally:
             await self._cleanup_temp(image_paths)
 
-    async def _update_post_status(self, post_id: int, status: str) -> None:
-        """Обновляет статус поста в tg_posts."""
-        conn = await get_db_connection()
-        try:
-            async with conn.cursor() as cur:
-                await cur.execute(
-                    """
-                    UPDATE tg_posts
-                    SET status = %s, updated_at = CURRENT_TIMESTAMP
-                    WHERE id = %s
-                    """,
-                    (status, post_id),
-                )
-        finally:
-            await release_db_connection(conn)
-
     async def _update_post_published(
         self,
         post_id: int,
@@ -557,6 +541,39 @@ class PostPublisher:
                 )
         finally:
             await release_db_connection(conn)
+        from shared.bot_internal import mark_post_published
+
+        await mark_post_published(
+            settings.CORE_SERVICE_URL or "",
+            platform="tg",
+            post_id=int(post_id),
+            external_id=str(telegram_message_id) if telegram_message_id is not None else None,
+        )
+
+    async def _update_post_status(self, post_id: int, status: str) -> None:
+        """Обновляет статус поста в tg_posts."""
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    UPDATE tg_posts
+                    SET status = %s, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = %s
+                    """,
+                    (status, post_id),
+                )
+        finally:
+            await release_db_connection(conn)
+        if status in ("error", "failed"):
+            from shared.bot_internal import mark_post_published
+
+            await mark_post_published(
+                settings.CORE_SERVICE_URL or "",
+                platform="tg",
+                post_id=int(post_id),
+                error=f"status={status}",
+            )
 
     async def edit_published_post(self, user_id: int, post_id: int, text: str) -> Dict:
         """Редактирует уже опубликованный пост в Telegram."""

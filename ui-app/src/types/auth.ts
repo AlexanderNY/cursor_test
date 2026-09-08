@@ -14,9 +14,10 @@ export interface User {
   refresh_token?: string
   group_id?: number | null
   group_name?: string | null
-  role_in_group?: 'admin' | 'editor' | 'analyst' | 'manager' | 'author' | null
+  role_in_group?: 'owner' | 'editor' | 'approver' | 'viewer' | 'admin' | 'manager' | 'author' | 'analyst' | null
+  active_group_id?: number | null
   /** Все группы пользователя (если API отдал список). */
-  groups?: Array<{ group_id: number; group_name: string; role_in_group: 'admin' | 'editor' | 'analyst' | 'manager' | 'author' }> | null
+  groups?: Array<{ group_id: number; group_name: string; role_in_group: 'owner' | 'editor' | 'approver' | 'viewer' | 'admin' | 'manager' | 'author' | 'analyst' }> | null
   billing_provider?: string | null
   billing_customer_id?: string | null
   billing_subscription_id?: string | null
@@ -32,6 +33,7 @@ export interface BillingPlanDefinition {
   storage_gb_limit: number
   max_connected_platforms: number
   max_own_channels?: number
+  max_competitor_channels?: number
   max_brands?: number
   max_targets_per_job?: number
   max_automations?: number
@@ -112,12 +114,23 @@ export interface AdminAuditLogEntry {
   created_at: string
 }
 
+export interface AdminProductMetrics {
+  active_users_30d: number
+  active_users_60d: number
+  total_active_seconds_30d: number
+  engagement_seconds: number
+  retention: number | null
+  paid_active_users_30d: number
+  paid_active_users_60d: number
+  conversion: number | null
+}
+
 export interface GroupMemberResponse {
   user_id: number
   username: string
   email: string
   tariff: string
-  role_in_group: 'admin' | 'editor' | 'analyst' | 'manager' | 'author'
+  role_in_group: 'owner' | 'editor' | 'approver' | 'viewer' | 'admin' | 'manager' | 'author' | 'analyst'
   joined_at: string
 }
 
@@ -127,7 +140,7 @@ export interface GroupResponse {
   description?: string | null
   created_at: string
   created_by_user_id?: number | null
-  role_in_group?: 'admin' | 'editor' | 'analyst' | 'manager' | 'author' | null
+  role_in_group?: 'owner' | 'editor' | 'approver' | 'viewer' | 'admin' | 'manager' | 'author' | 'analyst' | null
   members?: GroupMemberResponse[] | null
 }
 

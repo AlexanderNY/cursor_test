@@ -10,6 +10,9 @@ class Settings(BaseSettings):
     DB_POOL_MINSIZE: int = 2
     DB_POOL_MAXSIZE: int = 20
 
+    # Redis (optional): JWT blacklist hot path for gateway. Empty = Postgres-only.
+    REDIS_URL: str = ""
+
     # JWT Settings (обязательно через env / .env; должен совпадать с JWT_SECRET_KEY gateway/core)
     SECRET_KEY: str = ""
     ALGORITHM: str = "HS256"
@@ -71,4 +74,3 @@ def validate_required_secrets() -> None:
 
 
 validate_required_secrets()
-

@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS learn_posts (
     cheatsheet TEXT NOT NULL DEFAULT '',
     diagram TEXT NOT NULL DEFAULT '',
     links JSONB NOT NULL DEFAULT '[]'::jsonb,
+    structured JSONB NOT NULL DEFAULT '{}'::jsonb,
     theory_format VARCHAR(16) NOT NULL DEFAULT 'markdown'
         CHECK (theory_format IN ('markdown', 'html')),
     lab_format VARCHAR(16) NOT NULL DEFAULT 'markdown'
@@ -26,6 +27,10 @@ CREATE INDEX IF NOT EXISTS idx_learn_posts_order
     ON learn_posts (sort_order ASC, id ASC);
 CREATE INDEX IF NOT EXISTS idx_learn_posts_published
     ON learn_posts (published_at);
+
+-- Additive migration for existing DBs (CREATE IF NOT EXISTS does not alter).
+ALTER TABLE learn_posts
+    ADD COLUMN IF NOT EXISTS structured JSONB NOT NULL DEFAULT '{}'::jsonb;
 
 CREATE TABLE IF NOT EXISTS learn_progress (
     user_id INTEGER NOT NULL,

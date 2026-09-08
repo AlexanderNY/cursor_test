@@ -88,7 +88,10 @@ async def register_user(
             
             # Сохранение refresh токена
             await save_refresh_token(user_id, refresh_token)
-            
+            from services.activity_service import record_auth_visit
+
+            await record_auth_visit(user_id)
+
             # Создание токена для верификации email
             email_verification_token = create_email_verification_token(user_id)
             await save_email_verification_token(user_id, email_verification_token)
@@ -152,7 +155,10 @@ async def authenticate_user(username: str, password: str) -> Optional[Dict]:
             
             # Сохранение refresh токена
             await save_refresh_token(user_id, refresh_token)
-            
+            from services.activity_service import record_auth_visit
+
+            await record_auth_visit(user_id)
+
             return {
                 "user_id": user_id,
                 "username": db_username,
@@ -233,7 +239,7 @@ async def get_user_by_id(user_id: int) -> Optional[Dict]:
                 """
                 SELECT id, username, email, role, tariff, is_email_verified, created_at, is_blocked,
                        billing_provider, billing_customer_id, billing_subscription_id,
-                       subscription_status, subscription_current_period_end
+                       subscription_status, subscription_current_period_end, active_group_id
                 FROM users WHERE id = %s
                 """,
                 (user_id,)
@@ -257,6 +263,7 @@ async def get_user_by_id(user_id: int) -> Optional[Dict]:
                 "billing_subscription_id": user_row[10],
                 "subscription_status": user_row[11],
                 "subscription_current_period_end": user_row[12],
+                "active_group_id": user_row[13],
             }
 
 
@@ -505,7 +512,7 @@ async def get_all_users(
     sql = f"""
                 SELECT id, username, email, role, tariff, is_email_verified, created_at, is_blocked,
                        billing_provider, billing_customer_id, billing_subscription_id,
-                       subscription_status, subscription_current_period_end
+                       subscription_status, subscription_current_period_end, active_group_id
                 FROM users
                 {where}
                 ORDER BY created_at DESC
@@ -530,6 +537,7 @@ async def get_all_users(
                     "billing_subscription_id": row[10],
                     "subscription_status": row[11],
                     "subscription_current_period_end": row[12],
+                    "active_group_id": row[13],
                 }
                 for row in rows
             ]

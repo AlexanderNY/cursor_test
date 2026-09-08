@@ -23,6 +23,7 @@ import type { PostRow } from '@/types/core'
 import type { PublishJob } from '@/types/smm'
 import { formatDateTime } from '@/utils/date'
 import { getErrorMessage } from '@/services/api-client'
+import { JobCollabPanel } from '@/components/smm/job-collab-panel'
 import {
   CSV_POSTS_COLUMNS,
   downloadPostsCsvTemplate,
@@ -135,6 +136,7 @@ export function CreatePostPage() {
   const [editingPostId, setEditingPostId] = useState<number | null>(null)
   const [editingSource, setEditingSource] = useState<'cpost' | 'pipeline'>('cpost')
   const [publishJobs, setPublishJobs] = useState<PublishJob[]>([])
+  const [collabJobId, setCollabJobId] = useState<number | null>(null)
   const [isLoadingPosts, setIsLoadingPosts] = useState(false)
   const [hasLoadedPosts, setHasLoadedPosts] = useState(false)
 
@@ -167,6 +169,23 @@ export function CreatePostPage() {
       return connectedPublishChannels[0]?.id ?? null
     })
   }, [connectedPublishChannels, searchParams])
+
+  useEffect(() => {
+    const draft = searchParams.get('draft')
+    if (!draft) return
+    try {
+      const text = draft.trim()
+      if (!text) return
+      setPostContent(plainTextToHtml(text))
+      const firstLine = text.split('\n').map((l) => l.trim()).find(Boolean)
+      if (firstLine && !postTitle) setPostTitle(firstLine.slice(0, 120))
+      setActiveTab('create')
+    } catch {
+      /* ignore */
+    }
+    // intentionally only on mount / draft param change
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams])
 
   useEffect(() => {
     async function loadProfile() {
@@ -1269,10 +1288,14 @@ export function CreatePostPage() {
                       const targets = (job.targets || [])
                         .map((t) => `${t.network}:${t.external_id}`)
                         .join(', ')
+                      const isSelected = collabJobId === job.id
                       return (
                         <tr
                           key={job.id}
-                          className="border-b border-[var(--border-color)] text-[var(--text-primary)]"
+                          className={`border-b border-[var(--border-color)] text-[var(--text-primary)] cursor-pointer hover:bg-[var(--bg-secondary)] ${
+                            isSelected ? 'bg-[var(--bg-secondary)]' : ''
+                          }`}
+                          onClick={() => setCollabJobId(isSelected ? null : job.id)}
                         >
                           <td className="py-2 pr-3 whitespace-nowrap">{job.id}</td>
                           <td className="py-2 pr-3 whitespace-nowrap">
@@ -1317,6 +1340,22 @@ export function CreatePostPage() {
                 </table>
               </div>
             )}
+            {collabJobId != null && (() => {
+              const job = publishJobs.find((j) => j.id === collabJobId)
+              if (!job) return null
+              return (
+                <div className="mt-4">
+                  <JobCollabPanel
+                    job={job}
+                    onJobRestored={(restored) => {
+                      setPublishJobs((prev) =>
+                        prev.map((j) => (j.id === restored.id ? restored : j)),
+                      )
+                    }}
+                  />
+                </div>
+              )
+            })()}
           </CardContent>
         </Card>
       )}

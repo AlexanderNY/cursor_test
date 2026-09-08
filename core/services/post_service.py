@@ -199,6 +199,8 @@ class PostService:
         publish_at: Optional[Any] = None,
         target_channels: Optional[List[str]] = None,
         target_groups: Optional[List[str]] = None,
+        brand_id: Optional[int] = None,
+        channel_id: Optional[int] = None,
         skip_quota: bool = False,
     ) -> Dict:
         """Создает пост Telegram в таблице tg_posts.
@@ -211,6 +213,8 @@ class PostService:
             publish_at: отложенная публикация (UTC)
             target_channels: каналы назначения (override профиля)
             target_groups: VK-группы назначения при кросс-посте
+            brand_id: SMM brand (tenancy)
+            channel_id: SMM brand channel (tenancy)
             skip_quota: если True — квота уже проверена вызывающим (SMM jobs)
         
         Returns:
@@ -229,13 +233,13 @@ class PostService:
                 await cur.execute(
                     """
                     INSERT INTO tg_posts (
-                        user_id, post_text, title, domain, url, author, avatar,
+                        user_id, brand_id, channel_id, post_text, title, domain, url, author, avatar,
                         post_date, screenshot, images, image_over_text,
                         comments, reposts, likes, views, is_ad, status,
                         post_type, to_tg, to_tw, to_wp, to_vk, to_threads, to_dzen, to_instagram,
                         publish_at, target_channels, target_groups
                     ) VALUES (
-                        %s, %s, NULL, NULL, NULL, NULL, NULL,
+                        %s, %s, %s, %s, NULL, NULL, NULL, NULL, NULL,
                         NULL, NULL, %s, NULL,
                         0, 0, 0, 0, FALSE, 'collected',
                         'tg', %s, %s, %s, %s, %s, %s, %s,
@@ -245,6 +249,8 @@ class PostService:
                     """,
                     (
                         user_id,
+                        brand_id,
+                        channel_id,
                         text,
                         json.dumps(images or []),
                         to_tg,
@@ -1518,6 +1524,8 @@ class PostService:
         publish_at: Optional[Any] = None,
         target_groups: Optional[List[str]] = None,
         target_channels: Optional[List[str]] = None,
+        brand_id: Optional[int] = None,
+        channel_id: Optional[int] = None,
         skip_quota: bool = False,
     ) -> Dict:
         """Создаёт пост VKontakte в таблице vk_posts (status=created; collector переносит в posts, затем pipeline до ready для публикации)."""
@@ -1540,11 +1548,11 @@ class PostService:
                 await cur.execute(
                     """
                     INSERT INTO vk_posts (
-                        user_id, post_text, images, attachments,
+                        user_id, brand_id, channel_id, post_text, images, attachments,
                         status, post_type, to_tg, to_tw, to_wp, to_vk, to_threads, to_dzen, to_instagram,
                         publish_at, target_groups, target_channels
                     ) VALUES (
-                        %s, %s, %s, %s,
+                        %s, %s, %s, %s, %s, %s,
                         'created', 'vk', %s, %s, %s, %s, %s, %s, %s,
                         %s, %s::jsonb, %s::jsonb
                     )
@@ -1552,6 +1560,8 @@ class PostService:
                     """,
                     (
                         user_id,
+                        brand_id,
+                        channel_id,
                         text,
                         images_json,
                         attachments_json,

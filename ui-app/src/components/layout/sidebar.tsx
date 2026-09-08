@@ -11,7 +11,7 @@ const iconClassName = 'h-5 w-5'
 const INBOX_BADGE_POLL_MS = 25_000
 
 export function Sidebar() {
-  const { user } = useAuth()
+  const { user, setActiveWorkspace } = useAuth()
   const { selectedBrandId } = useBrand()
   const location = useLocation()
   const [newComments, setNewComments] = useState(0)
@@ -70,13 +70,33 @@ export function Sidebar() {
               {user.tariff ?? 'free'}
             </Link>
           </p>
-          {user.group_name && (
-            <p
-              className="text-xs text-[var(--text-muted)] mt-0.5 truncate"
-              title={`Группа: ${user.group_name} · ${user.role_in_group ?? ''}`}
-            >
-              Team: {user.group_name}
-            </p>
+          {(user.groups?.length || user.group_name) && (
+            <div className="mt-1">
+              {user.groups && user.groups.length > 1 ? (
+                <select
+                  className="w-full text-xs rounded border border-[var(--border-color)] bg-[var(--bg-primary)] px-1.5 py-1 text-[var(--text-muted)]"
+                  value={user.active_group_id ?? user.group_id ?? user.groups[0].group_id}
+                  title="Active workspace"
+                  onChange={(e) => {
+                    const gid = Number(e.target.value)
+                    void setActiveWorkspace?.(gid)
+                  }}
+                >
+                  {user.groups.map((g) => (
+                    <option key={g.group_id} value={g.group_id}>
+                      {g.group_name}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <p
+                  className="text-xs text-[var(--text-muted)] truncate"
+                  title={`Workspace: ${user.group_name} · ${user.role_in_group ?? ''}`}
+                >
+                  Workspace: {user.group_name}
+                </p>
+              )}
+            </div>
           )}
         </div>
       )}
@@ -108,7 +128,7 @@ export function Sidebar() {
           aria-expanded={platformsOpen}
         >
           <SettingsIcon className={iconClassName} />
-          <span className="flex-1">Платформы</span>
+          <span className="flex-1">Credentials</span>
           <span className="text-[var(--text-muted)] text-xs">{platformsOpen ? '▾' : '▸'}</span>
         </button>
         {platformsOpen &&

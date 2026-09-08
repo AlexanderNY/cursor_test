@@ -4,6 +4,7 @@ import { LearnContent } from '@/components/learn-content'
 import { MermaidBlock } from '@/components/learn-mermaid'
 import {
   ensureAnkiFromQuiz,
+  learnAnkiCards,
   type StructuredPost,
 } from '@/data/site/structured-post'
 import {
@@ -16,11 +17,32 @@ type StructuredPostViewProps = {
   post: StructuredPost
   appSlug: string
   postSlug: string
+  /** Quiz attempt source_type; default `post` for blog, use `learn` for course. */
+  sourceType?: 'post' | 'learn' | 'quiz_page'
 }
 
-export function StructuredPostView({ post, appSlug, postSlug }: StructuredPostViewProps) {
+export function StructuredPostView({
+  post,
+  appSlug,
+  postSlug,
+  sourceType = 'post',
+}: StructuredPostViewProps) {
   const sourceKey = `${appSlug}/${postSlug}`
-  const ankiCards = useMemo(() => ensureAnkiFromQuiz(post), [post])
+  const isLearn = sourceType === 'learn'
+  const ankiCards = useMemo(
+    () => (isLearn ? learnAnkiCards(post) : ensureAnkiFromQuiz(post)),
+    [post, isLearn],
+  )
+  const theorySections = post.sections.filter((section) => {
+    if (!(section.heading.trim() || section.body.trim())) {
+      return false
+    }
+    /* Cheatsheet lives on its own tab for Learn; skip duplicate section from seed. */
+    if (isLearn && /^шпаргалка$/i.test(section.heading.trim())) {
+      return false
+    }
+    return true
+  })
   const quizItems = post.quiz.filter((q) => q.question.trim() && q.answer.trim())
   const [answers, setAnswers] = useState<Record<number, string>>({})
   const [revealed, setRevealed] = useState(false)
@@ -58,7 +80,7 @@ export function StructuredPostView({ post, appSlug, postSlug }: StructuredPostVi
     }
     try {
       await siteSubmitQuizAttempt({
-        source_type: 'post',
+        source_type: sourceType,
         source_key: sourceKey,
         score: nextScore,
         total: quizItems.length,
@@ -111,9 +133,7 @@ export function StructuredPostView({ post, appSlug, postSlug }: StructuredPostVi
         <LearnContent content={post.intro} format="markdown" />
       </section>
 
-      {post.sections
-        .filter((section) => section.heading.trim() || section.body.trim())
-        .map((section, index) => (
+      {theorySections.map((section, index) => (
           <section
             key={`section-${index}`}
             className="structured-block"
@@ -200,7 +220,7 @@ export function StructuredPostView({ post, appSlug, postSlug }: StructuredPostVi
       {post.summary.filter(Boolean).length > 0 || ankiCards.length > 0 ? (
         <section className="structured-block" aria-labelledby="sp-summary">
           <h2 id="sp-summary" className="learn-section-title">
-            Итог для anki
+            {isLearn ? 'Anki' : 'Итог для anki'}
           </h2>
           {post.summary.filter(Boolean).length > 0 ? (
             <ul className="account-feature-list">

@@ -16,6 +16,7 @@ from database import get_db_connection, release_db_connection
 from config import settings
 from storage_client import get_storage
 from shared import async_fs
+from upload_limits import enforce_upload_count, read_upload_limited
 
 
 router = APIRouter(prefix="/dzen", tags=["Dzen"])
@@ -33,11 +34,24 @@ def get_user_id_from_header(x_user_id: Optional[str] = Header(None)) -> int:
         raise HTTPException(status_code=400, detail="Invalid user ID")
 
 
-async def _save_upload(upload_dir: Path, file: UploadFile, subdir: str) -> str:
+async def _save_upload(
+    upload_dir: Path,
+    file: UploadFile,
+    subdir: str,
+    *,
+    max_bytes: Optional[int] = None,
+) -> str:
     """Сохраняет загруженный файл в S3 или локально. Возвращает относительный URL (/uploads/dzen/...)."""
     ext = Path(file.filename).suffix if file.filename else ".bin"
     name = f"{uuid.uuid4()}{ext}"
-    content = await file.read()
+    limit = max_bytes if max_bytes is not None else (
+        settings.MAX_UPLOAD_VIDEO_BYTES if subdir == "videos" else settings.MAX_UPLOAD_IMAGE_BYTES
+    )
+    content = await read_upload_limited(
+        file,
+        max_bytes=limit,
+        label="Video" if subdir == "videos" else "Image",
+    )
     storage = get_storage()
     if storage:
         key = f"{S3_KEY_PREFIX}/{subdir}/{name}"
@@ -147,6 +161,8 @@ async def create_dzen_post(
         target_groups = []
 
     try:
+        enforce_upload_count(list(images or []), label="images")
+        enforce_upload_count(list(videos or []), label="videos")
         for img in images or []:
             if img.filename:
                 url = await _save_upload(upload_dir, img, "images")

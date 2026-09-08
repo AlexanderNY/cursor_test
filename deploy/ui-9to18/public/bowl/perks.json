@@ -134,5 +134,89 @@
         "description": "Space — четыре шипа. Урон 50."
       }
     }
+  },
+  "shell": {
+    "id": "shell",
+    "title": "Панцирь",
+    "emoji": "🛡️",
+    "max_level": 3,
+    "levels": {
+      "0": {
+        "damage_taken_mult": 1.0,
+        "knockback_mult": 1.0,
+        "description": "Без защиты."
+      },
+      "1": {
+        "damage_taken_mult": 0.85,
+        "knockback_mult": 0.9,
+        "description": "−15% урона, слабее отбрасывание."
+      },
+      "2": {
+        "damage_taken_mult": 0.7,
+        "knockback_mult": 0.75,
+        "description": "−30% урона, заметно стабильнее."
+      },
+      "3": {
+        "damage_taken_mult": 0.55,
+        "knockback_mult": 0.6,
+        "description": "−45% урона — танк против Титана и Кровососа."
+      }
+    }
+  },
+  "dash": {
+    "id": "dash",
+    "title": "Рывок+",
+    "emoji": "💨",
+    "max_level": 3,
+    "levels": {
+      "0": {
+        "sprint_mult_bonus": 0.0,
+        "stamina_drain_mult": 1.0,
+        "iframe_chance": 0.0,
+        "description": "Обычный Shift."
+      },
+      "1": {
+        "sprint_mult_bonus": 0.15,
+        "stamina_drain_mult": 0.9,
+        "iframe_chance": 0.15,
+        "description": "Рывок сильнее, реже тратит stamina; шанс i-frame."
+      },
+      "2": {
+        "sprint_mult_bonus": 0.3,
+        "stamina_drain_mult": 0.8,
+        "iframe_chance": 0.3,
+        "description": "Ещё быстрее на Shift; i-frame чаще."
+      },
+      "3": {
+        "sprint_mult_bonus": 0.5,
+        "stamina_drain_mult": 0.65,
+        "iframe_chance": 0.45,
+        "description": "Максимальный рывок против Сталкера и Вихря."
+      }
+    }
+  },
+  "anchor": {
+    "id": "anchor",
+    "title": "Якорь",
+    "emoji": "⚓",
+    "max_level": 3,
+    "levels": {
+      "0": {
+        "pull_resist": 0.0,
+        "description": "Полностью поддаётесь притяжению."
+      },
+      "1": {
+        "pull_resist": 0.25,
+        "description": "−25% силы водоворота и Вихря."
+      },
+      "2": {
+        "pull_resist": 0.45,
+        "description": "−45% притяжения."
+      },
+      "3": {
+        "pull_resist": 0.65,
+        "description": "−65% притяжения — контр к vortex/whirlpool."
+      }
+    }
   }
 }

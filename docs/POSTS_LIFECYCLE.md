@@ -2,6 +2,8 @@
 
 Таблица **posts** — центральное хранилище постов из всех платформ (Telegram, WordPress, URL, VK и т.д.). Записи проходят несколько статусов от появления до распределения в целевые таблицы для публикации.
 
+Очередь и аудит: PostgreSQL-статусы + `post_lifecycle_events` (не Kafka / не event sourcing). SMM «опубликовать сейчас» materialize в `*_posts` со статусом `ready` и будит бота через `/internal/publish-now`; статус job закрывается по `publish-result`.
+
 Публикация во **VK** (токены сообщества vs пользователя, текст и вложения): см. [VK_BOT_POSTING.md](VK_BOT_POSTING.md).
 
 ---
@@ -107,3 +109,13 @@
 - Публикация в WordPress / VK и т.д.: **wp_posts**, **vk_posts** (status ready → published) — соответствующие боты.
 
 Статусы **published** и подсчёт «опубликовано» ведутся в платформенных таблицах, а не в **posts**; в **posts** после **distributed** запись больше не меняется этим пайплайном.
+
+---
+
+## SMM hot-path и аудит
+
+SMM `execute_job` materialize сразу в целевые `*_posts` со статусом **ready** (без collector→processor), пишет `adapters_result.targets[].status=queued` + `post_id`, держит job в **publishing**, и будит бота `POST {bot}/internal/publish-now`.
+
+Бот после фактической отправки вызывает `POST /internal/smm/posts/publish-result`; Core закрывает target и выставляет job в `published` / `failed` / `partial`.
+
+Переходы статусов платформенных постов пишутся в append-only **`post_lifecycle_events`** (журнал, не event sourcing).

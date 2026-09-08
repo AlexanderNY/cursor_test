@@ -1,9 +1,9 @@
 import type { LearnPost } from '@/data/learn/learn-store'
 import type { LeafNote } from '@/data/learning-map/leaf-notes'
-import { getMapLearnLink } from '@/data/learning-map/map-learn-links'
 import type { MindNode } from '@/data/learning-map/parse-outline'
 import { downloadTextFile } from '@/data/learning-map/export-markdown'
 import { normalizeTag } from '@/data/learning-map/tag-style'
+import { learnAnkiCards } from '@/data/site/structured-post'
 
 export type AnkiLearnSource = {
   slug: string
@@ -54,73 +54,19 @@ function plainExcerpt(markdown: string, maxLen = 520): string {
   return `${(at > 80 ? cut.slice(0, at) : text.slice(0, maxLen)).trim()}…`
 }
 
-function scorePostForCard(card: AnkiCard, post: LearnPost): number {
-  const hay = `${post.title} ${post.shortTitle} ${post.theory} ${post.cheatsheet}`.toLowerCase()
-  let score = 1
-  const words = card.front
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}\s+-]/gu, ' ')
-    .split(/\s+/)
-    .filter((w) => w.length >= 3)
-  for (const word of words.slice(0, 8)) {
-    if (hay.includes(word)) {
-      score += 3
-    }
-  }
-  for (const tag of card.tags) {
-    if (hay.includes(tag.toLowerCase().replace(/_/g, ' ')) || hay.includes(tag.toLowerCase())) {
-      score += 2
-    }
-  }
-  if (post.cheatsheet?.trim()) {
-    score += 1
-  }
-  return score
-}
-
-export function buildLearnSource(card: AnkiCard, posts: LearnPost[]): AnkiLearnSource | null {
-  const link = getMapLearnLink(card.branch)
-  if (!link || link.episodeSlugs.length === 0 || posts.length === 0) {
-    return null
-  }
-  const bySlug = new Map(posts.map((post) => [post.slug, post]))
-  const candidates = link.episodeSlugs
-    .map((slug) => bySlug.get(slug))
-    .filter((post): post is LearnPost => Boolean(post))
-  if (candidates.length === 0) {
-    return null
-  }
-  let best = candidates[0]
-  let bestScore = -1
-  for (const post of candidates) {
-    const score = scorePostForCard(card, post)
-    if (score > bestScore) {
-      best = post
-      bestScore = score
-    }
-  }
-  const excerptSource = best.cheatsheet?.trim() || best.theory || ''
-  const excerpt = plainExcerpt(excerptSource)
-  if (!excerpt) {
-    return null
-  }
+function learnSourceFromPost(post: LearnPost): AnkiLearnSource {
+  const excerptSource =
+    post.structured?.intro ||
+    post.cheatsheet?.trim() ||
+    post.theory ||
+    post.title
   return {
-    slug: best.slug,
-    title: best.shortTitle || best.title,
-    episode: best.episode,
-    href: `/game/learn/${best.slug}`,
-    excerpt,
+    slug: post.slug,
+    title: post.shortTitle || post.title,
+    episode: post.episode,
+    href: `/game/learn/${post.slug}`,
+    excerpt: plainExcerpt(excerptSource),
   }
-}
-
-export function attachLearnSources(cards: AnkiCard[], posts: LearnPost[]): AnkiCard[] {
-  if (!posts.length) {
-    return cards.map((card) => ({ ...card, learn: card.learn ?? null }))
-  }
-  return cards.map((card) => ({
-    ...card,
-    learn: buildLearnSource(card, posts),
-  }))
 }
 
 function walk(
@@ -129,6 +75,7 @@ function walk(
   notes: Record<string, LeafNote>,
   onlyLeaves: boolean,
   nodeId: string | null | undefined,
+  postsBySlug: Map<string, LearnPost>,
   out: AnkiCard[],
 ): void {
   const nextPath = [...path, node]
@@ -137,38 +84,64 @@ function walk(
   const includeNode = matchId && (!onlyLeaves || isLeaf) && node.id !== 'root'
 
   if (includeNode) {
+    const branchNode = nextPath[1]
+    const branch = branchNode?.title || nextPath[0]?.title || ''
+    const branchId = branchNode?.id || ''
+    const pathLabel = nextPath
+      .slice(1)
+      .map((item) => item.title)
+      .join(' → ')
     const note = notes[node.id]
-    const back = (note?.description || node.description || '').trim()
-    if (back) {
-      const branchNode = nextPath[1]
-      const branch = branchNode?.title || nextPath[0]?.title || ''
-      const branchId = branchNode?.id || ''
-      const link = getMapLearnLink(branch)
-      const tags = [
-        ...new Set([
-          ...(note?.tags || []),
-          ...(node.tags || []),
-          ...(link?.tags || []),
-          ...(branch ? [normalizeTag(branch)] : []),
-        ]),
-      ]
-        .map((tag) => normalizeTag(tag))
-        .filter(Boolean)
-        .slice(0, 12)
+    const post = node.learnSlug ? postsBySlug.get(node.learnSlug) : undefined
 
-      out.push({
-        id: node.id,
-        front: node.title.trim() || '—',
-        back,
-        tags,
-        branch,
-        branchId,
-        path: nextPath
-          .slice(1)
-          .map((item) => item.title)
-          .join(' → '),
-        learn: null,
+    if (post?.structured) {
+      const cards = learnAnkiCards(post.structured)
+      cards.forEach((card, index) => {
+        out.push({
+          id: `learn:${post.slug}:${index}:${card.front.slice(0, 40)}`,
+          front: card.front.trim() || node.title,
+          back: card.back.trim(),
+          tags: [
+            ...new Set([
+              ...(note?.tags || []),
+              ...(node.tags || []),
+              ...(branch ? [normalizeTag(branch)] : []),
+              'learn',
+              post.slug,
+            ]),
+          ]
+            .map((tag) => normalizeTag(tag))
+            .filter(Boolean)
+            .slice(0, 12),
+          branch,
+          branchId,
+          path: pathLabel,
+          learn: learnSourceFromPost(post),
+        })
       })
+    } else {
+      const back = (note?.description || node.description || post?.theory || '').trim()
+      if (back) {
+        out.push({
+          id: node.id,
+          front: node.title.trim() || '—',
+          back,
+          tags: [
+            ...new Set([
+              ...(note?.tags || []),
+              ...(node.tags || []),
+              ...(branch ? [normalizeTag(branch)] : []),
+            ]),
+          ]
+            .map((tag) => normalizeTag(tag))
+            .filter(Boolean)
+            .slice(0, 12),
+          branch,
+          branchId,
+          path: pathLabel,
+          learn: post ? learnSourceFromPost(post) : null,
+        })
+      }
     }
   }
 
@@ -177,16 +150,17 @@ function walk(
   }
 
   for (const child of node.children) {
-    walk(child, nextPath, notes, onlyLeaves, nodeId, out)
+    walk(child, nextPath, notes, onlyLeaves, nodeId, postsBySlug, out)
   }
 }
 
-/** Собирает Anki-карты: лицевая = тема, оборот = краткий ответ. */
+/** Колода Anki: карточки из Learn-статей, привязанных к листьям карты. */
 export function collectAnkiCards(root: MindNode, options: CollectAnkiOptions = {}): AnkiCard[] {
   const notes = options.notes || {}
   const onlyLeaves = options.onlyLeaves !== false
   const nodeId = options.nodeId || null
   const out: AnkiCard[] = []
+  const postsBySlug = new Map((options.posts || []).map((post) => [post.slug, post]))
 
   let start = root
   if (options.branchId) {
@@ -197,9 +171,8 @@ export function collectAnkiCards(root: MindNode, options: CollectAnkiOptions = {
     start = { ...root, children: [branch] }
   }
 
-  walk(start, [], notes, onlyLeaves, nodeId, out)
-  const cards = options.posts?.length ? attachLearnSources(out, options.posts) : out
-  return cards
+  walk(start, [], notes, onlyLeaves, nodeId, postsBySlug, out)
+  return out
 }
 
 export function filterAnkiCards(
@@ -250,7 +223,6 @@ function formatBackHtml(card: AnkiCard): string {
   return parts.join('<br>')
 }
 
-/** TSV для File → Import в Anki (Tab, поля Front / Back / Tags). */
 export function serializeAnkiTsv(cards: AnkiCard[], deckName = '9to18::собеседование'): string {
   const lines = [
     '#separator:Tab',

@@ -55,6 +55,16 @@ async def schedule_from_scheduler():
     return {"status": "ok", "message": "tw-bot schedule pass started"}
 
 
+@app.post("/internal/publish-now")
+async def publish_now():
+    """Wake publisher immediately (skip PUBLISH_INTERVAL_SEC wait)."""
+    global bot_service
+    if not bot_service:
+        return {"status": "error", "message": "Bot service not initialized", "published": 0}
+    published = await bot_service._publisher.publish_ready_posts()
+    return {"status": "ok", "published": published}
+
+
 @app.post("/tw/verify-selenium")
 async def tw_verify_selenium(request: Request):
     """Проверка входа X через Selenium и список following (учётные данные из БД). Требует X-User-Id."""

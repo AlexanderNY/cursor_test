@@ -9,7 +9,7 @@ PickupKind = Literal["green", "red"]
 EnemyState = Literal["patrol", "chase", "cooldown", "flee"]
 EnemyKind = Literal["grazer", "hunter", "lurker"]
 BossKind = Literal["titan", "stalker", "swarm", "leech", "vortex"]
-PerkKind = Literal["leg", "eye", "tentacle", "spike", "none"]
+PerkKind = Literal["leg", "eye", "tentacle", "spike", "shell", "dash", "anchor", "none"]
 ObjectKind = Literal["paper", "toothbrush"]
 
 

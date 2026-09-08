@@ -37,6 +37,14 @@ async def health():
     return {"status": "ok", "service": "th-bot", "server_time": datetime.utcnow().isoformat() + "Z"}
 
 
+@app.post("/internal/publish-now")
+async def publish_now():
+    """Wake Threads publisher immediately."""
+    from routers.threads import schedule
+
+    return await schedule()
+
+
 if __name__ == "__main__":
     uvicorn.run(
         "main:app",

@@ -13,6 +13,7 @@ from schemas import ThreadsProfileCreate
 from storage_client import get_storage
 from config import settings
 from shared import async_fs
+from upload_limits import read_upload_limited
 
 
 router = APIRouter(prefix="/threads", tags=["Threads"])
@@ -94,7 +95,9 @@ async def create_threads_post(
     try:
         images = []
         if image:
-            content = await image.read()
+            content = await read_upload_limited(
+                image, max_bytes=settings.MAX_UPLOAD_IMAGE_BYTES, label="Image"
+            )
             file_extension = Path(image.filename).suffix if image.filename else ".jpg"
             file_name = f"{uuid.uuid4()}{file_extension}"
             storage = get_storage()
@@ -174,7 +177,9 @@ async def update_threads_post(
     try:
         images = None
         if image:
-            content = await image.read()
+            content = await read_upload_limited(
+                image, max_bytes=settings.MAX_UPLOAD_IMAGE_BYTES, label="Image"
+            )
             file_extension = Path(image.filename).suffix if image.filename else ".jpg"
             file_name = f"{uuid.uuid4()}{file_extension}"
             storage = get_storage()

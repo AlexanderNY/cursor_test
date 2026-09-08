@@ -29,6 +29,10 @@ export type StructuredPost = {
   quiz: StructuredQuizItem[]
   anki: StructuredAnkiItem[]
   summary: string[]
+  /** Lab: practice steps on a PC (markdown). */
+  lab?: string
+  /** Cheatsheet: formulas/commands as HTML (sanitized on render). */
+  cheatsheetHtml?: string
   /** Optional free markdown appendix (legacy / extras) */
   appendix?: string
 }
@@ -41,6 +45,30 @@ export const EMPTY_STRUCTURED_POST: StructuredPost = {
   quiz: [{ question: '', answer: '', explain: '' }],
   anki: [{ front: '', back: '' }],
   summary: [''],
+  lab: '',
+  cheatsheetHtml: '',
+}
+
+/** Empty Learn article template: theory, lab, diagram, quiz×3, anki×3, cheatsheet. */
+export const EMPTY_LEARN_STRUCTURED_POST: StructuredPost = {
+  version: 1,
+  intro: 'Кратко опишите тему выпуска и зачем она нужна на собеседовании или в работе.',
+  sections: [{ heading: 'Основная часть', body: 'Текст теории…' }],
+  diagrams: [{ caption: 'Схема', mermaid: 'flowchart LR\n  A[Тема] --> B[Суть]' }],
+  quiz: [
+    { question: '', answer: '', explain: '' },
+    { question: '', answer: '', explain: '' },
+    { question: '', answer: '', explain: '' },
+  ],
+  anki: [
+    { front: '', back: '' },
+    { front: '', back: '' },
+    { front: '', back: '' },
+  ],
+  summary: [''],
+  lab: '**Цель.** …\n\n**Шаги.**\n1. …\n\n**В группу:** …\n\n**Готово, если…**\n- [ ] …',
+  cheatsheetHtml:
+    '<h3>Суть</h3>\n<ul>\n<li>…</li>\n</ul>\n<h3>Команды / формулы</h3>\n<pre><code>…</code></pre>',
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -108,6 +136,8 @@ export function normalizeStructuredPost(raw: unknown): StructuredPost | null {
     quiz: normalizeQuiz(raw.quiz),
     anki: normalizeAnki(raw.anki),
     summary: summary.length > 0 ? summary : [''],
+    lab: asString(raw.lab) || undefined,
+    cheatsheetHtml: asString(raw.cheatsheetHtml) || undefined,
     appendix: asString(raw.appendix) || undefined,
   }
 }
@@ -154,6 +184,12 @@ export function serializeStructuredPost(post: StructuredPost): string {
       .filter((a) => a.front || a.back),
     summary: post.summary.map((s) => s.trim()).filter(Boolean),
   }
+  if (post.lab?.trim()) {
+    cleaned.lab = post.lab.trim()
+  }
+  if (post.cheatsheetHtml?.trim()) {
+    cleaned.cheatsheetHtml = post.cheatsheetHtml.trim()
+  }
   if (post.appendix?.trim()) {
     cleaned.appendix = post.appendix.trim()
   }
@@ -174,6 +210,10 @@ export function structuredExcerpt(post: StructuredPost, maxLen = 220): string {
   return `${(at > 80 ? cut.slice(0, at) : plain.slice(0, maxLen)).trim()}…`
 }
 
+/**
+ * Blog/site fallback: explicit anki, else quiz, else summary bullets.
+ * Prefer {@link learnAnkiCards} for Learn course articles.
+ */
 export function ensureAnkiFromQuiz(post: StructuredPost): StructuredAnkiItem[] {
   const existing = post.anki.filter((a) => a.front.trim() && a.back.trim())
   if (existing.length > 0) {
@@ -194,6 +234,11 @@ export function ensureAnkiFromQuiz(post: StructuredPost): StructuredAnkiItem[] {
   return [...fromQuiz, ...fromSummary]
 }
 
+/** Learn: only author-written Anki cards (no auto from summary / quiz). */
+export function learnAnkiCards(post: StructuredPost): StructuredAnkiItem[] {
+  return post.anki.filter((a) => a.front.trim() && a.back.trim())
+}
+
 export function validateStructuredPost(post: StructuredPost): string[] {
   const errors: string[] = []
   if (!post.intro.trim() || post.intro.trim().length < 40) {
@@ -211,6 +256,37 @@ export function validateStructuredPost(post: StructuredPost): string[] {
   return errors
 }
 
+/** Learn: theory, lab, ≥1 diagram, ≥3 quiz, cheatsheet HTML, ≥3 Anki. */
+export function validateLearnStructuredPost(post: StructuredPost): string[] {
+  const errors: string[] = []
+  if (!post.intro.trim() || post.intro.trim().length < 40) {
+    errors.push('Введение: минимум ~40 символов')
+  }
+  const hasSection = post.sections.some((s) => s.body.trim())
+  if (!hasSection) {
+    errors.push('Теория: нужен хотя бы один раздел с текстом')
+  }
+  if (!(post.lab || '').trim()) {
+    errors.push('Лаба: опишите практику на ПК')
+  }
+  const diagramsOk = post.diagrams.some((d) => d.mermaid.trim())
+  if (!diagramsOk) {
+    errors.push('Нужна хотя бы одна Mermaid-схема')
+  }
+  const quizCount = post.quiz.filter((q) => q.question.trim() && q.answer.trim()).length
+  if (quizCount < 3) {
+    errors.push('Тест: минимум 3 вопроса с ответом')
+  }
+  if (!(post.cheatsheetHtml || '').trim()) {
+    errors.push('Шпаргалка: нужен HTML (формулы, команды, суть)')
+  }
+  const ankiCount = post.anki.filter((a) => a.front.trim() && a.back.trim()).length
+  if (ankiCount < 3) {
+    errors.push('Anki: минимум 3 карточки (вопрос → ответ)')
+  }
+  return errors
+}
+
 export function legacyBodyToStructured(markdown: string): StructuredPost {
   return {
     ...EMPTY_STRUCTURED_POST,
@@ -219,6 +295,36 @@ export function legacyBodyToStructured(markdown: string): StructuredPost {
     quiz: [],
     anki: [],
     summary: [],
+    lab: '',
+    cheatsheetHtml: '',
     appendix: undefined,
   }
+}
+
+/** Merge legacy column fields into structured when loading an old post. */
+export function hydrateLearnStructured(
+  structured: StructuredPost | null | undefined,
+  legacy: { lab?: string; cheatsheet?: string; cheatsheetFormat?: string; diagram?: string },
+): StructuredPost {
+  const base = structured ? { ...structured } : { ...EMPTY_STRUCTURED_POST }
+  if (!(base.lab || '').trim() && (legacy.lab || '').trim()) {
+    base.lab = legacy.lab!.trim()
+  }
+  if (!(base.cheatsheetHtml || '').trim() && (legacy.cheatsheet || '').trim()) {
+    const cheat = legacy.cheatsheet!.trim()
+    if (legacy.cheatsheetFormat === 'html' || /<[a-z][\s\S]*>/i.test(cheat)) {
+      base.cheatsheetHtml = cheat
+    } else {
+      /* Keep markdown cheatsheet as preformatted HTML for the HTML editor. */
+      const escaped = cheat
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+      base.cheatsheetHtml = `<pre>${escaped}</pre>`
+    }
+  }
+  if (base.diagrams.length === 0 && (legacy.diagram || '').trim()) {
+    base.diagrams = [{ caption: 'Схема', mermaid: legacy.diagram!.trim() }]
+  }
+  return base
 }

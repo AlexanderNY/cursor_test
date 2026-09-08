@@ -19,12 +19,11 @@ export const PERK_IDS = Object.keys(PERK_DEFINITIONS) as PerkId[]
 export type PerkLevels = Partial<Record<PerkId, number>>
 
 export function defaultPerkLevels(): PerkLevels {
-  return {
-    leg: 0,
-    eye: 0,
-    tentacle: 0,
-    spike: 0,
+  const levels: PerkLevels = {}
+  for (const id of PERK_IDS) {
+    levels[id] = 0
   }
+  return levels
 }
 
 export function getPerkLevel(perkLevels: PerkLevels, perkId: PerkId): number {

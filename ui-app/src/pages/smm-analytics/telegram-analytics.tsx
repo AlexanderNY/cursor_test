@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Alert } from '@/components/ui/alert'
 import { telegramService } from '@/services/telegram-service'
 import type {
   TgAnalyticsOverview,
@@ -8,7 +10,6 @@ import type {
   TgAnalyticsKeywordItem,
   TgAnalyticsTimelinePoint,
   TgAnalyticsSentimentBreakdown,
-  TgAnalyticsEngagement,
   TgAnalyticsHealth,
 } from '@/types/telegram'
 import { formatDateTime } from '@/utils/date'
@@ -52,18 +53,24 @@ function EmptyState({ label }: { label: string }) {
 
 export function TelegramAnalyticsPanel({
   chatIdFilter = null,
+  period: periodProp,
+  onPeriodChange,
 }: {
   chatIdFilter?: string | null
+  /** Shared with SMM Overview when provided */
+  period?: string
+  onPeriodChange?: (period: string) => void
 }) {
   const initial = useMemo(() => loadSavedFilters(), [])
-  const [period, setPeriod] = useState(initial.period)
+  const [localPeriod, setLocalPeriod] = useState(initial.period)
+  const period = periodProp ?? localPeriod
+  const setPeriod = onPeriodChange ?? setLocalPeriod
   const [isLoading, setIsLoading] = useState(true)
   const [overview, setOverview] = useState<TgAnalyticsOverview | null>(null)
   const [channels, setChannels] = useState<TgAnalyticsChannelItem[]>([])
   const [keywords, setKeywords] = useState<TgAnalyticsKeywordItem[]>([])
   const [timeline, setTimeline] = useState<TgAnalyticsTimelinePoint[]>([])
   const [sentiment, setSentiment] = useState<TgAnalyticsSentimentBreakdown | null>(null)
-  const [engagement, setEngagement] = useState<TgAnalyticsEngagement | null>(null)
   const [health, setHealth] = useState<TgAnalyticsHealth | null>(null)
 
   useEffect(() => {
@@ -74,13 +81,12 @@ export function TelegramAnalyticsPanel({
     setIsLoading(true)
     try {
       const chatId = chatIdFilter || undefined
-      const [ov, ch, kw, tl, sent, eng, hl] = await Promise.all([
+      const [ov, ch, kw, tl, sent, hl] = await Promise.all([
         telegramService.getAnalyticsOverview(period, chatId),
         telegramService.getAnalyticsChannels(period, 10, chatId),
         telegramService.getAnalyticsKeywords(period, 20, chatId),
         telegramService.getAnalyticsTimeline(period, 'hour', chatId),
         telegramService.getAnalyticsSentiment(period, chatId),
-        telegramService.getAnalyticsEngagement(period, 10, chatId),
         telegramService.getAnalyticsHealth('24h'),
       ])
       setOverview(ov)
@@ -88,7 +94,6 @@ export function TelegramAnalyticsPanel({
       setKeywords(kw)
       setTimeline(tl)
       setSentiment(sent)
-      setEngagement(eng)
       setHealth(hl)
     } catch (err) {
       console.warn('Telegram analytics load failed', err)
@@ -138,22 +143,24 @@ export function TelegramAnalyticsPanel({
       <CardHeader>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <CardTitle>Telegram Analytics</CardTitle>
+            <CardTitle>TG Listening ops</CardTitle>
             <CardDescription>
-              Метрики сбора и engagement
+              Сбор, алерты, keywords и sentiment (период и канал — из общих фильтров выше)
               {chatIdFilter ? ` · канал ${chatIdFilter}` : ''}
             </CardDescription>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <select
-              className="rounded-md border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-sm"
-              value={period}
-              onChange={(e) => setPeriod(e.target.value)}
-            >
-              <option value="24h">24 hours</option>
-              <option value="7d">7 days</option>
-              <option value="30d">30 days</option>
-            </select>
+            {periodProp == null && (
+              <select
+                className="rounded-md border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-sm"
+                value={period}
+                onChange={(e) => setPeriod(e.target.value)}
+              >
+                <option value="24h">24 hours</option>
+                <option value="7d">7 days</option>
+                <option value="30d">30 days</option>
+              </select>
+            )}
             <Button type="button" variant="secondary" onClick={() => void handleExport()}>
               Export CSV
             </Button>
@@ -193,53 +200,13 @@ export function TelegramAnalyticsPanel({
               </div>
             )}
 
-            {engagement && (
-              <div className="space-y-4 pt-4 border-t border-[var(--border-color)]">
-                <h4 className="text-sm font-semibold text-[var(--text-primary)]">Engagement (SMM)</h4>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div className="p-4 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-color)]">
-                    <p className="text-xs text-[var(--text-muted)]">Total views</p>
-                    <p className="text-2xl font-semibold">{engagement.total_views}</p>
-                  </div>
-                  <div className="p-4 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-color)]">
-                    <p className="text-xs text-[var(--text-muted)]">Total likes</p>
-                    <p className="text-2xl font-semibold">{engagement.total_likes}</p>
-                  </div>
-                  <div className="p-4 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-color)]">
-                    <p className="text-xs text-[var(--text-muted)]">Published</p>
-                    <p className="text-2xl font-semibold">{engagement.published_count}</p>
-                  </div>
-                  <div className="p-4 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-color)]">
-                    <p className="text-xs text-[var(--text-muted)]">Avg ER</p>
-                    <p className="text-2xl font-semibold">{Number(engagement.avg_er).toFixed(2)}%</p>
-                  </div>
-                </div>
-
-                {engagement.top_posts.length > 0 ? (
-                  <div>
-                    <h5 className="text-sm font-semibold mb-2">Top posts by engagement</h5>
-                    <ul className="space-y-2 text-sm">
-                      {engagement.top_posts.map((post) => (
-                        <li
-                          key={post.id}
-                          className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-color)]"
-                        >
-                          <p className="text-[var(--text-primary)] line-clamp-2 mb-1">{post.post_text}</p>
-                          <div className="flex flex-wrap gap-3 text-xs text-[var(--text-muted)]">
-                            <span>Views {post.views}</span>
-                            <span>Likes {post.likes}</span>
-                            <span>Comments {post.comments}</span>
-                            <span>Reposts {post.reposts}</span>
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : (
-                  <EmptyState label="Нет опубликованных постов с метриками за период." />
-                )}
-              </div>
-            )}
+            <Alert variant="info">
+              Engagement (views, ER, топ-посты) перенесён в общую вкладку{' '}
+              <Link to="/analytics?tab=overview" className="underline">
+                Сводка
+              </Link>
+              .
+            </Alert>
 
             {sentiment && sentiment.total > 0 ? (
               <div className="p-4 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-color)]">

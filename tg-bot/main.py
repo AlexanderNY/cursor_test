@@ -80,6 +80,29 @@ async def reload_profiles():
     return {"status": "ok", "message": "Reload started"}
 
 
+@app.post("/tg/engagement/refresh-one")
+async def engagement_refresh_one(payload: dict):
+    """Deep-refresh engagement metrics for a single published post."""
+    global bot_service
+    if not bot_service or not bot_service.engagement_service:
+        return {"ok": False, "error": "bot_not_ready"}
+    user_id = int(payload.get("user_id") or 0)
+    post_id = int(payload.get("post_id") or 0)
+    if not user_id or not post_id:
+        return {"ok": False, "error": "user_id and post_id required"}
+    return await bot_service.engagement_service.refresh_one(user_id, post_id)
+
+
+@app.post("/internal/publish-now")
+async def publish_now():
+    """Wake publisher immediately (skip PUBLISH_INTERVAL_SEC wait)."""
+    global bot_service
+    if not bot_service or not bot_service.post_publisher:
+        return {"status": "error", "message": "Bot service not initialized", "published": 0}
+    published = await bot_service.post_publisher.publish_ready_posts()
+    return {"status": "ok", "published": published}
+
+
 async def run_api_server():
     """Запуск FastAPI сервера."""
     config = uvicorn.Config(

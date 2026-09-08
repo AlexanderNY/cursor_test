@@ -581,12 +581,17 @@ CREATE TABLE IF NOT EXISTS tg_profiles (
     classification_enabled BOOLEAN DEFAULT FALSE,
     classification_categories JSONB DEFAULT '["новости", "реклама", "технологии", "финансы", "другое"]',
     batch_enrichment_enabled BOOLEAN DEFAULT FALSE,
+    proxy_url VARCHAR(512),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
 DO $$ BEGIN
   ALTER TABLE tg_profiles ADD COLUMN batch_enrichment_enabled BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE tg_profiles ADD COLUMN proxy_url VARCHAR(512);
 EXCEPTION WHEN duplicate_column THEN NULL; END $$;
 
 CREATE TABLE IF NOT EXISTS tg_posts (
