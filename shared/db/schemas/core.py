@@ -5,14 +5,24 @@ from shared.db.generate_ddl import (
     build_post_table_ddl,
     build_post_tenancy_migration,
 )
+from shared.db.queue_notify import QUEUE_NOTIFY_TRIGGERS
+from shared.db.schemas.posts import (
+    POST_TARGETS_INDEXES,
+    POST_TARGETS_TABLE,
+    POSTS_CONTRACT_CLEANUP,
+    POSTS_SOURCE_NATIVE_DEDUPE,
+    POSTS_UNIFIED_MIGRATION,
+)
 
 POSTS_TABLE = build_post_table_ddl(
     "posts",
     extra_columns={
         "source_platform": "VARCHAR(10)",
         "source_id": "INTEGER",
+        "source_native_id": "TEXT",
         "platform_texts": "JSONB DEFAULT '{}'",
         "videos": "JSONB DEFAULT '[]'",
+        "extras": "JSONB DEFAULT '{}'",
     },
     table_constraints=[
         "CONSTRAINT fk_posts_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE",
@@ -22,6 +32,9 @@ POSTS_TABLE = build_post_table_ddl(
 POSTS_INDEXES = build_post_indexes("posts") + """
 CREATE UNIQUE INDEX IF NOT EXISTS idx_posts_source ON posts(source_platform, source_id)
     WHERE source_platform IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_posts_source_native
+    ON posts(user_id, source_platform, source_native_id)
+    WHERE source_native_id IS NOT NULL;
 """
 
 CPOST_PROFILES_TABLE = """
@@ -33,9 +46,6 @@ CREATE TABLE IF NOT EXISTS cpost_profiles (
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 """
-
-CPOST_POSTS_TABLE = build_post_table_ddl("cpost_posts")
-CPOST_POSTS_INDEXES = build_post_indexes("cpost_posts")
 
 CURL_SETTINGS_TABLE = """
 CREATE TABLE IF NOT EXISTS curl_settings (
@@ -130,6 +140,32 @@ CREATE TABLE IF NOT EXISTS feedback (
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_feedback_created_at ON feedback(created_at DESC);
+"""
+
+ROADMAP_ITEMS_TABLE = """
+CREATE TABLE IF NOT EXISTS roadmap_items (
+    id SERIAL PRIMARY KEY,
+    title VARCHAR(255) NOT NULL,
+    description TEXT,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_by INTEGER,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_roadmap_items_active_created
+    ON roadmap_items (is_active, created_at DESC);
+"""
+
+ROADMAP_VOTES_TABLE = """
+CREATE TABLE IF NOT EXISTS roadmap_votes (
+    id SERIAL PRIMARY KEY,
+    item_id INTEGER NOT NULL REFERENCES roadmap_items(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (item_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_roadmap_votes_item_id ON roadmap_votes(item_id);
+CREATE INDEX IF NOT EXISTS idx_roadmap_votes_user_id ON roadmap_votes(user_id);
 """
 
 SYSTEM_SETTINGS_TABLE = """
@@ -636,16 +672,21 @@ CREATE INDEX IF NOT EXISTS idx_post_lifecycle_created
 ALL_TABLES: list[str] = [
     POSTS_TABLE,
     CPOST_PROFILES_TABLE,
-    CPOST_POSTS_TABLE,
     POST_TENANCY_MIGRATION,
+    POSTS_UNIFIED_MIGRATION,
+    POSTS_SOURCE_NATIVE_DEDUPE,
     POSTS_INDEXES,
-    CPOST_POSTS_INDEXES,
+    POST_TARGETS_TABLE,
+    POST_TARGETS_INDEXES,
+    POSTS_CONTRACT_CLEANUP,
     CURL_SETTINGS_TABLE,
     CURL_ONE_TIME_DONE_TABLE,
     SERVICE_CYCLE_LOG_TABLE,
     AI_TASKS_TABLE,
     NOTIFICATIONS_TABLE,
     FEEDBACK_TABLE,
+    ROADMAP_ITEMS_TABLE,
+    ROADMAP_VOTES_TABLE,
     SYSTEM_SETTINGS_TABLE,
     GUIDE_BLOCKS_TABLE,
     SMM_BRANDS_TABLE,
@@ -672,4 +713,5 @@ ALL_TABLES: list[str] = [
     LEARN_POSTS_TABLE,
     LEARN_PROGRESS_TABLE,
     POST_LIFECYCLE_EVENTS_TABLE,
+    QUEUE_NOTIFY_TRIGGERS,
 ]

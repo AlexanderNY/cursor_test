@@ -176,7 +176,7 @@ class AdminService:
             }
 
     async def run_collect_cycle(self) -> Dict[str, Any]:
-        """Запускает один цикл сбора на collector. Проксирует POST /collect/run."""
+        """Будит processor: входящие посты уже в posts (ETL collect убран)."""
         try:
             async with httpx.AsyncClient(timeout=60.0) as client:
                 resp = await client.post(f"{settings.COLLECTOR_SERVICE_URL}/collect/run")
@@ -203,7 +203,7 @@ class AdminService:
             }
 
     async def run_distribute_cycle(self) -> Dict[str, Any]:
-        """Запускает один цикл распределения на collector. Проксирует POST /distribute/run."""
+        """No-op proxy: distribute ETL убран, публикация из post_targets."""
         try:
             async with httpx.AsyncClient(timeout=60.0) as client:
                 resp = await client.post(f"{settings.COLLECTOR_SERVICE_URL}/distribute/run")
@@ -227,8 +227,9 @@ class AdminService:
             }
 
     async def run_posting_diagnostics(self) -> Dict[str, Any]:
-        """Запускает цикл диагностики постинга: сводки tg_posts/posts по статусам и подсказки."""
+        """Запускает цикл диагностики постинга: сводки post_targets (tg) и posts."""
         result: Dict[str, Any] = {
+            "tg_targets_by_status": [],
             "tg_posts_by_status": [],
             "posts_by_status": [],
             "ready_for_telegram": 0,
@@ -243,15 +244,17 @@ class AdminService:
                     await cur.execute(
                         """
                         SELECT status, COUNT(*) AS cnt
-                        FROM tg_posts
+                        FROM post_targets
+                        WHERE platform = 'tg'
                         GROUP BY status
                         ORDER BY status
                         """
                     )
                     rows = await cur.fetchall()
-                    result["tg_posts_by_status"] = [
+                    result["tg_targets_by_status"] = [
                         {"status": r[0], "count": r[1]} for r in rows
                     ]
+                    result["tg_posts_by_status"] = result["tg_targets_by_status"]
 
                     await cur.execute(
                         """
@@ -273,9 +276,9 @@ class AdminService:
 
                     await cur.execute(
                         """
-                        SELECT COUNT(*) FROM tg_posts p
-                        JOIN tg_profiles pr ON p.user_id = pr.user_id
-                        WHERE p.status = 'ready'
+                        SELECT COUNT(*) FROM post_targets t
+                        JOIN tg_profiles pr ON t.user_id = pr.user_id
+                        WHERE t.platform = 'tg' AND t.status = 'ready'
                           AND pr.channel_to_post IS NOT NULL
                           AND pr.channel_to_post != ''
                         """
@@ -295,22 +298,21 @@ class AdminService:
 
             # Подсказки на основе данных
             hints: List[str] = []
-            tg_by_status = {r["status"]: r["count"] for r in result["tg_posts_by_status"]}
+            tg_by_status = {r["status"]: r["count"] for r in result["tg_targets_by_status"]}
             posts_list = result["posts_by_status"]
 
             collected_tg = tg_by_status.get("collected", 0)
             if collected_tg > 0:
                 hints.append(
-                    f"В tg_posts {collected_tg} постов со статусом collected. "
-                    "Проверьте, что запущен Collector и цикл collect забирает посты в posts."
+                    f"В post_targets (tg) {collected_tg} постов со статусом collected. "
+                    "Для очереди публикации ожидаются pending/ready; collected относится к таблице posts."
                 )
             processing_tg = tg_by_status.get("processing", 0)
             ready_tg = tg_by_status.get("ready", 0)
             if processing_tg > 0 and ready_tg == 0:
                 hints.append(
-                    f"В tg_posts {processing_tg} постов в processing, 0 в ready. "
-                    "После обработки в Processor дистрибьютор должен обновить tg_posts до ready. "
-                    "Проверьте Collector (distribute) и флаг to_tg у постов."
+                    f"В post_targets (tg) {processing_tg} publishing и 0 ready. "
+                    "Проверьте бота публикации и lease publishing."
                 )
             posts_collected = sum(
                 r["count"] for r in posts_list if r.get("status") == "collected"
@@ -325,12 +327,12 @@ class AdminService:
             )
             if posts_ready > 0 and result["ready_for_telegram"] == 0:
                 hints.append(
-                    f"В posts {posts_ready} постов в статусе ready, но в tg_posts нет постов ready для публикации. "
-                    "Проверьте Collector (distribute) и что у постов из TG включён to_tg."
+                    f"В posts {posts_ready} постов в статусе ready, но нет ready-целей Telegram в post_targets. "
+                    "Проверьте, что processor создал post_targets со статусом ready."
                 )
             if result["ready_for_telegram"] > 0 and result["profiles_with_channel"] == 0:
                 hints.append(
-                    "Есть посты ready в tg_posts, но ни у одного профиля не задан channel_to_post. "
+                    "Есть ready-цели Telegram, но ни у одного профиля не задан channel_to_post. "
                     "Задайте канал для публикации в tg_profiles."
                 )
             if not hints:
@@ -433,10 +435,11 @@ class AdminService:
                 # Publishing (TG published posts) — по одной строке на каждый целевой чат
                 await cur.execute(
                     """
-                    SELECT id, user_id, telegram_chat_id, status, LEFT(COALESCE(post_text, ''), 160),
-                           updated_at, created_at, target_channels
-                    FROM tg_posts
-                    WHERE status = 'published'
+                    SELECT t.id, t.user_id, p.channel_id, t.status, LEFT(COALESCE(p.post_text, ''), 160),
+                           t.updated_at, t.created_at, t.target_channels
+                    FROM post_targets t
+                    JOIN posts p ON p.id = t.post_id
+                    WHERE t.platform = 'tg' AND t.status = 'published'
                     ORDER BY COALESCE(updated_at, created_at) DESC
                     LIMIT %s
                     """,
@@ -493,7 +496,8 @@ class AdminService:
                 await cur.execute(
                     """
                     SELECT id, user_id, url, status, LEFT(COALESCE(post_text, ''), 160), created_at
-                    FROM url_posts
+                    FROM posts
+                    WHERE source_platform = 'url'
                     ORDER BY created_at DESC
                     LIMIT %s
                     """,

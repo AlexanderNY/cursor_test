@@ -1,7 +1,5 @@
 """WordPress bot service DDL."""
 
-from shared.db.generate_ddl import build_post_indexes, build_post_table_ddl
-
 WP_PUBLISH_PROFILE_TABLE = """
 CREATE TABLE IF NOT EXISTS wp_publish_profile (
     id SERIAL PRIMARY KEY,
@@ -55,13 +53,8 @@ CREATE INDEX IF NOT EXISTS idx_wp_collect_sites_user_id ON wp_collect_sites(user
 CREATE INDEX IF NOT EXISTS idx_wp_collect_sites_profile_id ON wp_collect_sites(profile_id);
 """
 
-WP_POSTS_TABLE = build_post_table_ddl("wp_posts")
-WP_POSTS_INDEXES = build_post_indexes("wp_posts")
-
 ALL_TABLES: list[str] = [
     WP_PUBLISH_PROFILE_TABLE,
     WP_COLLECT_PROFILE_TABLE,
     WP_COLLECT_SITES_TABLE,
-    WP_POSTS_TABLE,
-    WP_POSTS_INDEXES,
 ]

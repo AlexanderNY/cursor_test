@@ -9,6 +9,8 @@ import httpx
 
 from config import settings
 from database import get_db_connection, release_db_connection
+from shared.db.bot_queue import claimed_target_as_post, finish_claimed_publish
+from shared.db.posts_repo import PostsRepository
 
 logger = logging.getLogger(__name__)
 
@@ -291,35 +293,44 @@ def build_oauth_url(user_id: int) -> str:
 
 
 async def get_pending_posts_for_user(user_id: int, limit: int = 10) -> list:
-    """Посты пользователя со статусом collected/ready к публикации в Threads."""
+    """Claim ready Threads post_targets."""
+    return await _claim_unified_threads(user_id, limit)
+
+
+async def _claim_unified_threads(user_id: int, limit: int) -> list:
     conn = await get_db_connection()
     try:
         async with conn.cursor() as cur:
-            await cur.execute(
-                """
-                SELECT id, user_id, post_text, images, status
-                FROM threads_posts
-                WHERE user_id = %s AND status NOT IN ('deleted', 'published')
-                ORDER BY created_at ASC
-                LIMIT %s
-                """,
-                (user_id, limit),
-            )
-            rows = await cur.fetchall()
-            desc = [c.name for c in cur.description]
-            return [dict(zip(desc, row)) for row in rows]
+            try:
+                await cur.execute("BEGIN")
+                rows = await PostsRepository(cur).claim_publish(
+                    platform="threads",
+                    limit=limit,
+                    user_id=user_id,
+                )
+                await cur.execute("COMMIT")
+            except Exception:
+                await cur.execute("ROLLBACK")
+                raise
+        return [claimed_target_as_post(row) for row in rows]
     finally:
         release_db_connection(conn)
 
 
-async def set_post_status(user_id: int, post_id: int, status: str) -> None:
-    """Обновляет статус поста (например published или failed)."""
+async def set_post_status(user_id: int, post: dict, status: str) -> None:
+    """Обновляет статус поста (например published, failed, skipped)."""
+    post_id = int(post["id"])
     conn = await get_db_connection()
     try:
         async with conn.cursor() as cur:
-            await cur.execute(
-                "UPDATE threads_posts SET status = %s, updated_at = CURRENT_TIMESTAMP WHERE user_id = %s AND id = %s",
-                (status, user_id, post_id),
+            finished = await finish_claimed_publish(
+                cur,
+                post,
+                ok=(status == "published"),
+                result={"error": f"status={status}"} if status == "failed" else {},
+                status=status,
             )
+            if not finished:
+                return
     finally:
         release_db_connection(conn)

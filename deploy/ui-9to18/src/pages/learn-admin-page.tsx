@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { AdminJumpNav } from '@/components/admin-jump-nav'
 import { PageShell } from '@/components/page-shell'
@@ -14,7 +14,24 @@ import {
 } from '@/data/learn/learn-store'
 import { rubricTitleById, useLearnPosts } from '@/data/learn/use-learn-posts'
 
-export function LearnAdminPage() {
+function LearnFrame({ embedded, children }: { embedded: boolean; children: ReactNode }) {
+  if (embedded) {
+    return <div className="account-embed">{children}</div>
+  }
+  return <PageShell variant="admin">{children}</PageShell>
+}
+
+export type LearnAdminPageProps = {
+  embedded?: boolean
+  onCreate?: () => void
+  onEdit?: (slug: string) => void
+}
+
+export function LearnAdminPage({
+  embedded = false,
+  onCreate,
+  onEdit,
+}: LearnAdminPageProps = {}) {
   const { posts, isReady, error, reload } = useLearnPosts({ admin: true })
   const [scheduleStart, setScheduleStart] = useState(() =>
     toDatetimeLocalValue(new Date().toISOString()),
@@ -70,17 +87,25 @@ export function LearnAdminPage() {
   }
 
   return (
-    <PageShell>
-      <Link to="/game/learn" className="back-link">
-        ← К Learn
-      </Link>
+    <LearnFrame embedded={embedded}>
+      {embedded ? null : (
+        <Link to="/game/learn" className="back-link">
+          ← К Learn
+        </Link>
+      )}
 
       <header className="learn-header">
         <p className="learn-eyebrow">Learn · Админка</p>
         <h1 className="learn-title">Учебные записи</h1>
         <p className="learn-lead">
           Управление выпусками. Супер-админ сайта может входить с JWT 9to18 (SSO-lite); иначе —
-          аккаунт CopyParse (admin/author). Спотлайт на главной — в <Link to="/admin">/admin</Link>.
+          аккаунт CopyParse (admin/author). Спотлайт на главной — в{' '}
+          {embedded ? (
+            <Link to="/account?section=site-admin">кабинете супер-админа</Link>
+          ) : (
+            <Link to="/admin">/admin</Link>
+          )}
+          .
           {session?.username
             ? ` Сессия CopyParse: ${session.username} (${session.role}).`
             : ' Сессия CopyParse не активна.'}
@@ -91,6 +116,10 @@ export function LearnAdminPage() {
             className="learn-admin-link"
             onClick={() => {
               clearLearnAuthSession()
+              if (embedded) {
+                window.location.reload()
+                return
+              }
               window.location.href = '/game/learn/admin/login'
             }}
           >
@@ -99,12 +128,14 @@ export function LearnAdminPage() {
         </p>
       </header>
 
-      <AdminJumpNav
-        items={[
-          { id: 'learn-schedule', label: 'Расписание' },
-          { id: 'learn-posts', label: 'Записи' },
-        ]}
-      />
+      {embedded ? null : (
+        <AdminJumpNav
+          items={[
+            { id: 'learn-schedule', label: 'Расписание' },
+            { id: 'learn-posts', label: 'Записи' },
+          ]}
+        />
+      )}
 
       <section
         id="learn-schedule"
@@ -160,9 +191,15 @@ export function LearnAdminPage() {
 
       <div id="learn-posts" className="admin-jump-target">
       <div className="learn-admin-actions">
-        <Link to="/game/learn/admin/new" className="learn-admin-btn learn-admin-btn-primary">
-          Добавить запись
-        </Link>
+        {onCreate ? (
+          <button type="button" className="learn-admin-btn learn-admin-btn-primary" onClick={onCreate}>
+            Добавить запись
+          </button>
+        ) : (
+          <Link to="/game/learn/admin/new" className="learn-admin-btn learn-admin-btn-primary">
+            Добавить запись
+          </Link>
+        )}
         <button type="button" className="learn-admin-btn" onClick={handleReset} disabled={busy}>
           Сбросить к S01
         </button>
@@ -191,9 +228,19 @@ export function LearnAdminPage() {
                   <Link to={`/game/learn/${post.slug}?preview=1`} className="learn-admin-link">
                     Открыть
                   </Link>
-                  <Link to={`/game/learn/admin/${post.slug}`} className="learn-admin-link">
-                    Редактировать
-                  </Link>
+                  {onEdit ? (
+                    <button
+                      type="button"
+                      className="learn-admin-link"
+                      onClick={() => onEdit(post.slug)}
+                    >
+                      Редактировать
+                    </button>
+                  ) : (
+                    <Link to={`/game/learn/admin/${post.slug}`} className="learn-admin-link">
+                      Редактировать
+                    </Link>
+                  )}
                   <button
                     type="button"
                     className="learn-admin-link learn-admin-danger"
@@ -209,6 +256,6 @@ export function LearnAdminPage() {
         </ul>
       )}
       </div>
-    </PageShell>
+    </LearnFrame>
   )
 }

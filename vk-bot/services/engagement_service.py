@@ -31,13 +31,16 @@ class VkEngagementService:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
-                    SELECT p.id, p.user_id, p.published_vk_post_id, p.published_owner_id,
+                    SELECT t.id, t.user_id,
+                           NULLIF(t.result->>'published_vk_post_id', '')::int,
+                           NULLIF(t.result->>'published_owner_id', '')::bigint,
                            pr.access_token, pr.user_access_token
-                    FROM vk_posts p
-                    JOIN vk_profiles pr ON pr.user_id = p.user_id
-                    WHERE p.id = %s AND p.user_id = %s AND p.status = 'published'
-                      AND p.published_vk_post_id IS NOT NULL
-                      AND p.published_owner_id IS NOT NULL
+                    FROM post_targets t
+                    JOIN vk_profiles pr ON pr.user_id = t.user_id
+                    WHERE t.id = %s AND t.user_id = %s AND t.platform = 'vk'
+                      AND t.status = 'published'
+                      AND t.result->>'published_vk_post_id' IS NOT NULL
+                      AND t.result->>'published_owner_id' IS NOT NULL
                     """,
                     (post_id, user_id),
                 )
@@ -57,15 +60,17 @@ class VkEngagementService:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
-                    SELECT p.id, p.user_id, p.published_vk_post_id, p.published_owner_id,
+                    SELECT t.id, t.user_id,
+                           NULLIF(t.result->>'published_vk_post_id', '')::int,
+                           NULLIF(t.result->>'published_owner_id', '')::bigint,
                            pr.access_token, pr.user_access_token
-                    FROM vk_posts p
-                    JOIN vk_profiles pr ON pr.user_id = p.user_id
-                    WHERE p.status = 'published'
-                      AND p.published_vk_post_id IS NOT NULL
-                      AND p.published_owner_id IS NOT NULL
-                      AND COALESCE(p.publish_at, p.created_at) >= NOW() - make_interval(days => %s)
-                    ORDER BY COALESCE(p.publish_at, p.created_at) DESC
+                    FROM post_targets t
+                    JOIN vk_profiles pr ON pr.user_id = t.user_id
+                    WHERE t.platform = 'vk' AND t.status = 'published'
+                      AND t.result->>'published_vk_post_id' IS NOT NULL
+                      AND t.result->>'published_owner_id' IS NOT NULL
+                      AND COALESCE(t.publish_at, t.created_at) >= NOW() - make_interval(days => %s)
+                    ORDER BY COALESCE(t.publish_at, t.created_at) DESC
                     LIMIT %s
                     """,
                     (hot_days, hot_cap),
@@ -74,15 +79,17 @@ class VkEngagementService:
                 hot_ids = {r[0] for r in hot}
                 await cur.execute(
                     """
-                    SELECT p.id, p.user_id, p.published_vk_post_id, p.published_owner_id,
+                    SELECT t.id, t.user_id,
+                           NULLIF(t.result->>'published_vk_post_id', '')::int,
+                           NULLIF(t.result->>'published_owner_id', '')::bigint,
                            pr.access_token, pr.user_access_token
-                    FROM vk_posts p
-                    JOIN vk_profiles pr ON pr.user_id = p.user_id
-                    WHERE p.status = 'published'
-                      AND p.published_vk_post_id IS NOT NULL
-                      AND p.published_owner_id IS NOT NULL
-                      AND COALESCE(p.publish_at, p.created_at) < NOW() - make_interval(days => %s)
-                    ORDER BY p.updated_at ASC NULLS FIRST
+                    FROM post_targets t
+                    JOIN vk_profiles pr ON pr.user_id = t.user_id
+                    WHERE t.platform = 'vk' AND t.status = 'published'
+                      AND t.result->>'published_vk_post_id' IS NOT NULL
+                      AND t.result->>'published_owner_id' IS NOT NULL
+                      AND COALESCE(t.publish_at, t.created_at) < NOW() - make_interval(days => %s)
+                    ORDER BY t.updated_at ASC NULLS FIRST
                     LIMIT %s
                     """,
                     (hot_days, sample_older),
@@ -116,19 +123,10 @@ class VkEngagementService:
                     async with conn.cursor() as cur:
                         await cur.execute(
                             """
-                            UPDATE vk_posts
-                            SET views = %s, likes = %s, reposts = %s, comments = %s,
-                                updated_at = CURRENT_TIMESTAMP
-                            WHERE id = %s
-                            """,
-                            (int(views), int(likes), int(reposts), int(comments), post_id),
-                        )
-                        await cur.execute(
-                            """
                             UPDATE posts
                             SET views = %s, likes = %s, reposts = %s, comments = %s,
                                 updated_at = CURRENT_TIMESTAMP
-                            WHERE source_platform = 'vk' AND source_id = %s
+                            WHERE id = (SELECT post_id FROM post_targets WHERE id = %s)
                             """,
                             (int(views), int(likes), int(reposts), int(comments), post_id),
                         )

@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     TG_BOT_SERVICE_URL: str = "http://tg-bot:8004"
     WP_BOT_SERVICE_URL: str = "http://wp-bot:8006"
     VK_BOT_SERVICE_URL: str = "http://vk-bot:8005"
-    TW_BOT_SERVICE_URL: str = "http://tw-bot:8011"
+    TW_BOT_SERVICE_URL: str = "http://tw-bot:8014"
     URL_BOT_SERVICE_URL: str = "http://url-bot:8007"
     THREADS_BOT_SERVICE_URL: str = "http://th-bot:8013"
     DZEN_BOT_SERVICE_URL: str = "http://dzen-bot:8012"

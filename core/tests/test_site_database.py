@@ -15,7 +15,7 @@ _config.settings = SimpleNamespace(
     DATABASE_URL="dbname=db_bot user=u password=p host=localhost",
     SITE_DATABASE_URL="",
     DB_POOL_MINSIZE=2,
-    DB_POOL_MAXSIZE=8,
+  DB_POOL_MAXSIZE=8,
 )
 sys.modules["config"] = _config
 

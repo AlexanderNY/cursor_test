@@ -1,7 +1,5 @@
 """Threads bot service DDL."""
 
-from shared.db.generate_ddl import build_post_indexes, build_post_table_ddl
-
 THREADS_PROFILES_TABLE = """
 CREATE TABLE IF NOT EXISTS threads_profiles (
     id SERIAL PRIMARY KEY,
@@ -29,10 +27,6 @@ CREATE TABLE IF NOT EXISTS threads_profiles (
 );
 """
 
-THREADS_POSTS_TABLE = build_post_table_ddl("threads_posts")
-
-THREADS_POSTS_INDEXES = build_post_indexes("threads_posts")
-
 THREADS_SELENIUM_SESSIONS_TABLE = """
 CREATE TABLE IF NOT EXISTS threads_selenium_sessions (
     id SERIAL PRIMARY KEY,
@@ -49,7 +43,5 @@ CREATE INDEX IF NOT EXISTS idx_threads_selenium_sessions_created_at
 
 ALL_TABLES: list[str] = [
     THREADS_PROFILES_TABLE,
-    THREADS_POSTS_TABLE,
-    THREADS_POSTS_INDEXES,
     THREADS_SELENIUM_SESSIONS_TABLE,
 ]

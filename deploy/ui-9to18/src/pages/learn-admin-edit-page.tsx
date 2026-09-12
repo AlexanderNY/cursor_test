@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import type { FormEvent } from 'react'
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
 import { AdminJumpNav } from '@/components/admin-jump-nav'
@@ -52,10 +52,38 @@ function theoryFromStructured(post: StructuredPost): string {
   return parts.filter(Boolean).join('\n\n')
 }
 
-export function LearnAdminEditPage() {
-  const { slug } = useParams()
+function LearnEditFrame({
+  embedded,
+  children,
+}: {
+  embedded: boolean
+  children: ReactNode
+}) {
+  if (embedded) {
+    return <div className="account-embed">{children}</div>
+  }
+  return <PageShell variant="admin">{children}</PageShell>
+}
+
+export type LearnAdminEditPageProps = {
+  embedded?: boolean
+  slug?: string
+  forceNew?: boolean
+  onBack?: () => void
+  onSaved?: (slug: string) => void
+}
+
+export function LearnAdminEditPage({
+  embedded = false,
+  slug: slugProp,
+  forceNew = false,
+  onBack,
+  onSaved,
+}: LearnAdminEditPageProps = {}) {
+  const { slug: slugParam } = useParams()
+  const slug = slugProp ?? slugParam
   const navigate = useNavigate()
-  const isNew = !slug || slug === 'new'
+  const isNew = forceNew || !slug || slug === 'new'
   const rubrics = getSortedRubrics()
 
   const [form, setForm] = useState<LearnPostInput | null>(null)
@@ -134,13 +162,25 @@ export function LearnAdminEditPage() {
 
   if (loading) {
     return (
-      <PageShell>
+      <LearnEditFrame embedded={embedded}>
         <p className="learn-section-note">Загрузка…</p>
-      </PageShell>
+      </LearnEditFrame>
     )
   }
 
   if (missing || !form) {
+    if (embedded) {
+      return (
+        <LearnEditFrame embedded>
+          <p className="learn-section-note">Запись не найдена</p>
+          {onBack ? (
+            <button type="button" className="back-link" onClick={onBack}>
+              ← К списку записей
+            </button>
+          ) : null}
+        </LearnEditFrame>
+      )
+    }
     return <Navigate to="/game/learn/admin" replace />
   }
 
@@ -212,7 +252,9 @@ export function LearnAdminEditPage() {
           cheatsheetFormat: 'html',
         })
         setIsSaved(true)
-        if (isNew || slug !== saved.slug) {
+        if (onSaved) {
+          onSaved(saved.slug)
+        } else if (isNew || slug !== saved.slug) {
           navigate(`/game/learn/admin/${saved.slug}`, { replace: true })
         }
       } catch (err) {
@@ -224,10 +266,16 @@ export function LearnAdminEditPage() {
   }
 
   return (
-    <PageShell>
-      <Link to="/game/learn/admin" className="back-link">
-        ← К списку записей
-      </Link>
+    <LearnEditFrame embedded={embedded}>
+      {onBack ? (
+        <button type="button" className="back-link" onClick={onBack}>
+          ← К списку записей
+        </button>
+      ) : (
+        <Link to="/game/learn/admin" className="back-link">
+          ← К списку записей
+        </Link>
+      )}
 
       <header className="learn-header">
         <p className="learn-eyebrow">Learn · Админка</p>
@@ -360,6 +408,6 @@ export function LearnAdminEditPage() {
           </p>
         </div>
       </form>
-    </PageShell>
+    </LearnEditFrame>
   )
 }

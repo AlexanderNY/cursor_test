@@ -3,14 +3,11 @@
 from __future__ import annotations
 
 POST_STATUS_VALUES: tuple[str, ...] = (
-    "created",
     "collected",
+    "created",
     "processing",
     "ready",
     "review",
-    "publishing",
-    "published",
-    "distributed",
     "deleted",
 )
 
@@ -42,13 +39,6 @@ POST_BASE_COLUMNS: tuple[str, ...] = (
     "is_ad",
     "status",
     "post_type",
-    "to_tg",
-    "to_tw",
-    "to_wp",
-    "to_vk",
-    "to_dzen",
-    "to_instagram",
-    "to_threads",
     "target_channels",
     "target_groups",
 )
@@ -75,13 +65,6 @@ POST_BASE_COLUMN_DEFS: dict[str, str] = {
     "is_ad": "BOOLEAN DEFAULT FALSE",
     "status": f"VARCHAR(50) DEFAULT 'collected' {POST_STATUS_CHECK}",
     "post_type": "VARCHAR(50)",
-    "to_tg": "BOOLEAN DEFAULT FALSE",
-    "to_tw": "BOOLEAN DEFAULT FALSE",
-    "to_wp": "BOOLEAN DEFAULT FALSE",
-    "to_vk": "BOOLEAN DEFAULT FALSE",
-    "to_dzen": "BOOLEAN DEFAULT FALSE",
-    "to_instagram": "BOOLEAN DEFAULT FALSE",
-    "to_threads": "BOOLEAN DEFAULT FALSE",
     "target_channels": "JSONB DEFAULT '[]'",
     "target_groups": "JSONB DEFAULT '[]'",
 }
@@ -89,27 +72,9 @@ POST_BASE_COLUMN_DEFS: dict[str, str] = {
 # All post-like tables that need brand_id / channel_id migration.
 POST_TENANCY_TABLES: tuple[str, ...] = (
     "posts",
-    "tg_posts",
-    "tw_posts",
-    "wp_posts",
-    "vk_posts",
-    "url_posts",
-    "cpost_posts",
-    "threads_posts",
-    "dzen_posts",
-    "instagram_posts",
 )
 
 # Tables counted by quota_service (must stay in sync with quota logic).
 QUOTA_POST_TABLES: tuple[str, ...] = (
     "posts",
-    "tg_posts",
-    "tw_posts",
-    "wp_posts",
-    "vk_posts",
-    "url_posts",
-    "cpost_posts",
-    "threads_posts",
-    "dzen_posts",
-    "instagram_posts",
 )

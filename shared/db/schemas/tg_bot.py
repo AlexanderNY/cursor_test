@@ -1,7 +1,5 @@
 """Telegram bot service DDL."""
 
-from shared.db.generate_ddl import build_post_indexes, build_post_table_ddl
-
 TG_PROFILES_TABLE = """
 CREATE TABLE IF NOT EXISTS tg_profiles (
     id SERIAL PRIMARY KEY,
@@ -55,18 +53,6 @@ DO $$ BEGIN
   ALTER TABLE tg_profiles ADD COLUMN proxy_url VARCHAR(512);
 EXCEPTION WHEN duplicate_column THEN NULL; END $$;
 """
-
-TG_POSTS_TABLE = build_post_table_ddl(
-    "tg_posts",
-    extra_columns={
-        "metadata": "JSONB DEFAULT '{}'",
-        "publish_at": "TIMESTAMPTZ",
-        "telegram_message_id": "BIGINT",
-        "telegram_chat_id": "TEXT",
-    },
-)
-
-TG_POSTS_INDEXES = build_post_indexes("tg_posts", with_publish_at=True)
 
 TG_POST_TEMPLATES_TABLE = """
 CREATE TABLE IF NOT EXISTS tg_post_templates (
@@ -149,8 +135,6 @@ ALL_TABLES: list[str] = [
     TG_PROFILES_TABLE,
     TG_PROFILES_BATCH_ENRICH_MIGRATION,
     TG_PROFILES_PROXY_URL_MIGRATION,
-    TG_POSTS_TABLE,
-    TG_POSTS_INDEXES,
     TG_POST_TEMPLATES_TABLE,
     TG_EVENTS_TABLE,
     TG_DEDUP_CACHE_TABLE,

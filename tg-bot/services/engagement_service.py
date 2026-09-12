@@ -38,12 +38,14 @@ class EngagementService:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
-                    SELECT id, user_id, telegram_message_id, telegram_chat_id
-                    FROM tg_posts
-                    WHERE id = %s AND user_id = %s AND status = 'published'
-                      AND telegram_message_id IS NOT NULL
-                      AND telegram_chat_id IS NOT NULL
-                      AND telegram_chat_id != ''
+                    SELECT t.id, t.user_id,
+                           NULLIF(t.result->>'telegram_message_id', '')::bigint,
+                           t.result->>'telegram_chat_id'
+                    FROM post_targets t
+                    WHERE t.id = %s AND t.user_id = %s AND t.platform = 'tg'
+                      AND t.status = 'published'
+                      AND t.result->>'telegram_message_id' IS NOT NULL
+                      AND COALESCE(t.result->>'telegram_chat_id', '') != ''
                     """,
                     (post_id, user_id),
                 )
@@ -68,14 +70,15 @@ class EngagementService:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
-                    SELECT id, user_id, telegram_message_id, telegram_chat_id
-                    FROM tg_posts
-                    WHERE status = 'published'
-                      AND telegram_message_id IS NOT NULL
-                      AND telegram_chat_id IS NOT NULL
-                      AND telegram_chat_id != ''
-                      AND COALESCE(publish_at, created_at) >= NOW() - make_interval(days => %s)
-                    ORDER BY COALESCE(publish_at, created_at) DESC
+                    SELECT t.id, t.user_id,
+                           NULLIF(t.result->>'telegram_message_id', '')::bigint,
+                           t.result->>'telegram_chat_id'
+                    FROM post_targets t
+                    WHERE t.platform = 'tg' AND t.status = 'published'
+                      AND t.result->>'telegram_message_id' IS NOT NULL
+                      AND COALESCE(t.result->>'telegram_chat_id', '') != ''
+                      AND COALESCE(t.publish_at, t.created_at) >= NOW() - make_interval(days => %s)
+                    ORDER BY COALESCE(t.publish_at, t.created_at) DESC
                     LIMIT %s
                     """,
                     (hot_days, hot_cap),
@@ -84,14 +87,15 @@ class EngagementService:
                 hot_ids = {r[0] for r in hot}
                 await cur.execute(
                     """
-                    SELECT id, user_id, telegram_message_id, telegram_chat_id
-                    FROM tg_posts
-                    WHERE status = 'published'
-                      AND telegram_message_id IS NOT NULL
-                      AND telegram_chat_id IS NOT NULL
-                      AND telegram_chat_id != ''
-                      AND COALESCE(publish_at, created_at) < NOW() - make_interval(days => %s)
-                    ORDER BY updated_at ASC NULLS FIRST
+                    SELECT t.id, t.user_id,
+                           NULLIF(t.result->>'telegram_message_id', '')::bigint,
+                           t.result->>'telegram_chat_id'
+                    FROM post_targets t
+                    WHERE t.platform = 'tg' AND t.status = 'published'
+                      AND t.result->>'telegram_message_id' IS NOT NULL
+                      AND COALESCE(t.result->>'telegram_chat_id', '') != ''
+                      AND COALESCE(t.publish_at, t.created_at) < NOW() - make_interval(days => %s)
+                    ORDER BY t.updated_at ASC NULLS FIRST
                     LIMIT %s
                     """,
                     (hot_days, sample_older),
@@ -129,26 +133,16 @@ class EngagementService:
                 async with conn.cursor() as cur:
                     await cur.executemany(
                         """
-                        UPDATE tg_posts
+                        UPDATE posts
                         SET views = %s,
                             likes = %s,
                             reposts = %s,
                             comments = %s,
                             updated_at = CURRENT_TIMESTAMP
-                        WHERE id = %s
+                        WHERE id = (SELECT post_id FROM post_targets WHERE id = %s)
                         """,
                         metrics_by_post,
                     )
-                    for views, likes, reposts, comments, post_id in metrics_by_post:
-                        await cur.execute(
-                            """
-                            UPDATE posts
-                            SET views = %s, likes = %s, reposts = %s, comments = %s,
-                                updated_at = CURRENT_TIMESTAMP
-                            WHERE source_platform = 'tg' AND source_id = %s
-                            """,
-                            (views, likes, reposts, comments, post_id),
-                        )
             finally:
                 await release_db_connection(conn)
             for views, likes, reposts, comments, post_id in metrics_by_post:

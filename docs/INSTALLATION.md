@@ -28,7 +28,7 @@ copy .env.example .env
 | `S3_ACCESS_KEY` / `S3_SECRET_KEY` | MinIO |
 | `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` | Консоль MinIO |
 | `S3_PUBLIC_ENDPOINT_URL` | URL MinIO для браузера, локально `http://localhost:9000` |
-| `DB_POOL_MAXSIZE` | Пул на сервис (дефолт 8); сумма × число сервисов &lt; Postgres `max_connections` |
+| `DB_POOL_MAXSIZE` | Пул на сервис (дефолт 8); auth задаётся явно. `DB_POOL_MAXSIZE_HEAVY` (16) только у core/collector/processor. Сумма max ≪ `max_connections` (запас 20–30) |
 | `TRUSTED_PROXY_CIDRS` | CIDR для доверия `X-Forwarded-For` (дефолт loopback + `172.20.0.0/16`) |
 | `SELENIUM_MAX_CONCURRENT` | Лимит параллельных Chrome (дефолт 2) |
 | `AI_MAX_CONCURRENT` | Параллельные вызовы Ollama (дефолт 1) |

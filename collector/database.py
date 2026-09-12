@@ -28,6 +28,13 @@ async def init_db() -> None:
         async with conn.cursor() as cur:
             for sql in ALL_TABLES:
                 await cur.execute(sql)
+            from shared.db.queue_notify import queue_notify_statements
+
+            for statement in queue_notify_statements():
+                try:
+                    await cur.execute(statement)
+                except Exception:
+                    pass
 
 
 @asynccontextmanager

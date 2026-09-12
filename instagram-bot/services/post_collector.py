@@ -7,6 +7,8 @@ from typing import Any, Dict, List, Optional
 
 from database import get_db_connection, release_db_connection
 from config import settings
+from shared.db.posts_repo import InboundPostCreate, PostsRepository
+from shared.queue_wakeup import wake_process_http
 from .image_mirror import mirror_collected_images_to_storage
 from .instagram_client import InstagramClient
 
@@ -80,11 +82,12 @@ class PostCollector:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
-                    SELECT 1 FROM instagram_posts
-                    WHERE user_id = %s AND domain = %s AND instagram_source_id = %s
+                    SELECT 1 FROM posts
+                    WHERE user_id = %s AND source_platform = 'instagram'
+                      AND source_native_id = %s
                     LIMIT 1
                     """,
-                    (user_id, domain, str(source_id)),
+                    (user_id, f"{domain}:{source_id}"),
                 )
                 row = await cur.fetchone()
                 return row is not None
@@ -103,35 +106,31 @@ class PostCollector:
         comments: int,
         likes: int,
     ) -> Optional[int]:
-        """Вставляет пост в instagram_posts со статусом collected. Возвращает id или None."""
+        """Вставляет пост в posts со статусом collected. Возвращает id или None."""
+        images = json.loads(images_json) if isinstance(images_json, str) else images_json
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
-                await cur.execute(
-                    """
-                    INSERT INTO instagram_posts (
-                        user_id, instagram_source_id, domain, post_text, post_date, author,
-                        images, comments, likes, status, post_type
-                    ) VALUES (
-                        %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                        'collected', 'instagram'
+                created = await PostsRepository(cur).create_inbound(
+                    InboundPostCreate(
+                        user_id=user_id,
+                        source_platform="instagram",
+                        post_text=post_text,
+                        post_date=post_date,
+                        author=author,
+                        domain=domain,
+                        images=images if isinstance(images, list) else [],
+                        extras={
+                            "instagram_source_id": str(instagram_source_id),
+                            "comments": comments,
+                            "likes": likes,
+                        },
+                        source_native_id=f"{domain}:{instagram_source_id}",
+                        target_platforms=("instagram",),
+                        target_status="pending",
                     )
-                    RETURNING id
-                    """,
-                    (
-                        user_id,
-                        instagram_source_id,
-                        domain,
-                        post_text,
-                        post_date,
-                        author,
-                        images_json,
-                        comments,
-                        likes,
-                    ),
                 )
-                row = await cur.fetchone()
-                new_id = int(row[0]) if row else None
+                new_id = int(created["id"])
                 _log_action(
                     "Saved instagram post id=%s user_id=%s domain=%s source_id=%s",
                     new_id,
@@ -139,7 +138,8 @@ class PostCollector:
                     domain,
                     instagram_source_id,
                 )
-                return new_id
+            await wake_process_http(getattr(settings, "PROCESSOR_SERVICE_URL", "") or "")
+            return new_id
         except Exception as e:
             logger.error("Error saving instagram post: %s", e, exc_info=True)
             return None

@@ -370,13 +370,9 @@ def _posts_channel_where(network: str, external_id: Any, table_alias: str = "") 
     parts: list[str] = []
     params: list[Any] = []
     target_col = "target_channels" if network == "tg" else "target_groups"
-    chat_col = "telegram_chat_id" if network == "tg" else None
     for v in variants:
         parts.append(f"{prefix}domain = %s")
         params.append(v)
-        if chat_col:
-            parts.append(f"{prefix}{chat_col} = %s")
-            params.append(v)
         parts.append(f"{prefix}{target_col} ? %s")
         params.append(v)
         parts.append(f"{prefix}{target_col} @> %s::jsonb")
@@ -2993,7 +2989,10 @@ class SmmService:
                 tg = empty_row
                 vk = empty_row
                 if channel is None or channel.get("network") == "tg":
-                    where = "user_id = %s AND created_at >= %s AND status != 'deleted'"
+                    where = (
+                        "user_id = %s AND created_at >= %s AND status != 'deleted' "
+                        "AND source_platform IN ('tg', 'telegram')"
+                    )
                     params: list[Any] = [user_id, since]
                     if scope_channels is not None:
                         extra, extra_params = _posts_channels_where("tg", scope_channels)
@@ -3003,14 +3002,17 @@ class SmmService:
                         f"""
                         SELECT COALESCE(SUM(views),0), COALESCE(SUM(likes),0),
                                COALESCE(SUM(comments),0), COALESCE(SUM(reposts),0), COUNT(*)
-                        FROM tg_posts
+                        FROM posts
                         WHERE {where}
                         """,
                         params,
                     )
                     tg = await cur.fetchone() or empty_row
                 if channel is None or channel.get("network") == "vk":
-                    where = "user_id = %s AND created_at >= %s AND status != 'deleted'"
+                    where = (
+                        "user_id = %s AND created_at >= %s AND status != 'deleted' "
+                        "AND source_platform = 'vk'"
+                    )
                     params = [user_id, since]
                     if scope_channels is not None:
                         extra, extra_params = _posts_channels_where("vk", scope_channels)
@@ -3020,7 +3022,7 @@ class SmmService:
                         f"""
                         SELECT COALESCE(SUM(views),0), COALESCE(SUM(likes),0),
                                COALESCE(SUM(comments),0), COALESCE(SUM(reposts),0), COUNT(*)
-                        FROM vk_posts
+                        FROM posts
                         WHERE {where}
                         """,
                         params,
@@ -3084,15 +3086,21 @@ class SmmService:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
-                    SELECT id, post_text, views, likes, comments, reposts, 'tg' AS network,
-                           created_at, post_date, publish_at, telegram_chat_id, domain, title,
-                           target_channels, telegram_message_id::bigint
-                    FROM tg_posts WHERE user_id = %s AND status != 'deleted'
+                    SELECT p.id, p.post_text, p.views, p.likes, p.comments, p.reposts, t.platform AS network,
+                           p.created_at, p.post_date, t.publish_at, t.result->>'telegram_chat_id', p.domain, p.title,
+                           COALESCE(t.target_channels, p.target_channels),
+                           NULLIF(t.result->>'telegram_message_id', '')::bigint
+                    FROM posts p
+                    JOIN post_targets t ON t.post_id = p.id
+                    WHERE p.user_id = %s AND p.status != 'deleted' AND t.platform = 'tg'
                     UNION ALL
-                    SELECT id, post_text, views, likes, comments, reposts, 'vk' AS network,
-                           created_at, post_date, publish_at, NULL::text, domain, title,
-                           target_groups, published_vk_post_id::bigint
-                    FROM vk_posts WHERE user_id = %s AND status != 'deleted'
+                    SELECT p.id, p.post_text, p.views, p.likes, p.comments, p.reposts, t.platform AS network,
+                           p.created_at, p.post_date, t.publish_at, NULL::text, p.domain, p.title,
+                           COALESCE(t.target_groups, p.target_groups),
+                           NULLIF(t.result->>'published_vk_post_id', '')::bigint
+                    FROM posts p
+                    JOIN post_targets t ON t.post_id = p.id
+                    WHERE p.user_id = %s AND p.status != 'deleted' AND t.platform = 'vk'
                     """,
                     (user_id, user_id),
                 )
@@ -3374,31 +3382,36 @@ class SmmService:
     ) -> Optional[dict]:
         if platform not in ("tg", "vk"):
             return None
-        table = "tg_posts" if platform == "tg" else "vk_posts"
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
                 if platform == "tg":
                     await cur.execute(
-                        f"""
-                        SELECT id, post_text, views, likes, comments, reposts, status,
-                               created_at, publish_at, telegram_chat_id, domain,
-                               telegram_message_id, target_channels
-                        FROM {table}
-                        WHERE id = %s AND user_id = %s AND status != 'deleted'
+                        """
+                        SELECT p.id, p.post_text, p.views, p.likes, p.comments, p.reposts, t.status,
+                               p.created_at, t.publish_at, t.result->>'telegram_chat_id', p.domain,
+                               NULLIF(t.result->>'telegram_message_id', '')::bigint, t.target_channels
+                        FROM post_targets t
+                        JOIN posts p ON p.id = t.post_id
+                        WHERE t.platform = 'tg'
+                          AND (t.id = %s OR t.post_id = %s)
+                          AND t.user_id = %s AND t.status != 'deleted'
                         """,
-                        (post_id, user_id),
+                        (post_id, post_id, user_id),
                     )
                 else:
                     await cur.execute(
-                        f"""
-                        SELECT id, post_text, views, likes, comments, reposts, status,
-                               created_at, publish_at, NULL::text, domain,
-                               published_vk_post_id, target_groups
-                        FROM {table}
-                        WHERE id = %s AND user_id = %s AND status != 'deleted'
+                        """
+                        SELECT p.id, p.post_text, p.views, p.likes, p.comments, p.reposts, t.status,
+                               p.created_at, t.publish_at, NULL::text, p.domain,
+                               NULLIF(t.result->>'published_vk_post_id', '')::bigint, t.target_groups
+                        FROM post_targets t
+                        JOIN posts p ON p.id = t.post_id
+                        WHERE t.platform = 'vk'
+                          AND (t.id = %s OR t.post_id = %s)
+                          AND t.user_id = %s AND t.status != 'deleted'
                         """,
-                        (post_id, user_id),
+                        (post_id, post_id, user_id),
                     )
                 row = await cur.fetchone()
                 if not row:
@@ -4161,10 +4174,11 @@ class SmmService:
                     placeholders = ", ".join(["%s"] * len(variants))
                     await cur.execute(
                         f"""
-                        SELECT vk_source_id::text, post_text, views, likes, comments, reposts,
+                        SELECT COALESCE(extras->>'vk_source_id', extras->'metadata'->>'vk_source_id', id::text),
+                               post_text, views, likes, comments, reposts,
                                post_date, NULL::text AS post_url
-                        FROM vk_posts
-                        WHERE user_id = %s AND domain IN ({placeholders})
+                        FROM posts
+                        WHERE user_id = %s AND source_platform = 'vk' AND domain IN ({placeholders})
                         ORDER BY post_date DESC NULLS LAST
                         LIMIT 40
                         """,
@@ -4180,8 +4194,9 @@ class SmmService:
                             """
                             SELECT id::text, post_text, views, likes, comments, reposts,
                                    COALESCE(post_date, created_at), url
-                            FROM url_posts
+                            FROM posts
                             WHERE user_id = %s
+                              AND source_platform = 'url'
                               AND (
                                     url = %s
                                  OR url = %s
@@ -4204,8 +4219,8 @@ class SmmService:
                         """
                         SELECT id::text, post_text, views, likes, comments, reposts,
                                post_date, NULL::text AS post_url
-                        FROM tg_posts
-                        WHERE user_id = %s AND domain = %s
+                        FROM posts
+                        WHERE user_id = %s AND source_platform IN ('tg', 'telegram') AND domain = %s
                         ORDER BY post_date DESC NULLS LAST
                         LIMIT 40
                         """,
@@ -4667,11 +4682,11 @@ class SmmService:
                     params.extend(extra_params)
                 await cur.execute(
                     f"""
-                    SELECT EXTRACT(DOW FROM COALESCE(publish_at, created_at)) AS dow,
-                           EXTRACT(HOUR FROM COALESCE(publish_at, created_at)) AS hour,
+                    SELECT EXTRACT(DOW FROM created_at) AS dow,
+                           EXTRACT(HOUR FROM created_at) AS hour,
                            AVG(views + likes * 3 + comments * 5 + reposts * 4) AS score
-                    FROM tg_posts
-                    WHERE {where}
+                    FROM posts
+                    WHERE {where} AND source_platform IN ('tg', 'telegram')
                     GROUP BY dow, hour
                     ORDER BY score DESC NULLS LAST
                     LIMIT 24
@@ -5083,8 +5098,8 @@ class SmmService:
                     if net == "vk":
                         await cur.execute(
                             """
-                            SELECT post_text FROM vk_posts
-                            WHERE user_id = %s AND domain = %s
+                            SELECT post_text FROM posts
+                            WHERE user_id = %s AND source_platform = 'vk' AND domain = %s
                               AND COALESCE(post_date, created_at) >= %s
                             ORDER BY post_date DESC NULLS LAST
                             LIMIT 100
@@ -5094,8 +5109,8 @@ class SmmService:
                     elif net == "tg":
                         await cur.execute(
                             """
-                            SELECT post_text FROM tg_posts
-                            WHERE user_id = %s AND domain = %s
+                            SELECT post_text FROM posts
+                            WHERE user_id = %s AND source_platform IN ('tg', 'telegram') AND domain = %s
                               AND COALESCE(post_date, created_at) >= %s
                             ORDER BY post_date DESC NULLS LAST
                             LIMIT 100
@@ -5456,8 +5471,7 @@ class SmmService:
                                channel_id,
                                COUNT(*) FILTER (
                                    WHERE status IN (
-                                       'processing', 'ready', 'review',
-                                       'publishing', 'distributed'
+                                       'processing', 'ready', 'review'
                                    )
                                )
                         FROM posts
@@ -5910,7 +5924,7 @@ class SmmService:
             await release_db_connection(conn)
 
     async def execute_job(self, job: dict) -> dict:
-        """Materialize job into tg_posts / vk_posts per target; update adapters_result."""
+        """Materialize job into posts / post_targets per network; update adapters_result."""
         from services.post_service import post_service
         from services.demo_seed_service import is_demo_external_id
 
@@ -6024,6 +6038,7 @@ class SmmService:
                         brand_id=job.get("brand_id") or ch.get("brand_id"),
                         channel_id=ch.get("id"),
                         skip_quota=True,
+                        status="ready",
                     )
                     await self._promote_smm_post_ready(
                         "tg", created, from_status="collected", job_id=job_id, user_id=user_id
@@ -6051,7 +6066,7 @@ class SmmService:
                         target_channels=[external_id] if external_id else None,
                     )
                     await self._stamp_post_tenancy(
-                        "tw_posts", created, job.get("brand_id") or ch.get("brand_id"), ch.get("id")
+                        "posts", created, job.get("brand_id") or ch.get("brand_id"), ch.get("id")
                     )
                     await self._promote_smm_post_ready(
                         "tw", created, from_status="collected", job_id=job_id, user_id=user_id
@@ -6067,7 +6082,7 @@ class SmmService:
                         skip_quota=True,
                     )
                     await self._stamp_post_tenancy(
-                        "wp_posts", created, job.get("brand_id") or ch.get("brand_id"), ch.get("id")
+                        "posts", created, job.get("brand_id") or ch.get("brand_id"), ch.get("id")
                     )
                     await self._log_smm_queued(
                         "wp", created, job_id=job_id, user_id=user_id, from_status="ready"
@@ -6081,7 +6096,7 @@ class SmmService:
                         target_channels=[external_id] if external_id else None,
                     )
                     await self._stamp_post_tenancy(
-                        "threads_posts",
+                        "posts",
                         created,
                         job.get("brand_id") or ch.get("brand_id"),
                         ch.get("id"),
@@ -6102,7 +6117,7 @@ class SmmService:
                         target_channels=[external_id] if external_id else None,
                     )
                     await self._stamp_post_tenancy(
-                        "dzen_posts", created, job.get("brand_id") or ch.get("brand_id"), ch.get("id")
+                        "posts", created, job.get("brand_id") or ch.get("brand_id"), ch.get("id")
                     )
                     await self._promote_smm_post_ready(
                         "dzen", created, from_status="collected", job_id=job_id, user_id=user_id
@@ -6116,7 +6131,7 @@ class SmmService:
                         target_channels=[external_id] if external_id else None,
                     )
                     await self._stamp_post_tenancy(
-                        "instagram_posts",
+                        "posts",
                         created,
                         job.get("brand_id") or ch.get("brand_id"),
                         ch.get("id"),
@@ -6190,21 +6205,38 @@ class SmmService:
         """SMM content is already adapted — skip collector/processor, publish from ready."""
         if not created or not created.get("id"):
             return
-        table = self._PLATFORM_POST_TABLE.get(platform)
-        if not table:
-            return
         post_id = int(created["id"])
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
-                await cur.execute(
-                    f"""
-                    UPDATE {table}
-                    SET status = 'ready', updated_at = CURRENT_TIMESTAMP
-                    WHERE id = %s
-                    """,
-                    (post_id,),
-                )
+                if created.get("_queue") == "targets" or created.get("_target_id"):
+                    target_id = int(created.get("_target_id") or post_id)
+                    await cur.execute(
+                        """
+                        UPDATE post_targets
+                        SET status = 'ready', updated_at = CURRENT_TIMESTAMP
+                        WHERE id = %s AND status IN ('pending', 'ready')
+                        """,
+                        (target_id,),
+                    )
+                    await cur.execute(
+                        """
+                        UPDATE posts
+                        SET status = 'ready', updated_at = CURRENT_TIMESTAMP
+                        WHERE id = (SELECT post_id FROM post_targets WHERE id = %s)
+                          AND status IN ('collected', 'created', 'ready')
+                        """,
+                        (target_id,),
+                    )
+                else:
+                    await cur.execute(
+                        """
+                        UPDATE posts
+                        SET status = 'ready', updated_at = CURRENT_TIMESTAMP
+                        WHERE id = %s
+                        """,
+                        (post_id,),
+                    )
         finally:
             await release_db_connection(conn)
         await self._log_smm_queued(
@@ -6368,7 +6400,7 @@ class SmmService:
 
     async def _stamp_post_tenancy(
         self,
-        table: str,
+        _table: str,
         created: Optional[dict],
         brand_id: Any,
         channel_id: Any,
@@ -6377,42 +6409,22 @@ class SmmService:
             return
         if brand_id is None and channel_id is None:
             return
+        row_id = created.get("_post_id") or created.get("post_id") or created["id"]
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
                 await cur.execute(
-                    f"""
-                    UPDATE {table}
+                    """
+                    UPDATE posts
                     SET brand_id = COALESCE(%s, brand_id),
                         channel_id = COALESCE(%s, channel_id),
                         updated_at = CURRENT_TIMESTAMP
                     WHERE id = %s
                     """,
-                    (brand_id, channel_id, created["id"]),
+                    (brand_id, channel_id, row_id),
                 )
         finally:
             await release_db_connection(conn)
-
-    _PLATFORM_POST_TABLE = {
-        "tg": "tg_posts",
-        "vk": "vk_posts",
-        "wp": "wp_posts",
-        "tw": "tw_posts",
-        "dzen": "dzen_posts",
-        "instagram": "instagram_posts",
-        "threads": "threads_posts",
-        "url": "url_posts",
-    }
-
-    _PLATFORM_READY_FLAG = {
-        "tg": "to_tg",
-        "vk": "to_vk",
-        "wp": "to_wp",
-        "tw": "to_tw",
-        "dzen": "to_dzen",
-        "instagram": "to_instagram",
-        "threads": "to_threads",
-    }
 
     async def claim_ready_posts(
         self,
@@ -6422,93 +6434,34 @@ class SmmService:
         user_id: Optional[int] = None,
     ) -> list[dict]:
         """Atomically claim ready network posts for bot publish (ready -> publishing)."""
-        table = self._PLATFORM_POST_TABLE.get(platform)
-        if not table:
-            return []
-        flag_col = self._PLATFORM_READY_FLAG.get(platform)
+        from shared.db.bot_queue import claimed_target_as_post
+        from shared.db.posts_repo import PostsRepository
+
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
                 await cur.execute("BEGIN")
-                where = "status = 'ready'"
-                params: list[Any] = []
-                if user_id is not None:
-                    where += " AND user_id = %s"
-                    params.append(user_id)
-                if flag_col:
-                    # Prefer rows flagged for this network; allow NULL for legacy rows.
-                    where += f" AND ({flag_col} IS NULL OR {flag_col} = TRUE)"
-                params.append(limit)
-                await cur.execute(
-                    f"""
-                    SELECT *
-                    FROM {table}
-                    WHERE {where}
-                    ORDER BY COALESCE(publish_at, created_at) ASC NULLS LAST
-                    LIMIT %s
-                    FOR UPDATE SKIP LOCKED
-                    """,
-                    params,
-                )
-                rows = await cur.fetchall()
-                if not rows:
-                    await cur.execute("COMMIT")
-                    return []
-                columns = [col.name for col in cur.description]
-                ids = [r[columns.index("id")] for r in rows]
-                placeholders = ", ".join(["%s"] * len(ids))
-                await cur.execute(
-                    f"""
-                    UPDATE {table}
-                    SET status = 'publishing', updated_at = CURRENT_TIMESTAMP
-                    WHERE id IN ({placeholders})
-                    """,
-                    ids,
-                )
-                await cur.execute("COMMIT")
-                out: list[dict] = []
-                for row in rows:
-                    item = dict(zip(columns, row))
-                    for key in ("images", "target_channels", "target_groups"):
-                        val = item.get(key)
-                        if isinstance(val, str):
-                            try:
-                                item[key] = json.loads(val)
-                            except (json.JSONDecodeError, TypeError):
-                                item[key] = [] if key != "images" else []
-                    item["targets"] = item.get("target_groups") if platform == "vk" else item.get(
-                        "target_channels"
-                    )
-                    if not isinstance(item.get("targets"), list):
-                        item["targets"] = item.get("targets") or []
-                    item["platform"] = platform
-                    item["table"] = table
-                    item["status"] = "publishing"
-                    out.append(item)
                 try:
-                    from services.post_lifecycle_service import log_post_lifecycle_event
-
-                    for item in out:
-                        await log_post_lifecycle_event(
-                            platform=platform,
-                            post_id=int(item["id"]),
-                            user_id=item.get("user_id"),
-                            from_status="ready",
-                            to_status="publishing",
-                            actor="smm.claim_ready_posts",
-                        )
+                    rows = await PostsRepository(cur).claim_publish(
+                        platform=platform,
+                        limit=limit,
+                        user_id=user_id,
+                    )
+                    await cur.execute("COMMIT")
                 except Exception:
-                    pass
-                return out
-        except Exception:
-            try:
-                async with conn.cursor() as cur:
                     await cur.execute("ROLLBACK")
-            except Exception:
-                pass
-            raise
+                    raise
+            if rows:
+                out = []
+                for row in rows:
+                    item = claimed_target_as_post(row)
+                    item["platform"] = platform
+                    item["table"] = "post_targets"
+                    out.append(item)
+                return out
         finally:
             await release_db_connection(conn)
+        return []
 
     async def apply_publish_result(
         self,
@@ -6519,9 +6472,6 @@ class SmmService:
         external_id: Optional[str] = None,
         error: Optional[str] = None,
     ) -> bool:
-        table = self._PLATFORM_POST_TABLE.get(platform)
-        if not table:
-            return False
         status = "published" if ok else "failed"
         user_id: Optional[int] = None
         from_status: Optional[str] = None
@@ -6530,58 +6480,56 @@ class SmmService:
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
+                from shared.db.posts_repo import PostsRepository, PublishResult
+
                 await cur.execute(
-                    f"SELECT user_id, status FROM {table} WHERE id = %s",
-                    (post_id,),
+                    "SELECT user_id, status FROM post_targets WHERE id = %s AND platform = %s",
+                    (post_id, platform),
                 )
-                prev = await cur.fetchone()
-                if prev:
-                    user_id = prev[0]
-                    from_status = str(prev[1]) if prev[1] is not None else None
-                already_terminal = from_status in (
-                    "published",
-                    "failed",
-                    "error",
-                    "review",
-                    "deleted",
-                )
-                if already_terminal:
-                    # Bot already wrote platform-specific status; do not clobber.
-                    updated = True
-                elif platform == "tg" and external_id and ok:
+                target_prev = await cur.fetchone()
+                if not target_prev:
                     await cur.execute(
-                        f"""
-                        UPDATE {table}
-                        SET status = %s,
-                            telegram_message_id = COALESCE(%s, telegram_message_id),
-                            updated_at = CURRENT_TIMESTAMP
-                        WHERE id = %s
+                        """
+                        SELECT user_id, status, id FROM post_targets
+                        WHERE post_id = %s AND platform = %s
+                        ORDER BY id DESC
+                        LIMIT 1
                         """,
-                        (status, external_id if str(external_id).isdigit() else None, post_id),
+                        (post_id, platform),
                     )
-                    updated = cur.rowcount > 0
-                elif platform == "wp" and external_id and ok:
-                    await cur.execute(
-                        f"""
-                        UPDATE {table}
-                        SET status = %s,
-                            url = COALESCE(%s, url),
-                            updated_at = CURRENT_TIMESTAMP
-                        WHERE id = %s
-                        """,
-                        (status, external_id, post_id),
+                    target_prev = await cur.fetchone()
+                    if target_prev:
+                        post_id = int(target_prev[2])
+                if target_prev:
+                    user_id = target_prev[0]
+                    from_status = str(target_prev[1]) if target_prev[1] is not None else None
+                    already_terminal = from_status in (
+                        "published",
+                        "failed",
+                        "skipped",
+                        "deleted",
                     )
-                    updated = cur.rowcount > 0
-                else:
-                    await cur.execute(
-                        f"""
-                        UPDATE {table}
-                        SET status = %s, updated_at = CURRENT_TIMESTAMP
-                        WHERE id = %s
-                        """,
-                        (status, post_id),
-                    )
-                    updated = cur.rowcount > 0
+                    if already_terminal:
+                        updated = True
+                    else:
+                        result: dict[str, Any] = {}
+                        if ok and external_id:
+                            result["remote_id"] = str(external_id)
+                            if platform == "tg":
+                                result["telegram_message_id"] = external_id
+                            if platform == "vk":
+                                result["published_vk_post_id"] = external_id
+                        if error:
+                            result["error"] = error
+                        applied = await PostsRepository(cur).apply_publish_result(
+                            PublishResult(
+                                target_id=int(post_id),
+                                ok=ok,
+                                result=result,
+                                status=status,
+                            )
+                        )
+                        updated = applied is not None
         finally:
             await release_db_connection(conn)
 

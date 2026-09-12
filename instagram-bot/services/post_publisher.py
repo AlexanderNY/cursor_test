@@ -13,6 +13,8 @@ from database import get_db_connection, release_db_connection
 from config import settings
 from storage_helper import get_storage
 from shared import async_fs
+from shared.db.bot_queue import claimed_target_as_post, finish_claimed_publish
+from shared.db.posts_repo import PostsRepository
 from .instagram_client import InstagramClient
 
 
@@ -100,58 +102,57 @@ class PostPublisher:
     """Публикация постов из instagram_posts в Instagram."""
 
     async def get_ready_posts(self) -> List[Dict]:
-        """Claim ready posts (SKIP LOCKED → publishing) with publish_enabled credentials."""
+        """Claim ready Instagram post_targets."""
+        return await self._claim_unified_posts()
+
+    async def _claim_unified_posts(self) -> List[Dict]:
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
                 try:
                     await cur.execute("BEGIN")
-                    await cur.execute(
-                        """
-                        SELECT p.id, p.user_id, p.post_text, p.images,
-                               pr.username, pr.password,
-                               pr.instagrapi_session, pr.instagram_verification_code
-                        FROM instagram_posts p
-                        JOIN instagram_profiles pr ON p.user_id = pr.user_id
-                        WHERE p.status = 'ready'
-                          AND pr.publish_enabled = TRUE
-                          AND pr.username IS NOT NULL
-                          AND pr.username != ''
-                          AND pr.password IS NOT NULL
-                          AND pr.password != ''
-                        ORDER BY p.user_id ASC, p.created_at ASC
-                        LIMIT 20
-                        FOR UPDATE OF p SKIP LOCKED
-                        """
-                    )
-                    rows = await cur.fetchall()
-                    cols = [c.name for c in cur.description]
-                    if not rows:
-                        await cur.execute("COMMIT")
-                        return []
-                    claimed = [dict(zip(cols, row)) for row in rows]
-                    post_ids = [p["id"] for p in claimed]
-                    ids_ph = ", ".join(["%s"] * len(post_ids))
-                    await cur.execute(
-                        f"""
-                        UPDATE instagram_posts
-                        SET status = 'publishing', updated_at = CURRENT_TIMESTAMP
-                        WHERE id IN ({ids_ph})
-                        """,
-                        post_ids,
+                    rows = await PostsRepository(cur).claim_publish(
+                        platform="instagram",
+                        limit=20,
                     )
                     await cur.execute("COMMIT")
-                    result = []
-                    for rec in claimed:
-                        rec["instagrapi_session"] = _normalize_session(
-                            rec.get("instagrapi_session")
-                        )
-                        rec["status"] = "publishing"
-                        result.append(rec)
-                    return result
                 except Exception:
                     await cur.execute("ROLLBACK")
                     raise
+            if not rows:
+                return []
+            claimed = [claimed_target_as_post(row) for row in rows]
+            user_ids = sorted({int(p["user_id"]) for p in claimed})
+            profiles = await self._load_instagram_profiles(user_ids)
+            result: List[Dict] = []
+            for rec in claimed:
+                rec.update(profiles.get(int(rec["user_id"])) or {})
+                rec["instagrapi_session"] = _normalize_session(rec.get("instagrapi_session"))
+                rec["status"] = "publishing"
+                result.append(rec)
+            return result
+        finally:
+            await release_db_connection(conn)
+
+    async def _load_instagram_profiles(self, user_ids: List[int]) -> Dict[int, Dict]:
+        if not user_ids:
+            return {}
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                placeholders = ", ".join(["%s"] * len(user_ids))
+                await cur.execute(
+                    f"""
+                    SELECT user_id, username, password,
+                           instagrapi_session, instagram_verification_code, publish_enabled
+                    FROM instagram_profiles
+                    WHERE user_id IN ({placeholders})
+                    """,
+                    user_ids,
+                )
+                fetched = await cur.fetchall()
+                cols = [c.name for c in cur.description]
+                return {int(row[0]): dict(zip(cols, row)) for row in fetched}
         finally:
             await release_db_connection(conn)
 
@@ -216,24 +217,24 @@ class PostPublisher:
                 code = await own_client.album_upload(local_paths, caption=caption)
             if code is not None:
                 _log_action("Published instagram post %s for user %s", post_id, user_id)
-                await self._update_post_status(post_id, "published")
+                await self._update_post_status(post, "published")
                 return True
         finally:
             for p in temp_paths:
                 await async_fs.unlink_quiet(p)
         return False
 
-    async def _update_post_status(self, post_id: int, status: str) -> None:
+    async def _update_post_status(self, post: Dict, status: str) -> None:
+        post_id = int(post["id"])
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
-                await cur.execute(
-                    """
-                    UPDATE instagram_posts
-                    SET status = %s, updated_at = CURRENT_TIMESTAMP
-                    WHERE id = %s
-                    """,
-                    (status, post_id),
+                finished = await finish_claimed_publish(
+                    cur,
+                    post,
+                    ok=(status == "published"),
+                    result={"error": f"status={status}"} if status in ("failed", "error") else {},
+                    status="published" if status == "published" else "failed",
                 )
         finally:
             await release_db_connection(conn)
@@ -243,13 +244,13 @@ class PostPublisher:
             await mark_post_published(
                 settings.CORE_SERVICE_URL or "",
                 platform="instagram",
-                post_id=int(post_id),
+                post_id=post_id,
             )
         elif status in ("failed", "error"):
             await mark_post_published(
                 settings.CORE_SERVICE_URL or "",
                 platform="instagram",
-                post_id=int(post_id),
+                post_id=post_id,
                 error=f"status={status}",
             )
 
@@ -274,10 +275,14 @@ class PostPublisher:
             )
             if not await shared_client.login():
                 logger.warning("Instagram login failed for user_id=%s, skipping %d posts", user_id, len(group))
+                for post in group:
+                    await self._update_post_status(post, "failed")
                 continue
             for post in group:
                 if await self.publish_post(post, client=shared_client):
                     published += 1
+                else:
+                    await self._update_post_status(post, "failed")
                 await asyncio.sleep(3)
         _log_action("publish_ready_posts: published %d of %d", published, len(posts))
         return published

@@ -115,8 +115,9 @@ class SummaryAggregator:
                 async with conn.cursor() as cur:
                     await cur.execute(
                         """
-                        SELECT domain, post_text FROM tg_posts
-                        WHERE user_id = %s AND status = 'collected'
+                        SELECT domain, post_text FROM posts
+                        WHERE user_id = %s AND source_platform IN ('tg', 'telegram')
+                          AND status = 'collected'
                           AND created_at > %s AND post_text IS NOT NULL
                         ORDER BY created_at
                         """,

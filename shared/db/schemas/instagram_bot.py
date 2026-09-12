@@ -1,7 +1,5 @@
 """Instagram bot service DDL."""
 
-from shared.db.generate_ddl import build_post_indexes, build_post_table_ddl
-
 INSTAGRAM_PROFILES_TABLE = """
 CREATE TABLE IF NOT EXISTS instagram_profiles (
     id SERIAL PRIMARY KEY,
@@ -30,24 +28,6 @@ CREATE TABLE IF NOT EXISTS instagram_profiles (
 );
 """
 
-INSTAGRAM_POSTS_TABLE = build_post_table_ddl(
-    "instagram_posts",
-    extra_columns={
-        "instagram_source_id": "VARCHAR(100)",
-        "videos": "JSONB DEFAULT '[]'",
-    },
-    column_overrides={"to_instagram": "BOOLEAN DEFAULT TRUE"},
-)
-
-INSTAGRAM_POSTS_INDEXES = (
-    build_post_indexes("instagram_posts", with_user_domain=True)
-    + "\nCREATE UNIQUE INDEX IF NOT EXISTS idx_instagram_posts_source "
-    "ON instagram_posts(user_id, instagram_source_id) "
-    "WHERE instagram_source_id IS NOT NULL;"
-)
-
 ALL_TABLES: list[str] = [
     INSTAGRAM_PROFILES_TABLE,
-    INSTAGRAM_POSTS_TABLE,
-    INSTAGRAM_POSTS_INDEXES,
 ]

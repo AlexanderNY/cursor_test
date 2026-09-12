@@ -7,6 +7,8 @@ export interface VKAuthStatus {
   community_connected?: boolean
   message: string
   vk_user_id?: number | null
+  /** Точный redirect_uri, который Core передаёт в oauth.vk.com */
+  redirect_uri?: string | null
 }
 
 /** Ответ POST /vk/auth/verify/* */

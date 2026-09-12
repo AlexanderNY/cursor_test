@@ -16,7 +16,7 @@
 | VK OAuth | Signed `state` (HMAC), frontend allowlist |
 | Publish | Claim `FOR UPDATE SKIP LOCKED` → `publishing` (tg/vk/ig/tw/dzen) |
 | Scheduler | `pg_try_advisory_lock` в `poll_loop` |
-| DB pools | `DB_POOL_MAXSIZE` default 8 через env |
+| DB pools | `DB_POOL_MAXSIZE` default 8; core/collector/processor `DB_POOL_MAXSIZE_HEAVY=16`; auth явно 8 |
 | Selenium | `SELENIUM_MAX_CONCURRENT` + semaphore |
 | AI | Shared httpx + `AI_MAX_CONCURRENT` semaphore |
 

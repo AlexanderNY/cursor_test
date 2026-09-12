@@ -1,7 +1,12 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { AdminJumpNav, type AdminNavGroup, type AdminNavItem } from '@/components/admin-jump-nav'
+import { ContactForm } from '@/components/contact-form'
 import { PageShell } from '@/components/page-shell'
+import { AppBlogPage, AppPostPage } from '@/pages/app-blog-page'
+import { LearnAdminEditPage } from '@/pages/learn-admin-edit-page'
+import { LearnAdminPage } from '@/pages/learn-admin-page'
+import { AppAdminPage, SiteAdminPage } from '@/pages/site-admin-page'
 import {
   getPublishedPosts,
   getSeasonTracks,
@@ -76,7 +81,7 @@ export function SiteAccountPage() {
   const [ok, setOk] = useState('')
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { posts, isReady: postsReady } = useLearnPosts()
   const { completedSlugs, isReady: progressReady } = useSiteLearnProgress()
   const [study, setStudy] = useState<SiteStudySummary | null>(null)
@@ -213,6 +218,36 @@ export function SiteAccountPage() {
   const activeId: AccountSectionId = allMeta.some((item) => item.id === sectionParam)
     ? (sectionParam as AccountSectionId)
     : 'profile'
+  const paneView = searchParams.get('view') || 'overview'
+  const panePost = searchParams.get('post') || ''
+
+  function setPane(view: string, post?: string) {
+    const next = new URLSearchParams(searchParams)
+    if (activeId === 'profile') {
+      next.delete('section')
+    } else {
+      next.set('section', activeId)
+    }
+    if (!view || view === 'overview') {
+      next.delete('view')
+      next.delete('post')
+    } else {
+      next.set('view', view)
+      if (post) {
+        next.set('post', post)
+      } else {
+        next.delete('post')
+      }
+    }
+    setSearchParams(next, { replace: true })
+  }
+
+  function openAppAdmin(slug: string) {
+    setSearchParams(
+      { section: `app:${slug}`, view: 'admin' },
+      { replace: true },
+    )
+  }
 
   async function onChangePassword(event: FormEvent) {
     event.preventDefault()
@@ -248,7 +283,7 @@ export function SiteAccountPage() {
   const activeNav = allMeta.find((item) => item.id === activeId)
 
   return (
-    <PageShell>
+    <PageShell variant="admin">
       <Link to="/" className="back-link">
         ← На главную
       </Link>
@@ -433,13 +468,9 @@ export function SiteAccountPage() {
           {activeId === 'contact' ? (
             <div className="account-panel-body">
               <p className="learn-section-note">
-                Напишите команде через форму на главной — сообщения видны супер-админу в админке.
+                Напишите команде — сообщения видны супер-админу в админке.
               </p>
-              <div className="account-actions">
-                <Link to="/#contacts" className="learn-admin-btn learn-admin-btn-primary">
-                  Перейти к форме связи
-                </Link>
-              </div>
+              <ContactForm />
             </div>
           ) : null}
 
@@ -454,16 +485,53 @@ export function SiteAccountPage() {
                       приложения и блог в едином формате (введение, разделы, схемы, тест, anki).
                     </p>
                     <div className="account-actions">
-                      <Link
-                        to={`/admin/apps/${slug}`}
-                        className="learn-admin-btn learn-admin-btn-primary"
+                      <button
+                        type="button"
+                        className={
+                          paneView === 'admin'
+                            ? 'learn-admin-btn learn-admin-btn-primary'
+                            : 'learn-admin-btn'
+                        }
+                        onClick={() => setPane('admin')}
                       >
-                        Открыть кабинет владельца
-                      </Link>
-                      <Link to={`/app/${slug}`} className="learn-admin-btn">
+                        Кабинет владельца
+                      </button>
+                      <button
+                        type="button"
+                        className={
+                          paneView === 'public' || paneView === 'post'
+                            ? 'learn-admin-btn learn-admin-btn-primary'
+                            : 'learn-admin-btn'
+                        }
+                        onClick={() => setPane('public')}
+                      >
                         Публичная страница
-                      </Link>
+                      </button>
                     </div>
+                    {paneView === 'admin' ? (
+                      <AppAdminPage
+                        embedded
+                        slug={slug}
+                        onOpenPublic={() => setPane('public')}
+                        onOpenPost={(postSlug) => setPane('post', postSlug)}
+                      />
+                    ) : null}
+                    {paneView === 'public' ? (
+                      <AppBlogPage
+                        embedded
+                        slug={slug}
+                        onOpenAdmin={() => setPane('admin')}
+                        onOpenPost={(postSlug) => setPane('post', postSlug)}
+                      />
+                    ) : null}
+                    {paneView === 'post' && panePost ? (
+                      <AppPostPage
+                        embedded
+                        slug={slug}
+                        postSlug={panePost}
+                        onBack={() => setPane('public')}
+                      />
+                    ) : null}
                   </>
                 )
               })()}
@@ -472,34 +540,27 @@ export function SiteAccountPage() {
 
           {activeId === 'site-admin' ? (
             <div className="account-panel-body">
-              <p className="learn-section-note">
-                Полный доступ к витрине 9to18: плашки и порядок, спотлайт, контакты, пользователи,
-                загрузка MD карты обучения.
-              </p>
-              <div className="account-actions">
-                <Link to="/admin" className="learn-admin-btn learn-admin-btn-primary">
-                  Открыть супер-админку
-                </Link>
-              </div>
+              <SiteAdminPage embedded onOpenApp={openAppAdmin} />
             </div>
           ) : null}
 
           {activeId === 'learn-cms' ? (
             <div className="account-panel-body">
-              <p className="learn-section-note">
-                Редактор учебных выпусков Learn.
-                {canEditLearn(learnSession?.role)
-                  ? ' Сессия CopyParse уже активна.'
-                  : ' Можно войти как супер-админ сайта или через аккаунт CopyParse.'}
-              </p>
-              <div className="account-actions">
-                <Link
-                  to="/game/learn/admin"
-                  className="learn-admin-btn learn-admin-btn-primary"
-                >
-                  Открыть Learn · контент
-                </Link>
-              </div>
+              {paneView === 'edit' ? (
+                <LearnAdminEditPage
+                  embedded
+                  slug={panePost === 'new' ? undefined : panePost || undefined}
+                  forceNew={panePost === 'new'}
+                  onBack={() => setPane('overview')}
+                  onSaved={(nextSlug) => setPane('edit', nextSlug)}
+                />
+              ) : (
+                <LearnAdminPage
+                  embedded
+                  onCreate={() => setPane('edit', 'new')}
+                  onEdit={(nextSlug) => setPane('edit', nextSlug)}
+                />
+              )}
             </div>
           ) : null}
 

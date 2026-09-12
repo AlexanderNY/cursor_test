@@ -82,7 +82,7 @@ async def mirror_collected_images_to_storage(
         async with conn.cursor() as cur:
             await cur.execute(
                 """
-                UPDATE instagram_posts
+                UPDATE posts
                 SET images = %s::jsonb, updated_at = CURRENT_TIMESTAMP
                 WHERE id = %s
                 """,

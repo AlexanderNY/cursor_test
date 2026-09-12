@@ -56,6 +56,19 @@ function buildVkImplicitAuthUrl(appId: string, scope: string): string {
   return `https://oauth.vk.com/authorize?${params.toString()}`
 }
 
+function oauthRedirectHostMismatch(redirectUri: string): string | null {
+  if (typeof window === 'undefined' || !redirectUri) return null
+  try {
+    const host = new URL(redirectUri).hostname
+    if (host && host !== window.location.hostname) {
+      return host
+    }
+  } catch {
+    return null
+  }
+  return null
+}
+
 /** Секрет: если уже в БД — не показываем в input (браузер иначе подставляет чужой пароль). */
 function SecretTokenField({
   label,
@@ -262,6 +275,7 @@ export function AuthTab({
   const implicitAuthUrl = vkAppId.trim()
     ? buildVkImplicitAuthUrl(vkAppId, implicitPreset.scope)
     : ''
+  const oauthHostMismatch = oauthRedirectHostMismatch(vkOAuthRedirectUri)
 
   return (
     <div className="space-y-4 animate-slide-up">
@@ -638,10 +652,34 @@ export function AuthTab({
               <VerifyBadge result={verifyResults.oauth} />
             </div>
           </div>
-          <p className="text-xs text-[var(--text-muted)]">
-            Redirect URI (для кнопок OAuth ниже):{' '}
-            <code className="text-[var(--text-secondary)] break-all">{vkOAuthRedirectUri}</code>
-          </p>
+          <div className="text-xs text-[var(--text-muted)] space-y-1">
+            <p>
+              Redirect URI нужно добавить в кабинет приложения VK ID → «Доверенный Redirect URI»
+              <strong className="text-[var(--text-secondary)]"> один в один</strong> (https, www,
+              путь). Недостаточно указать только «Публичный URL gateway».
+            </p>
+            <p className="flex flex-wrap items-center gap-2">
+              <code className="text-[var(--text-secondary)] break-all">{vkOAuthRedirectUri}</code>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  void navigator.clipboard.writeText(vkOAuthRedirectUri)
+                }}
+              >
+                Копировать
+              </Button>
+            </p>
+            {oauthHostMismatch && (
+              <p className="text-amber-500">
+                Страница открыта на {typeof window !== 'undefined' ? window.location.host : ''}
+                , а VK вернёт браузер на {oauthHostMismatch}. Для локального Docker в блоке 3
+                поставьте gateway <code>http://localhost:8000</code> и сохраните; в кабинете VK
+                добавьте <code>http://localhost:8000/vk/oauth/callback</code>.
+              </p>
+            )}
+          </div>
           <div className="flex flex-wrap gap-3 text-sm text-[var(--text-secondary)]">
             <span>
               Сообщество: {authStatus?.community_connected ? 'токен есть' : 'нет'}

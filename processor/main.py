@@ -11,6 +11,7 @@ from fastapi import FastAPI, HTTPException, status
 from config import settings, PROCESSING_OPTIONS_FOR_ADMIN
 from database import init_db, close_db, get_db_connection
 from services.processing_service import processing_service
+from shared.queue_wakeup import CHANNEL_PROCESS, WakeGate, listen_forever, wake_distribute_http
 from schemas import (
     HealthResponse,
     CycleResult,
@@ -29,26 +30,32 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 _process_task: asyncio.Task | None = None
+_listen_task: asyncio.Task | None = None
 _started_at: datetime | None = None
+_process_gate = WakeGate()
 
 
 # ── Фоновый цикл ──────────────────────────────────────────────────
 
 async def _processor_loop() -> None:
-    """Фоновый цикл обработки постов."""
+    """Фоновый цикл обработки: drain, затем interval или LISTEN/HTTP wake."""
     while True:
+        processed = 0
         try:
-            await processing_service.run_processing_cycle()
+            processed = await processing_service.run_processing_cycle()
+            if processed > 0:
+                await wake_distribute_http(settings.COLLECTOR_SERVICE_URL)
+                continue
         except Exception:
             logger.exception("Error in processor loop")
-        await asyncio.sleep(settings.PROCESS_INTERVAL_SEC)
+        await _process_gate.wait(settings.PROCESS_INTERVAL_SEC)
 
 
 # ── Lifespan ────────────────────────────────────────────────────────
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _process_task, _started_at
+    global _process_task, _listen_task, _started_at
 
     await init_db()
     _started_at = datetime.utcnow()
@@ -59,15 +66,19 @@ async def lifespan(app: FastAPI):
     )
 
     _process_task = asyncio.create_task(_processor_loop())
+    _listen_task = asyncio.create_task(
+        listen_forever(settings.DATABASE_URL, CHANNEL_PROCESS, _process_gate)
+    )
 
     yield
 
-    if _process_task:
-        _process_task.cancel()
-        try:
-            await _process_task
-        except asyncio.CancelledError:
-            pass
+    for task in (_process_task, _listen_task):
+        if task:
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
 
     await close_db()
     logger.info("Processor stopped")
@@ -109,6 +120,13 @@ async def get_status():
     )
 
 
+@app.post("/internal/process-now", response_model=CycleResult)
+async def process_now():
+    """Пропустить sleep process-цикла (NOTIFY/HTTP wake)."""
+    _process_gate.wake()
+    return CycleResult(status="success", message="Process loop woken", count=0)
+
+
 @app.post("/process/run", response_model=CycleResult)
 async def force_process():
     """Принудительный запуск одного цикла обработки."""
@@ -139,7 +157,6 @@ async def get_metrics():
                     COALESCE(SUM(CASE WHEN status = 'processing' THEN 1 ELSE 0 END), 0),
                     COALESCE(SUM(CASE WHEN status = 'ready' THEN 1 ELSE 0 END), 0),
                     COALESCE(SUM(CASE WHEN status = 'review' THEN 1 ELSE 0 END), 0),
-                    COALESCE(SUM(CASE WHEN status = 'distributed' THEN 1 ELSE 0 END), 0),
                     COUNT(*)
                 FROM posts
                 """
@@ -152,8 +169,7 @@ async def get_metrics():
             "processing": row[1],
             "ready": row[2],
             "review": row[3],
-            "distributed": row[4],
-            "total": row[5],
+            "total": row[4],
         },
     )
 

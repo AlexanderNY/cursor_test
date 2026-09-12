@@ -6,6 +6,9 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from database import get_db_connection, release_db_connection
+from config import settings
+from shared.db.bot_queue import claimed_target_as_post, finish_claimed_publish
+from shared.db.posts_repo import PostsRepository
 
 from .x_client import create_tweet, ensure_user_access_token
 
@@ -13,8 +16,6 @@ logger = logging.getLogger(__name__)
 
 
 def _log_action(msg: str, *args, **kwargs) -> None:
-    from config import settings
-
     if settings.LOG_BOT_ACTIONS:
         logger.info(msg, *args, **kwargs)
     else:
@@ -25,51 +26,50 @@ class PostPublisher:
     """Публикация в X для строк tw_posts (status=ready, to_tw=true)."""
 
     async def _get_ready_posts(self) -> List[Dict[str, Any]]:
-        """Claim ready posts (SKIP LOCKED → publishing) with OAuth refresh token."""
+        return await self._claim_unified_posts()
+
+    async def _claim_unified_posts(self) -> List[Dict[str, Any]]:
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
                 try:
                     await cur.execute("BEGIN")
-                    await cur.execute(
-                        """
-                        SELECT p.id, p.user_id, p.post_text, p.images,
-                               pr.twitter_oauth_access_token, pr.twitter_oauth_refresh_token,
-                               pr.twitter_oauth_expires_at
-                        FROM tw_posts p
-                        INNER JOIN tw_profiles pr ON p.user_id = pr.user_id
-                        WHERE p.status = 'ready'
-                          AND p.to_tw = TRUE
-                          AND pr.twitter_oauth_refresh_token IS NOT NULL
-                          AND pr.twitter_oauth_refresh_token != ''
-                        ORDER BY p.created_at ASC
-                        LIMIT 20
-                        FOR UPDATE OF p SKIP LOCKED
-                        """
-                    )
-                    rows = await cur.fetchall()
-                    cols = [c.name for c in cur.description]
-                    if not rows:
-                        await cur.execute("COMMIT")
-                        return []
-                    claimed = [dict(zip(cols, row)) for row in rows]
-                    post_ids = [p["id"] for p in claimed]
-                    ids_ph = ", ".join(["%s"] * len(post_ids))
-                    await cur.execute(
-                        f"""
-                        UPDATE tw_posts
-                        SET status = 'publishing', updated_at = CURRENT_TIMESTAMP
-                        WHERE id IN ({ids_ph})
-                        """,
-                        post_ids,
-                    )
+                    rows = await PostsRepository(cur).claim_publish(platform="tw", limit=20)
                     await cur.execute("COMMIT")
-                    for post in claimed:
-                        post["status"] = "publishing"
-                    return claimed
                 except Exception:
                     await cur.execute("ROLLBACK")
                     raise
+            if not rows:
+                return []
+            claimed = [claimed_target_as_post(row) for row in rows]
+            user_ids = sorted({int(p["user_id"]) for p in claimed})
+            profiles = await self._load_tw_profiles(user_ids)
+            for post in claimed:
+                post.update(profiles.get(int(post["user_id"])) or {})
+                post["status"] = "publishing"
+            return claimed
+        finally:
+            await release_db_connection(conn)
+
+    async def _load_tw_profiles(self, user_ids: List[int]) -> Dict[int, Dict[str, Any]]:
+        if not user_ids:
+            return {}
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                placeholders = ", ".join(["%s"] * len(user_ids))
+                await cur.execute(
+                    f"""
+                    SELECT user_id, twitter_oauth_access_token, twitter_oauth_refresh_token,
+                           twitter_oauth_expires_at
+                    FROM tw_profiles
+                    WHERE user_id IN ({placeholders})
+                    """,
+                    user_ids,
+                )
+                fetched = await cur.fetchall()
+                cols = [c.name for c in cur.description]
+                return {int(row[0]): dict(zip(cols, row)) for row in fetched}
         finally:
             await release_db_connection(conn)
 
@@ -97,17 +97,17 @@ class PostPublisher:
         finally:
             await release_db_connection(conn)
 
-    async def _update_post_published(self, post_id: int, tweet_id: str) -> None:
+    async def _update_post_published(self, post: Dict[str, Any], tweet_id: str) -> None:
         permalink = f"https://x.com/i/web/status/{tweet_id}"
+        post_id = int(post["id"])
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
-                await cur.execute(
-                    """
-                    UPDATE tw_posts SET status = 'published', url = %s, updated_at = CURRENT_TIMESTAMP
-                    WHERE id = %s
-                    """,
-                    (permalink, post_id),
+                finished = await finish_claimed_publish(
+                    cur,
+                    post,
+                    ok=True,
+                    result={"remote_id": tweet_id, "url": permalink},
                 )
         finally:
             await release_db_connection(conn)
@@ -116,21 +116,21 @@ class PostPublisher:
         await mark_post_published(
             settings.CORE_SERVICE_URL or "",
             platform="tw",
-            post_id=int(post_id),
+            post_id=post_id,
             external_id=str(tweet_id),
         )
 
-    async def _mark_failed(self, post_id: int, hint: str) -> None:
-        logger.error("tw_posts id=%s publish failed: %s", post_id, hint)
+    async def _mark_failed(self, post: Dict[str, Any], hint: str) -> None:
+        post_id = int(post["id"])
+        logger.error("tw publish id=%s failed: %s", post_id, hint)
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
-                await cur.execute(
-                    """
-                    UPDATE tw_posts SET status = 'failed', image_over_text = %s, updated_at = CURRENT_TIMESTAMP
-                    WHERE id = %s
-                    """,
-                    (hint[:500], post_id),
+                finished = await finish_claimed_publish(
+                    cur,
+                    post,
+                    ok=False,
+                    result={"error": hint[:500]},
                 )
         finally:
             await release_db_connection(conn)
@@ -139,7 +139,7 @@ class PostPublisher:
         await mark_post_published(
             settings.CORE_SERVICE_URL or "",
             platform="tw",
-            post_id=int(post_id),
+            post_id=post_id,
             error=hint[:500],
         )
 
@@ -148,7 +148,7 @@ class PostPublisher:
         user_id = post["user_id"]
         text = (post.get("post_text") or "").strip()
         if not text:
-            await self._mark_failed(post_id, "empty post_text")
+            await self._mark_failed(post, "empty post_text")
             return False
 
         acc = post.get("twitter_oauth_access_token")
@@ -157,7 +157,7 @@ class PostPublisher:
 
         new_acc, new_ref, new_exp = await ensure_user_access_token(acc, ref, exp)
         if not new_acc:
-            await self._mark_failed(post_id, "no valid OAuth access token")
+            await self._mark_failed(post, "no valid OAuth access token")
             return False
 
         if new_acc != acc or (new_ref and new_ref != ref) or new_exp != exp:
@@ -165,12 +165,12 @@ class PostPublisher:
 
         result = await create_tweet(new_acc, text)
         if not result or not (result.get("data") or {}).get("id"):
-            await self._mark_failed(post_id, json.dumps(result or {})[:500])
+            await self._mark_failed(post, json.dumps(result or {})[:500])
             return False
 
         tid = str(result["data"]["id"])
-        await self._update_post_published(post_id, tid)
-        _log_action("Published tw_posts id=%s -> tweet %s", post_id, tid)
+        await self._update_post_published(post, tid)
+        _log_action("Published tw post id=%s -> tweet %s", post_id, tid)
         return True
 
     async def publish_ready_posts(self) -> int:

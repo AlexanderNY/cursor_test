@@ -100,7 +100,7 @@ export function QuizPage() {
   }
 
   return (
-    <PageShell>
+    <PageShell content="article">
       <Link to="/game/learn" className="back-link">
         ← Learn
       </Link>

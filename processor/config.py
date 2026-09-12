@@ -11,13 +11,18 @@ class Settings(BaseSettings):
     # База данных
     DATABASE_URL: str = ""
     DB_POOL_MINSIZE: int = 2
-    DB_POOL_MAXSIZE: int = 8
+    DB_POOL_MAXSIZE: int = 16
 
     # Интервал опроса (секунды)
     PROCESS_INTERVAL_SEC: int = 30
 
-    # Размер батча за один цикл
-    PROCESS_BATCH_SIZE: int = 50
+    # Размер батча и лимиты цикла (AI_MAX_CONCURRENT=1 × 30s не должен держать цикл 25 мин)
+    PROCESS_BATCH_SIZE: int = 8
+    PROCESS_CYCLE_TIMEOUT_SEC: float = 90.0
+    PROCESS_CONCURRENCY: int = 8
+    STALE_PROCESSING_MINUTES: int = 15
+
+    COLLECTOR_SERVICE_URL: str = "http://collector:8009"
 
     # Порт для FastAPI сервера
     API_PORT: int = 8010

@@ -10,6 +10,9 @@ from urllib.request import urlopen, Request
 from urllib.error import URLError, HTTPError
 
 from database import get_db_connection
+from config import settings
+from shared.db.posts_repo import InboundPostCreate, PostsRepository
+from shared.queue_wakeup import wake_process_http
 
 logger = logging.getLogger(__name__)
 
@@ -138,7 +141,7 @@ class DzenRssReaderService:
         user_id: int,
         item: dict[str, Any],
     ) -> int:
-        """Вставляет один item в dzen_posts если такого url ещё нет. Возвращает 1 если вставлен, 0 иначе."""
+        """Insert one RSS item into posts if this url is new. Returns 1 if inserted, 0 otherwise."""
         link = (item.get("link") or "").strip()
         if not link:
             return 0
@@ -146,32 +149,35 @@ class DzenRssReaderService:
             cur = await conn_inner.cursor()
             try:
                 await cur.execute(
-                    "SELECT 1 FROM dzen_posts WHERE user_id = %s AND url = %s LIMIT 1",
+                    """
+                    SELECT 1 FROM posts
+                    WHERE user_id = %s AND source_platform = 'dzen' AND source_native_id = %s
+                    LIMIT 1
+                    """,
                     (user_id, link),
                 )
                 if await cur.fetchone():
                     return 0
                 post_date = item.get("pub_date")
-                images_json = json.dumps(item.get("images") or [], ensure_ascii=False)
-                await cur.execute(
-                    """
-                    INSERT INTO dzen_posts (
-                        user_id, url, title, post_date, post_text, images,
-                        status, post_type, to_dzen
-                    ) VALUES (%s, %s, %s, %s, %s, %s, 'collected', 'dzen_rss', TRUE)
-                    """,
-                    (
-                        user_id,
-                        link,
-                        (item.get("title") or "")[:500],
-                        post_date,
-                        (item.get("post_text") or "")[:150000],
-                        images_json,
-                    ),
+                await PostsRepository(cur).create_inbound(
+                    InboundPostCreate(
+                        user_id=user_id,
+                        source_platform="dzen",
+                        post_text=(item.get("post_text") or "")[:150000],
+                        title=(item.get("title") or "")[:500],
+                        url=link,
+                        post_date=post_date,
+                        images=item.get("images") or [],
+                        extras={"collect_source": "rss"},
+                        source_native_id=link,
+                        target_platforms=("dzen",),
+                        target_status="pending",
+                    )
                 )
-                return 1
             finally:
                 cur.close()
+        await wake_process_http(settings.PROCESSOR_SERVICE_URL or "")
+        return 1
 
 
 dzen_rss_reader_service = DzenRssReaderService()

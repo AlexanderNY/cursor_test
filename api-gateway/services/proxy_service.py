@@ -86,6 +86,7 @@ class ProxyService:
                 content=request_body if request_body else None,
                 params=query_params if query_params else None,
                 timeout=timeout_seconds,
+                follow_redirects=False,
             )
             
             # Подготовка headers для ответа

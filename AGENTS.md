@@ -29,7 +29,7 @@ Python 3.12 FastAPI microservices + React/Vite UIs. Each backend service is a to
 | `auth/` | Users, tokens, groups, billing | 8001 |
 | `core/` | Profiles, posts, SMM, admin, site/learn | 8002 |
 | `scheduler/` | Poll schedules, wake bots | 8003 |
-| `collector/` | collect + distribute (`FOR UPDATE SKIP LOCKED`) | 8009 |
+| `collector/` | RSS Дзен, метрики очереди | 8009 |
 | `processor/` | Text / AI processing | 8010 |
 | `tg-bot/` `vk-bot/` `wp-bot/` `url-bot/` | Platform collect/publish | 8004–8007 |
 | `instagram-bot/` `dzen-bot/` `th-bot/` `tw-bot/` | Platform collect/publish | 8011–8014 |
@@ -115,7 +115,7 @@ K8s: `k8s/README.md` and root `Makefile` (`build-images`, `apply-all`). Copy `k8
 - Browser → `ui-app` (`/api/...`) → **gateway** (strips `/api`) → service. Vite proxy target is `http://gateway:8000` (Docker DNS). Internal services have **no CORS**.
 - Gateway validates JWT, strips client `X-User-*`, then sets `X-User-Id` / `X-User-Role` from the token. Downstream must trust only those headers from the gateway, never from the client. Do not publish auth/core ports off localhost.
 - Identity spoofing: never skip JWT on a new public route unless it is an explicit allowlisted path (login, register, refresh, verify, reset-password, health, some RSS/game).
-- Post pipeline: platform `*_posts` → collector → `posts` → processor → collector distribute → bots publish. Queue is Postgres statuses + `FOR UPDATE SKIP LOCKED`, not Kafka. Details: `docs/POSTS_LIFECYCLE.md`.
+- Post pipeline: inbound → `posts` → processor → `post_targets` → bots publish. Queue is Postgres statuses + `FOR UPDATE SKIP LOCKED`, not Kafka. Details: `docs/POSTS_LIFECYCLE.md`.
 - Replica-safe publishers claim rows (`publishing`). Scheduler uses `pg_try_advisory_lock`.
 - `shared/` is copied into images as `/app/shared`. Import as `from shared...`. Keep it free of a single service’s business logic.
 - Each service has its own `config.py` (`pydantic-settings`). Secrets default to empty strings; they come from env / `.env` / K8s Secret.

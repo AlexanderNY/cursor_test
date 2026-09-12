@@ -556,7 +556,7 @@ export function TwitterPage() {
               </svg>
               Posts
             </CardTitle>
-            <CardDescription>Your tw_posts records (status reflects pipeline and tw-bot)</CardDescription>
+            <CardDescription>Your X queue (status from posts / post_targets and tw-bot)</CardDescription>
           </CardHeader>
           <CardContent>
             {isLoadingPosts ? (

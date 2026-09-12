@@ -95,8 +95,18 @@ export const vkontakteService = {
   /** URL редиректа на oauth.vk.com (требуется JWT, X-User-Id через gateway).
    * flow=user — user_access_token; flow=group — access_token сообщества (нужен group_to_post).
    */
-  async getAuthUrl(flow: 'user' | 'group' = 'user'): Promise<{ url: string; flow?: string; scope?: string }> {
-    const response = await apiClient.get<{ url: string; flow?: string; scope?: string }>('/vk/oauth/url', {
+  async getAuthUrl(flow: 'user' | 'group' = 'user'): Promise<{
+    url: string
+    flow?: string
+    scope?: string
+    redirect_uri?: string
+  }> {
+    const response = await apiClient.get<{
+      url: string
+      flow?: string
+      scope?: string
+      redirect_uri?: string
+    }>('/vk/oauth/url', {
       params: { flow },
     })
     return response.data

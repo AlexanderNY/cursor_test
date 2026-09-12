@@ -343,11 +343,12 @@ async def get_dzen_rss(
         async with conn.cursor() as cur:
             await cur.execute(
                 """
-                SELECT id, title, post_text, post_date, images, videos
-                FROM dzen_posts
-                WHERE user_id = %s AND status = 'ready'
-                  AND (post_date IS NULL OR post_date >= %s)
-                ORDER BY COALESCE(post_date, created_at) DESC
+                SELECT p.id, p.title, p.post_text, p.post_date, p.images, p.videos
+                FROM posts p
+                JOIN post_targets t ON t.post_id = p.id AND t.platform = 'dzen'
+                WHERE t.user_id = %s AND t.status IN ('ready', 'published')
+                  AND (p.post_date IS NULL OR p.post_date >= %s)
+                ORDER BY COALESCE(p.post_date, p.created_at) DESC
                 LIMIT 500
                 """,
                 (user_id, datetime.now(timezone.utc) - timedelta(days=8)),

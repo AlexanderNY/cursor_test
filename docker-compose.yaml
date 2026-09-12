@@ -1,4 +1,5 @@
-# docker-compose.yml
+# PostgreSQL внешний (не сервис compose): healthcheck сервисов с БД — GET /health.
+# depends_on: condition: service_healthy — для redis/minio (и ollama у ollama-init).
 #
 # Полный стек: docker compose up -d --no-deps --build --force-recreate
 # Поочерёдно (меньше пик RAM): python deploy/scripts/compose_up_sequential.py
@@ -43,19 +44,28 @@ x-host-docker-internal: &host-docker-internal
 x-mem-light: &mem-light
   mem_limit: 512m
   mem_reservation: 128m
+  restart: unless-stopped
 
 x-mem-worker: &mem-worker
   mem_limit: 768m
   mem_reservation: 256m
+  restart: unless-stopped
 
 x-mem-selenium: &mem-selenium
   mem_limit: 1536m
   mem_reservation: 512m
   shm_size: 512m
+  restart: unless-stopped
 
 x-mem-ollama: &mem-ollama
   mem_limit: 2g
   mem_reservation: 512m
+
+x-hc: &hc
+  interval: 20s
+  timeout: 5s
+  retries: 5
+  start_period: 25s
 
 services:
   core:
@@ -65,7 +75,7 @@ services:
       dockerfile: ./core/Dockerfile
     depends_on:
       minio:
-        condition: service_started
+        condition: service_healthy
     ports:
       # Только localhost: не публиковать Core наружу (иначе X-User-* spoof в обход gateway)
       - "127.0.0.1:8002:8002"
@@ -77,7 +87,7 @@ services:
       DATABASE_URL: ${DATABASE_URL}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY}
       DB_POOL_MINSIZE: ${DB_POOL_MINSIZE:-2}
-      DB_POOL_MAXSIZE: ${DB_POOL_MAXSIZE:-8}
+      DB_POOL_MAXSIZE: ${DB_POOL_MAXSIZE_HEAVY:-16}
       AI_MAX_CONCURRENT: ${AI_MAX_CONCURRENT:-1}
       S3_ENDPOINT_URL: http://minio:9000
       S3_PUBLIC_ENDPOINT_URL: ${S3_PUBLIC_ENDPOINT_URL:-http://localhost:9000}
@@ -86,11 +96,12 @@ services:
       S3_SECRET_KEY: ${S3_SECRET_KEY}
       S3_USE_SSL: "false"
       API_GATEWAY_URL: http://gateway:8000
-      # Публичный URL API для VK OAuth redirect (не секреты — App/Callback в БД профиля)
+      # Публичный URL API (не секреты — App/Callback в БД профиля).
+      # Redirect URI = origin без /api + /vk/oauth/callback
       VK_PUBLIC_GATEWAY_URL: ${VK_PUBLIC_GATEWAY_URL:-https://www.copyparse.ru/api}
       FRONTEND_URL: ${FRONTEND_URL:-https://www.copyparse.ru}
       VK_OAUTH_ALLOWED_FRONTENDS: ${VK_OAUTH_ALLOWED_FRONTENDS:-}
-      # VK_OAUTH_REDIRECT_URI не задавать — Core строит {VK_PUBLIC_GATEWAY_URL}/vk/oauth/callback
+      # VK_OAUTH_REDIRECT_URI — полный URL, если нужно переопределить сборку из gateway
       AUTH_SERVICE_URL: http://auth:8001
       TG_BOT_SERVICE_URL: http://tg-bot:8004
       VK_BOT_SERVICE_URL: http://vk-bot:8005
@@ -99,6 +110,9 @@ services:
       SCHEDULER_SERVICE_URL: http://scheduler:8003
       COLLECTOR_SERVICE_URL: http://collector:8009
       PROCESSOR_SERVICE_URL: http://processor:8010
+    healthcheck:
+      <<: *hc
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8002/health', timeout=3)"]
     networks:
       monitoring_network:
         ipv4_address: 172.20.10.2
@@ -110,7 +124,7 @@ services:
       dockerfile: ./auth/Dockerfile
     depends_on:
       redis:
-        condition: service_started
+        condition: service_healthy
     ports:
       # Только localhost: не публиковать Auth наружу (иначе identity spoof в обход gateway)
       - "127.0.0.1:8001:8001"
@@ -119,6 +133,8 @@ services:
       - DATABASE_URL=${DATABASE_URL}
       - SECRET_KEY=${SECRET_KEY}
       - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      - DB_POOL_MINSIZE=${DB_POOL_MINSIZE:-2}
+      - DB_POOL_MAXSIZE=${DB_POOL_MAXSIZE:-8}
       - LOG_SETTINGS_JOURNALD_LEVEL=DEBUG  # Для приложений, которые поддерживают эту переменную
       # Или, например, для Java-приложений
       - LOG_LEVEL=DEBUG
@@ -131,6 +147,9 @@ services:
       - SMTP_STARTTLS=${SMTP_STARTTLS:-true}
       - BILLING_INVOICE_SELLER=${BILLING_INVOICE_SELLER:-CopyParse}
       - BILLING_PAYMENT_INSTRUCTIONS=${BILLING_PAYMENT_INSTRUCTIONS:-}
+    healthcheck:
+      <<: *hc
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8001/health"]
     networks:
       monitoring_network:
         ipv4_address: 172.20.10.1
@@ -143,9 +162,9 @@ services:
     container_name: gateway
     depends_on:
       redis:
-        condition: service_started
+        condition: service_healthy
       auth:
-        condition: service_started
+        condition: service_healthy
     ports:
       - "127.0.0.1:8000:8000"
     environment:
@@ -153,7 +172,7 @@ services:
       - INSTAGRAM_BOT_SERVICE_URL=http://instagram-bot:8011
       - THREADS_BOT_SERVICE_URL=http://th-bot:8013
       - DZEN_BOT_SERVICE_URL=http://dzen-bot:8012
-      - TW_BOT_SERVICE_URL=http://tw-bot:8011
+      - TW_BOT_SERVICE_URL=http://tw-bot:8014
       - VK_BOT_SERVICE_URL=http://vk-bot:8005
       - TG_GAME_SERVICE_URL=http://tg-game:8015
       - GAME_ADMIN_API_TOKEN=${GAME_ADMIN_API_TOKEN}
@@ -162,6 +181,9 @@ services:
       - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
       - TRUSTED_PROXY_CIDRS=${TRUSTED_PROXY_CIDRS:-127.0.0.0/8,::1/128,172.20.0.0/16}
       - CORS_ORIGINS=http://localhost:5173,http://localhost:8100,http://127.0.0.1:8100,http://localhost:8200,http://127.0.0.1:8200,http://192.168.1.66,http://192.168.1.66:8100,http://95.165.87.163,https://95.165.87.163,http://copyparse.ru,https://copyparse.ru,http://www.copyparse.ru,https://www.copyparse.ru,http://9to18.ru,https://9to18.ru,http://www.9to18.ru,https://www.9to18.ru
+    healthcheck:
+      <<: *hc
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/health"]
     networks:
       monitoring_network:
         ipv4_address: 172.20.10.250
@@ -187,12 +209,15 @@ services:
       - TG_BOT_SERVICE_URL=http://tg-bot:8004
       - WP_BOT_SERVICE_URL=http://wp-bot:8006
       - VK_BOT_SERVICE_URL=http://vk-bot:8005
-      - TW_BOT_SERVICE_URL=http://tw-bot:8011
+      - TW_BOT_SERVICE_URL=http://tw-bot:8014
       - URL_BOT_SERVICE_URL=http://url-bot:8007
       - THREADS_BOT_SERVICE_URL=http://th-bot:8013
       - DZEN_BOT_SERVICE_URL=http://dzen-bot:8012
       - INSTAGRAM_BOT_SERVICE_URL=http://instagram-bot:8011
       - TZ=${TZ:-Europe/Moscow}
+    healthcheck:
+      <<: *hc
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8003/health', timeout=3)"]
     networks:
       monitoring_network:
         ipv4_address: 172.20.10.3
@@ -213,6 +238,9 @@ services:
       - VITE_VK_BOT_SERVICE_URL=http://vk-bot:8005
       - VITE_WP_BOT_SERVICE_URL=http://wp-bot:8006
       - VITE_URL_BOT_SERVICE_URL=http://url-bot:8007
+    healthcheck:
+      <<: *hc
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8100/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
     networks:
       monitoring_network:
         ipv4_address: 172.20.10.100
@@ -234,6 +262,9 @@ services:
       DB_POOL_MAXSIZE: ${DB_POOL_MAXSIZE:-8}
       VITE_API_GATEWAY_URL: http://gateway:8000
       VITE_CORE_SERVICE_URL: http://core:8002
+    healthcheck:
+      <<: *hc
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8006/health', timeout=3)"]
     networks:
       monitoring_network:
         ipv4_address: 172.20.10.6
@@ -253,6 +284,9 @@ services:
       CHROMEDRIVER_PATH: /usr/bin/chromedriver
       SELENIUM_MAX_CONCURRENT: ${SELENIUM_MAX_CONCURRENT:-1}
       TZ: ${TZ:-Europe/Moscow}
+    healthcheck:
+      <<: *hc
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8007/health', timeout=3)"]
     networks:
       monitoring_network:
         ipv4_address: 172.20.10.7
@@ -270,12 +304,13 @@ services:
       <<: *ai-environment
       DATABASE_URL: ${DATABASE_URL}
       DB_POOL_MINSIZE: ${DB_POOL_MINSIZE:-2}
-      DB_POOL_MAXSIZE: ${DB_POOL_MAXSIZE:-8}
-      COLLECT_INTERVAL_SEC: "60"
-      DISTRIBUTE_INTERVAL_SEC: "60"
-      COLLECT_BATCH_SIZE: "100"
-      DISTRIBUTE_BATCH_SIZE: "100"
+      DB_POOL_MAXSIZE: ${DB_POOL_MAXSIZE_HEAVY:-16}
+      DZEN_RSS_READ_INTERVAL_SEC: "300"
+      PROCESSOR_SERVICE_URL: http://processor:8010
       LOG_LEVEL: INFO
+    healthcheck:
+      <<: *hc
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8009/health', timeout=3)"]
     networks:
       monitoring_network:
         ipv4_address: 172.20.10.9
@@ -291,15 +326,20 @@ services:
       <<: *ai-environment
       DATABASE_URL: ${DATABASE_URL}
       DB_POOL_MINSIZE: ${DB_POOL_MINSIZE:-2}
-      DB_POOL_MAXSIZE: ${DB_POOL_MAXSIZE:-8}
+      DB_POOL_MAXSIZE: ${DB_POOL_MAXSIZE_HEAVY:-16}
       AI_MAX_CONCURRENT: ${AI_MAX_CONCURRENT:-1}
       PROCESS_INTERVAL_SEC: "30"
-      PROCESS_BATCH_SIZE: "50"
+      PROCESS_BATCH_SIZE: "8"
+      PROCESS_CYCLE_TIMEOUT_SEC: "90"
+      COLLECTOR_SERVICE_URL: http://collector:8009
       WORDPRESS_MAX_LENGTH: "150000"
       TELEGRAM_MAX_LENGTH: "4096"
       TWITTER_MAX_LENGTH: "280"
       VKONTAKTE_MAX_LENGTH: "15985"
       LOG_LEVEL: INFO
+    healthcheck:
+      <<: *hc
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8010/health', timeout=3)"]
     networks:
       monitoring_network:
         ipv4_address: 172.20.10.10
@@ -370,7 +410,8 @@ services:
       context: .
       dockerfile: ./instagram-bot/Dockerfile
     depends_on:
-      - minio
+      minio:
+        condition: service_healthy
     ports:
       - "127.0.0.1:8011:8011"
     environment:
@@ -392,6 +433,9 @@ services:
       SELENIUM_MAX_CONCURRENT: ${SELENIUM_MAX_CONCURRENT:-1}
       INSTAGRAM_SELENIUM_FALLBACK_ENABLED: "false"
       INSTAGRAM_SELENIUM_FALLBACK_NETWORK_ERRORS_ONLY: "true"
+    healthcheck:
+      <<: *hc
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8011/health', timeout=3)"]
     networks:
       monitoring_network:
         ipv4_address: 172.20.10.11
@@ -401,7 +445,8 @@ services:
       context: .
       dockerfile: ./th-bot/Dockerfile
     depends_on:
-      - minio
+      minio:
+        condition: service_healthy
     ports:
       - "127.0.0.1:8013:8013"
     environment:
@@ -420,6 +465,9 @@ services:
       S3_ACCESS_KEY: ${S3_ACCESS_KEY:-admin}
       S3_SECRET_KEY: ${S3_SECRET_KEY}
       S3_USE_SSL: "false"
+    healthcheck:
+      <<: *hc
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8013/health', timeout=3)"]
     networks:
       monitoring_network:
         ipv4_address: 172.20.10.13
@@ -430,7 +478,8 @@ services:
       context: .
       dockerfile: ./tw-bot/Dockerfile 
     depends_on:
-      - minio
+      minio:
+        condition: service_healthy
     ports:
       - "127.0.0.1:8014:8014"
     environment:
@@ -448,6 +497,9 @@ services:
       S3_ACCESS_KEY: ${S3_ACCESS_KEY:-admin}
       S3_SECRET_KEY: ${S3_SECRET_KEY}
       S3_USE_SSL: "false"
+    healthcheck:
+      <<: *hc
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8014/health', timeout=3)"]
     networks:
       monitoring_network:
         ipv4_address: 172.20.10.14
@@ -459,7 +511,7 @@ services:
       dockerfile: ./tg-bot/Dockerfile
     depends_on:
       minio:
-        condition: service_started
+        condition: service_healthy
     ports:
       - "127.0.0.1:8004:8004"
     environment:
@@ -484,6 +536,9 @@ services:
       SELENIUM_MAX_CONCURRENT: ${SELENIUM_MAX_CONCURRENT:-1}
     volumes:
       - tg-bot-sessions:/app/sessions
+    healthcheck:
+      <<: *hc
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8004/health', timeout=3)"]
     networks:
       monitoring_network:
         ipv4_address: 172.20.10.4
@@ -494,7 +549,8 @@ services:
       context: .
       dockerfile: ./tg-game/Dockerfile
     depends_on:
-      - minio
+      minio:
+        condition: service_healthy
     ports:
       - "127.0.0.1:8015:8015"
     environment:
@@ -512,6 +568,9 @@ services:
       S3_SECRET_KEY: ${S3_SECRET_KEY}
       S3_USE_SSL: "false"
       GAME_MEDIA_PUBLIC_BASE_URL: https://www.copyparse.ru
+    healthcheck:
+      <<: *hc
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8015/health', timeout=3)"]
     networks:
       monitoring_network:
         ipv4_address: 172.20.10.8
@@ -522,7 +581,8 @@ services:
       context: .
       dockerfile: ./vk-bot/Dockerfile
     depends_on:
-      - minio
+      minio:
+        condition: service_healthy
     ports:
       - "127.0.0.1:8005:8005"
     environment:
@@ -547,6 +607,9 @@ services:
       SELENIUM_PAGE_LOAD_TIMEOUT: "90"
     volumes:
       - tg-bot-sessions:/app/sessions
+    healthcheck:
+      <<: *hc
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8005/health', timeout=3)"]
     networks:
       monitoring_network:
         ipv4_address: 172.20.10.5
@@ -574,6 +637,9 @@ services:
       SELENIUM_MAX_CONCURRENT: ${SELENIUM_MAX_CONCURRENT:-1}
       CHROME_BIN: /usr/bin/chromium
       CHROMEDRIVER_PATH: /usr/bin/chromedriver
+    healthcheck:
+      <<: *hc
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8012/health', timeout=3)"]
     networks:
       monitoring_network:
         ipv4_address: 172.20.10.12
@@ -593,6 +659,10 @@ services:
     volumes:
       - ./minio_data:/data  # папка на вашем диске для хранения файлов
     command: server /data --console-address ":9001"
+    healthcheck:
+      <<: *hc
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      start_period: 15s
     networks:
       monitoring_network:
         ipv4_address: 172.20.10.200
@@ -603,6 +673,10 @@ services:
     ports:
       - "127.0.0.1:6379:6379"
     command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      <<: *hc
+      test: ["CMD", "redis-cli", "ping"]
+      start_period: 5s
     networks:
       monitoring_network:
         ipv4_address: 172.20.10.201

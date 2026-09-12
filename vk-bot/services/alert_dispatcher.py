@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import logging
 from typing import Any, Dict, List, Optional
 
 from database import get_db_connection, release_db_connection
 from shared.text_conditions import evaluate_text_conditions
 from shared.post_adapt import NETWORK_TEXT_LIMITS
+from shared.db.posts_repo import InboundPostCreate, PostsRepository
 
 logger = logging.getLogger(__name__)
 
@@ -93,20 +93,20 @@ async def _enqueue_tg_alert(
     conn = await get_db_connection()
     try:
         async with conn.cursor() as cur:
-            await cur.execute(
-                """
-                INSERT INTO tg_posts (
-                    user_id, post_text, status, post_type,
-                    to_tg, target_channels, created_at, updated_at
-                ) VALUES (
-                    %s, %s, 'ready', 'tg_alert',
-                    TRUE, %s::jsonb, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+            repo = PostsRepository(cur)
+            created = await repo.create_inbound(
+                InboundPostCreate(
+                    user_id=user_id,
+                    source_platform="tg",
+                    post_text=text[:TG_MESSAGE_LIMIT],
+                    target_channels=[str(target_channel)],
+                    status="ready",
+                    target_platforms=["tg"],
+                    target_status="ready",
+                    extras={"metadata": {"kind": "tg_alert"}},
                 )
-                RETURNING id
-                """,
-                (user_id, text[:TG_MESSAGE_LIMIT], json.dumps([str(target_channel)])),
             )
-            row = await cur.fetchone()
+            row = (created.get("id"),) if created else None
             return bool(row)
     except Exception as exc:
         logger.error("enqueue TG alert failed: %s", exc, exc_info=True)
@@ -123,20 +123,20 @@ async def _enqueue_vk_alert(
     conn = await get_db_connection()
     try:
         async with conn.cursor() as cur:
-            await cur.execute(
-                """
-                INSERT INTO vk_posts (
-                    user_id, post_text, status, post_type,
-                    to_vk, target_groups, created_at, updated_at
-                ) VALUES (
-                    %s, %s, 'ready', 'vk_alert',
-                    TRUE, %s::jsonb, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+            repo = PostsRepository(cur)
+            created = await repo.create_inbound(
+                InboundPostCreate(
+                    user_id=user_id,
+                    source_platform="vk",
+                    post_text=text[:VK_MESSAGE_LIMIT],
+                    target_groups=[str(target_group)],
+                    status="ready",
+                    target_platforms=["vk"],
+                    target_status="ready",
+                    extras={"metadata": {"kind": "vk_alert"}},
                 )
-                RETURNING id
-                """,
-                (user_id, text[:VK_MESSAGE_LIMIT], json.dumps([str(target_group)])),
             )
-            row = await cur.fetchone()
+            row = (created.get("id"),) if created else None
             return bool(row)
     except Exception as exc:
         logger.error("enqueue VK alert failed: %s", exc, exc_info=True)

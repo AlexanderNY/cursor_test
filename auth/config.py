@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     # Database (обязательно через env / .env)
     DATABASE_URL: str = ""
     DB_POOL_MINSIZE: int = 2
-    DB_POOL_MAXSIZE: int = 20
+    DB_POOL_MAXSIZE: int = 8
 
     # Redis (optional): JWT blacklist hot path for gateway. Empty = Postgres-only.
     REDIS_URL: str = ""

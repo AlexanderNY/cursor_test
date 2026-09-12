@@ -8,7 +8,6 @@ from datetime import datetime
 from typing import Any
 
 from database import get_db_connection, release_db_connection
-from services.quota_service import ensure_monthly_post_quota
 from exceptions import QuotaExceededError
 from shared import async_fs
 from storage_client import get_storage
@@ -62,6 +61,9 @@ async def save_url_post(item: dict[str, Any]) -> int | None:
     """
     user_id = item.get("user_id")
     url = item.get("url") or ""
+    if user_id is None:
+        logger.warning("save_url_post skipped: missing user_id")
+        return None
     raw_post_text = item.get("post_text") or ""
     to_tg = item.get("to_tg", False)
     to_tw = item.get("to_tw", False)
@@ -88,15 +90,9 @@ async def save_url_post(item: dict[str, Any]) -> int | None:
         images.append(item["screenshot_path"])
 
     conn = await get_db_connection()
+    screenshot_only = False
     try:
-        if user_id is not None:
-            try:
-                await ensure_monthly_post_quota(int(user_id), conn=conn)
-            except (TypeError, ValueError):
-                pass
         async with conn.cursor() as cur:
-            # screenshot_only: payload → match by item id / URL → legacy global.
-            screenshot_only = False
             if "screenshot_only" in item:
                 screenshot_only = bool(item.get("screenshot_only"))
             else:
@@ -145,45 +141,35 @@ async def save_url_post(item: dict[str, Any]) -> int | None:
                             screenshot_only = bool(global_flag)
                 except Exception as e:
                     logger.warning("Failed to load screenshot_only for user %s: %s", user_id, e)
+    finally:
+        await release_db_connection(conn)
 
-            post_date = datetime.utcnow()
-            status = "collected"
-            post_text = "" if screenshot_only else raw_post_text
-            images_json = json.dumps(images, ensure_ascii=False)
+    post_text = "" if screenshot_only else raw_post_text
+    try:
+        from services.unified_post_ops import create_unified_post
 
-            await cur.execute(
-                """
-                INSERT INTO url_posts (
-                    user_id, url, post_text, post_date, images, status,
-                    to_tg, to_tw, to_wp, to_vk, target_channels, target_groups
-                ) VALUES (%s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb)
-                RETURNING id
-                """,
-                (
-                    user_id,
-                    url,
-                    post_text,
-                    post_date,
-                    images_json,
-                    status,
-                    to_tg,
-                    to_tw,
-                    to_wp,
-                    to_vk,
-                    json.dumps(target_channels, ensure_ascii=False),
-                    json.dumps(target_groups, ensure_ascii=False),
-                ),
-            )
-            row = await cur.fetchone()
-            url_post_id = row[0] if row else None
-            return url_post_id
+        created = await create_unified_post(
+            user_id=int(user_id),
+            source_platform="url",
+            text=post_text,
+            url=url,
+            images=images,
+            extras={"screenshot_only": screenshot_only},
+            target_channels=target_channels,
+            target_groups=target_groups,
+            status="collected",
+            to_tg=to_tg,
+            to_tw=to_tw,
+            to_wp=to_wp,
+            to_vk=to_vk,
+            return_platform="url",
+        )
+        return int(created["id"]) if created and created.get("id") is not None else None
     except QuotaExceededError:
         raise
     except Exception as e:
         logger.exception("Save url post failed: %s", e)
         return None
-    finally:
-        await release_db_connection(conn)
 
 
 async def save_url_posts_batch(items: list[dict[str, Any]]) -> list[int]:

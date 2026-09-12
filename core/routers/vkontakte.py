@@ -22,7 +22,11 @@ from services.platform_auth_service import (
     platform_auth_service,
     platform_auth_http_detail,
 )
-from services.vk_helpers import groups_from_get_by_id, parse_vk_group_id as _parse_vk_group_id
+from services.vk_helpers import (
+    build_vk_callback_api_url,
+    groups_from_get_by_id,
+    parse_vk_group_id as _parse_vk_group_id,
+)
 from schemas import VKontakteProfileCreate, VKontaktePost
 from storage_client import get_storage
 from pydantic import BaseModel
@@ -425,7 +429,12 @@ async def get_vk_oauth_url(
     else:
         params["scope"] = VK_USER_OAUTH_SCOPES
     url = f"https://oauth.vk.com/authorize?{urlencode(params)}"
-    return {"url": url, "flow": flow_norm, "scope": params["scope"]}
+    return {
+        "url": url,
+        "flow": flow_norm,
+        "scope": params["scope"],
+        "redirect_uri": redirect_uri,
+    }
 
 
 @router.post("/callback")
@@ -557,8 +566,8 @@ async def verify_vk_callback(x_user_id: Optional[str] = Header(None)):
     group_id = _parse_vk_group_id((tokens or {}).get("group_to_post") if tokens else None)
     confirmation = ((raw or {}).get("vk_callback_confirmation") or "").strip()
     secret = ((raw or {}).get("vk_callback_secret") or "").strip()
-    gateway = ((raw or {}).get("vk_public_gateway_url") or "").strip().rstrip("/")
-    callback_url = f"{gateway}/vk/callback" if gateway else ""
+    gateway = ((raw or {}).get("vk_public_gateway_url") or "").strip()
+    callback_url = build_vk_callback_api_url(gateway)
     if group_id is None:
         return VkAuthVerifyResponse(
             ok=False,
@@ -618,6 +627,7 @@ async def verify_vk_app(x_user_id: Optional[str] = Header(None)):
         "app_id": app_id,
         "has_secret": True,
         "has_service_key": bool(service_key),
+        "redirect_uri": get_vk_oauth_redirect_uri((raw.get("vk_public_gateway_url") or "") or None),
     }
     if service_key:
         try:
@@ -975,6 +985,7 @@ async def vk_oauth_status(x_user_id: Optional[str] = Header(None)):
             "community_connected": False,
             "message": "Профиль VK не найден. Сохраните настройки профиля или пройдите OAuth.",
             "vk_user_id": None,
+            "redirect_uri": get_vk_oauth_redirect_uri(),
         }
     if has_user and has_community:
         message = "Подключены пользовательский OAuth и токен сообщества — публикация на стену группы с фото доступна."
@@ -984,11 +995,13 @@ async def vk_oauth_status(x_user_id: Optional[str] = Header(None)):
         message = "Пользовательский OAuth сохранён. Для постов от имени группы подключите сообщество или вставьте токен сообщества."
     else:
         message = "Токены не сохранены — подключите сообщество (wall.post) и при необходимости пользовательский OAuth (фото)."
+    oauth_cfg = await _resolve_vk_oauth_config(user_id)
     return {
         "connected": has_user,
         "community_connected": has_community,
         "message": message,
         "vk_user_id": profile.get("vk_user_id") if profile else None,
+        "redirect_uri": oauth_cfg.get("redirect_uri"),
     }
 
 

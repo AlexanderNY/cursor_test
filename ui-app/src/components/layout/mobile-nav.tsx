@@ -149,6 +149,16 @@ export function MobileNav() {
 
         <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-[var(--border-color)] space-y-3">
           <Link
+            to="/next"
+            onClick={() => setIsOpen(false)}
+            className="nav-link w-full justify-center border border-[var(--border-color)]"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className={iconClassName} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+            </svg>
+            <span>Что далее</span>
+          </Link>
+          <Link
             to="/feedback"
             onClick={() => setIsOpen(false)}
             className="nav-link w-full justify-center border border-[var(--border-color)]"

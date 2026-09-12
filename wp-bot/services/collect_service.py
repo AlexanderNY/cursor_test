@@ -9,6 +9,9 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 from config import settings
 from database import get_db_connection, release_db_connection
+from shared.db.bot_queue import dest_flags_to_platforms
+from shared.db.posts_repo import InboundPostCreate, PostsRepository
+from shared.queue_wakeup import wake_process_http
 from services.brand_channel_flow import (
     list_wp_collect_channels,
     publish_targets_to_destination_fields,
@@ -94,6 +97,8 @@ class CollectService:
             failed_count += int(legacy.get("failed", 0))
             errors.extend(legacy.get("errors") or [])
 
+        if collected_count > 0:
+            await wake_process_http(getattr(settings, "PROCESSOR_SERVICE_URL", "") or "")
         return {
             "collected": collected_count,
             "failed": failed_count,
@@ -172,8 +177,8 @@ class CollectService:
 
                         await cur.execute(
                             """
-                            SELECT id FROM wp_posts
-                            WHERE user_id = %s AND url = %s
+                            SELECT id FROM posts
+                            WHERE user_id = %s AND source_platform = 'wp' AND url = %s
                             """,
                             (user_id, wp_post_link),
                         )
@@ -193,59 +198,37 @@ class CollectService:
                         if wp_post.get("_embedded") and wp_post["_embedded"].get("author"):
                             author_name = wp_post["_embedded"]["author"][0].get("name")
 
-                        await cur.execute(
-                            """
-                            INSERT INTO wp_posts (
-                                user_id, domain, url, title, author,
-                                post_date, post_text, status, post_type,
-                                to_tg, to_tw, to_wp, to_vk, to_threads, to_dzen, to_instagram,
-                                target_channels, target_groups,
-                                created_at, updated_at
-                            ) VALUES (
-                                %s, %s, %s, %s, %s,
-                                %s, %s, %s, %s,
-                                %s, %s, %s, %s, %s, %s, %s,
-                                %s::jsonb, %s::jsonb,
-                                CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                        platforms = dest_flags_to_platforms(dest)
+                        created = await PostsRepository(cur).create_inbound(
+                            InboundPostCreate(
+                                user_id=user_id,
+                                source_platform="wp",
+                                post_text=content,
+                                title=title,
+                                author=author_name,
+                                domain=site_url,
+                                url=wp_post_link,
+                                post_date=post_date,
+                                source_native_id=wp_post_link,
+                                target_channels=dest.get("target_channels") or [],
+                                target_groups=dest.get("target_groups") or [],
+                                target_platforms=platforms,
+                                target_status="pending",
                             )
-                            RETURNING id
-                            """,
-                            (
-                                user_id,
-                                site_url,
-                                wp_post_link,
-                                title,
-                                author_name,
-                                post_date,
-                                content,
-                                "collected",
-                                "wp",
-                                bool(dest.get("to_tg")),
-                                bool(dest.get("to_tw")),
-                                bool(dest.get("to_wp")),
-                                bool(dest.get("to_vk")),
-                                bool(dest.get("to_threads")),
-                                bool(dest.get("to_dzen")),
-                                bool(dest.get("to_instagram")),
-                                json.dumps(dest.get("target_channels") or []),
-                                json.dumps(dest.get("target_groups") or []),
-                            ),
                         )
-                        row = await cur.fetchone()
-                        post_row_id = int(row[0]) if row else None
+                        post_row_id = int(created["id"])
                         collected += 1
-                        if post_row_id:
-                            await bump_channel_counter(
-                                user_id,
-                                channel_id=channel_id,
-                                network="wp",
-                                external_id=site_url,
-                                received=1,
-                                direction="collected",
-                                platform="wp",
-                                post_id=post_row_id,
-                                metadata={"text_preview": (title or "")[:120]},
-                            )
+                        await bump_channel_counter(
+                            user_id,
+                            channel_id=channel_id,
+                            network="wp",
+                            external_id=site_url,
+                            received=1,
+                            direction="collected",
+                            platform="wp",
+                            post_id=post_row_id,
+                            metadata={"text_preview": (title or "")[:120]},
+                        )
 
                     total_pages = result.get("total_pages", 0)
                     if page >= total_pages:

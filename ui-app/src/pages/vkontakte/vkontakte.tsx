@@ -33,6 +33,7 @@ import {
 } from './vkontakte-helpers'
 import { AuthTab } from './auth-tab'
 import { canManagePlatformAuth } from '@/types/smm'
+import { buildVkCallbackApiUrl, buildVkOAuthRedirectUri } from '@/lib/vk-public-urls'
 
 const LEGACY_TAB_REDIRECT: Record<string, string> = {
   posts: '/analytics',
@@ -707,8 +708,9 @@ export function VKontaktePage() {
     return imagePreviewUrl(url, base, origin)
   }
 
-  const vkOAuthRedirectUri = `${vkPublicGatewayUrl.replace(/\/$/, '')}/vk/oauth/callback`
-  const vkCallbackApiUrl = `${vkPublicGatewayUrl.replace(/\/$/, '')}/vk/callback`
+  const vkOAuthRedirectUri =
+    authStatus?.redirect_uri?.trim() || buildVkOAuthRedirectUri(vkPublicGatewayUrl)
+  const vkCallbackApiUrl = buildVkCallbackApiUrl(vkPublicGatewayUrl)
 
   const startVkOAuth = (flow: 'user' | 'group') => {
     setError('')

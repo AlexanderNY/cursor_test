@@ -214,7 +214,7 @@ async def schedule():
             raw_images = post.get("images") or []
             images = raw_images if isinstance(raw_images, list) else (json.loads(raw_images) if isinstance(raw_images, str) else [])
             if not text:
-                await set_post_status(user_id, post_id, "skipped")
+                await set_post_status(user_id, post, "skipped")
                 continue
             if images:
                 # Публикуем с первым изображением (URL должен быть абсолютным и доступным для Meta)
@@ -225,7 +225,7 @@ async def schedule():
             else:
                 result = await publish_text_post(threads_user_id, access_token, text)
             if result:
-                await set_post_status(user_id, post_id, "published")
+                await set_post_status(user_id, post, "published")
                 await mark_post_published(
                     th_settings.CORE_SERVICE_URL or "",
                     platform="threads",
@@ -234,7 +234,7 @@ async def schedule():
                 )
                 published += 1
             else:
-                await set_post_status(user_id, post_id, "failed")
+                await set_post_status(user_id, post, "failed")
                 await mark_post_published(
                     th_settings.CORE_SERVICE_URL or "",
                     platform="threads",

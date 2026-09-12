@@ -1,7 +1,5 @@
 """VK bot service DDL."""
 
-from shared.db.generate_ddl import build_post_indexes, build_post_table_ddl
-
 VK_PROFILES_TABLE = """
 CREATE TABLE IF NOT EXISTS vk_profiles (
     id SERIAL PRIMARY KEY,
@@ -63,34 +61,7 @@ DO $$ BEGIN
 EXCEPTION WHEN others THEN NULL; END $$;
 """
 
-VK_POSTS_TABLE = build_post_table_ddl(
-    "vk_posts",
-    extra_columns={
-        "vk_source_id": "INTEGER",
-        "attachments": "JSONB DEFAULT '[]'",
-        "publish_at": "TIMESTAMPTZ",
-    },
-)
-
-VK_POSTS_INDEXES = build_post_indexes(
-    "vk_posts",
-    with_publish_at=True,
-    with_user_domain=True,
-)
-
-VK_POSTS_PUBLISHED_MIGRATION = """
-DO $$ BEGIN
-  ALTER TABLE vk_posts ADD COLUMN published_vk_post_id INTEGER;
-EXCEPTION WHEN duplicate_column THEN NULL; END $$;
-DO $$ BEGIN
-  ALTER TABLE vk_posts ADD COLUMN published_owner_id BIGINT;
-EXCEPTION WHEN duplicate_column THEN NULL; END $$;
-"""
-
 ALL_TABLES: list[str] = [
     VK_PROFILES_TABLE,
-    VK_POSTS_TABLE,
-    VK_POSTS_INDEXES,
-    VK_POSTS_PUBLISHED_MIGRATION,
     VK_AUTH_BLOCKS_MIGRATION,
 ]

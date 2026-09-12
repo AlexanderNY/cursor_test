@@ -16,6 +16,8 @@ from database import get_db_connection, release_db_connection
 from shared import async_fs
 from config import settings
 from storage_helper import get_storage
+from shared.db.bot_queue import claimed_target_as_post
+from shared.db.posts_repo import PostsRepository, PublishResult
 from .vk_client import VkClient
 from .channel_counter import bump_channel_counter
 from shared.post_adapt import NETWORK_TEXT_LIMITS
@@ -140,68 +142,54 @@ class PostPublisher:
     """Публикация постов из vk_posts на личную стену и/или в группу VK с вложениями (фото, документы)."""
 
     async def get_ready_posts(self) -> List[Dict]:
-        """Claim ready posts (SKIP LOCKED → publishing) with token/destination filters."""
+        """Claim ready VK post_targets."""
+        return await self._claim_unified_posts()
+
+    async def _claim_unified_posts(self) -> List[Dict]:
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
                 try:
                     await cur.execute("BEGIN")
-                    # Unstick posts left in publishing after crash / failed wall.post.
-                    await cur.execute(
-                        """
-                        UPDATE vk_posts
-                        SET status = 'ready', updated_at = CURRENT_TIMESTAMP
-                        WHERE status = 'publishing'
-                          AND updated_at < CURRENT_TIMESTAMP - INTERVAL '5 minutes'
-                        """
-                    )
-                    await cur.execute(
-                        """
-                        SELECT p.id, p.user_id, p.post_text, p.images, p.attachments,
-                               p.target_groups,
-                               pr.group_to_post, pr.access_token, pr.user_access_token, pr.from_group,
-                               pr.post_to_own_wall, pr.publish_enabled
-                        FROM vk_posts p
-                        JOIN vk_profiles pr ON p.user_id = pr.user_id
-                        WHERE p.status = 'ready'
-                          AND (
-                            (pr.access_token IS NOT NULL AND pr.access_token != '')
-                            OR (pr.user_access_token IS NOT NULL AND pr.user_access_token != '')
-                          )
-                          AND (
-                            (p.target_groups IS NOT NULL
-                              AND p.target_groups::text NOT IN ('[]', 'null'))
-                            OR (pr.group_to_post IS NOT NULL AND pr.group_to_post != '')
-                            OR pr.post_to_own_wall = TRUE
-                          )
-                        ORDER BY p.created_at ASC
-                        LIMIT 50
-                        FOR UPDATE OF p SKIP LOCKED
-                        """
-                    )
-                    rows = await cur.fetchall()
-                    cols = [c.name for c in cur.description]
-                    if not rows:
-                        await cur.execute("COMMIT")
-                        return []
-                    claimed = [dict(zip(cols, row)) for row in rows]
-                    post_ids = [p["id"] for p in claimed]
-                    ids_ph = ", ".join(["%s"] * len(post_ids))
-                    await cur.execute(
-                        f"""
-                        UPDATE vk_posts
-                        SET status = 'publishing', updated_at = CURRENT_TIMESTAMP
-                        WHERE id IN ({ids_ph})
-                        """,
-                        post_ids,
-                    )
+                    rows = await PostsRepository(cur).claim_publish(platform="vk", limit=50)
                     await cur.execute("COMMIT")
-                    for post in claimed:
-                        post["status"] = "publishing"
-                    return claimed
                 except Exception:
                     await cur.execute("ROLLBACK")
                     raise
+            if not rows:
+                return []
+            claimed = [claimed_target_as_post(row) for row in rows]
+            user_ids = sorted({int(p["user_id"]) for p in claimed})
+            profiles = await self._load_vk_profiles(user_ids)
+            out: List[Dict] = []
+            for post in claimed:
+                profile = profiles.get(int(post["user_id"])) or {}
+                post.update(profile)
+                post["status"] = "publishing"
+                out.append(post)
+            return out
+        finally:
+            await release_db_connection(conn)
+
+    async def _load_vk_profiles(self, user_ids: List[int]) -> Dict[int, Dict]:
+        if not user_ids:
+            return {}
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                placeholders = ", ".join(["%s"] * len(user_ids))
+                await cur.execute(
+                    f"""
+                    SELECT user_id, group_to_post, access_token, user_access_token,
+                           from_group, post_to_own_wall, publish_enabled
+                    FROM vk_profiles
+                    WHERE user_id IN ({placeholders})
+                    """,
+                    user_ids,
+                )
+                fetched = await cur.fetchall()
+                cols = [c.name for c in cur.description]
+                return {int(row[0]): dict(zip(cols, row)) for row in fetched}
         finally:
             await release_db_connection(conn)
 
@@ -496,7 +484,7 @@ class PostPublisher:
                 )
             await asyncio.sleep(1)
         if published_any:
-            await self._update_post_published(post_id, last_vk_post_id, last_owner_id)
+            await self._update_post_published(post, last_vk_post_id, last_owner_id)
             ext_id = str(last_owner_id) if last_owner_id is not None else None
             if ext_id:
                 await bump_channel_counter(
@@ -512,58 +500,47 @@ class PostPublisher:
 
     async def _update_post_published(
         self,
-        post_id: int,
+        post: Dict,
         published_vk_post_id: Optional[int],
         published_owner_id: Optional[int],
     ) -> None:
+        if post.get("_queue") == "targets" or post.get("_target_id"):
+            conn = await get_db_connection()
+            try:
+                async with conn.cursor() as cur:
+                    await PostsRepository(cur).apply_publish_result(
+                        PublishResult(
+                            target_id=int(post.get("_target_id") or post.get("id")),
+                            ok=True,
+                            result={
+                                "published_vk_post_id": published_vk_post_id,
+                                "published_owner_id": published_owner_id,
+                                "remote_id": str(published_vk_post_id) if published_vk_post_id is not None else None,
+                            },
+                        )
+                    )
+            finally:
+                await release_db_connection(conn)
+            return
+        return
+
+    async def _update_post_status(self, post: Dict | int, status: str) -> None:
+        if isinstance(post, dict):
+            target_id = int(post.get("_target_id") or post.get("id"))
+        else:
+            target_id = int(post)
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
-                await cur.execute(
-                    """
-                    UPDATE vk_posts
-                    SET status = 'published',
-                        published_vk_post_id = %s,
-                        published_owner_id = %s,
-                        updated_at = CURRENT_TIMESTAMP
-                    WHERE id = %s
-                    """,
-                    (published_vk_post_id, published_owner_id, post_id),
+                await PostsRepository(cur).apply_publish_result(
+                    PublishResult(
+                        target_id=target_id,
+                        ok=False,
+                        result={"error": status},
+                    )
                 )
         finally:
             await release_db_connection(conn)
-        from shared.bot_internal import mark_post_published
-
-        await mark_post_published(
-            settings.CORE_SERVICE_URL or "",
-            platform="vk",
-            post_id=int(post_id),
-            external_id=str(published_vk_post_id) if published_vk_post_id is not None else None,
-        )
-
-    async def _update_post_status(self, post_id: int, status: str) -> None:
-        conn = await get_db_connection()
-        try:
-            async with conn.cursor() as cur:
-                await cur.execute(
-                    """
-                    UPDATE vk_posts
-                    SET status = %s, updated_at = CURRENT_TIMESTAMP
-                    WHERE id = %s
-                    """,
-                    (status, post_id),
-                )
-        finally:
-            await release_db_connection(conn)
-        if status in ("error", "failed", "review"):
-            from shared.bot_internal import mark_post_published
-
-            await mark_post_published(
-                settings.CORE_SERVICE_URL or "",
-                platform="vk",
-                post_id=int(post_id),
-                error=f"status={status}",
-            )
 
     async def publish_ready_posts(self) -> int:
         """Публикует все посты со статусом ready. Возвращает количество опубликованных."""
@@ -583,7 +560,7 @@ class PostPublisher:
                 published += 1
             elif post_id is not None:
                 # Do not leave forever in publishing (invisible to next claim).
-                await self._update_post_status(int(post_id), "review")
+                await self._update_post_status(post, "review")
                 logger.warning(
                     "Post %s moved to review after failed publish "
                     "(check community token / Group to post / Enable publishing)",

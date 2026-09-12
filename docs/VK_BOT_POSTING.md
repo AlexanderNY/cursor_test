@@ -40,7 +40,11 @@ SQL-патч: [deploy/sql/patch_vk_auth_blocks.sql](../deploy/sql/patch_vk_auth_
 | Пользователь | `GET /vk/oauth/url?flow=user` | `wall,photos,offline` | `user_access_token` |
 | Сообщество | `GET /vk/oauth/url?flow=group` | `wall,photos,docs,manage` + `group_ids` | `access_token` |
 
-Redirect URI: `{VK_PUBLIC_GATEWAY_URL}/vk/oauth/callback`  
+Redirect URI: `{origin}/vk/oauth/callback`, где origin — сайт без суффикса `/api`
+(из поля «Публичный URL gateway»). Пример: `https://www.copyparse.ru/api` →
+`https://www.copyparse.ru/vk/oauth/callback`. Этот URL должен быть в кабинете VK ID
+в списке «Доверенный Redirect URI» **точно**.
+
 API version: **5.199**.
 
 ## Матрица публикации

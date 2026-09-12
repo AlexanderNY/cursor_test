@@ -8,6 +8,8 @@ import httpx
 
 from config import settings
 from database import get_db_connection, release_db_connection
+from shared.db.posts_repo import InboundPostCreate, PostsRepository
+from shared.queue_wakeup import wake_process_http
 
 from .x_client import ensure_user_access_token, fetch_timeline_tweets
 
@@ -50,7 +52,11 @@ async def _url_exists(user_id: int, url: str) -> bool:
     try:
         async with conn.cursor() as cur:
             await cur.execute(
-                "SELECT 1 FROM tw_posts WHERE user_id = %s AND url = %s LIMIT 1",
+                """
+                SELECT 1 FROM posts
+                WHERE user_id = %s AND source_platform = 'tw' AND source_native_id = %s
+                LIMIT 1
+                """,
                 (user_id, url),
             )
             row = await cur.fetchone()
@@ -121,18 +127,20 @@ class FeedCollector:
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
-                await cur.execute(
-                    """
-                    INSERT INTO tw_posts (
-                        user_id, post_text, url, status, post_type, screenshot,
-                        to_tg, to_tw, to_wp, to_vk
-                    ) VALUES (
-                        %s, %s, %s, 'collected', 'tw', %s,
-                        FALSE, FALSE, FALSE, FALSE
+                await PostsRepository(cur).create_inbound(
+                    InboundPostCreate(
+                        user_id=user_id,
+                        source_platform="tw",
+                        post_text=text,
+                        url=url,
+                        screenshot=screenshot,
+                        extras={"tweet_url": url},
+                        source_native_id=url,
+                        target_platforms=("tw",),
+                        target_status="pending",
                     )
-                    """,
-                    (user_id, text, url, screenshot),
                 )
+            await wake_process_http(getattr(settings, "PROCESSOR_SERVICE_URL", "") or "")
         finally:
             await release_db_connection(conn)
 

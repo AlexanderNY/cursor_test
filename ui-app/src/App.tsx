@@ -35,6 +35,7 @@ import { FigmaPreviewPage } from '@/pages/figma-preview'
 import { AboutPage } from '@/pages/about/about'
 import { PricingPage } from '@/pages/pricing/pricing'
 import { FeedbackPage } from '@/pages/feedback'
+import { RoadmapPage } from '@/pages/roadmap'
 import { RouteLoader } from '@/components/route-loader'
 
 interface ProtectedRouteProps {
@@ -146,6 +147,7 @@ function App() {
         </Route>
         <Route path="pricing" element={<PricingPage />} />
         <Route path="feedback" element={<FeedbackPage />} />
+        <Route path="next" element={<RoadmapPage />} />
       </Route>
 
       <Route path="figma-preview" element={<FigmaPreviewPage />} />

@@ -11,6 +11,7 @@ from . import curl
 from . import cpost
 from . import notifications
 from . import feedback
+from . import roadmap
 from . import admin
 from . import threads
 from . import internal
@@ -33,6 +34,7 @@ __all__ = [
     "cpost",
     "notifications",
     "feedback",
+    "roadmap",
     "admin",
     "threads",
     "internal",

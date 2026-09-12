@@ -68,7 +68,7 @@ async def count_user_posts_in_current_month(
     now: Optional[datetime] = None,
     conn: Any = None,
 ) -> int:
-    """Сумма строк во всех таблицах *_posts за календарный месяц (UTC). Один SQL."""
+    """Сумма строк в posts за календарный месяц (UTC). Один SQL."""
     start, end = _month_start_end_utc(now)
     start_naive = start.replace(tzinfo=None)
     end_naive = end.replace(tzinfo=None)

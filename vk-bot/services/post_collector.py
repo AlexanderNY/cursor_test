@@ -9,6 +9,9 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 from database import get_db_connection, release_db_connection
 from config import settings
+from shared.db.bot_queue import dest_flags_to_platforms
+from shared.db.posts_repo import InboundPostCreate, PostsRepository
+from shared.queue_wakeup import wake_process_http
 from shared.text_conditions import should_save_text
 from .vk_client import VkClient
 from .channel_counter import bump_channel_counter
@@ -76,9 +79,9 @@ class PostCollector:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
-                    SELECT COALESCE(MAX(vk_source_id), 0)
-                    FROM vk_posts
-                    WHERE user_id = %s AND domain = %s
+                    SELECT COALESCE(MAX((extras->>'vk_source_id')::bigint), 0)
+                    FROM posts
+                    WHERE user_id = %s AND source_platform = 'vk' AND domain = %s
                     """,
                     (user_id, domain),
                 )
@@ -203,72 +206,55 @@ class PostCollector:
         dest: Optional[Dict[str, Any]] = None,
     ) -> bool:
         dest = dest or {}
+        platforms = dest_flags_to_platforms(dest)
+        native_id = f"{domain}:{vk_source_id}"
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
-                await cur.execute(
-                    """
-                    INSERT INTO vk_posts (
-                        user_id, vk_source_id, domain, post_text, post_date, author,
-                        images, comments, reposts, likes, views,
-                        status, post_type,
-                        to_tg, to_tw, to_wp, to_vk, to_threads, to_dzen, to_instagram,
-                        target_channels, target_groups,
-                        created_at, updated_at
-                    ) VALUES (
-                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                        'collected', 'vk',
-                        %s, %s, %s, %s, %s, %s, %s,
-                        %s::jsonb, %s::jsonb,
-                        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                repo = PostsRepository(cur)
+                created = await repo.create_inbound(
+                    InboundPostCreate(
+                        user_id=user_id,
+                        source_platform="vk",
+                        post_text=post_text,
+                        post_date=post_date,
+                        author=author,
+                        domain=domain,
+                        images=json.loads(images_json) if isinstance(images_json, str) else images_json,
+                        extras={
+                            "vk_source_id": vk_source_id,
+                            "comments": comments,
+                            "reposts": reposts,
+                            "likes": likes,
+                            "views": views,
+                        },
+                        source_native_id=native_id,
+                        target_channels=dest.get("target_channels") or [],
+                        target_groups=dest.get("target_groups") or [],
+                        target_platforms=platforms,
+                        target_status="pending",
                     )
-                    RETURNING id
-                    """,
-                    (
-                        user_id,
-                        vk_source_id,
-                        domain,
-                        post_text,
-                        post_date,
-                        author,
-                        images_json,
-                        comments,
-                        reposts,
-                        likes,
-                        views,
-                        bool(dest.get("to_tg")),
-                        bool(dest.get("to_tw")),
-                        bool(dest.get("to_wp")),
-                        bool(dest.get("to_vk")),
-                        bool(dest.get("to_threads")),
-                        bool(dest.get("to_dzen")),
-                        bool(dest.get("to_instagram")),
-                        json.dumps(dest.get("target_channels") or []),
-                        json.dumps(dest.get("target_groups") or []),
-                    ),
                 )
-                row = await cur.fetchone()
-                post_row_id = int(row[0]) if row else None
+                post_row_id = int(created["id"])
                 _log_action(
-                    "Saved vk post user_id=%s domain=%s vk_source_id=%s to_tg=%s to_vk=%s",
+                    "Saved vk post user_id=%s domain=%s vk_source_id=%s platforms=%s",
                     user_id,
                     domain,
                     vk_source_id,
-                    bool(dest.get("to_tg")),
-                    bool(dest.get("to_vk")),
+                    platforms,
                 )
-                if post_row_id:
-                    await bump_channel_counter(
-                        user_id,
-                        network="vk",
-                        external_id=domain,
-                        received=1,
-                        direction="collected",
-                        platform="vk",
-                        post_id=post_row_id,
-                        metadata={"text_preview": (post_text or "")[:120]},
-                    )
-                return True
+                await bump_channel_counter(
+                    user_id,
+                    network="vk",
+                    external_id=domain,
+                    received=1,
+                    direction="collected",
+                    platform="vk",
+                    post_id=post_row_id,
+                    metadata={"text_preview": (post_text or "")[:120]},
+                )
+            await wake_process_http(getattr(settings, "PROCESSOR_SERVICE_URL", "") or "")
+            return True
         except Exception as e:
             logger.error("Error saving vk post: %s", e, exc_info=True)
             return False

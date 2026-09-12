@@ -12,6 +12,8 @@ from database import get_db_connection, release_db_connection
 from config import settings
 from storage_helper import get_storage
 from shared.circuit_breaker import get_breaker
+from shared.db.bot_queue import claimed_target_as_post
+from shared.db.posts_repo import PostsRepository, PublishResult, mark_targets_status_sql
 from shared.retry import retry_async
 from shared import async_fs
 from .client_manager import TelegramClientManager
@@ -117,106 +119,84 @@ class PostPublisher:
         self.client_manager = client_manager
 
     async def get_ready_posts(self) -> List[Dict]:
-        """Claim ready posts (SKIP LOCKED → publishing), then apply Python filters."""
+        """Claim ready Telegram post_targets."""
+        return await self._claim_unified_posts()
+
+    async def _claim_unified_posts(self) -> List[Dict]:
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
-                claimed: List[Dict] = []
                 try:
                     await cur.execute("BEGIN")
-                    await cur.execute(
-                        """
-                        SELECT p.id, p.user_id, p.post_text, p.images, p.status,
-                               p.publish_at, p.target_channels, p.url, p.title,
-                               pr.channel_to_post, pr.channels_to_post,
-                               pr.schedule_type, pr.time_intervals, pr.publish_enabled
-                        FROM tg_posts p
-                        JOIN tg_profiles pr ON p.user_id = pr.user_id
-                        WHERE p.status = 'ready'
-                          AND (p.publish_at IS NULL OR p.publish_at <= CURRENT_TIMESTAMP)
-                        ORDER BY COALESCE(p.publish_at, p.created_at) ASC
-                        LIMIT 50
-                        FOR UPDATE OF p SKIP LOCKED
-                        """
+                    claimed_rows = await PostsRepository(cur).claim_publish(
+                        platform="tg",
+                        limit=50,
                     )
-                    rows = await cur.fetchall()
-                    columns = [col.name for col in cur.description]
-                    if not rows:
-                        await cur.execute("COMMIT")
-                    else:
-                        claimed = [dict(zip(columns, row)) for row in rows]
-                        post_ids = [p["id"] for p in claimed]
-                        ids_ph = ", ".join(["%s"] * len(post_ids))
-                        await cur.execute(
-                            f"""
-                            UPDATE tg_posts
-                            SET status = 'publishing', updated_at = CURRENT_TIMESTAMP
-                            WHERE id IN ({ids_ph})
-                            """,
-                            post_ids,
-                        )
-                        await cur.execute("COMMIT")
+                    await cur.execute("COMMIT")
                 except Exception:
                     await cur.execute("ROLLBACK")
                     raise
-
-                result: List[Dict] = []
-                release_ids: List[int] = []
-                for post in claimed:
-                    explicit_targets = _parse_json_list(post.get("target_channels"))
-                    # Profile publish_enabled is a global auto-pipeline kill-switch.
-                    # Posts with explicit targets (SMM / Posts page) must still go out.
-                    if post.get("publish_enabled") is False and not explicit_targets:
-                        release_ids.append(post["id"])
+            if not claimed_rows:
+                return []
+            claimed = [claimed_target_as_post(row) for row in claimed_rows]
+            user_ids = sorted({int(p["user_id"]) for p in claimed})
+            profiles = await self._load_tg_profiles(user_ids)
+            result: List[Dict] = []
+            release_ids: List[int] = []
+            for post in claimed:
+                profile = profiles.get(int(post["user_id"])) or {}
+                post.update(profile)
+                explicit_targets = _parse_json_list(post.get("target_channels"))
+                if post.get("publish_enabled") is False and not explicit_targets:
+                    release_ids.append(int(post["id"]))
+                    continue
+                schedule_type = (post.get("schedule_type") or "immediate").strip()
+                if schedule_type == "by_intervals":
+                    intervals = _parse_json_list(post.get("time_intervals"))
+                    if not _now_in_time_windows(intervals):
+                        release_ids.append(int(post["id"]))
                         continue
-                    schedule_type = (post.get("schedule_type") or "immediate").strip()
-                    if schedule_type == "by_intervals":
-                        intervals = _parse_json_list(post.get("time_intervals"))
-                        if not _now_in_time_windows(intervals):
-                            release_ids.append(post["id"])
-                            continue
-                    channels = self._resolve_channels(post)
-                    if not channels:
-                        release_ids.append(post["id"])
-                        continue
-                    post["_channels"] = channels
-                    post["status"] = "publishing"
-                    result.append(post)
+                channels = self._resolve_channels(post)
+                if not channels:
+                    release_ids.append(int(post["id"]))
+                    continue
+                post["_channels"] = channels
+                post["status"] = "publishing"
+                result.append(post)
+            if release_ids:
+                await self._release_targets(release_ids)
+            return result
+        finally:
+            await release_db_connection(conn)
 
-                if release_ids:
-                    ids_ph = ", ".join(["%s"] * len(release_ids))
-                    await cur.execute(
-                        f"""
-                        UPDATE tg_posts
-                        SET status = 'ready', updated_at = CURRENT_TIMESTAMP
-                        WHERE id IN ({ids_ph})
-                        """,
-                        release_ids,
-                    )
+    async def _load_tg_profiles(self, user_ids: List[int]) -> Dict[int, Dict]:
+        if not user_ids:
+            return {}
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                placeholders = ", ".join(["%s"] * len(user_ids))
+                await cur.execute(
+                    f"""
+                    SELECT user_id, channel_to_post, channels_to_post,
+                           schedule_type, time_intervals, publish_enabled
+                    FROM tg_profiles
+                    WHERE user_id IN ({placeholders})
+                    """,
+                    user_ids,
+                )
+                rows = await cur.fetchall()
+                cols = [c.name for c in cur.description]
+                return {int(row[0]): dict(zip(cols, row)) for row in rows}
+        finally:
+            await release_db_connection(conn)
 
-                if len(result) == 0:
-                    await cur.execute(
-                        "SELECT COUNT(*) FROM tg_posts WHERE status = 'ready'"
-                    )
-                    (ready_count,) = (await cur.fetchone()) or (0,)
-                    await cur.execute(
-                        """
-                        SELECT COUNT(*) FROM tg_profiles
-                        WHERE (
-                            (channel_to_post IS NOT NULL AND channel_to_post != '')
-                            OR (channels_to_post IS NOT NULL AND channels_to_post::text NOT IN ('[]', 'null'))
-                        )
-                        """
-                    )
-                    (profiles_with_channel,) = (await cur.fetchone()) or (0,)
-                    logger.info(
-                        "get_ready_posts returned 0 posts; "
-                        "tg_posts with status=ready: %s, "
-                        "tg_profiles with channel(s) set: %s",
-                        ready_count,
-                        profiles_with_channel,
-                    )
-                return result
+    async def _release_targets(self, target_ids: List[int]) -> None:
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                sql, params = mark_targets_status_sql(target_ids, "ready")
+                await cur.execute(sql, params)
         finally:
             await release_db_connection(conn)
 
@@ -437,7 +417,7 @@ class PostPublisher:
                 "Post %s: empty text and no images — marking as error (content issue, not Telegram)",
                 post_id,
             )
-            await self._update_post_status(post_id, "error")
+            await self._update_post_status(post, "error")
             return False
 
         try:
@@ -485,7 +465,7 @@ class PostPublisher:
                 return False
 
             message_id = getattr(last_message, "id", None) if last_message else None
-            await self._update_post_published(post_id, message_id, chat_ids_joined)
+            await self._update_post_published(post, message_id, chat_ids_joined)
             for channel_raw in published_channels:
                 await bump_channel_counter(
                     user_id,
@@ -510,7 +490,7 @@ class PostPublisher:
         except ValueError as e:
             # Контент (пустое сообщение и т.п.) — не открываем circuit breaker
             logger.error("Post %s content error: %s — marking as error", post_id, e)
-            await self._update_post_status(post_id, "error")
+            await self._update_post_status(post, "error")
             return False
         except Exception as e:
             logger.error(f"Error publishing post {post_id}: {e}", exc_info=True)
@@ -521,59 +501,43 @@ class PostPublisher:
 
     async def _update_post_published(
         self,
-        post_id: int,
+        post: Dict,
         telegram_message_id: Optional[int],
         telegram_chat_id: Optional[str],
     ) -> None:
+        target_id = int(post.get("_target_id") or post.get("id"))
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
-                await cur.execute(
-                    """
-                    UPDATE tg_posts
-                    SET status = 'published',
-                        telegram_message_id = COALESCE(%s, telegram_message_id),
-                        telegram_chat_id = COALESCE(%s, telegram_chat_id),
-                        updated_at = CURRENT_TIMESTAMP
-                    WHERE id = %s
-                    """,
-                    (telegram_message_id, telegram_chat_id, post_id),
+                await PostsRepository(cur).apply_publish_result(
+                    PublishResult(
+                        target_id=target_id,
+                        ok=True,
+                        result={
+                            "telegram_message_id": telegram_message_id,
+                            "telegram_chat_id": telegram_chat_id,
+                            "remote_id": str(telegram_message_id) if telegram_message_id is not None else None,
+                        },
+                    )
                 )
         finally:
             await release_db_connection(conn)
-        from shared.bot_internal import mark_post_published
 
-        await mark_post_published(
-            settings.CORE_SERVICE_URL or "",
-            platform="tg",
-            post_id=int(post_id),
-            external_id=str(telegram_message_id) if telegram_message_id is not None else None,
-        )
-
-    async def _update_post_status(self, post_id: int, status: str) -> None:
-        """Обновляет статус поста в tg_posts."""
+    async def _update_post_status(self, post: Dict | int, status: str) -> None:
+        target_id = int(post["_target_id"] if isinstance(post, dict) and post.get("_target_id") else (post["id"] if isinstance(post, dict) else post))
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
-                await cur.execute(
-                    """
-                    UPDATE tg_posts
-                    SET status = %s, updated_at = CURRENT_TIMESTAMP
-                    WHERE id = %s
-                    """,
-                    (status, post_id),
-                )
+                if status in ("error", "failed"):
+                    await PostsRepository(cur).apply_publish_result(
+                        PublishResult(target_id=target_id, ok=False, result={"error": status})
+                    )
+                else:
+                    mapped = "deleted" if status == "deleted" else status
+                    sql, params = mark_targets_status_sql([target_id], mapped)
+                    await cur.execute(sql, params)
         finally:
             await release_db_connection(conn)
-        if status in ("error", "failed"):
-            from shared.bot_internal import mark_post_published
-
-            await mark_post_published(
-                settings.CORE_SERVICE_URL or "",
-                platform="tg",
-                post_id=int(post_id),
-                error=f"status={status}",
-            )
 
     async def edit_published_post(self, user_id: int, post_id: int, text: str) -> Dict:
         """Редактирует уже опубликованный пост в Telegram."""
@@ -582,10 +546,17 @@ class PostPublisher:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
-                    SELECT id, post_text, telegram_message_id, telegram_chat_id, status
-                    FROM tg_posts WHERE id = %s AND user_id = %s
+                    SELECT t.id, p.post_text,
+                           NULLIF(t.result->>'telegram_message_id', '')::bigint,
+                           t.result->>'telegram_chat_id',
+                           t.status
+                    FROM post_targets t
+                    JOIN posts p ON p.id = t.post_id
+                    WHERE t.platform = 'tg' AND t.user_id = %s
+                      AND (t.id = %s OR t.post_id = %s)
+                    LIMIT 1
                     """,
-                    (post_id, user_id),
+                    (user_id, post_id, post_id),
                 )
                 row = await cur.fetchone()
         finally:
@@ -617,10 +588,15 @@ class PostPublisher:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
-                    SELECT telegram_message_id, telegram_chat_id, status
-                    FROM tg_posts WHERE id = %s AND user_id = %s
+                    SELECT NULLIF(t.result->>'telegram_message_id', '')::bigint,
+                           t.result->>'telegram_chat_id',
+                           t.status
+                    FROM post_targets t
+                    WHERE t.platform = 'tg' AND t.user_id = %s
+                      AND (t.id = %s OR t.post_id = %s)
+                    LIMIT 1
                     """,
-                    (post_id, user_id),
+                    (user_id, post_id, post_id),
                 )
                 row = await cur.fetchone()
         finally:
@@ -647,11 +623,12 @@ class PostPublisher:
         try:
             async with conn.cursor() as cur:
                 sets = ", ".join(f"{k} = %s" for k in fields)
-                values = list(fields.values()) + [post_id]
+                values = list(fields.values()) + [post_id, post_id]
                 await cur.execute(
                     f"""
-                    UPDATE tg_posts SET {sets}, updated_at = CURRENT_TIMESTAMP
+                    UPDATE posts SET {sets}, updated_at = CURRENT_TIMESTAMP
                     WHERE id = %s
+                       OR id = (SELECT post_id FROM post_targets WHERE id = %s)
                     """,
                     values,
                 )
@@ -666,21 +643,23 @@ class PostPublisher:
                 params: List[Any] = [hours]
                 user_filter = ""
                 if user_id is not None:
-                    user_filter = "AND p.user_id = %s"
+                    user_filter = "AND t.user_id = %s"
                     params.append(user_id)
                 await cur.execute(
                     f"""
-                    SELECT p.id, p.user_id, p.post_text, p.status, p.publish_at,
-                           p.created_at, p.target_channels, pr.channel_to_post, pr.channels_to_post
-                    FROM tg_posts p
-                    JOIN tg_profiles pr ON p.user_id = pr.user_id
-                    WHERE p.status IN ('ready', 'collected', 'review')
+                    SELECT t.id, t.user_id, p.post_text, t.status, t.publish_at,
+                           p.created_at, t.target_channels, pr.channel_to_post, pr.channels_to_post
+                    FROM post_targets t
+                    JOIN posts p ON p.id = t.post_id
+                    JOIN tg_profiles pr ON t.user_id = pr.user_id
+                    WHERE t.platform = 'tg'
+                      AND t.status IN ('ready', 'pending')
                       AND (
-                        (p.publish_at IS NOT NULL AND p.publish_at <= CURRENT_TIMESTAMP + (%s || ' hours')::interval)
-                        OR (p.publish_at IS NULL AND p.status = 'ready')
+                        (t.publish_at IS NOT NULL AND t.publish_at <= CURRENT_TIMESTAMP + (%s || ' hours')::interval)
+                        OR (t.publish_at IS NULL AND t.status = 'ready')
                       )
                       {user_filter}
-                    ORDER BY COALESCE(p.publish_at, p.created_at) ASC
+                    ORDER BY COALESCE(t.publish_at, p.created_at) ASC
                     LIMIT 200
                     """,
                     params,

@@ -54,6 +54,50 @@ def parse_vk_group_id(value: Any) -> Optional[int]:
     return n
 
 
+VK_OAUTH_CALLBACK_PATH = "/vk/oauth/callback"
+VK_CALLBACK_API_PATH = "/vk/callback"
+
+
+def build_vk_site_origin(public_base: str) -> str:
+    """Origin сайта из «публичного URL gateway» (часто ``https://host/api``)."""
+    base = (public_base or "").strip().rstrip("/")
+    if not base:
+        return ""
+    if base.endswith(VK_OAUTH_CALLBACK_PATH):
+        return base[: -len(VK_OAUTH_CALLBACK_PATH)].rstrip("/")
+    if base.endswith(VK_CALLBACK_API_PATH):
+        return base[: -len(VK_CALLBACK_API_PATH)].rstrip("/")
+    if base.endswith("/api"):
+        return base[: -len("/api")].rstrip("/")
+    return base
+
+
+def build_vk_oauth_redirect_uri(public_base: str) -> str:
+    """Redirect URI для oauth.vk.com: exact match с кабинетом VK (схема + путь)."""
+    raw = (public_base or "").strip().rstrip("/")
+    if not raw:
+        return ""
+    if raw.endswith(VK_OAUTH_CALLBACK_PATH):
+        return raw
+    origin = build_vk_site_origin(raw)
+    if not origin:
+        return ""
+    return f"{origin}{VK_OAUTH_CALLBACK_PATH}"
+
+
+def build_vk_callback_api_url(public_base: str) -> str:
+    """URL Callback API сообщества."""
+    raw = (public_base or "").strip().rstrip("/")
+    if not raw:
+        return ""
+    if raw.endswith(VK_CALLBACK_API_PATH):
+        return raw
+    origin = build_vk_site_origin(raw)
+    if not origin:
+        return ""
+    return f"{origin}{VK_CALLBACK_API_PATH}"
+
+
 def extract_vk_screen_name(value: Any) -> Optional[str]:
     """Screen name (short name) from raw id / URL when not a numeric club id."""
     if value is None:

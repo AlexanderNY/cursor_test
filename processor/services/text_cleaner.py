@@ -250,3 +250,18 @@ def clean_html(text: str) -> str:
     text = re.sub(r"[ \t]+\n", "\n", text)
 
     return text.strip()
+
+
+def apply_cpu_cleaning(
+    text: str,
+    images: List[str],
+    proc_settings: dict,
+) -> Tuple[str, List[str]]:
+    """CPU-only cleaning (emoji / images / HTML). Safe to run in a thread."""
+    if proc_settings.get("remove_emojis", False):
+        text = remove_emojis(text)
+    if proc_settings.get("remove_images", False):
+        text, images = remove_images(text, images)
+    if proc_settings.get("clean_html", False):
+        text = clean_html(text)
+    return text, images

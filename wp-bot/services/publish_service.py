@@ -17,6 +17,8 @@ from services.brand_channel_flow import (
 from services.channel_counter import bump_channel_counter
 from services.wordpress_client import WordPressClient
 from shared.bot_internal import claim_ready_posts, mark_post_published
+from shared.db.bot_queue import claimed_target_as_post
+from shared.db.posts_repo import PostsRepository, PublishResult
 
 logger = logging.getLogger(__name__)
 
@@ -25,17 +27,16 @@ class PublishService:
     """Публикация постов из wp_posts в WordPress по brand channel / target_channels."""
 
     async def publish_pending_posts(self, user_id: Optional[int] = None) -> Dict[str, Any]:
-        claimed = await claim_ready_posts(
+        claimed = await self._claim_unified_posts(user_id)
+        if not claimed:
+            claimed = await claim_ready_posts(
             settings.CORE_SERVICE_URL or "",
             platform="wp",
             limit=settings.PUBLISH_POSTS_LIMIT,
             user_id=user_id,
         )
         if not claimed:
-            # Fallback for local/dev when Core is unreachable — legacy DB select.
-            claimed = await self._fallback_select_ready(user_id)
-            if not claimed:
-                return {"published": 0, "failed": 0, "errors": []}
+            return {"published": 0, "failed": 0, "errors": []}
 
         published_count = 0
         failed_count = 0
@@ -58,10 +59,10 @@ class PublishService:
                             post_id=int(post["id"]),
                             error="No WordPress publish target (brand channel or profile)",
                         )
-                        await self._fallback_update_status(
-                            int(post["id"]),
-                            "failed",
-                            "No WordPress publish target (brand channel or profile)",
+                        await self._record_target_result(
+                            post,
+                            ok=False,
+                            error="No WordPress publish target (brand channel or profile)",
                         )
                         failed_count += 1
                         continue
@@ -117,26 +118,25 @@ class PublishService:
                         )
 
                     if ok_any:
-                        marked = await mark_post_published(
+                        await mark_post_published(
                             settings.CORE_SERVICE_URL or "",
                             platform="wp",
-                            post_id=int(post["id"]),
+                            post_id=int(post.get("_post_id") or post["id"]),
                             external_id=last_link or None,
                         )
-                        if not marked:
-                            await self._fallback_update_status(
-                                int(post["id"]), "published", url=last_link
-                            )
+                        await self._record_target_result(
+                            post, ok=True, external_id=last_link or None
+                        )
                         published_count += 1
                     else:
                         err = "; ".join(site_errors) or "Publish failed"
                         await mark_post_published(
                             settings.CORE_SERVICE_URL or "",
                             platform="wp",
-                            post_id=int(post["id"]),
+                            post_id=int(post.get("_post_id") or post["id"]),
                             error=err,
                         )
-                        await self._fallback_update_status(int(post["id"]), "failed", err)
+                        await self._record_target_result(post, ok=False, error=err)
                         failed_count += 1
                         errors.append({"post_id": post["id"], "user_id": uid, "error": err})
                 except Exception as exc:
@@ -150,10 +150,10 @@ class PublishService:
                     await mark_post_published(
                         settings.CORE_SERVICE_URL or "",
                         platform="wp",
-                        post_id=int(post["id"]),
+                        post_id=int(post.get("_post_id") or post["id"]),
                         error=error_msg,
                     )
-                    await self._fallback_update_status(int(post["id"]), "failed", error_msg)
+                    await self._record_target_result(post, ok=False, error=error_msg)
                     errors.append(
                         {"post_id": post["id"], "user_id": uid, "error": error_msg}
                     )
@@ -165,97 +165,49 @@ class PublishService:
             "errors": errors,
         }
 
-    async def _fallback_select_ready(
-        self, user_id: Optional[int]
-    ) -> List[Dict[str, Any]]:
+    async def _claim_unified_posts(self, user_id: Optional[int]) -> List[Dict[str, Any]]:
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
-                limit = settings.PUBLISH_POSTS_LIMIT
-                if user_id:
-                    await cur.execute(
-                        """
-                        SELECT * FROM wp_posts
-                        WHERE user_id = %s
-                          AND status = 'ready'
-                          AND to_wp = TRUE
-                        ORDER BY created_at ASC
-                        LIMIT %s
-                        FOR UPDATE SKIP LOCKED
-                        """,
-                        (user_id, limit),
+                try:
+                    await cur.execute("BEGIN")
+                    rows = await PostsRepository(cur).claim_publish(
+                        platform="wp",
+                        limit=settings.PUBLISH_POSTS_LIMIT,
+                        user_id=user_id,
                     )
-                else:
-                    await cur.execute(
-                        """
-                        SELECT * FROM wp_posts
-                        WHERE status = 'ready'
-                          AND to_wp = TRUE
-                        ORDER BY created_at ASC
-                        LIMIT %s
-                        FOR UPDATE SKIP LOCKED
-                        """,
-                        (limit,),
-                    )
-                rows = await cur.fetchall()
-                if not rows:
-                    return []
-                columns = [col.name for col in cur.description]
-                posts = [dict(zip(columns, row)) for row in rows]
-                ids = [p["id"] for p in posts]
-                ids_ph = ", ".join(["%s"] * len(ids))
-                await cur.execute(
-                    f"""
-                    UPDATE wp_posts
-                    SET status = 'publishing', updated_at = CURRENT_TIMESTAMP
-                    WHERE id IN ({ids_ph})
-                    """,
-                    ids,
-                )
-                await conn.commit()
-                for p in posts:
-                    p["status"] = "publishing"
-                return posts
+                    await cur.execute("COMMIT")
+                except Exception:
+                    await cur.execute("ROLLBACK")
+                    raise
+            return [claimed_target_as_post(row) for row in rows]
         except Exception:
-            try:
-                await conn.rollback()
-            except Exception:
-                pass
+            logger.debug("unified wp claim skipped", exc_info=True)
             return []
         finally:
             await release_db_connection(conn)
 
-    async def _fallback_update_status(
+    async def _record_target_result(
         self,
-        post_id: int,
-        status: str,
-        error: Optional[str] = None,
+        post: Dict[str, Any],
         *,
-        url: Optional[str] = None,
+        ok: bool,
+        external_id: Optional[str] = None,
+        error: Optional[str] = None,
     ) -> None:
+        if post.get("_queue") != "targets":
+            return
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
-                if url is not None:
-                    await cur.execute(
-                        """
-                        UPDATE wp_posts
-                        SET status = %s, url = COALESCE(%s, url),
-                            updated_at = CURRENT_TIMESTAMP
-                        WHERE id = %s
-                        """,
-                        (status, url, post_id),
-                    )
-                else:
-                    await cur.execute(
-                        """
-                        UPDATE wp_posts
-                        SET status = %s, updated_at = CURRENT_TIMESTAMP
-                        WHERE id = %s
-                        """,
-                        (status, post_id),
-                    )
-                await conn.commit()
+                result: Dict[str, Any] = {}
+                if external_id:
+                    result["remote_id"] = external_id
+                if error:
+                    result["error"] = error
+                await PostsRepository(cur).apply_publish_result(
+                    PublishResult(target_id=int(post["_target_id"]), ok=ok, result=result)
+                )
         finally:
             await release_db_connection(conn)
 

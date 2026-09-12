@@ -1,4 +1,4 @@
-"""Сервис Telegram-аналитики на основе tg_events и tg_posts."""
+"""Сервис Telegram-аналитики на основе tg_events и post_targets."""
 
 from __future__ import annotations
 
@@ -318,11 +318,14 @@ class TgAnalyticsService:
                     if chat_int is not None:
                         await cur.execute(
                             """
-                            SELECT metadata FROM tg_posts
-                            WHERE user_id = %s AND created_at >= %s AND metadata IS NOT NULL
+                            SELECT COALESCE(extras->'metadata', extras) FROM posts
+                            WHERE user_id = %s AND created_at >= %s
+                              AND extras IS NOT NULL
+                              AND source_platform IN ('tg', 'telegram')
                               AND (
                                 domain = %s OR domain = %s
-                                OR telegram_chat_id = %s OR telegram_chat_id = %s
+                                OR extras->>'telegram_chat_id' = %s
+                                OR extras->'metadata'->>'telegram_chat_id' = %s
                               )
                             """,
                             (
@@ -337,16 +340,20 @@ class TgAnalyticsService:
                     else:
                         await cur.execute(
                             """
-                            SELECT metadata FROM tg_posts
-                            WHERE user_id = %s AND created_at >= %s AND metadata IS NOT NULL
+                            SELECT COALESCE(extras->'metadata', extras) FROM posts
+                            WHERE user_id = %s AND created_at >= %s
+                              AND extras IS NOT NULL
+                              AND source_platform IN ('tg', 'telegram')
                             """,
                             (user_id, since),
                         )
                 else:
                     await cur.execute(
                         """
-                        SELECT metadata FROM tg_posts
-                        WHERE user_id = %s AND created_at >= %s AND metadata IS NOT NULL
+                        SELECT COALESCE(extras->'metadata', extras) FROM posts
+                        WHERE user_id = %s AND created_at >= %s
+                          AND extras IS NOT NULL
+                          AND source_platform IN ('tg', 'telegram')
                         """,
                         (user_id, since),
                     )
@@ -385,21 +392,25 @@ class TgAnalyticsService:
                 chat_filter = ""
                 params_sum: list = [user_id, since]
                 if chat_id:
-                    chat_filter = " AND (telegram_chat_id = %s OR domain = %s)"
+                    chat_filter = (
+                        " AND (t.result->>'telegram_chat_id' = %s OR p.domain = %s)"
+                    )
                     params_sum.extend([str(chat_id).strip(), str(chat_id).strip()])
 
                 await cur.execute(
                     f"""
                     SELECT
-                        COALESCE(SUM(views), 0),
-                        COALESCE(SUM(likes), 0),
-                        COALESCE(SUM(comments), 0),
-                        COALESCE(SUM(reposts), 0),
+                        COALESCE(SUM(p.views), 0),
+                        COALESCE(SUM(p.likes), 0),
+                        COALESCE(SUM(p.comments), 0),
+                        COALESCE(SUM(p.reposts), 0),
                         COUNT(*)
-                    FROM tg_posts
-                    WHERE user_id = %s
-                      AND status = 'published'
-                      AND updated_at >= %s
+                    FROM post_targets t
+                    JOIN posts p ON p.id = t.post_id
+                    WHERE t.user_id = %s
+                      AND t.platform = 'tg'
+                      AND t.status = 'published'
+                      AND t.updated_at >= %s
                     {chat_filter}
                     """,
                     tuple(params_sum),
@@ -413,13 +424,16 @@ class TgAnalyticsService:
                 params_top.append(limit)
                 await cur.execute(
                     f"""
-                    SELECT id, post_text, views, likes, comments, reposts, publish_at, created_at
-                    FROM tg_posts
-                    WHERE user_id = %s
-                      AND status = 'published'
-                      AND updated_at >= %s
+                    SELECT p.id, p.post_text, p.views, p.likes, p.comments, p.reposts,
+                           t.publish_at, p.created_at
+                    FROM post_targets t
+                    JOIN posts p ON p.id = t.post_id
+                    WHERE t.user_id = %s
+                      AND t.platform = 'tg'
+                      AND t.status = 'published'
+                      AND t.updated_at >= %s
                     {chat_filter}
-                    ORDER BY views DESC NULLS LAST, likes DESC
+                    ORDER BY p.views DESC NULLS LAST, p.likes DESC
                     LIMIT %s
                     """,
                     tuple(params_top),

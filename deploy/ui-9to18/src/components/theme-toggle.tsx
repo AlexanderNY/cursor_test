@@ -17,7 +17,7 @@ export function ThemeToggle() {
   return (
     <button
       type="button"
-      className="theme-toggle"
+      className="site-nav-link theme-toggle"
       onClick={() => setTheme(toggleTheme())}
       aria-label={label}
       title={label}

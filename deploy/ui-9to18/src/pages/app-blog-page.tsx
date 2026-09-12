@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { PageShell } from '@/components/page-shell'
 import { LearnContent } from '@/components/learn-content'
@@ -12,8 +12,36 @@ import {
 import { parsePostBody } from '@/data/site/structured-post'
 import { canManageApp, isSuperAdmin } from '@/data/site/site-auth'
 
-export function AppBlogPage() {
-  const { slug = '' } = useParams()
+function PublicFrame({
+  embedded,
+  children,
+  article,
+}: {
+  embedded: boolean
+  children: ReactNode
+  article?: boolean
+}) {
+  if (embedded) {
+    return <div className="account-embed">{children}</div>
+  }
+  return <PageShell content={article ? 'article' : 'default'}>{children}</PageShell>
+}
+
+export type AppBlogPageProps = {
+  embedded?: boolean
+  slug?: string
+  onOpenPost?: (postSlug: string) => void
+  onOpenAdmin?: () => void
+}
+
+export function AppBlogPage({
+  embedded = false,
+  slug: slugProp,
+  onOpenPost,
+  onOpenAdmin,
+}: AppBlogPageProps = {}) {
+  const { slug: slugParam = '' } = useParams()
+  const slug = slugProp || slugParam
   const [app, setApp] = useState<SiteApp | null>(null)
   const [posts, setPosts] = useState<SitePost[]>([])
   const [error, setError] = useState('')
@@ -44,10 +72,12 @@ export function AppBlogPage() {
   }, [slug])
 
   return (
-    <PageShell>
-      <Link to="/" className="back-link">
-        ← На главную
-      </Link>
+    <PublicFrame embedded={embedded}>
+      {embedded ? null : (
+        <Link to="/" className="back-link">
+          ← На главную
+        </Link>
+      )}
       {!ready ? (
         <p className="learn-section-note">Загрузка…</p>
       ) : error || !app ? (
@@ -83,9 +113,15 @@ export function AppBlogPage() {
                 </a>
               ) : null}
               {canManageApp(app.slug) ? (
-                <Link to={`/admin/apps/${app.slug}`} className="learn-admin-btn">
-                  {isSuperAdmin() ? 'Супер-админ · правка' : 'Кабинет владельца'}
-                </Link>
+                onOpenAdmin ? (
+                  <button type="button" className="learn-admin-btn" onClick={onOpenAdmin}>
+                    {isSuperAdmin() ? 'Супер-админ · правка' : 'Кабинет владельца'}
+                  </button>
+                ) : (
+                  <Link to={`/admin/apps/${app.slug}`} className="learn-admin-btn">
+                    {isSuperAdmin() ? 'Супер-админ · правка' : 'Кабинет владельца'}
+                  </Link>
+                )
               ) : null}
             </div>
           </header>
@@ -105,15 +141,28 @@ export function AppBlogPage() {
                     : post.body.replace(/[#*_`>\-\[\]()]/g, ' ').slice(0, 160)
                   return (
                     <li key={post.id}>
-                      <Link
-                        to={`/app/${app.slug}/${post.slug}`}
-                        className="learn-episode-card"
-                      >
-                        <span className="learn-episode-title">{post.title}</span>
-                        {excerpt ? (
-                          <span className="learn-section-note">{excerpt.trim()}…</span>
-                        ) : null}
-                      </Link>
+                      {onOpenPost ? (
+                        <button
+                          type="button"
+                          className="learn-episode-card"
+                          onClick={() => onOpenPost(post.slug)}
+                        >
+                          <span className="learn-episode-title">{post.title}</span>
+                          {excerpt ? (
+                            <span className="learn-section-note">{excerpt.trim()}…</span>
+                          ) : null}
+                        </button>
+                      ) : (
+                        <Link
+                          to={`/app/${app.slug}/${post.slug}`}
+                          className="learn-episode-card"
+                        >
+                          <span className="learn-episode-title">{post.title}</span>
+                          {excerpt ? (
+                            <span className="learn-section-note">{excerpt.trim()}…</span>
+                          ) : null}
+                        </Link>
+                      )}
                     </li>
                   )
                 })}
@@ -122,12 +171,26 @@ export function AppBlogPage() {
           </section>
         </>
       )}
-    </PageShell>
+    </PublicFrame>
   )
 }
 
-export function AppPostPage() {
-  const { slug = '', postSlug = '' } = useParams()
+export type AppPostPageProps = {
+  embedded?: boolean
+  slug?: string
+  postSlug?: string
+  onBack?: () => void
+}
+
+export function AppPostPage({
+  embedded = false,
+  slug: slugProp,
+  postSlug: postSlugProp,
+  onBack,
+}: AppPostPageProps = {}) {
+  const { slug: slugParam = '', postSlug: postSlugParam = '' } = useParams()
+  const slug = slugProp || slugParam
+  const postSlug = postSlugProp || postSlugParam
   const [app, setApp] = useState<SiteApp | null>(null)
   const [post, setPost] = useState<SitePost | null>(null)
   const [error, setError] = useState('')
@@ -160,10 +223,16 @@ export function AppPostPage() {
   const parsed = post ? parsePostBody(post.body) : null
 
   return (
-    <PageShell>
-      <Link to={`/app/${slug}`} className="back-link">
-        ← К сервису {app?.title || slug}
-      </Link>
+    <PublicFrame embedded={embedded} article>
+      {onBack ? (
+        <button type="button" className="back-link" onClick={onBack}>
+          ← К сервису {app?.title || slug}
+        </button>
+      ) : (
+        <Link to={`/app/${slug}`} className="back-link">
+          ← К сервису {app?.title || slug}
+        </Link>
+      )}
       {!ready ? (
         <p className="learn-section-note">Загрузка…</p>
       ) : error || !post ? (
@@ -185,6 +254,6 @@ export function AppPostPage() {
           )}
         </>
       )}
-    </PageShell>
+    </PublicFrame>
   )
 }

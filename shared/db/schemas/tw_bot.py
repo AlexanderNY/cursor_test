@@ -1,7 +1,5 @@
 """Twitter/X bot service DDL."""
 
-from shared.db.generate_ddl import build_post_indexes, build_post_table_ddl
-
 TW_PROFILES_TABLE = """
 CREATE TABLE IF NOT EXISTS tw_profiles (
     id SERIAL PRIMARY KEY,
@@ -30,11 +28,6 @@ CREATE TABLE IF NOT EXISTS tw_profiles (
 );
 """
 
-TW_POSTS_TABLE = build_post_table_ddl("tw_posts")
-TW_POSTS_INDEXES = build_post_indexes("tw_posts")
-
 ALL_TABLES: list[str] = [
     TW_PROFILES_TABLE,
-    TW_POSTS_TABLE,
-    TW_POSTS_INDEXES,
 ]

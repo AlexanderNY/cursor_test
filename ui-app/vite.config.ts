@@ -24,6 +24,14 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ''),
       },
+      '/vk/oauth/callback': {
+        target: 'http://gateway:8000',
+        changeOrigin: true,
+      },
+      '/vk/callback': {
+        target: 'http://gateway:8000',
+        changeOrigin: true,
+      },
     },
   },
 })

@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     # Отдельная БД контура 9to18.ru (если пусто — тот же хост, dbname=db_9to18)
     SITE_DATABASE_URL: str = ""
     DB_POOL_MINSIZE: int = 2
-    DB_POOL_MAXSIZE: int = 8
+    DB_POOL_MAXSIZE: int = 16
     
     # API Gateway URL для healthcheck запросов
     API_GATEWAY_URL: str = "http://localhost:8000"
@@ -38,7 +38,7 @@ class Settings(BaseSettings):
     VK_BOT_SERVICE_URL: str = "http://localhost:8005"
     WP_BOT_SERVICE_URL: str = "http://localhost:8006"
     URL_BOT_SERVICE_URL: str = "http://localhost:8007"
-    TW_BOT_SERVICE_URL: str = "http://localhost:8011"
+    TW_BOT_SERVICE_URL: str = "http://localhost:8014"
     SCHEDULER_SERVICE_URL: str = "http://localhost:8003"
     COLLECTOR_SERVICE_URL: str = "http://localhost:8009"
     PROCESSOR_SERVICE_URL: str = "http://localhost:8010"
@@ -115,12 +115,14 @@ validate_required_secrets()
 
 def get_vk_oauth_redirect_uri(public_gateway_url: Optional[str] = None) -> str:
     """Redirect URI для VK OAuth: профиль/UI, явный VK_OAUTH_REDIRECT_URI или VK_PUBLIC_GATEWAY_URL."""
+    from services.vk_helpers import build_vk_oauth_redirect_uri
+
     if public_gateway_url and str(public_gateway_url).strip():
-        return f"{str(public_gateway_url).strip().rstrip('/')}/vk/oauth/callback"
+        built = build_vk_oauth_redirect_uri(str(public_gateway_url))
+        if built:
+            return built
     explicit = (settings.VK_OAUTH_REDIRECT_URI or "").strip()
     if explicit:
-        return explicit
-    base = (settings.VK_PUBLIC_GATEWAY_URL or "").strip().rstrip("/")
-    if not base:
-        base = "http://localhost:8000"
-    return f"{base}/vk/oauth/callback"
+        return build_vk_oauth_redirect_uri(explicit)
+    base = (settings.VK_PUBLIC_GATEWAY_URL or "").strip() or "http://localhost:8000"
+    return build_vk_oauth_redirect_uri(base)

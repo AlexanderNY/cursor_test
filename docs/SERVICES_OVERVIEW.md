@@ -295,7 +295,7 @@ Workspace roles: `owner` | `editor` | `approver` | `viewer` (legacy aliases: adm
 | th-bot | 8013 | Threads |
 | tw-bot | 8011 внутр. / host 8014 | Twitter / X |
 | tg-game | 8015 | Telegram game / заказы / медиа |
-| collector | 8009 | collect + distribute |
+| collector | 8009 | RSS Дзен, метрики `posts` / `post_targets` |
 | processor | 8010 | обработка `posts` + AI |
 
 ### 3.6 URL Bot (порт 8007)

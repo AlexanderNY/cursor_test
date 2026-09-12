@@ -151,15 +151,16 @@ class PostEnrichmentService:
                     await cur.execute(
                         """
                         SELECT p.id, p.user_id, p.post_text, pr.classification_categories
-                        FROM tg_posts p
+                        FROM posts p
                         JOIN tg_profiles pr ON pr.user_id = p.user_id
-                        WHERE pr.batch_enrichment_enabled = TRUE
+                        WHERE p.source_platform IN ('tg', 'telegram')
+                          AND pr.batch_enrichment_enabled = TRUE
                           AND pr.classification_enabled = TRUE
                           AND p.post_text IS NOT NULL
                           AND length(trim(p.post_text)) > 0
                           AND (
-                            p.metadata IS NULL
-                            OR NOT (p.metadata ? 'sentiment')
+                            p.extras IS NULL
+                            OR NOT (COALESCE(p.extras->'metadata', '{}'::jsonb) ? 'sentiment')
                           )
                         ORDER BY p.created_at ASC
                         LIMIT %s
@@ -191,8 +192,12 @@ class PostEnrichmentService:
                 async with conn.cursor() as cur:
                     await cur.execute(
                         """
-                        UPDATE tg_posts
-                        SET metadata = COALESCE(metadata, '{}'::jsonb) || %s::jsonb,
+                        UPDATE posts
+                        SET extras = jsonb_set(
+                            COALESCE(extras, '{}'::jsonb),
+                            '{metadata}',
+                            COALESCE(extras->'metadata', '{}'::jsonb) || %s::jsonb
+                        ),
                             updated_at = CURRENT_TIMESTAMP
                         WHERE id = %s
                         """,

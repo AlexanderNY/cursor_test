@@ -1,7 +1,5 @@
 """Dzen bot service DDL."""
 
-from shared.db.generate_ddl import build_post_indexes, build_post_table_ddl
-
 DZEN_PROFILES_TABLE = """
 CREATE TABLE IF NOT EXISTS dzen_profiles (
     id SERIAL PRIMARY KEY,
@@ -24,16 +22,6 @@ CREATE TABLE IF NOT EXISTS dzen_profiles (
 );
 """
 
-DZEN_POSTS_TABLE = build_post_table_ddl(
-    "dzen_posts",
-    extra_columns={"videos": "JSONB DEFAULT '[]'"},
-    column_overrides={"to_dzen": "BOOLEAN DEFAULT TRUE"},
-)
-
-DZEN_POSTS_INDEXES = build_post_indexes("dzen_posts")
-
 ALL_TABLES: list[str] = [
     DZEN_PROFILES_TABLE,
-    DZEN_POSTS_TABLE,
-    DZEN_POSTS_INDEXES,
 ]

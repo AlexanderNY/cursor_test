@@ -95,6 +95,41 @@ export const FEEDBACK_TYPE_LABELS: Record<FeedbackType, string> = {
   contact_author: 'Связаться с автором',
 }
 
+// Roadmap («Что далее»)
+
+export interface RoadmapItem {
+  id: number
+  title: string
+  description?: string | null
+  is_active: boolean
+  created_by?: number | null
+  created_at: string
+  updated_at: string
+  vote_count: number
+  voted: boolean
+}
+
+export interface RoadmapListResponse {
+  items: RoadmapItem[]
+}
+
+export interface RoadmapItemCreate {
+  title: string
+  description?: string | null
+}
+
+export interface RoadmapItemUpdate {
+  title?: string
+  description?: string | null
+  is_active?: boolean
+}
+
+export interface RoadmapVoteResponse {
+  item_id: number
+  voted: boolean
+  vote_count: number
+}
+
 // Admin: services status & posts tables
 
 export interface LoopStatus {
@@ -286,6 +321,7 @@ export interface StorageDeleteResponse {
 }
 
 export interface PostingDiagnosticsResponse {
+  tg_targets_by_status?: Array<{ status: string; count: number }>
   tg_posts_by_status: Array<{ status: string; count: number }>
   posts_by_status: Array<{ status: string; source_platform: string | null; count: number }>
   ready_for_telegram: number

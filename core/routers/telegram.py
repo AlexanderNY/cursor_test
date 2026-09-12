@@ -223,7 +223,7 @@ async def get_tg_posts(
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
 ):
-    """Возвращает список постов Telegram пользователя из таблицы tg_posts."""
+    """Возвращает список постов Telegram пользователя (posts + post_targets)."""
     user_id = get_user_id_from_header(x_user_id)
     posts = await post_service.get_tg_posts(
         user_id=user_id,

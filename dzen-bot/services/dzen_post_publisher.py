@@ -19,6 +19,8 @@ from config import settings
 from database import get_db_connection, release_db_connection
 from storage_helper import get_storage
 from shared import async_fs
+from shared.db.bot_queue import claimed_target_as_post, finish_claimed_publish
+from shared.db.posts_repo import PostsRepository
 
 from .selenium_diag import capture_selenium_error_to_s3
 from .selenium_driver import create_chrome_driver, get_selenium_semaphore
@@ -145,30 +147,22 @@ async def _set_last_auth_error(user_id: int, message: Optional[str]) -> None:
 
 
 async def _update_post_result(
-    post_id: int,
-    user_id: int,
+    post: Dict[str, Any],
     status: str,
     url: Optional[str] = None,
 ) -> None:
+    post_id = int(post["id"])
+    user_id = int(post["user_id"])
     conn = await get_db_connection()
     try:
         async with conn.cursor() as cur:
-            if url:
-                await cur.execute(
-                    """
-                    UPDATE dzen_posts SET status = %s, url = %s, updated_at = CURRENT_TIMESTAMP
-                    WHERE id = %s AND user_id = %s
-                    """,
-                    (status, url, post_id, user_id),
-                )
-            else:
-                await cur.execute(
-                    """
-                    UPDATE dzen_posts SET status = %s, updated_at = CURRENT_TIMESTAMP
-                    WHERE id = %s AND user_id = %s
-                    """,
-                    (status, post_id, user_id),
-                )
+            finished = await finish_claimed_publish(
+                cur,
+                post,
+                ok=(status == "published"),
+                result={"url": url} if url else ({"error": "dzen publish failed"} if status == "failed" else {}),
+                status=status,
+            )
     finally:
         await release_db_connection(conn)
     from shared.bot_internal import mark_post_published
@@ -177,73 +171,65 @@ async def _update_post_result(
         await mark_post_published(
             settings.CORE_SERVICE_URL or "",
             platform="dzen",
-            post_id=int(post_id),
+            post_id=post_id,
             external_id=url,
         )
     elif status == "failed":
         await mark_post_published(
             settings.CORE_SERVICE_URL or "",
             platform="dzen",
-            post_id=int(post_id),
+            post_id=post_id,
             error="dzen publish failed",
         )
 
 
 async def _fetch_ready_posts() -> List[Dict[str, Any]]:
-    """Claim ready posts (SKIP LOCKED → publishing) with Yandex credentials."""
+    """Claim ready Dzen post_targets."""
+    return await _claim_unified_dzen_posts()
+
+
+async def _claim_unified_dzen_posts() -> List[Dict[str, Any]]:
     conn = await get_db_connection()
     try:
         async with conn.cursor() as cur:
             try:
                 await cur.execute("BEGIN")
-                await cur.execute(
-                    """
-                    SELECT dp.id, dp.user_id, dp.post_text, dp.title, dp.images,
-                           prof.yandex_login, prof.yandex_password
-                    FROM dzen_posts dp
-                    INNER JOIN dzen_profiles prof ON prof.user_id = dp.user_id
-                    WHERE dp.status = 'ready'
-                      AND prof.publish_enabled = TRUE
-                      AND prof.yandex_login IS NOT NULL
-                      AND TRIM(prof.yandex_login) <> ''
-                      AND prof.yandex_password IS NOT NULL
-                      AND TRIM(prof.yandex_password) <> ''
-                    ORDER BY dp.created_at ASC
-                    LIMIT 5
-                    FOR UPDATE OF dp SKIP LOCKED
-                    """
-                )
-                rows = await cur.fetchall()
-                cols = [
-                    "id",
-                    "user_id",
-                    "post_text",
-                    "title",
-                    "images",
-                    "yandex_login",
-                    "yandex_password",
-                ]
-                if not rows:
-                    await cur.execute("COMMIT")
-                    return []
-                claimed = [dict(zip(cols, row)) for row in rows]
-                post_ids = [p["id"] for p in claimed]
-                ids_ph = ", ".join(["%s"] * len(post_ids))
-                await cur.execute(
-                    f"""
-                    UPDATE dzen_posts
-                    SET status = 'publishing', updated_at = CURRENT_TIMESTAMP
-                    WHERE id IN ({ids_ph})
-                    """,
-                    post_ids,
-                )
+                rows = await PostsRepository(cur).claim_publish(platform="dzen", limit=5)
                 await cur.execute("COMMIT")
-                for post in claimed:
-                    post["status"] = "publishing"
-                return claimed
             except Exception:
                 await cur.execute("ROLLBACK")
                 raise
+        if not rows:
+            return []
+        claimed = [claimed_target_as_post(row) for row in rows]
+        user_ids = sorted({int(p["user_id"]) for p in claimed})
+        profiles = await _load_dzen_profiles(user_ids)
+        for post in claimed:
+            post.update(profiles.get(int(post["user_id"])) or {})
+            post["status"] = "publishing"
+        return claimed
+    finally:
+        await release_db_connection(conn)
+
+
+async def _load_dzen_profiles(user_ids: List[int]) -> Dict[int, Dict[str, Any]]:
+    if not user_ids:
+        return {}
+    conn = await get_db_connection()
+    try:
+        async with conn.cursor() as cur:
+            placeholders = ", ".join(["%s"] * len(user_ids))
+            await cur.execute(
+                f"""
+                SELECT user_id, yandex_login, yandex_password, publish_enabled
+                FROM dzen_profiles
+                WHERE user_id IN ({placeholders})
+                """,
+                user_ids,
+            )
+            fetched = await cur.fetchall()
+            cols = [c.name for c in cur.description]
+            return {int(row[0]): dict(zip(cols, row)) for row in fetched}
     finally:
         await release_db_connection(conn)
 
@@ -384,11 +370,11 @@ class DzenPostPublisher:
             post.pop("_local_image_paths", None)
 
             if ok:
-                await _update_post_result(pid, uid, "published", pub_url)
+                await _update_post_result(post, "published", pub_url)
                 published += 1
                 _log_action("Published dzen post id=%s url=%s", pid, pub_url)
             else:
-                await _update_post_result(pid, uid, "failed", None)
+                await _update_post_result(post, "failed", None)
                 if err:
                     await _set_last_auth_error(uid, err[:2000])
                 logger.warning("Dzen post %s failed: %s", pid, err)

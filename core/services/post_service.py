@@ -5,9 +5,87 @@ from datetime import datetime
 from typing import Dict, List, Optional, Any
 from database import get_db_connection, release_db_connection
 from services.quota_service import ensure_monthly_post_quota
+from services.unified_post_ops import (
+    create_unified_post,
+    get_platform_post,
+    list_platform_posts,
+    update_platform_post,
+)
 
 
+from shared.db.posts_repo import (
+    LEGACY_FLAG_TO_PLATFORM,
+    PostsRepository,
+    flags_from_platforms,
+    resolve_publish_platforms,
+)
 from shared.post_adapt import NETWORK_TEXT_LIMITS as _SHARED_NETWORK_TEXT_LIMITS
+from shared.queue_wakeup import wake_process_http
+
+
+async def _wake_collector_for_status(status: str) -> None:
+    if status not in ("collected", "created"):
+        return
+    try:
+        from config import settings
+
+        await wake_process_http(getattr(settings, "PROCESSOR_SERVICE_URL", "") or "")
+    except Exception:
+        pass
+
+
+async def _attach_destination_flags(cur, posts: List[Dict]) -> None:
+    for post in posts:
+        for flag_name in LEGACY_FLAG_TO_PLATFORM:
+            post[flag_name] = False
+    ids = [int(post["id"]) for post in posts if post.get("id") is not None]
+    if not ids:
+        return
+    await cur.execute(
+        """
+        SELECT post_id, platform
+        FROM post_targets
+        WHERE post_id = ANY(%s)
+          AND status NOT IN ('deleted', 'skipped')
+        """,
+        (ids,),
+    )
+    by_id: Dict[int, List[str]] = {}
+    for post_id, platform in await cur.fetchall():
+        by_id.setdefault(int(post_id), []).append(str(platform))
+    for post in posts:
+        post.update(flags_from_platforms(by_id.get(int(post["id"]), [])))
+
+
+async def _sync_destination_flags(
+    cur,
+    *,
+    user_id: int,
+    post_id: int,
+    hub_status: str,
+    dest: Dict[str, Optional[bool]],
+) -> None:
+    enabled = [platform for platform, value in dest.items() if value is True]
+    disabled = [platform for platform, value in dest.items() if value is False]
+    if enabled:
+        target_status = "ready" if hub_status == "ready" else "pending"
+        await PostsRepository(cur).ensure_targets(
+            post_id=post_id,
+            user_id=user_id,
+            platforms=enabled,
+            status=target_status,
+        )
+    if disabled:
+        await cur.execute(
+            """
+            UPDATE post_targets
+            SET status = 'skipped', updated_at = CURRENT_TIMESTAMP
+            WHERE post_id = %s
+              AND platform = ANY(%s)
+              AND status IN ('pending', 'ready')
+            """,
+            (post_id, disabled),
+        )
 
 
 class PostService:
@@ -18,6 +96,36 @@ class PostService:
         **_SHARED_NETWORK_TEXT_LIMITS,
         "cpost": _SHARED_NETWORK_TEXT_LIMITS["wp"],
     }
+
+    async def _unified_list(
+        self,
+        platform: str,
+        user_id: int,
+        limit: int = 50,
+        offset: int = 0,
+        **kwargs: Any,
+    ) -> List[Dict]:
+        rows = await list_platform_posts(
+            user_id=user_id,
+            platform=platform,
+            limit=limit,
+            offset=offset,
+            **kwargs,
+        )
+        return [self._row_to_post(row) for row in rows]
+
+    async def _unified_get(self, platform: str, user_id: int, post_id: int) -> Optional[Dict]:
+        row = await get_platform_post(user_id=user_id, post_id=post_id, platform=platform)
+        return self._row_to_post(row) if row else None
+
+    async def _unified_update(self, platform: str, user_id: int, post_id: int, **kwargs: Any) -> Optional[Dict]:
+        row = await update_platform_post(
+            user_id=user_id,
+            post_id=post_id,
+            platform=platform,
+            **kwargs,
+        )
+        return self._row_to_post(row) if row else None
     
     async def create_post(
         self,
@@ -61,6 +169,7 @@ class PostService:
         conn = await get_db_connection()
         try:
             await ensure_monthly_post_quota(user_id, conn=conn)
+            hub_status = str(kwargs.get("status", "collected"))
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
@@ -68,12 +177,12 @@ class PostService:
                         user_id, post_text, title, domain, url, author, avatar,
                         post_date, screenshot, images, image_over_text,
                         comments, reposts, likes, views, is_ad, status,
-                        post_type, to_tg, to_tw, to_wp, to_vk, to_threads, to_dzen, to_instagram
+                        post_type, source_platform
                     ) VALUES (
                         %s, %s, %s, %s, %s, %s, %s,
                         %s, %s, %s, %s,
                         %s, %s, %s, %s, %s, %s,
-                        %s, %s, %s, %s, %s, %s, %s, %s
+                        %s, %s
                     )
                     RETURNING *
                     """,
@@ -94,19 +203,36 @@ class PostService:
                         kwargs.get("likes", 0),
                         kwargs.get("views", 0),
                         kwargs.get("is_ad", False),
-                        kwargs.get("status", "collected"),
+                        hub_status,
                         platform,
-                        to_tg,
-                        to_tw,
-                        to_wp,
-                        to_vk,
-                        to_threads,
-                        to_dzen,
-                        to_instagram,
+                        platform,
                     )
                 )
                 row = await cur.fetchone()
-                return self._row_to_post(row, cur.description)
+                post = self._row_to_post(row, cur.description)
+                platforms = resolve_publish_platforms(
+                    legacy_flags={
+                        "to_tg": to_tg,
+                        "to_tw": to_tw,
+                        "to_wp": to_wp,
+                        "to_vk": to_vk,
+                        "to_threads": to_threads,
+                        "to_dzen": to_dzen,
+                        "to_instagram": to_instagram,
+                    },
+                    source_platform=platform,
+                )
+                if platforms:
+                    target_status = "ready" if hub_status == "ready" else "pending"
+                    await PostsRepository(cur).ensure_targets(
+                        post_id=int(post["id"]),
+                        user_id=user_id,
+                        platforms=platforms,
+                        status=target_status,
+                    )
+                post.update(flags_from_platforms(platforms))
+                await _wake_collector_for_status(hub_status)
+                return post
         finally:
             await release_db_connection(conn)
 
@@ -128,7 +254,7 @@ class PostService:
         status: str = "ready",
         skip_quota: bool = False,
     ) -> Dict:
-        """Создает пост WordPress в таблице wp_posts.
+        """Создает пост WordPress в ``posts`` + ``post_targets``.
 
         Outbound publish uses status=ready (default). Collected/inbound posts
         are inserted by wp-bot collect with status=collected.
@@ -139,49 +265,28 @@ class PostService:
 
         allowed_status = {"ready", "collected", "draft", "pending_approval"}
         post_status = status if status in allowed_status else "ready"
-
-        conn = await get_db_connection()
-        try:
-            if not skip_quota:
-                await ensure_monthly_post_quota(user_id, conn=conn)
-            async with conn.cursor() as cur:
-                await cur.execute(
-                    """
-                    INSERT INTO wp_posts (
-                        user_id, post_text, title, domain, url, author, avatar,
-                        post_date, screenshot, images, image_over_text,
-                        comments, reposts, likes, views, is_ad, status,
-                        post_type, to_tg, to_tw, to_wp, to_vk, to_threads, to_dzen, to_instagram,
-                        target_channels, target_groups
-                    ) VALUES (
-                        %s, %s, %s, NULL, NULL, NULL, NULL,
-                        NULL, NULL, '[]', NULL,
-                        0, 0, 0, 0, FALSE, %s,
-                        'wp', %s, %s, %s, %s, %s, %s, %s,
-                        %s::jsonb, %s::jsonb
-                    )
-                    RETURNING *
-                    """,
-                    (
-                        user_id,
-                        text,
-                        title,
-                        post_status,
-                        to_tg,
-                        to_tw,
-                        to_wp,
-                        to_vk,
-                        to_threads,
-                        to_dzen,
-                        to_instagram,
-                        json.dumps(target_channels or []),
-                        json.dumps(target_groups or []),
-                    )
-                )
-                row = await cur.fetchone()
-                return self._row_to_post(row, cur.description)
-        finally:
-            await release_db_connection(conn)
+        hub_status = "ready" if post_status == "ready" else "collected"
+        target_status = "ready" if hub_status == "ready" else "pending"
+        row = await create_unified_post(
+            user_id=user_id,
+            source_platform="wp",
+            text=text,
+            title=title,
+            status=hub_status,
+            target_status=target_status,
+            skip_quota=skip_quota,
+            target_channels=target_channels,
+            target_groups=target_groups,
+            to_tg=to_tg,
+            to_tw=to_tw,
+            to_wp=to_wp,
+            to_vk=to_vk,
+            to_threads=to_threads,
+            to_dzen=to_dzen,
+            to_instagram=to_instagram,
+            return_platform="wp",
+        )
+        return self._row_to_post(row)
 
     async def create_tg_post_record(
         self,
@@ -202,73 +307,36 @@ class PostService:
         brand_id: Optional[int] = None,
         channel_id: Optional[int] = None,
         skip_quota: bool = False,
+        status: str = "collected",
     ) -> Dict:
-        """Создает пост Telegram в таблице tg_posts.
-        
-        Args:
-            user_id: ID пользователя
-            text: Текст поста (до 4096 символов)
-            images: Список URL изображений
-            to_*: цели дублирования в другие сети
-            publish_at: отложенная публикация (UTC)
-            target_channels: каналы назначения (override профиля)
-            target_groups: VK-группы назначения при кросс-посте
-            brand_id: SMM brand (tenancy)
-            channel_id: SMM brand channel (tenancy)
-            skip_quota: если True — квота уже проверена вызывающим (SMM jobs)
-        
-        Returns:
-            Созданный пост из таблицы tg_posts
-        """
+        """Создает пост Telegram в posts / post_targets."""
         # Проверка лимита символов для Telegram
         limit = self.PLATFORM_LIMITS.get("tg", 4096)
         if len(text) > limit:
             raise ValueError(f"Text exceeds tg limit of {limit} characters")
 
-        conn = await get_db_connection()
-        try:
-            if not skip_quota:
-                await ensure_monthly_post_quota(user_id, conn=conn)
-            async with conn.cursor() as cur:
-                await cur.execute(
-                    """
-                    INSERT INTO tg_posts (
-                        user_id, brand_id, channel_id, post_text, title, domain, url, author, avatar,
-                        post_date, screenshot, images, image_over_text,
-                        comments, reposts, likes, views, is_ad, status,
-                        post_type, to_tg, to_tw, to_wp, to_vk, to_threads, to_dzen, to_instagram,
-                        publish_at, target_channels, target_groups
-                    ) VALUES (
-                        %s, %s, %s, %s, NULL, NULL, NULL, NULL, NULL,
-                        NULL, NULL, %s, NULL,
-                        0, 0, 0, 0, FALSE, 'collected',
-                        'tg', %s, %s, %s, %s, %s, %s, %s,
-                        %s, %s::jsonb, %s::jsonb
-                    )
-                    RETURNING *
-                    """,
-                    (
-                        user_id,
-                        brand_id,
-                        channel_id,
-                        text,
-                        json.dumps(images or []),
-                        to_tg,
-                        to_tw,
-                        to_wp,
-                        to_vk,
-                        to_threads,
-                        to_dzen,
-                        to_instagram,
-                        publish_at,
-                        json.dumps(target_channels or []),
-                        json.dumps(target_groups or []),
-                    )
-                )
-                row = await cur.fetchone()
-                return self._row_to_post(row, cur.description)
-        finally:
-            await release_db_connection(conn)
+        row = await create_unified_post(
+            user_id=user_id,
+            source_platform="tg",
+            text=text,
+            images=images,
+            brand_id=brand_id,
+            channel_id=channel_id,
+            target_channels=target_channels,
+            target_groups=target_groups,
+            publish_at=publish_at,
+            status=status,
+            skip_quota=skip_quota,
+            to_tg=to_tg,
+            to_tw=to_tw,
+            to_wp=to_wp,
+            to_vk=to_vk,
+            to_threads=to_threads,
+            to_dzen=to_dzen,
+            to_instagram=to_instagram,
+            return_platform="tg",
+        )
+        return self._row_to_post(row)
 
     async def create_cpost_post_record(
         self,
@@ -292,61 +360,38 @@ class PostService:
         if len(text) > limit:
             raise ValueError(f"Text exceeds cpost limit of {limit} characters")
 
-        conn = await get_db_connection()
-        try:
-            await ensure_monthly_post_quota(user_id, conn=conn)
-            async with conn.cursor() as cur:
-                await cur.execute(
-                    """
-                    INSERT INTO cpost_posts (
-                        user_id, post_text, title, domain, url, author, avatar,
-                        post_date, screenshot, images, image_over_text,
-                        comments, reposts, likes, views, is_ad, status,
-                        post_type, to_tg, to_tw, to_wp, to_vk, to_dzen, to_instagram, to_threads,
-                        target_channels, target_groups
-                    ) VALUES (
-                        %s, %s, %s, %s, %s, %s, %s,
-                        %s, %s, %s::jsonb, %s,
-                        %s, %s, %s, %s, %s, %s,
-                        %s, %s, %s, %s, %s, %s, %s, %s,
-                        %s::jsonb, %s::jsonb
-                    )
-                    RETURNING *
-                    """,
-                    (
-                        user_id,
-                        text,
-                        title,
-                        kwargs.get("domain"),
-                        kwargs.get("url"),
-                        kwargs.get("author"),
-                        kwargs.get("avatar"),
-                        kwargs.get("post_date"),
-                        kwargs.get("screenshot"),
-                        json.dumps(kwargs.get("images") or []),
-                        kwargs.get("image_over_text"),
-                        kwargs.get("comments", 0),
-                        kwargs.get("reposts", 0),
-                        kwargs.get("likes", 0),
-                        kwargs.get("views", 0),
-                        kwargs.get("is_ad", False),
-                        status,
-                        "cpost",
-                        to_tg,
-                        to_tw,
-                        to_wp,
-                        to_vk,
-                        to_dzen,
-                        to_instagram,
-                        to_threads,
-                        json.dumps(target_channels or []),
-                        json.dumps(target_groups or []),
-                    ),
-                )
-                row = await cur.fetchone()
-                return self._row_to_post(row, cur.description)
-        finally:
-            await release_db_connection(conn)
+        extras = {
+            "metadata": {
+                "image_over_text": kwargs.get("image_over_text"),
+                "comments": kwargs.get("comments", 0),
+                "reposts": kwargs.get("reposts", 0),
+                "likes": kwargs.get("likes", 0),
+                "views": kwargs.get("views", 0),
+                "is_ad": kwargs.get("is_ad", False),
+            }
+        }
+        hub_status = status if status in ("collected", "created", "ready", "review") else "collected"
+        row = await create_unified_post(
+            user_id=user_id,
+            source_platform="cpost",
+            text=text,
+            title=title,
+            url=kwargs.get("url"),
+            images=kwargs.get("images") or [],
+            extras=extras,
+            target_channels=target_channels,
+            target_groups=target_groups,
+            status=hub_status,
+            to_tg=to_tg,
+            to_tw=to_tw,
+            to_wp=to_wp,
+            to_vk=to_vk,
+            to_threads=to_threads,
+            to_dzen=to_dzen,
+            to_instagram=to_instagram,
+            return_platform="cpost",
+        )
+        return self._row_to_post(row)
 
     async def create_tw_post_record(
         self,
@@ -367,41 +412,23 @@ class PostService:
         if len(text) > limit:
             raise ValueError(f"Text exceeds tw limit of {limit} characters")
 
-        conn = await get_db_connection()
-        try:
-            await ensure_monthly_post_quota(user_id, conn=conn)
-            async with conn.cursor() as cur:
-                await cur.execute(
-                    """
-                    INSERT INTO tw_posts (
-                        user_id, post_text, status, post_type,
-                        to_tg, to_tw, to_wp, to_vk, to_threads, to_dzen, to_instagram,
-                        target_channels, target_groups
-                    ) VALUES (
-                        %s, %s, 'collected', 'tw',
-                        %s, %s, %s, %s, %s, %s, %s,
-                        %s::jsonb, %s::jsonb
-                    )
-                    RETURNING *
-                    """,
-                    (
-                        user_id,
-                        text,
-                        to_tg,
-                        to_tw,
-                        to_wp,
-                        to_vk,
-                        to_threads,
-                        to_dzen,
-                        to_instagram,
-                        json.dumps(target_channels or []),
-                        json.dumps(target_groups or []),
-                    ),
-                )
-                row = await cur.fetchone()
-                return self._row_to_post(row, cur.description)
-        finally:
-            await release_db_connection(conn)
+        row = await create_unified_post(
+            user_id=user_id,
+            source_platform="tw",
+            text=text,
+            target_channels=target_channels,
+            target_groups=target_groups,
+            status="collected",
+            to_tg=to_tg,
+            to_tw=to_tw,
+            to_wp=to_wp,
+            to_vk=to_vk,
+            to_threads=to_threads,
+            to_dzen=to_dzen,
+            to_instagram=to_instagram,
+            return_platform="tw",
+        )
+        return self._row_to_post(row)
 
     async def get_tw_posts(
         self,
@@ -410,23 +437,8 @@ class PostService:
         offset: int = 0,
     ) -> List[Dict]:
         """Посты пользователя из tw_posts (очередь / история)."""
-        conn = await get_db_connection()
-        try:
-            async with conn.cursor() as cur:
-                await cur.execute(
-                    """
-                    SELECT *
-                    FROM tw_posts
-                    WHERE user_id = %s
-                    ORDER BY created_at DESC
-                    LIMIT %s OFFSET %s
-                    """,
-                    (user_id, limit, offset),
-                )
-                rows = await cur.fetchall()
-                return [self._row_to_post(row, cur.description) for row in rows]
-        finally:
-            await release_db_connection(conn)
+        rows = await list_platform_posts(user_id=user_id, platform="tw", limit=limit, offset=offset)
+        return [self._row_to_post(row) for row in rows]
 
     async def get_cpost_posts(
         self,
@@ -435,38 +447,11 @@ class PostService:
         offset: int = 0,
     ) -> List[Dict]:
         """Список ручных постов из cpost_posts."""
-        conn = await get_db_connection()
-        try:
-            async with conn.cursor() as cur:
-                await cur.execute(
-                    """
-                    SELECT * FROM cpost_posts
-                    WHERE user_id = %s
-                    ORDER BY created_at DESC
-                    LIMIT %s OFFSET %s
-                    """,
-                    (user_id, limit, offset),
-                )
-                rows = await cur.fetchall()
-                return [self._row_to_post(row, cur.description) for row in rows]
-        finally:
-            await release_db_connection(conn)
+        return await self._unified_list("cpost", user_id, limit, offset)
 
     async def get_cpost_post(self, user_id: int, post_id: int) -> Optional[Dict]:
         """Один ручной пост по id в cpost_posts."""
-        conn = await get_db_connection()
-        try:
-            async with conn.cursor() as cur:
-                await cur.execute(
-                    "SELECT * FROM cpost_posts WHERE user_id = %s AND id = %s",
-                    (user_id, post_id),
-                )
-                row = await cur.fetchone()
-                if row:
-                    return self._row_to_post(row, cur.description)
-                return None
-        finally:
-            await release_db_connection(conn)
+        return await self._unified_get("cpost", user_id, post_id)
 
     async def update_cpost_post(
         self,
@@ -474,235 +459,28 @@ class PostService:
         post_id: int,
         title: Optional[str] = None,
         post_text: Optional[str] = None,
-        domain: Optional[str] = None,
-        url: Optional[str] = None,
-        author: Optional[str] = None,
-        avatar: Optional[str] = None,
-        post_date: Optional[datetime] = None,
-        screenshot: Optional[str] = None,
         images: Optional[list] = None,
-        image_over_text: Optional[str] = None,
-        comments: Optional[int] = None,
-        reposts: Optional[int] = None,
-        likes: Optional[int] = None,
-        views: Optional[int] = None,
-        is_ad: Optional[bool] = None,
         status: Optional[str] = None,
-        to_tg: Optional[bool] = None,
-        to_tw: Optional[bool] = None,
-        to_wp: Optional[bool] = None,
-        to_vk: Optional[bool] = None,
-        to_threads: Optional[bool] = None,
-        to_dzen: Optional[bool] = None,
-        to_instagram: Optional[bool] = None,
         target_channels: Optional[List[str]] = None,
         target_groups: Optional[List[str]] = None,
+        **kwargs,
     ) -> Optional[Dict]:
-        """Обновляет cpost_posts и дублирует изменения в posts, если строка уже собрана collector."""
-        conn = await get_db_connection()
-        try:
-            async with conn.cursor() as cur:
-                updates = []
-                params = []
-                if title is not None:
-                    updates.append("title = %s")
-                    params.append(title)
-                if post_text is not None:
-                    updates.append("post_text = %s")
-                    params.append(post_text)
-                if domain is not None:
-                    updates.append("domain = %s")
-                    params.append(domain)
-                if url is not None:
-                    updates.append("url = %s")
-                    params.append(url)
-                if author is not None:
-                    updates.append("author = %s")
-                    params.append(author)
-                if avatar is not None:
-                    updates.append("avatar = %s")
-                    params.append(avatar)
-                if post_date is not None:
-                    updates.append("post_date = %s")
-                    params.append(post_date)
-                if screenshot is not None:
-                    updates.append("screenshot = %s")
-                    params.append(screenshot)
-                if images is not None:
-                    updates.append("images = %s")
-                    params.append(json.dumps(images))
-                if image_over_text is not None:
-                    updates.append("image_over_text = %s")
-                    params.append(image_over_text)
-                if comments is not None:
-                    updates.append("comments = %s")
-                    params.append(comments)
-                if reposts is not None:
-                    updates.append("reposts = %s")
-                    params.append(reposts)
-                if likes is not None:
-                    updates.append("likes = %s")
-                    params.append(likes)
-                if views is not None:
-                    updates.append("views = %s")
-                    params.append(views)
-                if is_ad is not None:
-                    updates.append("is_ad = %s")
-                    params.append(is_ad)
-                if status is not None:
-                    updates.append("status = %s")
-                    params.append(status)
-                if to_tg is not None:
-                    updates.append("to_tg = %s")
-                    params.append(to_tg)
-                if to_tw is not None:
-                    updates.append("to_tw = %s")
-                    params.append(to_tw)
-                if to_wp is not None:
-                    updates.append("to_wp = %s")
-                    params.append(to_wp)
-                if to_vk is not None:
-                    updates.append("to_vk = %s")
-                    params.append(to_vk)
-                if to_threads is not None:
-                    updates.append("to_threads = %s")
-                    params.append(to_threads)
-                if to_dzen is not None:
-                    updates.append("to_dzen = %s")
-                    params.append(to_dzen)
-                if to_instagram is not None:
-                    updates.append("to_instagram = %s")
-                    params.append(to_instagram)
-                if target_channels is not None:
-                    updates.append("target_channels = %s::jsonb")
-                    params.append(json.dumps(target_channels))
-                if target_groups is not None:
-                    updates.append("target_groups = %s::jsonb")
-                    params.append(json.dumps(target_groups))
-                if not updates:
-                    return await self.get_cpost_post(user_id, post_id)
-                params.extend([user_id, post_id])
-                query = f"""
-                    UPDATE cpost_posts SET {", ".join(updates)}, updated_at = CURRENT_TIMESTAMP
-                    WHERE user_id = %s AND id = %s
-                    RETURNING *
-                """
-                await cur.execute(query, params)
-                row = await cur.fetchone()
-                if not row:
-                    return None
-
-                mirror_updates = []
-                mirror_params = []
-                if title is not None:
-                    mirror_updates.append("title = %s")
-                    mirror_params.append(title)
-                if post_text is not None:
-                    mirror_updates.append("post_text = %s")
-                    mirror_params.append(post_text)
-                if domain is not None:
-                    mirror_updates.append("domain = %s")
-                    mirror_params.append(domain)
-                if url is not None:
-                    mirror_updates.append("url = %s")
-                    mirror_params.append(url)
-                if author is not None:
-                    mirror_updates.append("author = %s")
-                    mirror_params.append(author)
-                if avatar is not None:
-                    mirror_updates.append("avatar = %s")
-                    mirror_params.append(avatar)
-                if post_date is not None:
-                    mirror_updates.append("post_date = %s")
-                    mirror_params.append(post_date)
-                if screenshot is not None:
-                    mirror_updates.append("screenshot = %s")
-                    mirror_params.append(screenshot)
-                if images is not None:
-                    mirror_updates.append("images = %s")
-                    mirror_params.append(json.dumps(images))
-                if image_over_text is not None:
-                    mirror_updates.append("image_over_text = %s")
-                    mirror_params.append(image_over_text)
-                if comments is not None:
-                    mirror_updates.append("comments = %s")
-                    mirror_params.append(comments)
-                if reposts is not None:
-                    mirror_updates.append("reposts = %s")
-                    mirror_params.append(reposts)
-                if likes is not None:
-                    mirror_updates.append("likes = %s")
-                    mirror_params.append(likes)
-                if views is not None:
-                    mirror_updates.append("views = %s")
-                    mirror_params.append(views)
-                if is_ad is not None:
-                    mirror_updates.append("is_ad = %s")
-                    mirror_params.append(is_ad)
-                if status is not None:
-                    mirror_updates.append("status = %s")
-                    mirror_params.append(status)
-                if to_tg is not None:
-                    mirror_updates.append("to_tg = %s")
-                    mirror_params.append(to_tg)
-                if to_tw is not None:
-                    mirror_updates.append("to_tw = %s")
-                    mirror_params.append(to_tw)
-                if to_wp is not None:
-                    mirror_updates.append("to_wp = %s")
-                    mirror_params.append(to_wp)
-                if to_vk is not None:
-                    mirror_updates.append("to_vk = %s")
-                    mirror_params.append(to_vk)
-                if to_threads is not None:
-                    mirror_updates.append("to_threads = %s")
-                    mirror_params.append(to_threads)
-                if to_dzen is not None:
-                    mirror_updates.append("to_dzen = %s")
-                    mirror_params.append(to_dzen)
-                if to_instagram is not None:
-                    mirror_updates.append("to_instagram = %s")
-                    mirror_params.append(to_instagram)
-                if target_channels is not None:
-                    mirror_updates.append("target_channels = %s::jsonb")
-                    mirror_params.append(json.dumps(target_channels))
-                if target_groups is not None:
-                    mirror_updates.append("target_groups = %s::jsonb")
-                    mirror_params.append(json.dumps(target_groups))
-                if mirror_updates:
-                    sync_params = list(mirror_params)
-                    sync_params.extend([user_id, "cpost", post_id])
-                    await cur.execute(
-                        f"""
-                        UPDATE posts SET {", ".join(mirror_updates)}, updated_at = CURRENT_TIMESTAMP
-                        WHERE user_id = %s AND source_platform = %s AND source_id = %s
-                        """,
-                        sync_params,
-                    )
-                return self._row_to_post(row, cur.description)
-        finally:
-            await release_db_connection(conn)
+        return await self._unified_update(
+            'cpost',
+            user_id,
+            post_id,
+            title=title,
+            post_text=post_text,
+            images=images,
+            status=status,
+            target_channels=target_channels,
+            target_groups=target_groups,
+        )
 
     async def delete_cpost_post(self, user_id: int, post_id: int) -> bool:
-        """Удаляет зеркало в posts и строку в cpost_posts."""
-        conn = await get_db_connection()
-        try:
-            async with conn.cursor() as cur:
-                await cur.execute(
-                    """
-                    DELETE FROM posts
-                    WHERE user_id = %s AND source_platform = %s AND source_id = %s
-                    """,
-                    (user_id, "cpost", post_id),
-                )
-                await cur.execute(
-                    "DELETE FROM cpost_posts WHERE user_id = %s AND id = %s",
-                    (user_id, post_id),
-                )
-                return cur.rowcount > 0
-        finally:
-            await release_db_connection(conn)
-    
+        row = await self._unified_update('cpost', user_id, post_id, status='deleted')
+        return row is not None
+
     async def get_posts(
         self,
         user_id: int,
@@ -717,7 +495,7 @@ class PostService:
         Args:
             user_id: ID пользователя
             status: Фильтр по статусу
-            platform: Фильтр по платформе (to_tg, to_tw, ...)
+            platform: Фильтр по цели в post_targets (tg, tw, ...)
             post_type: Фильтр по типу поста (например 'cpost')
             limit: Лимит записей
             offset: Смещение
@@ -740,22 +518,24 @@ class PostService:
                     params.append(post_type)
                 
                 if platform:
-                    field_map = {
-                        "tg": "to_tg",
-                        "tw": "to_tw",
-                        "wp": "to_wp",
-                        "vk": "to_vk",
-                    }
-                    if platform in field_map:
-                        query += f" AND {field_map[platform]} = TRUE"
-                
+                    query += """
+                        AND EXISTS (
+                            SELECT 1 FROM post_targets t
+                            WHERE t.post_id = posts.id
+                              AND t.platform = %s
+                              AND t.status NOT IN ('deleted', 'skipped')
+                        )
+                    """
+                    params.append(platform)
+
                 query += " ORDER BY created_at DESC LIMIT %s OFFSET %s"
                 params.extend([limit, offset])
-                
+
                 await cur.execute(query, params)
                 rows = await cur.fetchall()
-                
-                return [self._row_to_post(row, cur.description) for row in rows]
+                posts = [self._row_to_post(row, cur.description) for row in rows]
+                await _attach_destination_flags(cur, posts)
+                return posts
         finally:
             await release_db_connection(conn)
 
@@ -778,7 +558,9 @@ class PostService:
                 )
                 row = await cur.fetchone()
                 if row:
-                    return self._row_to_post(row, cur.description)
+                    post = self._row_to_post(row, cur.description)
+                    await _attach_destination_flags(cur, [post])
+                    return post
                 return None
         finally:
             await release_db_connection(conn)
@@ -808,22 +590,24 @@ class PostService:
                     f"""
                     SELECT p.*,
                            CASE
-                             WHEN p.source_platform IN ('tg', 'telegram') THEN tg.telegram_chat_id
+                             WHEN t_tg.result ? 'telegram_chat_id' THEN t_tg.result->>'telegram_chat_id'
                              ELSE NULL
                            END AS published_channel,
-                           CASE
-                             WHEN p.to_tg THEN 'tg' ELSE NULL
-                           END AS target_hint_tg,
-                           CASE WHEN p.to_tw THEN 'tw' ELSE NULL END AS target_hint_tw,
-                           CASE WHEN p.to_wp THEN 'wp' ELSE NULL END AS target_hint_wp,
-                           CASE WHEN p.to_vk THEN 'vk' ELSE NULL END AS target_hint_vk,
-                           CASE WHEN COALESCE(p.to_threads, FALSE) THEN 'threads' ELSE NULL END AS target_hint_threads,
-                           CASE WHEN COALESCE(p.to_dzen, FALSE) THEN 'dzen' ELSE NULL END AS target_hint_dzen,
-                           CASE WHEN COALESCE(p.to_instagram, FALSE) THEN 'instagram' ELSE NULL END AS target_hint_instagram
+                           CASE WHEN t_tg.id IS NOT NULL THEN 'tg' ELSE NULL END AS target_hint_tg,
+                           CASE WHEN t_tw.id IS NOT NULL THEN 'tw' ELSE NULL END AS target_hint_tw,
+                           CASE WHEN t_wp.id IS NOT NULL THEN 'wp' ELSE NULL END AS target_hint_wp,
+                           CASE WHEN t_vk.id IS NOT NULL THEN 'vk' ELSE NULL END AS target_hint_vk,
+                           CASE WHEN t_th.id IS NOT NULL THEN 'threads' ELSE NULL END AS target_hint_threads,
+                           CASE WHEN t_dz.id IS NOT NULL THEN 'dzen' ELSE NULL END AS target_hint_dzen,
+                           CASE WHEN t_ig.id IS NOT NULL THEN 'instagram' ELSE NULL END AS target_hint_instagram
                     FROM posts p
-                    LEFT JOIN tg_posts tg
-                      ON p.source_platform IN ('tg', 'telegram')
-                     AND tg.id = p.source_id
+                    LEFT JOIN post_targets t_tg ON t_tg.post_id = p.id AND t_tg.platform = 'tg'
+                    LEFT JOIN post_targets t_tw ON t_tw.post_id = p.id AND t_tw.platform = 'tw'
+                    LEFT JOIN post_targets t_wp ON t_wp.post_id = p.id AND t_wp.platform = 'wp'
+                    LEFT JOIN post_targets t_vk ON t_vk.post_id = p.id AND t_vk.platform = 'vk'
+                    LEFT JOIN post_targets t_th ON t_th.post_id = p.id AND t_th.platform = 'threads'
+                    LEFT JOIN post_targets t_dz ON t_dz.post_id = p.id AND t_dz.platform = 'dzen'
+                    LEFT JOIN post_targets t_ig ON t_ig.post_id = p.id AND t_ig.platform = 'instagram'
                     {where}
                     ORDER BY p.id DESC
                     LIMIT %s OFFSET %s
@@ -859,6 +643,7 @@ class PostService:
                     else:
                         post["published_channel"] = None
                     posts.append(post)
+                await _attach_destination_flags(cur, posts)
                 return posts
         finally:
             await release_db_connection(conn)
@@ -945,40 +730,46 @@ class PostService:
                 if status is not None:
                     updates.append("status = %s")
                     params.append(status)
-                if to_tg is not None:
-                    updates.append("to_tg = %s")
-                    params.append(to_tg)
-                if to_tw is not None:
-                    updates.append("to_tw = %s")
-                    params.append(to_tw)
-                if to_wp is not None:
-                    updates.append("to_wp = %s")
-                    params.append(to_wp)
-                if to_vk is not None:
-                    updates.append("to_vk = %s")
-                    params.append(to_vk)
-                if to_threads is not None:
-                    updates.append("to_threads = %s")
-                    params.append(to_threads)
-                if to_dzen is not None:
-                    updates.append("to_dzen = %s")
-                    params.append(to_dzen)
-                if to_instagram is not None:
-                    updates.append("to_instagram = %s")
-                    params.append(to_instagram)
-                if not updates:
+                dest = {
+                    "tg": to_tg,
+                    "tw": to_tw,
+                    "wp": to_wp,
+                    "vk": to_vk,
+                    "threads": to_threads,
+                    "dzen": to_dzen,
+                    "instagram": to_instagram,
+                }
+                has_dest = any(value is not None for value in dest.values())
+                if not updates and not has_dest:
                     return await self.get_post(user_id, post_id)
-                params.extend([user_id, post_id])
-                query = f"""
-                    UPDATE posts SET {", ".join(updates)}, updated_at = CURRENT_TIMESTAMP
-                    WHERE user_id = %s AND id = %s
-                    RETURNING *
-                """
-                await cur.execute(query, params)
-                row = await cur.fetchone()
-                if row:
-                    return self._row_to_post(row, cur.description)
-                return None
+                if updates:
+                    params.extend([user_id, post_id])
+                    query = f"""
+                        UPDATE posts SET {", ".join(updates)}, updated_at = CURRENT_TIMESTAMP
+                        WHERE user_id = %s AND id = %s
+                        RETURNING *
+                    """
+                    await cur.execute(query, params)
+                    row = await cur.fetchone()
+                else:
+                    await cur.execute(
+                        "SELECT * FROM posts WHERE user_id = %s AND id = %s",
+                        (user_id, post_id),
+                    )
+                    row = await cur.fetchone()
+                if not row:
+                    return None
+                post = self._row_to_post(row, cur.description)
+                if has_dest:
+                    await _sync_destination_flags(
+                        cur,
+                        user_id=user_id,
+                        post_id=post_id,
+                        hub_status=str(post.get("status") or ""),
+                        dest=dest,
+                    )
+                await _attach_destination_flags(cur, [post])
+                return post
         finally:
             await release_db_connection(conn)
 
@@ -1009,60 +800,10 @@ class PostService:
         limit: int = 50,
         offset: int = 0
     ) -> List[Dict]:
-        """Получает посты WordPress пользователя из таблицы wp_posts.
-        
-        Args:
-            user_id: ID пользователя
-            limit: Лимит записей
-            offset: Смещение
-        
-        Returns:
-            Список постов WordPress
-        """
-        conn = await get_db_connection()
-        try:
-            async with conn.cursor() as cur:
-                await cur.execute(
-                    """
-                    SELECT *
-                    FROM wp_posts
-                    WHERE user_id = %s AND (status IS NULL OR status != 'deleted')
-                    ORDER BY created_at DESC
-                    LIMIT %s OFFSET %s
-                    """,
-                    (user_id, limit, offset)
-                )
-                rows = await cur.fetchall()
-                return [self._row_to_post(row, cur.description) for row in rows]
-        finally:
-            await release_db_connection(conn)
+        return await self._unified_list("wp", user_id, limit, offset)
 
     async def get_wp_post(self, user_id: int, post_id: int) -> Optional[Dict]:
-        """Получает один пост WordPress по id.
-
-        Args:
-            user_id: ID пользователя
-            post_id: ID поста
-
-        Returns:
-            Пост или None
-        """
-        conn = await get_db_connection()
-        try:
-            async with conn.cursor() as cur:
-                await cur.execute(
-                    """
-                    SELECT * FROM wp_posts
-                    WHERE user_id = %s AND id = %s
-                    """,
-                    (user_id, post_id)
-                )
-                row = await cur.fetchone()
-                if row:
-                    return self._row_to_post(row, cur.description)
-                return None
-        finally:
-            await release_db_connection(conn)
+        return await self._unified_get("wp", user_id, post_id)
 
     async def update_wp_post(
         self,
@@ -1072,49 +813,9 @@ class PostService:
         post_text: Optional[str] = None,
         status: Optional[str] = None,
     ) -> Optional[Dict]:
-        """Обновляет пост WordPress.
-
-        Args:
-            user_id: ID пользователя
-            post_id: ID поста
-            title: Заголовок
-            post_text: Текст поста (content)
-            status: Статус (draft, publish, pending, private, collected, etc.)
-
-        Returns:
-            Обновленный пост или None
-        """
-        conn = await get_db_connection()
-        try:
-            async with conn.cursor() as cur:
-                updates = []
-                params = []
-                if title is not None:
-                    updates.append("title = %s")
-                    params.append(title)
-                if post_text is not None:
-                    updates.append("post_text = %s")
-                    params.append(post_text)
-                if status is not None:
-                    updates.append("status = %s")
-                    params.append(status)
-                if not updates:
-                    return await self.get_wp_post(user_id, post_id)
-                params.extend([user_id, post_id])
-                await cur.execute(
-                    f"""
-                    UPDATE wp_posts SET {", ".join(updates)}, updated_at = CURRENT_TIMESTAMP
-                    WHERE user_id = %s AND id = %s
-                    RETURNING *
-                    """,
-                    params
-                )
-                row = await cur.fetchone()
-                if row:
-                    return self._row_to_post(row, cur.description)
-                return None
-        finally:
-            await release_db_connection(conn)
+        return await self._unified_update(
+            "wp", user_id, post_id, title=title, post_text=post_text, status=status
+        )
 
     async def delete_wp_post(self, user_id: int, post_id: int) -> Optional[Dict]:
         """Помечает пост WordPress как удаленный (status = 'deleted').
@@ -1137,74 +838,18 @@ class PostService:
         date_from: Optional[str] = None,
         date_to: Optional[str] = None,
     ) -> List[Dict]:
-        """Получает посты Telegram пользователя из таблицы tg_posts.
-        
-        Args:
-            user_id: ID пользователя
-            limit: Лимит записей
-            offset: Смещение
-            status: фильтр по статусу
-            date_from / date_to: фильтр по publish_at (или created_at если publish_at NULL)
-        
-        Returns:
-            Список постов Telegram
-        """
-        conn = await get_db_connection()
-        try:
-            async with conn.cursor() as cur:
-                conditions = ["user_id = %s", "(status IS NULL OR status != 'deleted')"]
-                params: List[Any] = [user_id]
-                if status:
-                    conditions.append("status = %s")
-                    params.append(status)
-                if date_from:
-                    conditions.append("COALESCE(publish_at, created_at) >= %s::timestamptz")
-                    params.append(date_from)
-                if date_to:
-                    conditions.append("COALESCE(publish_at, created_at) <= %s::timestamptz")
-                    params.append(date_to)
-                params.extend([limit, offset])
-                await cur.execute(
-                    f"""
-                    SELECT *
-                    FROM tg_posts
-                    WHERE {" AND ".join(conditions)}
-                    ORDER BY COALESCE(publish_at, created_at) DESC
-                    LIMIT %s OFFSET %s
-                    """,
-                    params,
-                )
-                rows = await cur.fetchall()
-                return [self._row_to_post(row, cur.description) for row in rows]
-        finally:
-            await release_db_connection(conn)
+        return await self._unified_list(
+            "tg",
+            user_id,
+            limit,
+            offset,
+            status=status,
+            date_from=date_from,
+            date_to=date_to,
+        )
 
     async def get_tg_post(self, user_id: int, post_id: int) -> Optional[Dict]:
-        """Получает один пост Telegram по id.
-
-        Args:
-            user_id: ID пользователя
-            post_id: ID поста
-
-        Returns:
-            Пост или None
-        """
-        conn = await get_db_connection()
-        try:
-            async with conn.cursor() as cur:
-                await cur.execute(
-                    """
-                    SELECT * FROM tg_posts
-                    WHERE user_id = %s AND id = %s
-                    """,
-                    (user_id, post_id)
-                )
-                row = await cur.fetchone()
-                if row:
-                    return self._row_to_post(row, cur.description)
-                return None
-        finally:
-            await release_db_connection(conn)
+        return await self._unified_get("tg", user_id, post_id)
 
     async def update_tg_post(
         self,
@@ -1217,64 +862,21 @@ class PostService:
         clear_publish_at: bool = False,
         target_channels: Optional[List[str]] = None,
     ) -> Optional[Dict]:
-        """Обновляет пост Telegram.
-
-        Args:
-            user_id: ID пользователя
-            post_id: ID поста
-            text: Текст поста
-            images: Список URL изображений
-            status: Статус (collected, processed, published, deleted, etc.)
-            publish_at: время публикации
-            clear_publish_at: сбросить publish_at в NULL
-            target_channels: каналы назначения
-
-        Returns:
-            Обновленный пост или None
-        """
-        conn = await get_db_connection()
-        try:
-            async with conn.cursor() as cur:
-                updates = []
-                params = []
-                if text is not None:
-                    # Проверка лимита символов для Telegram
-                    limit = self.PLATFORM_LIMITS.get("tg", 4096)
-                    if len(text) > limit:
-                        raise ValueError(f"Text exceeds tg limit of {limit} characters")
-                    updates.append("post_text = %s")
-                    params.append(text)
-                if images is not None:
-                    updates.append("images = %s")
-                    params.append(json.dumps(images))
-                if status is not None:
-                    updates.append("status = %s")
-                    params.append(status)
-                if clear_publish_at:
-                    updates.append("publish_at = NULL")
-                elif publish_at is not None:
-                    updates.append("publish_at = %s")
-                    params.append(publish_at)
-                if target_channels is not None:
-                    updates.append("target_channels = %s")
-                    params.append(json.dumps(target_channels))
-                if not updates:
-                    return await self.get_tg_post(user_id, post_id)
-                params.extend([user_id, post_id])
-                await cur.execute(
-                    f"""
-                    UPDATE tg_posts SET {", ".join(updates)}, updated_at = CURRENT_TIMESTAMP
-                    WHERE user_id = %s AND id = %s
-                    RETURNING *
-                    """,
-                    params
-                )
-                row = await cur.fetchone()
-                if row:
-                    return self._row_to_post(row, cur.description)
-                return None
-        finally:
-            await release_db_connection(conn)
+        if text is not None:
+            limit = self.PLATFORM_LIMITS.get("tg", 4096)
+            if len(text) > limit:
+                raise ValueError(f"Text exceeds tg limit of {limit} characters")
+        return await self._unified_update(
+            "tg",
+            user_id,
+            post_id,
+            post_text=text,
+            images=images,
+            status=status,
+            publish_at=publish_at,
+            clear_publish_at=clear_publish_at,
+            target_channels=target_channels,
+        )
 
     async def delete_tg_post(self, user_id: int, post_id: int) -> Optional[Dict]:
         """Помечает пост Telegram как удаленный (status = 'deleted').
@@ -1381,44 +983,22 @@ class PostService:
         if len(text) > limit:
             raise ValueError(f"Text exceeds threads limit of {limit} characters")
 
-        conn = await get_db_connection()
-        try:
-            await ensure_monthly_post_quota(user_id, conn=conn)
-            async with conn.cursor() as cur:
-                await cur.execute(
-                    """
-                    INSERT INTO threads_posts (
-                        user_id, post_text, title, domain, url, author, avatar,
-                        post_date, screenshot, images, image_over_text,
-                        comments, reposts, likes, views, is_ad, status,
-                        post_type, to_tg, to_tw, to_wp, to_vk, to_threads,
-                        target_channels, target_groups
-                    ) VALUES (
-                        %s, %s, NULL, NULL, NULL, NULL, NULL,
-                        NULL, NULL, %s, NULL,
-                        0, 0, 0, 0, FALSE, 'collected',
-                        'threads', %s, %s, %s, %s, %s,
-                        %s::jsonb, %s::jsonb
-                    )
-                    RETURNING *
-                    """,
-                    (
-                        user_id,
-                        text,
-                        json.dumps(images or []),
-                        to_tg,
-                        to_tw,
-                        to_wp,
-                        to_vk,
-                        to_threads,
-                        json.dumps(target_channels or []),
-                        json.dumps(target_groups or []),
-                    ),
-                )
-                row = await cur.fetchone()
-                return self._row_to_post(row, cur.description)
-        finally:
-            await release_db_connection(conn)
+        row = await create_unified_post(
+            user_id=user_id,
+            source_platform="threads",
+            text=text,
+            images=images,
+            target_channels=target_channels,
+            target_groups=target_groups,
+            status="collected",
+            to_tg=to_tg,
+            to_tw=to_tw,
+            to_wp=to_wp,
+            to_vk=to_vk,
+            to_threads=to_threads,
+            return_platform="threads",
+        )
+        return self._row_to_post(row)
 
     async def get_threads_posts(
         self,
@@ -1426,40 +1006,10 @@ class PostService:
         limit: int = 50,
         offset: int = 0,
     ) -> List[Dict]:
-        """Получает посты Threads пользователя из таблицы threads_posts."""
-        conn = await get_db_connection()
-        try:
-            async with conn.cursor() as cur:
-                await cur.execute(
-                    """
-                    SELECT *
-                    FROM threads_posts
-                    WHERE user_id = %s AND (status IS NULL OR status != 'deleted')
-                    ORDER BY created_at DESC
-                    LIMIT %s OFFSET %s
-                    """,
-                    (user_id, limit, offset),
-                )
-                rows = await cur.fetchall()
-                return [self._row_to_post(row, cur.description) for row in rows]
-        finally:
-            await release_db_connection(conn)
+        return await self._unified_list("threads", user_id, limit, offset)
 
     async def get_threads_post(self, user_id: int, post_id: int) -> Optional[Dict]:
-        """Получает один пост Threads по id."""
-        conn = await get_db_connection()
-        try:
-            async with conn.cursor() as cur:
-                await cur.execute(
-                    "SELECT * FROM threads_posts WHERE user_id = %s AND id = %s",
-                    (user_id, post_id),
-                )
-                row = await cur.fetchone()
-                if row:
-                    return self._row_to_post(row, cur.description)
-                return None
-        finally:
-            await release_db_connection(conn)
+        return await self._unified_get("threads", user_id, post_id)
 
     async def update_threads_post(
         self,
@@ -1469,41 +1019,9 @@ class PostService:
         images: Optional[List[str]] = None,
         status: Optional[str] = None,
     ) -> Optional[Dict]:
-        """Обновляет пост Threads."""
-        conn = await get_db_connection()
-        try:
-            async with conn.cursor() as cur:
-                updates = []
-                params = []
-                if text is not None:
-                    limit = self.PLATFORM_LIMITS.get("threads", 500)
-                    if len(text) > limit:
-                        raise ValueError(f"Text exceeds threads limit of {limit} characters")
-                    updates.append("post_text = %s")
-                    params.append(text)
-                if images is not None:
-                    updates.append("images = %s")
-                    params.append(json.dumps(images))
-                if status is not None:
-                    updates.append("status = %s")
-                    params.append(status)
-                if not updates:
-                    return await self.get_threads_post(user_id, post_id)
-                params.extend([user_id, post_id])
-                await cur.execute(
-                    f"""
-                    UPDATE threads_posts SET {", ".join(updates)}, updated_at = CURRENT_TIMESTAMP
-                    WHERE user_id = %s AND id = %s
-                    RETURNING *
-                    """,
-                    params,
-                )
-                row = await cur.fetchone()
-                if row:
-                    return self._row_to_post(row, cur.description)
-                return None
-        finally:
-            await release_db_connection(conn)
+        return await self._unified_update(
+            "threads", user_id, post_id, post_text=text, images=images, status=status
+        )
 
     async def delete_threads_post(self, user_id: int, post_id: int) -> Optional[Dict]:
         """Помечает пост Threads как удаленный (status = 'deleted')."""
@@ -1534,53 +1052,30 @@ class PostService:
             raise ValueError(f"Text exceeds vk limit of {limit} characters")
 
         images = images or []
-        # Для постов с картинками vk-bot использует upload.photo_wall; явно задаём attachments с type=photo
         attachments = [{"type": "photo", "path": p} for p in images] if images else []
-        images_json = json.dumps(images)
-        attachments_json = json.dumps(attachments)
-        targets_json = json.dumps(target_groups or [])
-        channels_json = json.dumps(target_channels or [])
-        conn = await get_db_connection()
-        try:
-            if not skip_quota:
-                await ensure_monthly_post_quota(user_id, conn=conn)
-            async with conn.cursor() as cur:
-                await cur.execute(
-                    """
-                    INSERT INTO vk_posts (
-                        user_id, brand_id, channel_id, post_text, images, attachments,
-                        status, post_type, to_tg, to_tw, to_wp, to_vk, to_threads, to_dzen, to_instagram,
-                        publish_at, target_groups, target_channels
-                    ) VALUES (
-                        %s, %s, %s, %s, %s, %s,
-                        'created', 'vk', %s, %s, %s, %s, %s, %s, %s,
-                        %s, %s::jsonb, %s::jsonb
-                    )
-                    RETURNING *
-                    """,
-                    (
-                        user_id,
-                        brand_id,
-                        channel_id,
-                        text,
-                        images_json,
-                        attachments_json,
-                        to_tg,
-                        to_tw,
-                        to_wp,
-                        to_vk,
-                        to_threads,
-                        to_dzen,
-                        to_instagram,
-                        publish_at,
-                        targets_json,
-                        channels_json,
-                    ),
-                )
-                row = await cur.fetchone()
-                return self._row_to_post(row, cur.description)
-        finally:
-            await release_db_connection(conn)
+        row = await create_unified_post(
+            user_id=user_id,
+            source_platform="vk",
+            text=text,
+            images=images,
+            extras={"attachments": attachments},
+            brand_id=brand_id,
+            channel_id=channel_id,
+            target_channels=target_channels,
+            target_groups=target_groups,
+            publish_at=publish_at,
+            status="created",
+            skip_quota=skip_quota,
+            to_tg=to_tg,
+            to_tw=to_tw,
+            to_wp=to_wp,
+            to_vk=to_vk,
+            to_threads=to_threads,
+            to_dzen=to_dzen,
+            to_instagram=to_instagram,
+            return_platform="vk",
+        )
+        return self._row_to_post(row)
 
     async def get_vk_posts(
         self,
@@ -1590,104 +1085,36 @@ class PostService:
         date_from: Optional[str] = None,
         date_to: Optional[str] = None,
     ) -> List[Dict]:
-        """Получает посты VKontakte пользователя из таблицы vk_posts."""
-        conn = await get_db_connection()
-        try:
-            async with conn.cursor() as cur:
-                conditions = ["user_id = %s", "(status IS NULL OR status != 'deleted')"]
-                params: List[Any] = [user_id]
-                if date_from:
-                    conditions.append("COALESCE(publish_at, created_at) >= %s::timestamptz")
-                    params.append(date_from)
-                if date_to:
-                    conditions.append("COALESCE(publish_at, created_at) <= %s::timestamptz")
-                    params.append(date_to)
-                params.extend([limit, offset])
-                await cur.execute(
-                    f"""
-                    SELECT *
-                    FROM vk_posts
-                    WHERE {" AND ".join(conditions)}
-                    ORDER BY COALESCE(publish_at, created_at) DESC
-                    LIMIT %s OFFSET %s
-                    """,
-                    params,
-                )
-                rows = await cur.fetchall()
-                return [self._row_to_post(row, cur.description) for row in rows]
-        finally:
-            await release_db_connection(conn)
+        return await self._unified_list(
+            "vk", user_id, limit, offset, date_from=date_from, date_to=date_to
+        )
 
     async def get_vk_post(self, user_id: int, post_id: int) -> Optional[Dict]:
-        """Получает один пост VKontakte по id."""
-        conn = await get_db_connection()
-        try:
-            async with conn.cursor() as cur:
-                await cur.execute(
-                    "SELECT * FROM vk_posts WHERE user_id = %s AND id = %s",
-                    (user_id, post_id)
-                )
-                row = await cur.fetchone()
-                if row:
-                    return self._row_to_post(row, cur.description)
-                return None
-        finally:
-            await release_db_connection(conn)
+        return await self._unified_get("vk", user_id, post_id)
 
     async def update_vk_post(
         self,
         user_id: int,
         post_id: int,
         text: Optional[str] = None,
-        images: Optional[List] = None,
+        images: Optional[List[str]] = None,
         attachments: Optional[List] = None,
         status: Optional[str] = None,
         publish_at: Optional[Any] = None,
         clear_publish_at: bool = False,
     ) -> Optional[Dict]:
-        """Обновляет пост VKontakte."""
-        conn = await get_db_connection()
-        try:
-            async with conn.cursor() as cur:
-                updates = []
-                params = []
-                if text is not None:
-                    limit = self.PLATFORM_LIMITS.get("vk", 15985)
-                    if len(text) > limit:
-                        raise ValueError(f"Text exceeds vk limit of {limit} characters")
-                    updates.append("post_text = %s")
-                    params.append(text)
-                if images is not None:
-                    updates.append("images = %s")
-                    params.append(json.dumps(images))
-                if attachments is not None:
-                    updates.append("attachments = %s")
-                    params.append(json.dumps(attachments))
-                if status is not None:
-                    updates.append("status = %s")
-                    params.append(status)
-                if clear_publish_at:
-                    updates.append("publish_at = NULL")
-                elif publish_at is not None:
-                    updates.append("publish_at = %s")
-                    params.append(publish_at)
-                if not updates:
-                    return await self.get_vk_post(user_id, post_id)
-                params.extend([user_id, post_id])
-                await cur.execute(
-                    f"""
-                    UPDATE vk_posts SET {", ".join(updates)}, updated_at = CURRENT_TIMESTAMP
-                    WHERE user_id = %s AND id = %s
-                    RETURNING *
-                    """,
-                    params
-                )
-                row = await cur.fetchone()
-                if row:
-                    return self._row_to_post(row, cur.description)
-                return None
-        finally:
-            await release_db_connection(conn)
+        extras = {"attachments": attachments} if attachments is not None else None
+        return await self._unified_update(
+            "vk",
+            user_id,
+            post_id,
+            post_text=text,
+            images=images,
+            extras=extras,
+            status=status,
+            publish_at=publish_at,
+            clear_publish_at=clear_publish_at,
+        )
 
     async def delete_vk_post(self, user_id: int, post_id: int) -> Optional[Dict]:
         """Помечает пост VKontakte как удаленный (status = 'deleted')."""
@@ -1699,35 +1126,8 @@ class PostService:
         limit: int = 50,
         offset: int = 0
     ) -> List[Dict]:
-        """Получает посты из url_posts пользователя (собранные по URL).
-        
-        Args:
-            user_id: ID пользователя
-            limit: Лимит записей
-            offset: Смещение
-        
-        Returns:
-            Список постов из url_posts
-        """
-        conn = await get_db_connection()
-        try:
-            async with conn.cursor() as cur:
-                await cur.execute(
-                    """
-                    SELECT id, user_id, url, post_text, images, status, post_date,
-                           to_tg, to_tw, to_wp, to_vk, created_at, updated_at
-                    FROM url_posts
-                    WHERE user_id = %s
-                    ORDER BY created_at DESC
-                    LIMIT %s OFFSET %s
-                    """,
-                    (user_id, limit, offset)
-                )
-                rows = await cur.fetchall()
-                return [self._row_to_post(row, cur.description) for row in rows]
-        finally:
-            await release_db_connection(conn)
-    
+        return await self._unified_list("url", user_id, limit, offset)
+
     async def update_post_status(self, post_id: int, status: str) -> Optional[Dict]:
         """Обновляет статус поста.
         
@@ -1756,10 +1156,13 @@ class PostService:
         finally:
             await release_db_connection(conn)
     
-    def _row_to_post(self, row, description) -> Dict:
-        """Преобразует строку БД в словарь поста."""
-        columns = [col.name for col in description]
-        post = dict(zip(columns, row))
+    def _row_to_post(self, row, description=None) -> Dict:
+        """Преобразует строку БД или dict репозитория в словарь поста."""
+        if isinstance(row, dict):
+            post = dict(row)
+        else:
+            columns = [col.name for col in description]
+            post = dict(zip(columns, row))
         if isinstance(post.get("images"), str):
             try:
                 post["images"] = json.loads(post["images"])
@@ -1782,6 +1185,11 @@ class PostService:
                 post["target_channels"] = []
         elif post.get("target_channels") is None:
             post["target_channels"] = []
+        if isinstance(post.get("target_groups"), str):
+            try:
+                post["target_groups"] = json.loads(post["target_groups"])
+            except (json.JSONDecodeError, TypeError):
+                post["target_groups"] = []
         for dt_key in ("publish_at", "created_at", "updated_at", "post_date"):
             val = post.get(dt_key)
             if hasattr(val, "isoformat"):
@@ -1812,48 +1220,26 @@ class PostService:
         if len(text) > limit:
             raise ValueError(f"Text exceeds dzen limit of {limit} characters")
 
-        conn = await get_db_connection()
-        try:
-            await ensure_monthly_post_quota(user_id, conn=conn)
-            async with conn.cursor() as cur:
-                await cur.execute(
-                    """
-                    INSERT INTO dzen_posts (
-                        user_id, post_text, title, domain, url, author, avatar,
-                        post_date, screenshot, images, image_over_text, videos,
-                        comments, reposts, likes, views, is_ad, status,
-                        post_type, to_tg, to_tw, to_wp, to_vk, to_dzen, to_threads, to_instagram,
-                        target_channels, target_groups
-                    ) VALUES (
-                        %s, %s, %s, NULL, NULL, NULL, NULL,
-                        NULL, NULL, %s, NULL, %s,
-                        0, 0, 0, 0, FALSE, 'collected',
-                        'dzen', %s, %s, %s, %s, %s, %s, %s,
-                        %s::jsonb, %s::jsonb
-                    )
-                    RETURNING *
-                    """,
-                    (
-                        user_id,
-                        text,
-                        title,
-                        json.dumps(images or []),
-                        json.dumps(videos or []),
-                        to_tg,
-                        to_tw,
-                        to_wp,
-                        to_vk,
-                        to_dzen,
-                        to_threads,
-                        to_instagram,
-                        json.dumps(target_channels or []),
-                        json.dumps(target_groups or []),
-                    ),
-                )
-                row = await cur.fetchone()
-                return self._row_to_post(row, cur.description)
-        finally:
-            await release_db_connection(conn)
+        row = await create_unified_post(
+            user_id=user_id,
+            source_platform="dzen",
+            text=text,
+            title=title,
+            images=images,
+            videos=videos,
+            target_channels=target_channels,
+            target_groups=target_groups,
+            status="collected",
+            to_tg=to_tg,
+            to_tw=to_tw,
+            to_wp=to_wp,
+            to_vk=to_vk,
+            to_dzen=to_dzen,
+            to_threads=to_threads,
+            to_instagram=to_instagram,
+            return_platform="dzen",
+        )
+        return self._row_to_post(row)
 
     async def get_dzen_posts(
         self,
@@ -1861,40 +1247,10 @@ class PostService:
         limit: int = 50,
         offset: int = 0,
     ) -> List[Dict]:
-        """Получает посты Дзен пользователя из таблицы dzen_posts."""
-        conn = await get_db_connection()
-        try:
-            async with conn.cursor() as cur:
-                await cur.execute(
-                    """
-                    SELECT *
-                    FROM dzen_posts
-                    WHERE user_id = %s AND (status IS NULL OR status != 'deleted')
-                    ORDER BY created_at DESC
-                    LIMIT %s OFFSET %s
-                    """,
-                    (user_id, limit, offset),
-                )
-                rows = await cur.fetchall()
-                return [self._row_to_post(row, cur.description) for row in rows]
-        finally:
-            await release_db_connection(conn)
+        return await self._unified_list("dzen", user_id, limit, offset)
 
     async def get_dzen_post(self, user_id: int, post_id: int) -> Optional[Dict]:
-        """Получает один пост Дзен по id."""
-        conn = await get_db_connection()
-        try:
-            async with conn.cursor() as cur:
-                await cur.execute(
-                    "SELECT * FROM dzen_posts WHERE user_id = %s AND id = %s",
-                    (user_id, post_id),
-                )
-                row = await cur.fetchone()
-                if row:
-                    return self._row_to_post(row, cur.description)
-                return None
-        finally:
-            await release_db_connection(conn)
+        return await self._unified_get("dzen", user_id, post_id)
 
     async def update_dzen_post(
         self,
@@ -1903,50 +1259,17 @@ class PostService:
         text: Optional[str] = None,
         title: Optional[str] = None,
         images: Optional[List[str]] = None,
-        videos: Optional[List[str]] = None,
         status: Optional[str] = None,
     ) -> Optional[Dict]:
-        """Обновляет пост Дзен."""
-        conn = await get_db_connection()
-        try:
-            async with conn.cursor() as cur:
-                updates = []
-                params = []
-                if text is not None:
-                    limit = self.PLATFORM_LIMITS.get("dzen", 1500)
-                    if len(text) > limit:
-                        raise ValueError(f"Text exceeds dzen limit of {limit} characters")
-                    updates.append("post_text = %s")
-                    params.append(text)
-                if title is not None:
-                    updates.append("title = %s")
-                    params.append(title)
-                if images is not None:
-                    updates.append("images = %s")
-                    params.append(json.dumps(images))
-                if videos is not None:
-                    updates.append("videos = %s")
-                    params.append(json.dumps(videos))
-                if status is not None:
-                    updates.append("status = %s")
-                    params.append(status)
-                if not updates:
-                    return await self.get_dzen_post(user_id, post_id)
-                params.extend([user_id, post_id])
-                await cur.execute(
-                    f"""
-                    UPDATE dzen_posts SET {", ".join(updates)}, updated_at = CURRENT_TIMESTAMP
-                    WHERE user_id = %s AND id = %s
-                    RETURNING *
-                    """,
-                    params,
-                )
-                row = await cur.fetchone()
-                if row:
-                    return self._row_to_post(row, cur.description)
-                return None
-        finally:
-            await release_db_connection(conn)
+        return await self._unified_update(
+            "dzen",
+            user_id,
+            post_id,
+            post_text=text,
+            title=title,
+            images=images,
+            status=status,
+        )
 
     async def delete_dzen_post(self, user_id: int, post_id: int) -> Optional[Dict]:
         """Помечает пост Дзен как удаленный (status = 'deleted')."""
@@ -1975,47 +1298,25 @@ class PostService:
         if len(caption) > limit:
             raise ValueError(f"Caption exceeds instagram limit of {limit} characters")
 
-        conn = await get_db_connection()
-        try:
-            await ensure_monthly_post_quota(user_id, conn=conn)
-            async with conn.cursor() as cur:
-                await cur.execute(
-                    """
-                    INSERT INTO instagram_posts (
-                        user_id, post_text, domain, url, author, avatar,
-                        post_date, screenshot, images, image_over_text, videos,
-                        comments, reposts, likes, views, is_ad, status,
-                        post_type, to_tg, to_tw, to_wp, to_vk, to_dzen, to_threads, to_instagram,
-                        target_channels, target_groups
-                    ) VALUES (
-                        %s, %s, NULL, NULL, NULL, NULL,
-                        NULL, NULL, %s, NULL, %s,
-                        0, 0, 0, 0, FALSE, 'ready',
-                        'instagram', %s, %s, %s, %s, %s, %s, %s,
-                        %s::jsonb, %s::jsonb
-                    )
-                    RETURNING *
-                    """,
-                    (
-                        user_id,
-                        caption,
-                        json.dumps(images or []),
-                        json.dumps(videos or []),
-                        to_tg,
-                        to_tw,
-                        to_wp,
-                        to_vk,
-                        to_dzen,
-                        to_threads,
-                        to_instagram,
-                        json.dumps(target_channels or []),
-                        json.dumps(target_groups or []),
-                    ),
-                )
-                row = await cur.fetchone()
-                return self._row_to_post(row, cur.description)
-        finally:
-            await release_db_connection(conn)
+        row = await create_unified_post(
+            user_id=user_id,
+            source_platform="instagram",
+            text=caption,
+            images=images,
+            videos=videos,
+            target_channels=target_channels,
+            target_groups=target_groups,
+            status="ready",
+            to_tg=to_tg,
+            to_tw=to_tw,
+            to_wp=to_wp,
+            to_vk=to_vk,
+            to_dzen=to_dzen,
+            to_threads=to_threads,
+            to_instagram=to_instagram,
+            return_platform="instagram",
+        )
+        return self._row_to_post(row)
 
     async def get_instagram_posts(
         self,
@@ -2023,40 +1324,10 @@ class PostService:
         limit: int = 50,
         offset: int = 0,
     ) -> List[Dict]:
-        """Получает посты Instagram пользователя из таблицы instagram_posts."""
-        conn = await get_db_connection()
-        try:
-            async with conn.cursor() as cur:
-                await cur.execute(
-                    """
-                    SELECT *
-                    FROM instagram_posts
-                    WHERE user_id = %s AND (status IS NULL OR status != 'deleted')
-                    ORDER BY created_at DESC
-                    LIMIT %s OFFSET %s
-                    """,
-                    (user_id, limit, offset),
-                )
-                rows = await cur.fetchall()
-                return [self._row_to_post(row, cur.description) for row in rows]
-        finally:
-            await release_db_connection(conn)
+        return await self._unified_list("instagram", user_id, limit, offset)
 
     async def get_instagram_post(self, user_id: int, post_id: int) -> Optional[Dict]:
-        """Получает один пост Instagram по id."""
-        conn = await get_db_connection()
-        try:
-            async with conn.cursor() as cur:
-                await cur.execute(
-                    "SELECT * FROM instagram_posts WHERE user_id = %s AND id = %s",
-                    (user_id, post_id),
-                )
-                row = await cur.fetchone()
-                if row:
-                    return self._row_to_post(row, cur.description)
-                return None
-        finally:
-            await release_db_connection(conn)
+        return await self._unified_get("instagram", user_id, post_id)
 
     async def update_instagram_post(
         self,
@@ -2066,41 +1337,13 @@ class PostService:
         images: Optional[List[str]] = None,
         status: Optional[str] = None,
     ) -> Optional[Dict]:
-        """Обновляет пост Instagram."""
-        conn = await get_db_connection()
-        try:
-            async with conn.cursor() as cur:
-                updates = []
-                params = []
-                if caption is not None:
-                    limit = self.PLATFORM_LIMITS.get("instagram", 2200)
-                    if len(caption) > limit:
-                        raise ValueError(f"Caption exceeds instagram limit of {limit} characters")
-                    updates.append("post_text = %s")
-                    params.append(caption)
-                if images is not None:
-                    updates.append("images = %s")
-                    params.append(json.dumps(images))
-                if status is not None:
-                    updates.append("status = %s")
-                    params.append(status)
-                if not updates:
-                    return await self.get_instagram_post(user_id, post_id)
-                params.extend([user_id, post_id])
-                await cur.execute(
-                    f"""
-                    UPDATE instagram_posts SET {", ".join(updates)}, updated_at = CURRENT_TIMESTAMP
-                    WHERE user_id = %s AND id = %s
-                    RETURNING *
-                    """,
-                    params,
-                )
-                row = await cur.fetchone()
-                if row:
-                    return self._row_to_post(row, cur.description)
-                return None
-        finally:
-            await release_db_connection(conn)
+        if caption is not None:
+            limit = self.PLATFORM_LIMITS.get("instagram", 2200)
+            if len(caption) > limit:
+                raise ValueError(f"Caption exceeds instagram limit of {limit} characters")
+        return await self._unified_update(
+            "instagram", user_id, post_id, post_text=caption, images=images, status=status
+        )
 
     async def delete_instagram_post(self, user_id: int, post_id: int) -> Optional[Dict]:
         """Помечает пост Instagram как удаленный (status = 'deleted')."""

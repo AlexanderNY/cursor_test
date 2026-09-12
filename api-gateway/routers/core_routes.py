@@ -457,6 +457,70 @@ async def delete_feedback(
     return await forward_to_core(f"/feedback/{feedback_id}", request)
 
 
+@router.get("/roadmap")
+async def list_roadmap(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    """Список пунктов roadmap («Что далее»).
+
+    GET /core/roadmap -> GET /roadmap на core сервисе
+    Требует JWT аутентификации.
+    """
+    return await forward_to_core("/roadmap", request)
+
+
+@router.post("/roadmap")
+async def create_roadmap_item(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    """Создаёт пункт roadmap. Роль admin проверяется на core.
+
+    POST /core/roadmap -> POST /roadmap на core сервисе
+    """
+    return await forward_to_core("/roadmap", request)
+
+
+@router.patch("/roadmap/{item_id}")
+async def update_roadmap_item(
+    item_id: int,
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    """Обновляет пункт roadmap. Роль admin проверяется на core.
+
+    PATCH /core/roadmap/{id} -> PATCH /roadmap/{id} на core сервисе
+    """
+    return await forward_to_core(f"/roadmap/{item_id}", request)
+
+
+@router.delete("/roadmap/{item_id}")
+async def delete_roadmap_item(
+    item_id: int,
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    """Удаляет пункт roadmap. Роль admin проверяется на core.
+
+    DELETE /core/roadmap/{id} -> DELETE /roadmap/{id} на core сервисе
+    """
+    return await forward_to_core(f"/roadmap/{item_id}", request)
+
+
+@router.post("/roadmap/{item_id}/vote")
+async def toggle_roadmap_vote(
+    item_id: int,
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    """Toggle голоса за пункт roadmap.
+
+    POST /core/roadmap/{id}/vote -> POST /roadmap/{id}/vote на core сервисе
+    """
+    return await forward_to_core(f"/roadmap/{item_id}/vote", request)
+
+
 @router.get("/guide/blocks")
 async def get_guide_blocks(
     request: Request,

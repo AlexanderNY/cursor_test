@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useRef, useState } from 'react'
+import { FormEvent, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link, Navigate, useParams } from 'react-router-dom'
 import { AdminJumpNav } from '@/components/admin-jump-nav'
 import { PageShell } from '@/components/page-shell'
@@ -51,6 +51,19 @@ import {
   validateStructuredPost,
 } from '@/data/site/structured-post'
 
+function AdminFrame({
+  embedded,
+  children,
+}: {
+  embedded: boolean
+  children: ReactNode
+}) {
+  if (embedded) {
+    return <div className="account-embed">{children}</div>
+  }
+  return <PageShell variant="admin">{children}</PageShell>
+}
+
 function moveSlug(slugs: string[], index: number, delta: number): string[] | null {
   const next = index + delta
   if (next < 0 || next >= slugs.length) {
@@ -62,7 +75,12 @@ function moveSlug(slugs: string[], index: number, delta: number): string[] | nul
   return copy
 }
 
-export function SiteAdminPage() {
+export type SiteAdminPageProps = {
+  embedded?: boolean
+  onOpenApp?: (slug: string) => void
+}
+
+export function SiteAdminPage({ embedded = false, onOpenApp }: SiteAdminPageProps = {}) {
   const [session, setSession] = useState(() => getSiteAuthSession())
   const [authReady, setAuthReady] = useState(false)
   const [promo, setPromo] = useState<SitePromo>(DEFAULT_SITE_PROMO)
@@ -172,9 +190,9 @@ export function SiteAdminPage() {
 
   if (!authReady) {
     return (
-      <PageShell>
+      <AdminFrame embedded={embedded}>
         <p className="learn-section-note">Проверка прав…</p>
-      </PageShell>
+      </AdminFrame>
     )
   }
 
@@ -183,10 +201,10 @@ export function SiteAdminPage() {
   }
   if (!isSuperAdmin(session)) {
     return (
-      <PageShell>
+      <AdminFrame embedded={embedded}>
         <p className="learn-admin-error">Нужна роль супер-админа</p>
-        <Link to="/account">В кабинет</Link>
-      </PageShell>
+        {embedded ? null : <Link to="/account">В кабинет</Link>}
+      </AdminFrame>
     )
   }
 
@@ -389,25 +407,32 @@ export function SiteAdminPage() {
   }
 
   return (
-    <PageShell>
-      <Link to="/account" className="back-link">
-        ← Кабинет
-      </Link>
-      <header className="learn-header">
-        <p className="learn-eyebrow">супер-админ</p>
-        <h1 className="learn-title">Админка сайта</h1>
-        <p className="learn-lead">
-          Состав и порядок плашек, статьи всех сервисов, спотлайт, карта обучения (MD), назначение
-          админов. Учебные выпуски Learn — в{' '}
-          <Link to="/game/learn/admin">/game/learn/admin</Link> (вход CopyParse).
-        </p>
-      </header>
+    <AdminFrame embedded={embedded}>
+      {embedded ? null : (
+        <Link to="/account" className="back-link">
+          ← Кабинет
+        </Link>
+      )}
+      {embedded ? null : (
+        <header className="learn-header">
+          <p className="learn-eyebrow">супер-админ</p>
+          <h1 className="learn-title">Админка сайта</h1>
+          <p className="learn-lead">
+            Состав и порядок плашек, статьи всех сервисов, спотлайт, карта обучения (MD), назначение
+            админов. Учебные выпуски Learn — в{' '}
+            <Link to="/game/learn/admin">/game/learn/admin</Link> (вход CopyParse).
+          </p>
+        </header>
+      )}
 
       <AdminJumpNav
+        showGlobal={!embedded}
         serviceItems={apps.map((app) => ({
           id: `svc-${app.slug}`,
           label: app.emoji ? `${app.emoji} ${app.title}` : app.title,
-          href: `/admin/apps/${app.slug}`,
+          href: embedded
+            ? `/account?section=${encodeURIComponent(`app:${app.slug}`)}&view=admin`
+            : `/admin/apps/${app.slug}`,
         }))}
         items={[
           { id: 'admin-tiles', label: 'Плашки' },
@@ -482,9 +507,19 @@ export function SiteAdminPage() {
                 >
                   {app.isVisible ? 'Скрыть' : 'Показать'}
                 </button>
-                <Link to={`/admin/apps/${app.slug}`} className="learn-admin-btn learn-admin-btn-primary">
-                  Править
-                </Link>
+                {onOpenApp ? (
+                  <button
+                    type="button"
+                    className="learn-admin-btn learn-admin-btn-primary"
+                    onClick={() => onOpenApp(app.slug)}
+                  >
+                    Править
+                  </button>
+                ) : (
+                  <Link to={`/admin/apps/${app.slug}`} className="learn-admin-btn learn-admin-btn-primary">
+                    Править
+                  </Link>
+                )}
                 <button
                   type="button"
                   className="learn-admin-link learn-admin-danger"
@@ -784,12 +819,25 @@ export function SiteAdminPage() {
 
       {message ? <p className="learn-admin-ok">{message}</p> : null}
       {error ? <p className="learn-admin-error">{error}</p> : null}
-    </PageShell>
+    </AdminFrame>
   )
 }
 
-export function AppAdminPage() {
-  const { slug = '' } = useParams()
+export type AppAdminPageProps = {
+  embedded?: boolean
+  slug?: string
+  onOpenPublic?: () => void
+  onOpenPost?: (postSlug: string) => void
+}
+
+export function AppAdminPage({
+  embedded = false,
+  slug: slugProp,
+  onOpenPublic,
+  onOpenPost,
+}: AppAdminPageProps = {}) {
+  const { slug: slugParam = '' } = useParams()
+  const slug = slugProp || slugParam
   const [session, setSession] = useState(() => getSiteAuthSession())
   const [authReady, setAuthReady] = useState(false)
   const [app, setApp] = useState<SiteApp | null>(null)
@@ -930,9 +978,9 @@ export function AppAdminPage() {
 
   if (!authReady) {
     return (
-      <PageShell>
+      <AdminFrame embedded={embedded}>
         <p className="learn-section-note">Проверка прав…</p>
-      </PageShell>
+      </AdminFrame>
     )
   }
 
@@ -941,9 +989,9 @@ export function AppAdminPage() {
   }
   if (!canManageApp(slug, session)) {
     return (
-      <PageShell>
+      <AdminFrame embedded={embedded}>
         <p className="learn-admin-error">Нет прав на сервис {slug}</p>
-      </PageShell>
+      </AdminFrame>
     )
   }
 
@@ -1045,36 +1093,42 @@ export function AppAdminPage() {
   }
 
   return (
-    <PageShell>
-      <Link to={isSuperAdmin(session) ? '/admin' : `/app/${slug}`} className="back-link">
-        ← {isSuperAdmin(session) ? 'Админка сайта' : `Страница · ${app?.title || slug}`}
-      </Link>
-      <header className="learn-header">
-        <p className="learn-eyebrow">
-          {isSuperAdmin(session) ? 'супер-админ' : 'кабинет владельца сервиса'}
-        </p>
-        <h1 className="learn-title">Владелец · {app?.title || slug}</h1>
-        <p className="learn-lead">
-          Плашка на главной ведёт сюда на публичную страницу сервиса. Здесь — описание, ссылки на
-          приложение и блог в едином формате статей.
-        </p>
-      </header>
+    <AdminFrame embedded={embedded}>
+      {embedded ? null : (
+        <Link to={isSuperAdmin(session) ? '/admin' : `/app/${slug}`} className="back-link">
+          ← {isSuperAdmin(session) ? 'Админка сайта' : `Страница · ${app?.title || slug}`}
+        </Link>
+      )}
+      {embedded ? null : (
+        <header className="learn-header">
+          <p className="learn-eyebrow">
+            {isSuperAdmin(session) ? 'супер-админ' : 'кабинет владельца сервиса'}
+          </p>
+          <h1 className="learn-title">Владелец · {app?.title || slug}</h1>
+          <p className="learn-lead">
+            Плашка на главной ведёт сюда на публичную страницу сервиса. Здесь — описание, ссылки на
+            приложение и блог в едином формате статей.
+          </p>
+        </header>
+      )}
 
-      <AdminJumpNav
-        serviceItems={Array.from(
-          new Set([...(session.appAdmin || []), slug]),
-        ).map((appSlug) => ({
-          id: `svc-${appSlug}`,
-          label: appSlug === slug && app?.title ? app.title : appSlug,
-          href: `/admin/apps/${appSlug}`,
-        }))}
-        items={[
-          { id: 'app-tile', label: 'Описание' },
-          { id: 'app-posts', label: 'Блог' },
-          { id: 'app-public', label: 'Открыть сервис', href: `/app/${slug}` },
-          { id: 'app-account', label: 'Раздел в кабинете', href: `/account?section=app:${slug}` },
-        ]}
-      />
+      {embedded ? null : (
+        <AdminJumpNav
+          serviceItems={Array.from(
+            new Set([...(session.appAdmin || []), slug]),
+          ).map((appSlug) => ({
+            id: `svc-${appSlug}`,
+            label: appSlug === slug && app?.title ? app.title : appSlug,
+            href: `/admin/apps/${appSlug}`,
+          }))}
+          items={[
+            { id: 'app-tile', label: 'Описание' },
+            { id: 'app-posts', label: 'Блог' },
+            { id: 'app-public', label: 'Открыть сервис', href: `/app/${slug}` },
+            { id: 'app-account', label: 'Раздел в кабинете', href: `/account?section=app:${slug}` },
+          ]}
+        />
+      )}
 
       <section id="app-tile" className="learn-schedule admin-jump-target">
         <h2 className="learn-section-title">Описание сервиса и плашка</h2>
@@ -1144,9 +1198,15 @@ export function AppAdminPage() {
           <button type="button" className="learn-admin-btn learn-admin-btn-primary" onClick={startNewPost}>
             Новая статья
           </button>
-          <Link to={`/app/${slug}`} className="learn-admin-btn">
-            Открыть страницу сервиса
-          </Link>
+          {onOpenPublic ? (
+            <button type="button" className="learn-admin-btn" onClick={onOpenPublic}>
+              Открыть страницу сервиса
+            </button>
+          ) : (
+            <Link to={`/app/${slug}`} className="learn-admin-btn">
+              Открыть страницу сервиса
+            </Link>
+          )}
         </div>
         <ul className="learn-admin-list">
           {posts.map((post) => (
@@ -1166,9 +1226,19 @@ export function AppAdminPage() {
                 >
                   Править
                 </button>
-                <Link to={`/app/${slug}/${post.slug}`} className="learn-admin-link">
-                  Открыть
-                </Link>
+                {onOpenPost ? (
+                  <button
+                    type="button"
+                    className="learn-admin-link"
+                    onClick={() => onOpenPost(post.slug)}
+                  >
+                    Открыть
+                  </button>
+                ) : (
+                  <Link to={`/app/${slug}/${post.slug}`} className="learn-admin-link">
+                    Открыть
+                  </Link>
+                )}
                 <button
                   type="button"
                   className="learn-admin-link learn-admin-danger"
@@ -1268,6 +1338,6 @@ export function AppAdminPage() {
 
       {message ? <p className="learn-admin-ok">{message}</p> : null}
       {error ? <p className="learn-admin-error">{error}</p> : null}
-    </PageShell>
+    </AdminFrame>
   )
 }

@@ -17,6 +17,9 @@ class Settings(BaseSettings):
 
     API_PORT: int = 8012
 
+    CORE_SERVICE_URL: str = "http://localhost:8002"
+    PROCESSOR_SERVICE_URL: str = "http://processor:8010"
+
     INSTAGRAM_COLLECT_INTERVAL_SEC: int = 300
 
     PUBLISH_INTERVAL_SEC: int = 60

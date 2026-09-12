@@ -44,9 +44,12 @@ async def manage_lifespan(app: FastAPI):
     Shutdown: закрытие HTTP клиента.
     """
     # Startup
+    # Do not follow upstream redirects: OAuth callbacks (and similar) return 302
+    # to the public HTTPS origin. Following them here makes the gateway verify
+    # ui-edge TLS (often self-signed locally) and yields CERTIFICATE_VERIFY_FAILED.
     http_client = httpx.AsyncClient(
         timeout=httpx.Timeout(30.0),
-        follow_redirects=True
+        follow_redirects=False,
     )
     app.state.http_client = http_client
     initialize_proxy_service(http_client)

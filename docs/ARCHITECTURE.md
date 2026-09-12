@@ -85,22 +85,18 @@ flowchart LR
 
 ## 3. Пайплайн постов
 
-Центральная таблица `posts` + платформенные `*_posts`.
+Центральная таблица `posts` + очередь публикации `post_targets`.
 
 ```mermaid
 flowchart LR
-  SRC["*_posts<br/>collected / created"] -->|collect| COLL[Collector]
-  COLL -->|INSERT posts| P1[posts: collected]
-  P1 -->|process| PROC[Processor + AI]
+  SRC[Боты / Core / RSS] -->|INSERT| P1[posts: collected]
+  P1 -->|process| PROC[Processor]
   PROC --> P2["posts: ready / review"]
-  P2 -->|distribute| COLL
-  COLL --> DST["*_posts: ready"]
-  DST -->|publish| BOTS[Боты платформ]
-  BOTS --> PUB["*_posts: published"]
+  PROC -->|ensure_targets| T[post_targets: ready]
+  T -->|claim publish| BOTS[Боты платформ]
+  BOTS --> PUB["post_targets: published"]
 ```
-
-Источники collect (`SOURCE_TABLES`): tg, wp, url, vk, tw, threads, instagram, dzen, cpost.  
-Цели distribute (`to_*`): tg, wp, vk, dzen, Instagram, tw.
+Сети публикации (`post_targets.platform`): tg, wp, vk, dzen, instagram, tw, threads.
 
 Детали статусов: [POSTS_LIFECYCLE.md](POSTS_LIFECYCLE.md).
 
@@ -116,7 +112,7 @@ flowchart LR
 | vk-bot | 8005 | VK: сбор / публикация |
 | wp-bot | 8006 | WordPress |
 | url-bot | 8007 | Скрапинг Custom URL |
-| collector | 8009 | collect + distribute |
+| collector | 8009 | RSS Дзен, метрики очереди |
 | processor | 8010 | Обработка текста / AI |
 | instagram-bot | 8011 | Instagram |
 | dzen-bot | 8012 | Яндекс Дзен |
@@ -134,9 +130,9 @@ Host-порты ботов/MinIO/Ollama/collector/processor привязаны �
 
 | Компонент | Multi-replica |
 |-----------|----------------|
-| Collector collect/distribute | Да (`FOR UPDATE SKIP LOCKED`) |
+| Collector RSS / metrics | Не claim-очередь |
 | Processor | Да (claim → processing) |
-| Bot publishers (tg/vk/ig/tw/dzen) | Да (claim → `publishing`) |
+| Bot publishers (tg/vk/ig/tw/dzen) | Да (claim `post_targets` → `publishing`) |
 | Scheduler poll | Да (`pg_try_advisory_lock`) |
 | Gateway rate limit | Нет (in-memory; scale → Redis, фаза 2) |
 | Gateway JWT blacklist | Да (Redis `jwt:bl:*`; fallback HTTP → auth/Postgres) |
@@ -172,7 +168,7 @@ sequenceDiagram
 | Twitter / X | tw-bot | tw-bot |
 | WordPress | wp-bot | wp-bot |
 | Дзен | dzen-bot / RSS | RSS + dzen-bot |
-| Custom URL | url-bot | через distribute на другие платформы |
+| Custom URL | url-bot | в `posts` + `post_targets` |
 | Ручной пост | Core `/cpost` | через collector → боты |
 
 ## 7. Асинхронность: Postgres-очередь, не Kafka

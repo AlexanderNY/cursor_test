@@ -146,7 +146,7 @@ async def get_wp_posts(
     limit: int = 50,
     offset: int = 0,
 ):
-    """Возвращает список постов WordPress пользователя из таблицы wp_posts.
+    """Возвращает список постов WordPress пользователя (posts + post_targets).
     
     Args:
         x_user_id: ID пользователя из заголовка
@@ -179,7 +179,7 @@ async def create_wp_post(
     data: WordPressPost,
     x_user_id: Optional[str] = Header(None)
 ):
-    """Создает пост WordPress в таблице wp_posts.
+    """Создает пост WordPress в posts + post_targets.
     
     Args:
         data: Данные поста в формате ui-app (реальный WordPress)

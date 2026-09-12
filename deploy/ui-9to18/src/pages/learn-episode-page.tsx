@@ -56,7 +56,7 @@ export function LearnEpisodePage() {
 
   if (!isReady) {
     return (
-      <PageShell>
+      <PageShell content="article">
         <p className="learn-section-note">Загрузка…</p>
       </PageShell>
     )
@@ -70,7 +70,7 @@ export function LearnEpisodePage() {
 
   if (!isLive && !isPreview) {
     return (
-      <PageShell>
+      <PageShell content="article">
         <Link to="/game/learn" className="back-link">
           ← К оглавлению Learn
         </Link>
@@ -114,7 +114,7 @@ export function LearnEpisodePage() {
   }
 
   return (
-    <PageShell>
+    <PageShell content="article">
       <Link to="/game/learn" className="back-link">
         ← К оглавлению Learn
       </Link>
@@ -130,7 +130,7 @@ export function LearnEpisodePage() {
             ? `Опубликовано ${formatPublishDate(episode.publishedAt)}`
             : `Превью · публикация ${formatPublishDate(episode.publishedAt)}`}
         </p>
-        <p className="learn-admin-entry">
+        <div className="learn-admin-actions">
           {isAuthed && progressReady ? (
             <button
               type="button"
@@ -141,15 +141,14 @@ export function LearnEpisodePage() {
               {isDone ? 'Снять отметку «пройдено»' : 'Отметить пройденным'}
             </button>
           ) : (
-            <Link to="/login" className="learn-admin-link">
+            <Link to="/login" className="learn-admin-btn learn-admin-btn-primary">
               Войти, чтобы отмечать прогресс
             </Link>
           )}
-          {' · '}
-          <Link to={`/game/learn/admin/${episode.slug}`} className="learn-admin-link">
+          <Link to={`/game/learn/admin/${episode.slug}`} className="learn-admin-btn">
             Редактировать
           </Link>
-        </p>
+        </div>
       </header>
 
       {visibleTabs.length > 1 ? (

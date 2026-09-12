@@ -108,7 +108,7 @@ export function ServicesStatusSection() {
                   ) : (
                     <ul className="text-sm text-[var(--text-secondary)] space-y-1">
                       <li>Server time: {servicesStatus.collector.current_time ? formatDateTime(servicesStatus.collector.current_time) : '—'}</li>
-                      <li>Interval: collect {servicesStatus.collector.collect_interval_sec}s / distribute {servicesStatus.collector.distribute_interval_sec}s</li>
+                      <li>Interval: Dzen RSS {servicesStatus.collector.collect_interval_sec}s</li>
                       {servicesStatus.collector.collector && (
                         <li>Collector: last run {servicesStatus.collector.collector.last_run_at ? formatDateTime(servicesStatus.collector.collector.last_run_at) : '—'}, total {servicesStatus.collector.collector.total_processed}</li>
                       )}
@@ -339,8 +339,7 @@ export function CollectorSection() {
             <div className="p-4 rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)]">
               <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-2">Конфигурация сервиса</h3>
               <ul className="text-sm text-[var(--text-secondary)] space-y-1">
-                <li>Периодичность сбора постов: <strong className="text-[var(--text-primary)]">{servicesStatus.collector.collect_interval_sec ?? '—'} с</strong></li>
-                <li>Периодичность распределения: <strong className="text-[var(--text-primary)]">{servicesStatus.collector.distribute_interval_sec ?? '—'} с</strong></li>
+                <li>Периодичность RSS Дзен: <strong className="text-[var(--text-primary)]">{servicesStatus.collector.collect_interval_sec ?? '—'} с</strong></li>
                 <li>Размер батча сбора: <strong className="text-[var(--text-primary)]">{servicesStatus.collector.collect_batch_size ?? '—'}</strong> постов за цикл</li>
                 <li>Размер батча распределения: <strong className="text-[var(--text-primary)]">{servicesStatus.collector.distribute_batch_size ?? '—'}</strong> постов за цикл</li>
               </ul>
@@ -823,7 +822,7 @@ export function PostingDiagnosticsSection() {
           </svg>
           Диагностика постинга (Telegram)
         </CardTitle>
-        <CardDescription>Сводки по tg_posts и posts по статусам и подсказки при застревании постов в collected</CardDescription>
+        <CardDescription>Сводки по post_targets (Telegram) и posts по статусам</CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
         <Button onClick={handleRunPostingDiagnostics} isLoading={isLoadingPostingDiagnostics} className="w-full sm:w-auto">
@@ -867,7 +866,7 @@ export function PostingDiagnosticsSection() {
             )}
 
             <div>
-              <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-2">tg_posts по статусам</h3>
+              <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-2">Telegram queue (post_targets) по статусам</h3>
               <div className="overflow-x-auto rounded-xl border border-[var(--border-color)]">
                 <table className="w-full">
                   <thead className="bg-[var(--bg-tertiary)]">
@@ -877,12 +876,12 @@ export function PostingDiagnosticsSection() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[var(--border-color)]">
-                    {postingDiagnostics.tg_posts_by_status.length === 0 ? (
+                    {(postingDiagnostics.tg_targets_by_status ?? postingDiagnostics.tg_posts_by_status).length === 0 ? (
                       <tr>
                         <td colSpan={2} className="py-3 px-4 text-[var(--text-muted)] text-sm">Нет данных</td>
                       </tr>
                     ) : (
-                      postingDiagnostics.tg_posts_by_status.map((row) => (
+                      (postingDiagnostics.tg_targets_by_status ?? postingDiagnostics.tg_posts_by_status).map((row) => (
                         <tr key={row.status} className="hover:bg-[var(--bg-tertiary)]">
                           <td className="py-3 px-4 text-[var(--text-primary)] font-medium">{row.status}</td>
                           <td className="py-3 px-4 text-right text-[var(--text-secondary)]">{row.count.toLocaleString()}</td>

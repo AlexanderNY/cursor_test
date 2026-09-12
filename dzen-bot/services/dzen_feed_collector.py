@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import time
 from typing import Any, Dict, List, Optional, Tuple
@@ -12,6 +11,8 @@ from selenium.webdriver.common.by import By
 
 from config import settings
 from database import get_db_connection, release_db_connection
+from shared.db.posts_repo import InboundPostCreate, PostsRepository
+from shared.queue_wakeup import wake_process_http
 
 from .selenium_diag import capture_selenium_error_to_s3
 from .selenium_driver import create_chrome_driver, get_selenium_semaphore
@@ -70,29 +71,31 @@ async def _insert_item(user_id: int, item: Dict[str, Any]) -> int:
     try:
         async with conn.cursor() as cur:
             await cur.execute(
-                "SELECT 1 FROM dzen_posts WHERE user_id = %s AND url = %s LIMIT 1",
+                """
+                SELECT 1 FROM posts
+                WHERE user_id = %s AND source_platform = 'dzen' AND source_native_id = %s
+                LIMIT 1
+                """,
                 (user_id, link),
             )
             if await cur.fetchone():
                 return 0
-            images_json = json.dumps(item.get("images") or [], ensure_ascii=False)
-            await cur.execute(
-                """
-                INSERT INTO dzen_posts (
-                    user_id, url, title, post_date, post_text, images,
-                    status, post_type, to_dzen
-                ) VALUES (%s, %s, %s, %s, %s, %s, 'collected', 'dzen_selenium', TRUE)
-                """,
-                (
-                    user_id,
-                    link,
-                    (item.get("title") or "")[:500],
-                    None,
-                    (item.get("post_text") or "")[:150000],
-                    images_json,
-                ),
+            created = await PostsRepository(cur).create_inbound(
+                InboundPostCreate(
+                    user_id=user_id,
+                    source_platform="dzen",
+                    post_text=(item.get("post_text") or "")[:150000],
+                    title=(item.get("title") or "")[:500],
+                    url=link,
+                    images=item.get("images") or [],
+                    extras={"collect_source": "selenium"},
+                    source_native_id=link,
+                    target_platforms=("dzen",),
+                    target_status="pending",
+                )
             )
-            return 1
+        await wake_process_http(getattr(settings, "PROCESSOR_SERVICE_URL", "") or "")
+        return 1 if created else 0
     finally:
         await release_db_connection(conn)
 

@@ -36,6 +36,12 @@ export function Footer() {
           >
             Обратная связь
           </Link>
+          <Link
+            to="/next"
+            className="text-[var(--text-secondary)] hover:text-primary-400 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/50 rounded"
+          >
+            Что далее
+          </Link>
         </div>
       </div>
     </footer>

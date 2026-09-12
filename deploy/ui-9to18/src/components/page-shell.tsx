@@ -1,15 +1,31 @@
-import type { ReactNode } from 'react'
-import { Link } from 'react-router-dom'
+import { useEffect, useState, type ReactNode } from 'react'
+import { Link, useLocation } from 'react-router-dom'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { getSiteAuthSession } from '@/data/site/site-auth'
 
 interface PageShellProps {
   children: ReactNode
   showBrandLink?: boolean
+  /** Public reading UI (mobile-first) vs CMS / cabinet (desktop-first). */
+  variant?: 'public' | 'admin'
+  /** Narrower column and larger type for articles. */
+  content?: 'default' | 'article'
 }
 
-export function PageShell({ children, showBrandLink = true }: PageShellProps) {
+export function PageShell({
+  children,
+  showBrandLink = true,
+  variant = 'public',
+  content = 'default',
+}: PageShellProps) {
+  const location = useLocation()
   const session = getSiteAuthSession()
+  const [isNavOpen, setIsNavOpen] = useState(false)
+
+  useEffect(() => {
+    setIsNavOpen(false)
+  }, [location.pathname, location.search, location.hash])
+
   const navItems = [
     { label: 'О нас', to: '/#about' },
     { label: 'Контакты', to: '/#contacts' },
@@ -30,8 +46,16 @@ export function PageShell({ children, showBrandLink = true }: PageShellProps) {
     </>
   )
 
+  const pageClass = [
+    'page',
+    variant === 'admin' ? 'page--admin' : 'page--public',
+    content === 'article' ? 'page--article' : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
+
   return (
-    <div className="page">
+    <div className={pageClass}>
       <div className="glow glow-a" aria-hidden />
       <div className="glow glow-b" aria-hidden />
 
@@ -45,8 +69,20 @@ export function PageShell({ children, showBrandLink = true }: PageShellProps) {
             <div className="brand">{brand}</div>
           )}
 
-          <div className="site-header-actions">
-            <nav className="site-nav" aria-label="Основное меню">
+          {variant === 'public' ? (
+            <button
+              type="button"
+              className="site-nav-toggle"
+              aria-expanded={isNavOpen}
+              aria-controls="site-nav"
+              onClick={() => setIsNavOpen((open) => !open)}
+            >
+              {isNavOpen ? 'Закрыть' : 'Меню'}
+            </button>
+          ) : null}
+
+          <div className={`site-header-actions${isNavOpen ? ' is-open' : ''}`}>
+            <nav id="site-nav" className="site-nav" aria-label="Основное меню">
               {navItems.map((item) => (
                 <Link
                   key={item.to + item.label}

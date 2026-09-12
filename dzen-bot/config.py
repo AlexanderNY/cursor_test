@@ -12,6 +12,7 @@ class Settings(BaseSettings):
 
     UPLOADS_DIR: str = "uploads"
     CORE_SERVICE_URL: str = "http://localhost:8002"
+    PROCESSOR_SERVICE_URL: str = "http://processor:8010"
 
     LOG_LEVEL: str = "INFO"
     LOG_BOT_ACTIONS: bool = True

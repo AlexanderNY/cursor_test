@@ -51,14 +51,14 @@ async def run_processor_cycle(admin_user: Dict[str, Any] = Depends(get_admin_use
 
 @router.post("/collect/run", response_model=ProcessorRunResponse)
 async def run_collect_cycle(admin_user: Dict[str, Any] = Depends(get_admin_user)):
-    """Принудительный запуск одного цикла сбора на collector (tg_posts → posts)."""
+    """Принудительный запуск одного цикла сбора на collector."""
     data = await admin_service.run_collect_cycle()
     return ProcessorRunResponse(**data)
 
 
 @router.post("/distribute/run", response_model=ProcessorRunResponse)
 async def run_distribute_cycle(admin_user: Dict[str, Any] = Depends(get_admin_user)):
-    """Принудительный запуск одного цикла распределения на collector (posts ready → tg_posts ready)."""
+    """Принудительный запуск distribute/run (no-op: публикация из post_targets)."""
     data = await admin_service.run_distribute_cycle()
     return ProcessorRunResponse(**data)
 
@@ -162,7 +162,7 @@ async def update_admin_post(
 
 @router.get("/posting-diagnostics", response_model=PostingDiagnosticsResponse)
 async def get_posting_diagnostics(admin_user: Dict[str, Any] = Depends(get_admin_user)):
-    """Цикл диагностики постинга: сводки tg_posts/posts по статусам и подсказки для администратора."""
+    """Цикл диагностики постинга: сводки post_targets/posts и подсказки для администратора."""
     data = await admin_service.run_posting_diagnostics()
     return PostingDiagnosticsResponse(**data)
 

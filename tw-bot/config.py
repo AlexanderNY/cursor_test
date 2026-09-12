@@ -13,12 +13,13 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
     LOG_BOT_ACTIONS: bool = False
 
-    API_PORT: int = 8011
+    API_PORT: int = 8014
 
     TWITTER_CLIENT_ID: str = ""
     TWITTER_CLIENT_SECRET: str = ""
 
     CORE_SERVICE_URL: str = "http://localhost:8002"
+    PROCESSOR_SERVICE_URL: str = "http://processor:8010"
     URL_BOT_SERVICE_URL: str = "http://localhost:8007"
 
     PUBLISH_INTERVAL_SEC: int = 60

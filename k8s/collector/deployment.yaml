@@ -22,14 +22,8 @@ spec:
           ports:
             - containerPort: 8009
           env:
-            - name: COLLECT_INTERVAL_SEC
-              value: "60"
-            - name: DISTRIBUTE_INTERVAL_SEC
-              value: "60"
-            - name: COLLECT_BATCH_SIZE
-              value: "100"
-            - name: DISTRIBUTE_BATCH_SIZE
-              value: "100"
+            - name: DZEN_RSS_READ_INTERVAL_SEC
+              value: "300"
             - name: LOG_LEVEL
               value: "INFO"
           envFrom:

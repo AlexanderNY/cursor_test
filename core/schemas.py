@@ -1155,6 +1155,49 @@ class FeedbackResponse(BaseModel):
     feedback: List[Feedback]
 
 
+# ==================== Roadmap (what next voting) ====================
+
+class RoadmapItemCreate(BaseModel):
+    """Создание пункта roadmap (admin)."""
+    title: str = Field(..., min_length=1, max_length=255)
+    description: Optional[str] = None
+
+
+class RoadmapItemUpdate(BaseModel):
+    """Обновление пункта roadmap (admin)."""
+    title: Optional[str] = Field(None, min_length=1, max_length=255)
+    description: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+class RoadmapItem(BaseModel):
+    """Пункт roadmap со счётчиком голосов."""
+    id: int
+    title: str
+    description: Optional[str] = None
+    is_active: bool
+    created_by: Optional[int] = None
+    created_at: datetime
+    updated_at: datetime
+    vote_count: int = 0
+    voted: bool = False
+
+    class Config:
+        from_attributes = True
+
+
+class RoadmapListResponse(BaseModel):
+    """Список пунктов roadmap."""
+    items: List[RoadmapItem]
+
+
+class RoadmapVoteResponse(BaseModel):
+    """Результат toggle голоса."""
+    item_id: int
+    voted: bool
+    vote_count: int
+
+
 # ==================== Admin (services status, posts tables) ====================
 
 class LoopStatus(BaseModel):
@@ -1234,9 +1277,13 @@ class PostsTablesResponse(BaseModel):
 
 class PostingDiagnosticsResponse(BaseModel):
     """Результат цикла диагностики постинга (Telegram и пайплайн)."""
+    tg_targets_by_status: List[Dict[str, Any]] = Field(
+        default_factory=list,
+        description="Сводка post_targets (platform=tg): status -> count",
+    )
     tg_posts_by_status: List[Dict[str, Any]] = Field(
         default_factory=list,
-        description="Сводка tg_posts: status -> count",
+        description="Устаревший алиас tg_targets_by_status",
     )
     posts_by_status: List[Dict[str, Any]] = Field(
         default_factory=list,
@@ -1244,7 +1291,7 @@ class PostingDiagnosticsResponse(BaseModel):
     )
     ready_for_telegram: int = Field(
         default=0,
-        description="Число постов в tg_posts со статусом ready с заданным channel_to_post",
+        description="Число целей Telegram в post_targets со статусом ready с заданным channel_to_post",
     )
     profiles_with_channel: int = Field(
         default=0,
