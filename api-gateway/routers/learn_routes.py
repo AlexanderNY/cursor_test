@@ -63,6 +63,22 @@ async def admin_list(
     return await forward_to_core("/learn/admin/posts", request)
 
 
+@router.get("/admin/article-template")
+async def admin_article_template(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    return await forward_to_core("/learn/admin/article-template", request)
+
+
+@router.post("/admin/posts/import")
+async def admin_import(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    return await forward_to_core("/learn/admin/posts/import", request)
+
+
 @router.post("/admin/posts")
 async def admin_upsert(
     request: Request,

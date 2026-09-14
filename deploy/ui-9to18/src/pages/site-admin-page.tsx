@@ -427,12 +427,15 @@ export function SiteAdminPage({ embedded = false, onOpenApp }: SiteAdminPageProp
 
       <AdminJumpNav
         showGlobal={!embedded}
+        className={embedded ? 'admin-jump-nav--embed' : undefined}
         serviceItems={apps.map((app) => ({
           id: `svc-${app.slug}`,
           label: app.emoji ? `${app.emoji} ${app.title}` : app.title,
-          href: embedded
-            ? `/account?section=${encodeURIComponent(`app:${app.slug}`)}&view=admin`
-            : `/admin/apps/${app.slug}`,
+          href: embedded ? undefined : `/admin/apps/${app.slug}`,
+          onClick:
+            embedded && onOpenApp
+              ? () => onOpenApp(app.slug)
+              : undefined,
         }))}
         items={[
           { id: 'admin-tiles', label: 'Плашки' },

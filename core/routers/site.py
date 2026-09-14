@@ -32,6 +32,7 @@ LEARNING_MAP_MAX_CHARS = 1_500_000
 ACCESS_MINUTES = 60 * 12
 ALGORITHM = "HS256"
 
+# Live home tiles only. Legacy stub slugs are hidden by _upsert_featured_apps.
 DEFAULT_APPS: list[dict[str, Any]] = [
     {
         "slug": "bowl",
@@ -46,8 +47,8 @@ DEFAULT_APPS: list[dict[str, Any]] = [
     {
         "slug": "learn",
         "title": "Learn",
-        "subtitle": "Теория, лабы, шпаргалки",
-        "description": "Учебные материалы по сборке сервисов.",
+        "subtitle": "Статьи · Anki · лабы",
+        "description": "Единый формат учебных статей: теория, схемы, тест, Anki; лаба опционально.",
         "accent": "#2dd4bf",
         "emoji": "📚",
         "app_path": "/game/learn",
@@ -67,44 +68,17 @@ DEFAULT_APPS: list[dict[str, Any]] = [
         "sort_order": 3,
     },
     {
-        "slug": "e2e-tester",
-        "title": "E2E Tester",
-        "subtitle": "Локально · Playwright",
+        "slug": "code",
+        "title": "Code",
+        "subtitle": "Python в браузере",
         "description": (
-            "Локальный Docker-сервис E2E на 127.0.0.1:8300: YAML/JSON/Playwright, "
-            "креды и отчёты. Без облачной панели."
+            "Песочница Pyodide: короткие упражнения без IDE. "
+            "Лабы Learn можно запускать отсюда."
         ),
-        "accent": "#f43f5e",
-        "emoji": "🧪",
-        "external_href": "http://127.0.0.1:8300",
+        "accent": "#2dd4bf",
+        "emoji": "⌨️",
+        "app_path": "/game/code",
         "sort_order": 4,
-    },
-    {
-        "slug": "menu",
-        "title": "Menu",
-        "subtitle": "Каталог и корзина",
-        "description": "Каталог материалов и позиций с корзиной.",
-        "accent": "#fbbf24",
-        "emoji": "📋",
-        "sort_order": 5,
-    },
-    {
-        "slug": "rating",
-        "title": "Rating",
-        "subtitle": "Таблица лидеров",
-        "description": "Рейтинг участников по играм и тестам.",
-        "accent": "#a78bfa",
-        "emoji": "🏆",
-        "sort_order": 6,
-    },
-    {
-        "slug": "events",
-        "title": "Events",
-        "subtitle": "Мероприятия",
-        "description": "Календарь стримов, воркшопов и встреч.",
-        "accent": "#f472b6",
-        "emoji": "📅",
-        "sort_order": 7,
     },
     {
         "slug": "copyparse",
@@ -114,26 +88,17 @@ DEFAULT_APPS: list[dict[str, Any]] = [
         "accent": "#fb923c",
         "emoji": "🚀",
         "external_href": "https://www.copyparse.ru",
-        "sort_order": 8,
+        "sort_order": 5,
     },
     {
         "slug": "profile",
         "title": "Profile",
         "subtitle": "Личный кабинет",
-        "description": "Прогресс Learn, настройки и доступы.",
+        "description": "Прогресс Learn, настройки и доступы (site JWT).",
         "accent": "#38bdf8",
         "emoji": "👤",
         "app_path": "/account",
-        "sort_order": 9,
-    },
-    {
-        "slug": "help",
-        "title": "Help",
-        "subtitle": "Помощь и FAQ",
-        "description": "Справка по платформе и разделам.",
-        "accent": "#94a3b8",
-        "emoji": "💬",
-        "sort_order": 10,
+        "sort_order": 6,
     },
     {
         "slug": "tasks",
@@ -143,90 +108,27 @@ DEFAULT_APPS: list[dict[str, Any]] = [
         "accent": "#4ade80",
         "emoji": "✅",
         "app_path": "/game/tasks",
-        "sort_order": 11,
-    },
-    {
-        "slug": "chat",
-        "title": "Chat",
-        "subtitle": "Чат группы",
-        "description": "Вопросы и общение учебной группы.",
-        "accent": "#22d3ee",
-        "emoji": "💭",
-        "sort_order": 12,
-    },
-    {
-        "slug": "cert",
-        "title": "Cert",
-        "subtitle": "Сертификаты",
-        "description": "Сертификат о прохождении сезона Learn.",
-        "accent": "#eab308",
-        "emoji": "🎓",
-        "app_path": "/game/cert",
-        "sort_order": 13,
-    },
-    {
-        "slug": "stream",
-        "title": "Stream",
-        "subtitle": "Стримы и эфиры",
-        "description": "Прямые эфиры и записи разборов.",
-        "accent": "#ef4444",
-        "emoji": "📺",
-        "sort_order": 14,
-    },
-    {
-        "slug": "news",
-        "title": "News",
-        "subtitle": "Новости",
-        "description": "Анонсы выпусков и обновлений.",
-        "accent": "#818cf8",
-        "emoji": "📰",
-        "sort_order": 15,
-    },
-    {
-        "slug": "forum",
-        "title": "Forum",
-        "subtitle": "Форум",
-        "description": "Разборы ошибок и обмен опытом.",
-        "accent": "#c084fc",
-        "emoji": "🗣️",
-        "sort_order": 16,
-    },
-    {
-        "slug": "code",
-        "title": "Code",
-        "subtitle": "Редактор кода",
-        "description": "Короткие упражнения в браузере.",
-        "accent": "#2dd4bf",
-        "emoji": "⌨️",
-        "sort_order": 17,
-    },
-    {
-        "slug": "map",
-        "title": "Map",
-        "subtitle": "Карта курса",
-        "description": "Сезоны, выпуски и связи тем.",
-        "accent": "#14b8a6",
-        "emoji": "🗺️",
-        "sort_order": 18,
-    },
-    {
-        "slug": "team",
-        "title": "Team",
-        "subtitle": "Команды",
-        "description": "Совместные проекты и парное обучение.",
-        "accent": "#f97316",
-        "emoji": "👥",
-        "sort_order": 19,
+        "sort_order": 7,
     },
     {
         "slug": "quiz",
         "title": "Quiz",
         "subtitle": "Закрепление теории",
-        "description": "Короткие вопросы по выпускам Learn.",
+        "description": "Вопросы из тестов статей Learn (structured.quiz).",
         "accent": "#f59e0b",
         "emoji": "🧠",
         "app_path": "/game/quiz",
-        "sort_order": 20,
+        "sort_order": 8,
+    },
+    {
+        "slug": "cert",
+        "title": "Cert",
+        "subtitle": "Сертификаты",
+        "description": "Сертификат сезона Learn — печать / сохранить как PDF.",
+        "accent": "#eab308",
+        "emoji": "🎓",
+        "app_path": "/game/cert",
+        "sort_order": 9,
     },
 ]
 
@@ -597,18 +499,10 @@ async def ensure_site_seeded() -> None:
 
 async def _upsert_featured_apps(cur: Any) -> None:
     """Синхронизация «живых» сервисов на уже заполненной БД (без полного ресида)."""
-    featured_slugs = {
-        "e2e-tester",
-        "copyparse",
-        "learning-map",
-        "learn",
-        "bowl",
-        "profile",
-        "tasks",
-        "cert",
-        "quiz",
-    }
+    featured_slugs = {app["slug"] for app in DEFAULT_APPS}
+    # Legacy / local-only tiles: keep rows but hide from the public home grid.
     stub_hide_slugs = {
+        "e2e-tester",
         "menu",
         "rating",
         "events",
@@ -617,7 +511,6 @@ async def _upsert_featured_apps(cur: Any) -> None:
         "stream",
         "news",
         "forum",
-        "code",
         "map",
         "team",
     }
@@ -658,22 +551,11 @@ async def _upsert_featured_apps(cur: Any) -> None:
             f"**{app['title']}** — {app.get('description', '')}\n\n"
             "Откройте плитку на главной 9to18, читайте блог и пишите разработчикам."
         )
-        if app["slug"] == "e2e-tester":
+        if app["slug"] == "code":
             stub_body = (
-                "## E2E Tester (только локально)\n\n"
-                "Браузерные E2E на Playwright в **одном Docker-контейнере** с SQLite. "
-                "Облачной панели нет: панель слушает `127.0.0.1:8300` на вашей машине.\n\n"
-                "### Запуск\n\n"
-                "```bash\n"
-                "cp deploy/e2e-tester/.env.example deploy/e2e-tester/.env\n"
-                "# задайте TESTER_SECRET_KEY (Fernet)\n"
-                "docker compose -f deploy/e2e-tester/docker-compose.yml "
-                "--env-file deploy/e2e-tester/.env up -d --build\n"
-                "# или: python deploy/scripts/compose_up_sequential.py --with e2e --build\n"
-                "```\n\n"
-                "Панель: [http://127.0.0.1:8300](http://127.0.0.1:8300)\n\n"
-                "Для 9to18 задайте `TARGET_UI_URL=http://host.docker.internal:8200` "
-                "(или публичный URL) и загрузите `examples/nine_to_eighteen_smoke.yaml`.\n"
+                "## Code — Python в браузере\n\n"
+                "Песочница на **Pyodide** (тот же runtime, что у Bowl). "
+                "Откройте `/game/code` или кнопку «Запустить в браузере» на вкладке лабы Learn.\n"
             )
         await cur.execute(
             """

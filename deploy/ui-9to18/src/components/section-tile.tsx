@@ -31,11 +31,11 @@ function tileTarget(section: Section): string {
 }
 
 export function SectionTile({ section }: SectionTileProps) {
-  const isBowl = section.slug === 'bowl'
+  const needsPyodide = section.slug === 'bowl' || section.slug === 'code'
   const tileStyle = { '--tile-accent': section.accent } as CSSProperties
   const prefetchHandlers = {
-    onMouseEnter: isBowl ? prefetchBowlRuntime : undefined,
-    onFocus: isBowl ? prefetchBowlRuntime : undefined,
+    onMouseEnter: needsPyodide ? prefetchBowlRuntime : undefined,
+    onFocus: needsPyodide ? prefetchBowlRuntime : undefined,
   }
 
   return (

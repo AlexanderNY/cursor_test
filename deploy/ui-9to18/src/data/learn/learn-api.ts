@@ -1,6 +1,7 @@
 /** Learn API client for 9to18 → gateway /learn/* */
 
 import type { LearnPost, LearnPostInput } from '@/data/learn/learn-store'
+import { normalizeLearnMeta } from '@/data/learn/learn-store'
 import { getLearnAccessToken } from '@/data/learn/learn-auth'
 import { getSiteAccessToken } from '@/data/site/site-auth'
 import { normalizeStructuredPost, hydrateLearnStructured } from '@/data/site/structured-post'
@@ -92,6 +93,7 @@ function normalizePost(raw: Record<string, unknown>): LearnPost {
     theoryFormat,
     labFormat,
     cheatsheetFormat,
+    ...normalizeLearnMeta(raw),
     publishedAt: String(raw.publishedAt || raw.published_at || new Date().toISOString()),
     updatedAt: String(raw.updatedAt || raw.updated_at || new Date().toISOString()),
   }
@@ -135,6 +137,38 @@ export async function apiSavePost(input: LearnPostInput): Promise<LearnPost> {
     body: JSON.stringify(input),
   })
   return normalizePost(data)
+}
+
+export async function apiImportPostMd(
+  markdown: string,
+  opts?: { save?: boolean },
+): Promise<{ post: LearnPost; warnings: string[]; saved: boolean }> {
+  const data = await request<{
+    post: Record<string, unknown>
+    warnings?: string[]
+    saved?: boolean
+  }>('/learn/admin/posts/import', {
+    method: 'POST',
+    body: JSON.stringify({ markdown, save: Boolean(opts?.save) }),
+  })
+  return {
+    post: normalizePost(data.post || {}),
+    warnings: Array.isArray(data.warnings) ? data.warnings.map(String) : [],
+    saved: Boolean(data.saved),
+  }
+}
+
+export async function apiGetArticleTemplate(): Promise<string> {
+  const headers = new Headers()
+  const token = resolveAuthToken()
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`)
+  }
+  const response = await fetch(`${API_BASE}/learn/admin/article-template`, { headers })
+  if (!response.ok) {
+    throw new LearnApiError(response.statusText || `HTTP ${response.status}`, response.status)
+  }
+  return response.text()
 }
 
 export async function apiDeletePost(slug: string): Promise<void> {

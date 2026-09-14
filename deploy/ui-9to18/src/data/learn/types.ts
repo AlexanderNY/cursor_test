@@ -24,6 +24,19 @@ export type LearnEpisode = {
   cheatsheet: string
   /** Unified article body (intro/sections/quiz/anki). Optional on local seed until migrated. */
   structured?: import('@/data/site/structured-post').StructuredPost | null
+  profiles?: import('@/data/learn/labels').LearnProfileId[]
+  level?: import('@/data/learn/labels').LearnLevelId | ''
+  tags?: string[]
+  excerpt?: string
+  durationMin?: number
+  prerequisites?: string[]
+  author?: string
+  authorUrl?: string
+  coverUrl?: string
+  seoTitle?: string
+  seoDescription?: string
+  seoKeywords?: string[]
+  canonicalUrl?: string
 }
 
 export type LearnRubric = {

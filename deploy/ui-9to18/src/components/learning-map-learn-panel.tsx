@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import { LearnPostBadges } from '@/components/learn-post-badges'
 import { learnRubrics } from '@/data/learn'
 import type { LearnPost } from '@/data/learn/learn-store'
 import {
@@ -93,6 +94,13 @@ export function LearningMapLearnPanel({
                       <span className="lm-tag lm-tag-soft">{rubricTitle}</span>
                     </span>
                   </Link>
+                  <LearnPostBadges
+                    profiles={post.profiles}
+                    level={post.level}
+                    tags={post.tags}
+                    durationMin={post.durationMin}
+                    className="learn-badges-compact"
+                  />
                 </li>
               )
             })}

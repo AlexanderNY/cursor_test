@@ -4,6 +4,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
   type WheelEvent as ReactWheelEvent,
 } from 'react'
@@ -23,7 +24,7 @@ import {
 } from '@/data/learning-map/branch-visibility'
 import {
   addCrossLink,
-  crossLinkPath,
+  crossLinkGeometry,
   loadCrossLinks,
   removeCrossLink,
   saveCrossLinks,
@@ -58,7 +59,6 @@ import {
   collectAllTags,
   getNodeTags,
   loadTagColors,
-  nodeFillFromTag,
   normalizeTag,
   pickPrimaryTag,
   resolveTagColor,
@@ -249,6 +249,14 @@ export function LearningMindmap({ root, branchCount, nodeCount }: LearningMindma
     saveCrossLinks(next)
   }, [])
 
+  const onRemoveCrossLink = useCallback(
+    (a: string, b: string) => {
+      persistCrossLinks(removeCrossLink(crossLinks, a, b))
+      setLinkMessage('Связь удалена')
+    },
+    [crossLinks, persistCrossLinks],
+  )
+
   const exportMarkdown = useCallback(() => {
     const visibleBranchIds =
       hiddenSet.size > 0
@@ -359,11 +367,16 @@ export function LearningMindmap({ root, branchCount, nodeCount }: LearningMindma
         if (!left || !right) {
           return null
         }
+        const geometry = crossLinkGeometry(left.x, left.y, right.x, right.y)
         return {
           key: `${link.a}|${link.b}`,
           a: link.a,
           b: link.b,
-          d: crossLinkPath(left.x, left.y, right.x, right.y),
+          titleA: left.title,
+          titleB: right.title,
+          d: geometry.d,
+          midX: geometry.midX,
+          midY: geometry.midY,
         }
       })
       .filter((item): item is NonNullable<typeof item> => item != null)
@@ -527,7 +540,7 @@ export function LearningMindmap({ root, branchCount, nodeCount }: LearningMindma
       return
     }
     const target = event.target as HTMLElement
-    if (target.closest('.lm-node')) {
+    if (target.closest('.lm-node, .lm-cross-link')) {
       return
     }
     dragRef.current = {
@@ -863,21 +876,6 @@ export function LearningMindmap({ root, branchCount, nodeCount }: LearningMindma
                   fill="none"
                 />
               ))}
-              {drawnCrossLinks.map((link) => (
-                <path
-                  key={link.key}
-                  d={link.d}
-                  className="lm-cross-edge"
-                  fill="none"
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    persistCrossLinks(removeCrossLink(crossLinks, link.a, link.b))
-                    setLinkMessage('Связь удалена')
-                  }}
-                >
-                  <title>Удалить связь</title>
-                </path>
-              ))}
               {layout.nodes.map((node) => {
                 const isSelected = node.id === selectedId
                 const isRoot = node.depth === 0
@@ -887,7 +885,6 @@ export function LearningMindmap({ root, branchCount, nodeCount }: LearningMindma
                 const nodeTags = tagsByNodeId.get(node.id) || []
                 const primaryTag = pickPrimaryTag(nodeTags, activeTags)
                 const tagColor = primaryTag ? resolveTagColor(primaryTag, tagColors) : null
-                const tagFill = tagColor ? nodeFillFromTag(tagColor, isRoot) : undefined
                 return (
                   <g
                     key={node.id}
@@ -913,7 +910,7 @@ export function LearningMindmap({ root, branchCount, nodeCount }: LearningMindma
                       className="lm-node-shape"
                       style={
                         tagColor
-                          ? { fill: tagFill, stroke: tagColor, strokeWidth: isSelected ? 2.4 : 1.6 }
+                          ? { stroke: tagColor, strokeWidth: isSelected ? 2.6 : 2 }
                           : undefined
                       }
                     />
@@ -962,12 +959,61 @@ export function LearningMindmap({ root, branchCount, nodeCount }: LearningMindma
                   </g>
                 )
               })}
+              {drawnCrossLinks.map((link) => {
+                const removeScale = 1 / zoom
+                const hitWidth = Math.max(16, 18 / zoom)
+                const removeLink = (event: { stopPropagation: () => void }) => {
+                  event.stopPropagation()
+                  onRemoveCrossLink(link.a, link.b)
+                }
+                const onRemoveKeyDown = (event: ReactKeyboardEvent<SVGGElement>) => {
+                  if (event.key !== 'Enter' && event.key !== ' ') {
+                    return
+                  }
+                  event.preventDefault()
+                  removeLink(event)
+                }
+                return (
+                  <g
+                    key={link.key}
+                    className="lm-cross-link"
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Удалить связь «${link.titleA}» — «${link.titleB}»`}
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={removeLink}
+                    onKeyDown={onRemoveKeyDown}
+                  >
+                    <title>
+                      Удалить связь «{link.titleA}» — «{link.titleB}»
+                    </title>
+                    <path
+                      d={link.d}
+                      className="lm-cross-edge-hit"
+                      fill="none"
+                      strokeWidth={hitWidth}
+                    />
+                    <path d={link.d} className="lm-cross-edge" fill="none" />
+                    <g
+                      className="lm-cross-remove"
+                      transform={`translate(${link.midX} ${link.midY}) scale(${removeScale})`}
+                    >
+                      <circle r="11" className="lm-cross-remove-bg" />
+                      <path
+                        d="M -4.2 -4.2 L 4.2 4.2 M 4.2 -4.2 L -4.2 4.2"
+                        className="lm-cross-remove-x"
+                      />
+                    </g>
+                  </g>
+                )
+              })}
             </g>
           </svg>
         </div>
         <p className="lm-viewport-hint">
           Колёсико — масштаб · перетаскивание — панорама · клик по узлу с детьми — следующий уровень
           {linkMode ? ' · режим связи: два листа разных веток' : ' · «Связь» — пунктир между ветками'}
+          {drawnCrossLinks.length > 0 ? ' · × на пунктире удаляет связь' : ''}
           {isFullscreen ? ' · Esc — выйти из полного экрана' : ''}
         </p>
       </div>
@@ -1056,10 +1102,7 @@ export function LearningMindmap({ root, branchCount, nodeCount }: LearningMindma
                     <button
                       type="button"
                       className="lm-btn"
-                      onClick={() => {
-                        persistCrossLinks(removeCrossLink(crossLinks, link.a, link.b))
-                        setLinkMessage('Связь удалена')
-                      }}
+                      onClick={() => onRemoveCrossLink(link.a, link.b)}
                     >
                       Удалить
                     </button>

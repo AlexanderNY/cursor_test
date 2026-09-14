@@ -20,6 +20,7 @@ import {
 import {
   clearSiteAuthSession,
   describeSiteRole,
+  canManageApp,
   getManagedAppSlugs,
   getSiteAuthSession,
   isSuperAdmin,
@@ -215,9 +216,12 @@ export function SiteAccountPage() {
   )
 
   const sectionParam = searchParams.get('section') || 'profile'
+  const appSectionSlug = sectionParam.startsWith('app:') ? sectionParam.slice(4) : ''
   const activeId: AccountSectionId = allMeta.some((item) => item.id === sectionParam)
     ? (sectionParam as AccountSectionId)
-    : 'profile'
+    : appSectionSlug && canManageApp(appSectionSlug, session)
+      ? (sectionParam as AccountSectionId)
+      : 'profile'
   const paneView = searchParams.get('view') || 'overview'
   const panePost = searchParams.get('post') || ''
 
@@ -280,7 +284,15 @@ export function SiteAccountPage() {
   }
 
   const functions = roleFunctions(session)
-  const activeNav = allMeta.find((item) => item.id === activeId)
+  const activeNav =
+    allMeta.find((item) => item.id === activeId) ??
+    (activeId.startsWith('app:')
+      ? {
+          id: activeId,
+          label: activeId.slice(4),
+          hint: 'Описание и блог',
+        }
+      : undefined)
 
   return (
     <PageShell variant="admin">

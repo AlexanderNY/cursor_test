@@ -122,9 +122,19 @@ export function getSeasonTracks(posts: LearnPost[]): {
   const published = getPublishedPosts(posts)
   const seasonB = published.filter((post) => post.episode.startsWith('B'))
   const seasonS01 = published.filter((post) => post.episode.startsWith('S01'))
-  const other = published.filter(
-    (post) => !post.episode.startsWith('B') && !post.episode.startsWith('S01'),
-  )
+  const seasonPy = published.filter((post) => post.episode.startsWith('PY'))
+  const seasonQa = published.filter((post) => post.episode.startsWith('QA'))
+  const seasonMap = published.filter((post) => post.episode.startsWith('MAP'))
+  const other = published.filter((post) => {
+    const ep = post.episode
+    return (
+      !ep.startsWith('B') &&
+      !ep.startsWith('S01') &&
+      !ep.startsWith('PY') &&
+      !ep.startsWith('QA') &&
+      !ep.startsWith('MAP')
+    )
+  })
   const tracks: {
     id: string
     title: string
@@ -145,6 +155,30 @@ export function getSeasonTracks(posts: LearnPost[]): {
       title: 'Сезон 1 · Слои и стенд',
       note: 'Углубление: заявки, Postgres, Compose, Minikube.',
       episodes: seasonS01,
+    })
+  }
+  if (seasonPy.length > 0) {
+    tracks.push({
+      id: 'py',
+      title: 'Python · Junior → Senior',
+      note: 'PY01–PY24 к собеседованию разработчика.',
+      episodes: seasonPy,
+    })
+  }
+  if (seasonQa.length > 0) {
+    tracks.push({
+      id: 'qa',
+      title: 'QA · Junior → Senior',
+      note: 'QA01–QA24: тестирование, AQA, middle и senior.',
+      episodes: seasonQa,
+    })
+  }
+  if (seasonMap.length > 0) {
+    tracks.push({
+      id: 'map',
+      title: 'Карта · листья собеса',
+      note: 'Статьи, привязанные к learning-map.',
+      episodes: seasonMap,
     })
   }
   if (other.length > 0) {

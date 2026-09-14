@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { PageShell } from '@/components/page-shell'
+import { hydrateLearnStructured } from '@/data/site/structured-post'
 import { getPublishedPosts, useLearnPosts } from '@/data/learn/use-learn-posts'
 import type { LearnPost } from '@/data/learn/learn-store'
 import { siteSubmitQuizAttempt } from '@/data/site/site-api'
@@ -12,27 +13,92 @@ type QuizQuestion = {
   options: string[]
   correctIndex: number
   episodeSlug: string
+  explain: string
 }
 
 const OPTION_LETTERS = ['A', 'B', 'C', 'D', 'E', 'F']
+const QUIZ_SIZE = 10
+
+function shuffleInPlace<T>(items: T[]): T[] {
+  for (let index = items.length - 1; index > 0; index -= 1) {
+    const swap = Math.floor(Math.random() * (index + 1))
+    ;[items[index], items[swap]] = [items[swap], items[index]]
+  }
+  return items
+}
+
+function collectStructuredItems(posts: LearnPost[]): Array<{
+  question: string
+  answer: string
+  explain: string
+  episodeSlug: string
+}> {
+  const items: Array<{
+    question: string
+    answer: string
+    explain: string
+    episodeSlug: string
+  }> = []
+  for (const post of posts) {
+    const structured = hydrateLearnStructured(post.structured, {
+      lab: post.lab,
+      cheatsheet: post.cheatsheet,
+      cheatsheetFormat: post.cheatsheetFormat,
+      diagram: post.diagram,
+    })
+    if (!structured) {
+      continue
+    }
+    for (const row of structured.quiz) {
+      const question = row.question.trim()
+      const answer = row.answer.trim()
+      if (!question || !answer) {
+        continue
+      }
+      items.push({
+        question,
+        answer,
+        explain: row.explain.trim(),
+        episodeSlug: post.slug,
+      })
+    }
+  }
+  return items
+}
 
 function buildQuestions(posts: LearnPost[]): QuizQuestion[] {
-  const pool = posts.filter((p) => p.title && p.shortTitle).slice(0, 12)
-  return pool.map((post, index) => {
-    const distractors = posts
-      .filter((p) => p.slug !== post.slug)
-      .map((p) => p.shortTitle || p.title)
-      .sort(() => Math.random() - 0.5)
-      .slice(0, 3)
-    const options = [post.shortTitle || post.title, ...distractors].slice(0, 4)
-    const shuffled = [...options].sort(() => Math.random() - 0.5)
-    const correctIndex = shuffled.indexOf(post.shortTitle || post.title)
+  const pool = collectStructuredItems(posts)
+  if (pool.length === 0) {
+    return []
+  }
+  const answerPool = [...new Set(pool.map((item) => item.answer))]
+  const picked = shuffleInPlace([...pool]).slice(0, Math.min(QUIZ_SIZE, pool.length))
+  return picked.map((item, index) => {
+    const distractors = shuffleInPlace(
+      answerPool.filter((answer) => answer.toLowerCase() !== item.answer.toLowerCase()),
+    ).slice(0, 3)
+    while (distractors.length < 3 && answerPool.length > distractors.length + 1) {
+      const fallback = answerPool.find(
+        (answer) =>
+          answer.toLowerCase() !== item.answer.toLowerCase() &&
+          !distractors.includes(answer),
+      )
+      if (!fallback) {
+        break
+      }
+      distractors.push(fallback)
+    }
+    const options = shuffleInPlace([item.answer, ...distractors].slice(0, 4))
+    const correctIndex = options.findIndex(
+      (option) => option.toLowerCase() === item.answer.toLowerCase(),
+    )
     return {
-      id: `${post.slug}-${index}`,
-      prompt: `Какой выпуск соответствует коду «${post.episode}»?`,
-      options: shuffled,
+      id: `${item.episodeSlug}-${index}`,
+      prompt: item.question,
+      options,
       correctIndex: correctIndex >= 0 ? correctIndex : 0,
-      episodeSlug: post.slug,
+      episodeSlug: item.episodeSlug,
+      explain: item.explain,
     }
   })
 }
@@ -108,14 +174,17 @@ export function QuizPage() {
         <p className="learn-eyebrow">Quiz</p>
         <h1 className="learn-title">Закрепление</h1>
         <p className="learn-lead">
-          Сопоставьте код выпуска с названием. Вопросы строятся из опубликованных материалов Learn.
+          Вопросы берутся из блоков «Тест» опубликованных статей Learn (
+          <code>structured.quiz</code>), а не из названий выпусков.
         </p>
       </header>
 
       {!isReady ? (
         <p className="learn-section-note">Загрузка…</p>
       ) : questions.length === 0 ? (
-        <p className="learn-section-note">Недостаточно выпусков для квиза.</p>
+        <p className="learn-section-note">
+          Нет вопросов в structured.quiz у опубликованных выпусков.
+        </p>
       ) : (
         <form
           className="quiz-form"
@@ -162,9 +231,12 @@ export function QuizPage() {
                 })}
               </div>
               {submitted ? (
-                <p className="quiz-question-link">
-                  <Link to={`/game/learn/${q.episodeSlug}`}>Открыть выпуск →</Link>
-                </p>
+                <>
+                  {q.explain ? <p className="quiz-explain">{q.explain}</p> : null}
+                  <p className="quiz-question-link">
+                    <Link to={`/game/learn/${q.episodeSlug}`}>Открыть выпуск →</Link>
+                  </p>
+                </>
               ) : null}
             </fieldset>
           ))}

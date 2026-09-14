@@ -9,6 +9,8 @@ export type Section = {
   appPath?: string
 }
 
+/** Fallback home tiles when /site/apps is empty or unreachable.
+ *  Only live product surfaces — no stub LMS tiles. */
 export const sections: Section[] = [
   {
     slug: 'bowl',
@@ -41,41 +43,14 @@ export const sections: Section[] = [
     appPath: '/game/learning-map',
   },
   {
-    slug: 'e2e-tester',
-    title: 'E2E Tester',
-    subtitle: 'Локально · Playwright',
+    slug: 'code',
+    title: 'Code',
+    subtitle: 'Python в браузере',
     description:
-      'Локальный Docker-сервис E2E на 127.0.0.1:8300: YAML/JSON/Playwright, креды и отчёты. Без облачной панели.',
-    accent: '#f43f5e',
-    emoji: '🧪',
-    href: 'http://127.0.0.1:8300',
-  },
-  {
-    slug: 'menu',
-    title: 'Menu',
-    subtitle: 'Каталог и корзина',
-    description:
-      'Каталог материалов и позиций с корзиной — удобный обзор и оформление заказов.',
-    accent: '#fbbf24',
-    emoji: '📋',
-  },
-  {
-    slug: 'rating',
-    title: 'Rating',
-    subtitle: 'Таблица лидеров',
-    description:
-      'Рейтинг участников: результаты игр, тестов и активности в учебных модулях.',
-    accent: '#a78bfa',
-    emoji: '🏆',
-  },
-  {
-    slug: 'events',
-    title: 'Events',
-    subtitle: 'Мероприятия',
-    description:
-      'Календарь событий: стримы, воркшопы, дедлайны домашних заданий и офлайн-встречи.',
-    accent: '#f472b6',
-    emoji: '📅',
+      'Песочница Pyodide: короткие упражнения и эксперименты без установки IDE. Лабы Learn можно запускать здесь.',
+    accent: '#2dd4bf',
+    emoji: '⌨️',
+    appPath: '/game/code',
   },
   {
     slug: 'copyparse',
@@ -97,15 +72,6 @@ export const sections: Section[] = [
     appPath: '/account',
   },
   {
-    slug: 'help',
-    title: 'Help',
-    subtitle: 'Помощь и FAQ',
-    description:
-      'Справка по платформе: частые вопросы, инструкции и подсказки по разделам.',
-    accent: '#94a3b8',
-    emoji: '💬',
-  },
-  {
     slug: 'tasks',
     title: 'Tasks',
     subtitle: 'Чек-лист Learn',
@@ -115,85 +81,22 @@ export const sections: Section[] = [
     appPath: '/game/tasks',
   },
   {
-    slug: 'chat',
-    title: 'Chat',
-    subtitle: 'Чат группы',
-    description:
-      'Чат учебной группы для вопросов, быстрых ответов и неформального общения.',
-    accent: '#22d3ee',
-    emoji: '💭',
-  },
-  {
-    slug: 'cert',
-    title: 'Cert',
-    subtitle: 'Сертификаты',
-    description: 'Сертификат о прохождении сезона Learn.',
-    accent: '#eab308',
-    emoji: '🎓',
-    appPath: '/game/cert',
-  },
-  {
     slug: 'quiz',
     title: 'Quiz',
     subtitle: 'Закрепление теории',
-    description: 'Короткие вопросы по выпускам Learn.',
+    description: 'Вопросы из тестов статей Learn (structured.quiz).',
     accent: '#f59e0b',
     emoji: '🧠',
     appPath: '/game/quiz',
   },
   {
-    slug: 'stream',
-    title: 'Stream',
-    subtitle: 'Стримы и эфиры',
-    description:
-      'Прямые эфиры, записи разборов лаб и Q&A-сессии с преподавателем.',
-    accent: '#ef4444',
-    emoji: '📺',
-  },
-  {
-    slug: 'news',
-    title: 'News',
-    subtitle: 'Новости',
-    description:
-      'Новости платформы, анонсы выпусков, обновлений и важных изменений.',
-    accent: '#818cf8',
-    emoji: '📰',
-  },
-  {
-    slug: 'forum',
-    title: 'Forum',
-    subtitle: 'Форум',
-    description:
-      'Форум для развёрнутых обсуждений, разборов ошибок и обмена опытом.',
-    accent: '#c084fc',
-    emoji: '🗣️',
-  },
-  {
-    slug: 'code',
-    title: 'Code',
-    subtitle: 'Редактор кода',
-    description:
-      'Онлайн-редактор для коротких упражнений и экспериментов без установки IDE.',
-    accent: '#2dd4bf',
-    emoji: '⌨️',
-  },
-  {
-    slug: 'map',
-    title: 'Map',
-    subtitle: 'Карта курса',
-    description:
-      'Интерактивная карта курса: сезоны, выпуски и связи между темами.',
-    accent: '#14b8a6',
-    emoji: '🧭',
-  },
-  {
-    slug: 'team',
-    title: 'Team',
-    subtitle: 'Команды',
-    description:
-      'Рабочие группы и команды для совместных проектов, соревнований и парного обучения.',
-    accent: '#f97316',
-    emoji: '👥',
+    slug: 'cert',
+    title: 'Cert',
+    subtitle: 'Сертификаты',
+    description: 'Сертификат о прохождении сезона Learn (печать / PDF).',
+    accent: '#eab308',
+    emoji: '🎓',
+    appPath: '/game/cert',
   },
 ]
 

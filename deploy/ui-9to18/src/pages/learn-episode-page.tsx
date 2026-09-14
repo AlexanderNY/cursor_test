@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, Navigate, useParams, useSearchParams } from 'react-router-dom'
+import { LabPythonRunner } from '@/components/lab-python-runner'
 import { LearnContent } from '@/components/learn-content'
 import { MermaidBlock } from '@/components/learn-mermaid'
+import { LearnPostBadges } from '@/components/learn-post-badges'
 import { PageShell } from '@/components/page-shell'
 import { StructuredPostView } from '@/components/structured-post-view'
+import { levelLabel, profileLabel } from '@/data/learn/labels'
 import { formatPublishDate, isPostPublished } from '@/data/learn/learn-store'
+import { usePageSeo } from '@/data/learn/use-page-seo'
 import {
   getAdjacentPosts,
   getPublishedPosts,
@@ -53,6 +57,31 @@ export function LearnEpisodePage() {
       diagram: episode.diagram,
     })
   }, [episode])
+
+  const seoDescription =
+    episode?.seoDescription?.trim() ||
+    episode?.excerpt?.trim() ||
+    hydrated?.intro?.trim().slice(0, 400) ||
+    ''
+  const seoTitle = episode
+    ? episode.seoTitle?.trim() || `${episode.title} · Learn · 9to18`
+    : undefined
+  const canonical =
+    episode?.canonicalUrl?.trim() ||
+    (episode ? `https://9to18.ru/game/learn/${episode.slug}` : undefined)
+
+  usePageSeo({
+    title: seoTitle,
+    description: seoDescription,
+    image: episode?.coverUrl?.trim() || undefined,
+    canonical,
+    keywords:
+      episode?.seoKeywords?.length
+        ? episode.seoKeywords
+        : episode?.tags?.length
+          ? episode.tags
+          : undefined,
+  })
 
   if (!isReady) {
     return (
@@ -120,15 +149,56 @@ export function LearnEpisodePage() {
       </Link>
 
       <header className="learn-episode-header">
+        {episode.coverUrl?.trim() ? (
+          <div className="learn-cover">
+            <img src={episode.coverUrl.trim()} alt="" />
+          </div>
+        ) : null}
         <p className="learn-eyebrow">
           {episode.episode}
           {rubricTitle ? ` · ${rubricTitle}` : ''}
         </p>
         <h1 className="learn-title">{episode.title}</h1>
+        <LearnPostBadges
+          profiles={episode.profiles}
+          level={episode.level}
+          tags={episode.tags}
+          durationMin={episode.durationMin}
+        />
+        {episode.author?.trim() ? (
+          <p className="learn-section-note learn-author">
+            Автор:{' '}
+            {episode.authorUrl?.trim() ? (
+              <a href={episode.authorUrl.trim()} target="_blank" rel="noreferrer">
+                {episode.author.trim()}
+              </a>
+            ) : (
+              episode.author.trim()
+            )}
+          </p>
+        ) : null}
+        {episode.excerpt?.trim() ? (
+          <p className="learn-lead">{episode.excerpt.trim()}</p>
+        ) : null}
+        {episode.prerequisites?.length ? (
+          <p className="learn-section-note">
+            Сначала пройдите:{' '}
+            {episode.prerequisites.map((prereq, index) => (
+              <span key={prereq}>
+                {index > 0 ? ', ' : null}
+                <Link to={`/game/learn/${prereq}`}>{prereq}</Link>
+              </span>
+            ))}
+          </p>
+        ) : null}
         <p className="learn-section-note">
           {isLive
             ? `Опубликовано ${formatPublishDate(episode.publishedAt)}`
             : `Превью · публикация ${formatPublishDate(episode.publishedAt)}`}
+          {episode.profiles?.length
+            ? ` · ${episode.profiles.map((id) => profileLabel(id)).join(', ')}`
+            : ''}
+          {episode.level ? ` · ${levelLabel(episode.level)}` : ''}
         </p>
         <div className="learn-admin-actions">
           {isAuthed && progressReady ? (
@@ -254,7 +324,10 @@ export function LearnEpisodePage() {
           ))}
 
         {activeTab === 'lab' && hasLab && (
-          <LearnContent content={labContent} format={episode.labFormat} />
+          <>
+            <LearnContent content={labContent} format={episode.labFormat} />
+            <LabPythonRunner labMarkdown={labContent} />
+          </>
         )}
 
         {activeTab === 'cheatsheet' && hasCheatsheet && (

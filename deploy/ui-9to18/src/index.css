@@ -166,6 +166,7 @@ a.learn-admin-link,
 a.learn-pager-link,
 a.promo-spotlight-cta,
 a.admin-jump-nav-link,
+button.admin-jump-nav-link,
 a.lm-lecture-row,
 a.lm-learn-all,
 a.lm-crumb {
@@ -257,7 +258,7 @@ a.learn-admin-link.learn-admin-danger {
   position: relative;
   min-height: 100vh;
   padding: 1.5rem;
-  overflow: hidden;
+  overflow-x: hidden;
 }
 
 .page-inner {
@@ -430,6 +431,14 @@ a.learn-admin-link.learn-admin-danger {
     color 0.15s ease,
     background 0.15s ease,
     border-color 0.15s ease;
+}
+
+button.admin-jump-nav-link {
+  appearance: none;
+  -webkit-appearance: none;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
 }
 
 .admin-jump-nav-link:hover {
@@ -891,6 +900,17 @@ button.theme-toggle:hover {
   min-width: 0;
   padding-top: 0.35rem;
   border-top: 1px solid var(--color-border-soft);
+}
+
+.admin-jump-nav--embed {
+  position: static;
+  top: auto;
+  z-index: 1;
+  max-height: none;
+  overflow: visible;
+  align-self: auto;
+  grid-column: auto;
+  grid-row: auto;
 }
 
 .account-embed .learn-header {
@@ -1866,11 +1886,14 @@ button.learn-episode-card {
   display: flex;
   flex-wrap: wrap;
   justify-content: space-between;
+  align-items: center;
   gap: 0.75rem 1.25rem;
   padding: 0.95rem 1.1rem;
   border-radius: 0.85rem;
   border: 1px solid var(--color-border);
   background: var(--color-elevated);
+  color: var(--color-fg);
+  list-style: none;
 }
 
 .learn-admin-row-main {
@@ -1883,6 +1906,7 @@ button.learn-episode-card {
 .learn-admin-row-title {
   font-size: 1rem;
   font-weight: 600;
+  color: var(--color-fg);
 }
 
 .learn-admin-row-actions {
@@ -1909,6 +1933,120 @@ button.learn-episode-card {
   flex-direction: column;
   gap: 0.4rem;
   font-size: 0.875rem;
+  color: var(--color-fg-muted);
+}
+
+.learn-label-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem 1rem;
+}
+
+.learn-label-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--color-fg);
+  font-size: 0.9rem;
+}
+
+.learn-cover-preview,
+.learn-cover {
+  margin: 0.75rem 0 1rem;
+  border-radius: 0.85rem;
+  overflow: hidden;
+  border: 1px solid var(--color-border-strong);
+  max-width: 42rem;
+}
+
+.learn-cover-preview img,
+.learn-cover img {
+  display: block;
+  width: 100%;
+  max-height: 16rem;
+  object-fit: cover;
+}
+
+.learn-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0.65rem 0 0.35rem;
+}
+
+.learn-badges-compact {
+  margin: 0.35rem 0 0.75rem;
+}
+
+.learn-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-surface);
+  color: var(--color-fg-muted);
+  font-size: 0.75rem;
+  line-height: 1.2;
+}
+
+.learn-badge-track {
+  border-color: color-mix(in srgb, var(--color-accent) 45%, var(--color-border-strong));
+  color: var(--color-fg);
+}
+
+.learn-badge-level {
+  border-color: color-mix(in srgb, #f59e0b 50%, var(--color-border-strong));
+}
+
+.learn-badge-tag {
+  opacity: 0.92;
+}
+
+.learn-badge-map {
+  border-color: color-mix(in srgb, #38bdf8 55%, var(--color-border-strong));
+  color: var(--color-fg);
+  font-weight: 600;
+}
+
+.learn-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.85rem 1.25rem;
+  margin: 0 0 1.25rem;
+}
+
+.learn-filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.85rem;
+  color: var(--color-fg-muted);
+}
+
+.learn-filter-field select {
+  min-width: 11rem;
+  padding: 0.45rem 0.65rem;
+  border-radius: 0.55rem;
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-input);
+  color: var(--color-fg);
+  font: inherit;
+}
+
+.learn-season-thumb,
+.learn-card-thumb {
+  width: 2.4rem;
+  height: 2.4rem;
+  border-radius: 0.4rem;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.learn-card-author {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: 0.8rem;
   color: var(--color-fg-muted);
 }
 
@@ -2579,20 +2717,58 @@ button.learn-episode-card {
   color: var(--color-accent, #2dd4bf);
 }
 
+.lm-cross-link {
+  cursor: pointer;
+  outline: none;
+}
+
+.lm-cross-edge-hit {
+  fill: none;
+  stroke: transparent;
+  pointer-events: stroke;
+}
+
 .lm-cross-edge {
   stroke: var(--color-fg-soft);
   stroke-width: 1.75;
   stroke-dasharray: 6 5;
   stroke-linecap: round;
-  opacity: 0.85;
-  cursor: pointer;
-  pointer-events: stroke;
+  opacity: 0.9;
+  pointer-events: none;
 }
 
-.lm-cross-edge:hover {
-  stroke: var(--color-accent, #2dd4bf);
+.lm-cross-link:hover .lm-cross-edge,
+.lm-cross-link:focus-visible .lm-cross-edge {
+  stroke: var(--color-danger);
   opacity: 1;
-  stroke-width: 2.25;
+  stroke-width: 2.35;
+}
+
+.lm-cross-remove {
+  pointer-events: auto;
+}
+
+.lm-cross-remove-bg {
+  fill: var(--color-elevated);
+  stroke: var(--color-danger);
+  stroke-width: 1.6;
+}
+
+.lm-cross-remove-x {
+  fill: none;
+  stroke: var(--color-danger);
+  stroke-width: 1.7;
+  stroke-linecap: round;
+}
+
+.lm-cross-link:hover .lm-cross-remove-bg,
+.lm-cross-link:focus-visible .lm-cross-remove-bg {
+  fill: var(--color-danger);
+}
+
+.lm-cross-link:hover .lm-cross-remove-x,
+.lm-cross-link:focus-visible .lm-cross-remove-x {
+  stroke: var(--color-elevated);
 }
 
 .lm-node.is-link-from .lm-node-shape {
@@ -2908,14 +3084,14 @@ button.learn-episode-card {
 }
 
 .lm-node.is-root .lm-node-shape {
-  fill: color-mix(in srgb, var(--color-accent-fill) 80%, var(--color-elevated));
-  stroke: var(--color-accent-border);
-  stroke-width: 1.6;
+  fill: var(--color-elevated);
+  stroke: var(--color-accent);
+  stroke-width: 1.8;
 }
 
 .lm-node-d1 .lm-node-shape {
-  fill: color-mix(in srgb, var(--color-accent-fill-mid) 45%, var(--color-elevated));
-  stroke: var(--color-accent-border-mid);
+  fill: var(--color-elevated);
+  stroke: var(--color-accent-border);
 }
 
 .lm-node-d2 .lm-node-shape {
@@ -2926,7 +3102,7 @@ button.learn-episode-card {
 .lm-node-d3 .lm-node-shape,
 .lm-node-d4 .lm-node-shape,
 .lm-node-d5 .lm-node-shape {
-  fill: var(--color-surface);
+  fill: var(--color-elevated);
   stroke: var(--color-border);
 }
 
@@ -3531,7 +3707,7 @@ button.lm-tag:hover {
     grid-column: 2;
   }
 
-  .page--admin .admin-jump-nav {
+  .page--admin .page-main > .admin-jump-nav {
     grid-column: 1;
     grid-row: 1 / span 80;
     position: sticky;
@@ -3543,13 +3719,15 @@ button.lm-tag:hover {
     padding: 0.85rem 0.8rem;
   }
 
-  .page--admin .admin-jump-nav-list {
+  .page--admin .page-main > .admin-jump-nav .admin-jump-nav-list,
+  .page--admin .account-nav-shell .admin-jump-nav-list {
     flex-direction: column;
     flex-wrap: nowrap;
     gap: 0.3rem;
   }
 
-  .page--admin .admin-jump-nav-link {
+  .page--admin .page-main > .admin-jump-nav .admin-jump-nav-link,
+  .page--admin .account-nav-shell .admin-jump-nav-link {
     display: block;
     width: 100%;
     padding: 0.45rem 0.7rem;
@@ -3571,15 +3749,37 @@ button.lm-tag:hover {
   }
 
   .page--admin .learn-admin-row {
-    display: grid;
-    grid-template-columns: minmax(12rem, 1fr) auto;
     align-items: center;
     gap: 0.75rem 1rem;
   }
 
   .page--admin .learn-admin-row-actions {
     justify-content: flex-end;
-    flex-wrap: nowrap;
+  }
+
+  .page--admin .account-embed > .admin-jump-nav,
+  .page--admin .admin-jump-nav--embed {
+    position: static;
+    top: auto;
+    z-index: 1;
+    max-height: none;
+    overflow: visible;
+    grid-column: auto;
+    grid-row: auto;
+    align-self: auto;
+    margin: 0 0 1rem;
+  }
+
+  .page--admin .account-embed > .admin-jump-nav .admin-jump-nav-list,
+  .page--admin .admin-jump-nav--embed .admin-jump-nav-list {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .page--admin .account-embed > .admin-jump-nav .admin-jump-nav-link,
+  .page--admin .admin-jump-nav--embed .admin-jump-nav-link {
+    display: inline-block;
+    width: auto;
   }
 
   .page--admin .learn-header {
@@ -3599,25 +3799,134 @@ button.lm-tag:hover {
     min-height: 2rem;
   }
 
-  .page--admin .account-layout {
-    display: contents;
+  .page--admin .page-main > .account-layout {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: 16.75rem minmax(0, 1fr);
+    column-gap: 1.75rem;
+    align-items: start;
   }
 
-  .page--admin .page-main > .account-nav-shell {
+  .page--admin .account-layout .account-nav-shell {
     grid-column: 1;
-    grid-row: 1 / span 80;
     position: sticky;
     top: 5rem;
     align-self: start;
+    max-height: calc(100vh - 6rem);
+    overflow: auto;
   }
 
   .page--admin .account-nav-shell .admin-jump-nav {
     position: static;
-    max-height: calc(100vh - 8rem);
+    max-height: none;
+    overflow: visible;
     margin: 0;
   }
 
   .page--admin .account-panel {
     min-height: 22rem;
+  }
+}
+
+/* Code sandbox + lab Pyodide runner */
+.code-sandbox {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-width: 48rem;
+}
+
+.code-sandbox-label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--color-fg-muted);
+}
+
+.code-sandbox-editor {
+  width: 100%;
+  min-height: 16rem;
+  padding: 0.85rem 1rem;
+  border-radius: 0.75rem;
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-input);
+  color: var(--color-fg);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  resize: vertical;
+}
+
+.code-sandbox-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.code-sandbox-output {
+  margin: 0;
+  padding: 0.85rem 1rem;
+  border-radius: 0.75rem;
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-surface);
+  color: var(--color-fg-body);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-x: auto;
+}
+
+.lab-python-runner {
+  margin-top: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.lab-python-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.lab-python-source {
+  max-height: 14rem;
+  overflow: auto;
+}
+
+.quiz-explain {
+  margin: 0.65rem 0 0;
+  font-size: 0.9rem;
+  color: var(--color-fg-muted);
+}
+
+.cert-actions {
+  margin-top: 1rem;
+}
+
+.cert-card {
+  border: 1px solid var(--color-accent-border-soft);
+  border-radius: 1rem;
+  padding: 1.5rem;
+  background: var(--color-surface);
+}
+
+@media print {
+  .no-print,
+  .page-shell header,
+  .page-shell nav,
+  .back-link {
+    display: none !important;
+  }
+
+  body {
+    background: white !important;
+    color: black !important;
+  }
+
+  .cert-card {
+    border: 2px solid #111;
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
 }

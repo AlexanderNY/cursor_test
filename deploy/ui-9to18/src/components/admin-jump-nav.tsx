@@ -6,6 +6,8 @@ export type AdminNavItem = {
   label: string
   /** In-app path or absolute URL. Omit for in-page `#id` jump. */
   href?: string
+  /** Same-page action (e.g. switch cabinet pane). Takes precedence over href. */
+  onClick?: () => void
 }
 
 export type AdminNavGroup = {
@@ -33,6 +35,7 @@ type AdminJumpNavProps = {
   /** Show global admin destinations. Default true. */
   showGlobal?: boolean
   ariaLabel?: string
+  className?: string
 }
 
 function pathAndSearch(href: string): { pathname: string; search: string } {
@@ -105,6 +108,16 @@ function NavLinkItem({
 
   const className = isActive ? 'admin-jump-nav-link is-active' : 'admin-jump-nav-link'
 
+  if (item.onClick) {
+    return (
+      <li key={item.id}>
+        <button type="button" className={className} onClick={item.onClick}>
+          {item.label}
+        </button>
+      </li>
+    )
+  }
+
   if (isRoute && item.href) {
     return (
       <li key={item.id}>
@@ -127,7 +140,18 @@ function NavLinkItem({
 
   return (
     <li key={item.id}>
-      <a className={className} href={`#${item.id}`}>
+      <a
+        className={className}
+        href={`#${item.id}`}
+        onClick={(event) => {
+          const node = document.getElementById(item.id)
+          if (!node) {
+            return
+          }
+          event.preventDefault()
+          node.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        }}
+      >
         {item.label}
       </a>
     </li>
@@ -175,12 +199,13 @@ export function AdminJumpNav({
   groups = [],
   showGlobal = true,
   ariaLabel = 'Меню админки',
+  className,
 }: AdminJumpNavProps) {
   const { pathname, search } = useLocation()
   const hashItems = useMemo(
     () => [
-      ...items.filter((item) => !item.href),
-      ...groups.flatMap((group) => group.items.filter((item) => !item.href)),
+      ...items.filter((item) => !item.href && !item.onClick),
+      ...groups.flatMap((group) => group.items.filter((item) => !item.href && !item.onClick)),
     ],
     [items, groups],
   )
@@ -224,7 +249,10 @@ export function AdminJumpNav({
   }
 
   return (
-    <nav className="admin-jump-nav" aria-label={ariaLabel}>
+    <nav
+      className={['admin-jump-nav', className].filter(Boolean).join(' ')}
+      aria-label={ariaLabel}
+    >
       {showGlobal ? (
         <NavGroup
           label="Админ"

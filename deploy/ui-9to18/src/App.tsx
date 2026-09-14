@@ -54,6 +54,12 @@ const QuizPage = lazy(() =>
   import('@/pages/quiz-page').then((module) => ({ default: module.QuizPage })),
 )
 
+const CodeSandboxPage = lazy(() =>
+  import('@/pages/code-sandbox-page').then((module) => ({
+    default: module.CodeSandboxPage,
+  })),
+)
+
 function BowlGameFallback() {
   return (
     <div className="bowl-screen bowl-menu">
@@ -109,6 +115,15 @@ export default function App() {
           </Suspense>
         }
       />
+      <Route
+        path="/game/code"
+        element={
+          <Suspense fallback={<LearnFallback />}>
+            <CodeSandboxPage />
+          </Suspense>
+        }
+      />
+      <Route path="/game/map" element={<Navigate to="/game/learning-map" replace />} />
       <Route
         path="/game/bowl"
         element={

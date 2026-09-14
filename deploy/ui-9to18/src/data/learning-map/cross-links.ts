@@ -86,12 +86,12 @@ export function removeCrossLink(links: MapCrossLink[], a: string, b: string): Ma
   return links.filter((link) => !(link.a === pair.a && link.b === pair.b))
 }
 
-export function crossLinkPath(
+export function crossLinkGeometry(
   x1: number,
   y1: number,
   x2: number,
   y2: number,
-): string {
+): { d: string; midX: number; midY: number } {
   const mx = (x1 + x2) / 2
   const my = (y1 + y2) / 2
   const dx = x2 - x1
@@ -100,5 +100,20 @@ export function crossLinkPath(
   // Offset control point perpendicular to the chord for a soft arc
   const ox = (-dy / len) * Math.min(80, len * 0.22)
   const oy = (dx / len) * Math.min(80, len * 0.22)
-  return `M ${x1} ${y1} Q ${mx + ox} ${my + oy} ${x2} ${y2}`
+  const cx = mx + ox
+  const cy = my + oy
+  return {
+    d: `M ${x1} ${y1} Q ${cx} ${cy} ${x2} ${y2}`,
+    midX: 0.25 * x1 + 0.5 * cx + 0.25 * x2,
+    midY: 0.25 * y1 + 0.5 * cy + 0.25 * y2,
+  }
+}
+
+export function crossLinkPath(
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+): string {
+  return crossLinkGeometry(x1, y1, x2, y2).d
 }

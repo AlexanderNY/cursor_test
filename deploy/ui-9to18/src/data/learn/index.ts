@@ -3,8 +3,23 @@ import { learnRubrics } from './rubrics'
 import type { LearnEpisode, LearnRubric, LearnRubricId } from './types'
 
 export type { LearnEpisode, LearnLink, LearnRubric, LearnRubricId } from './types'
+export type { LearnLevelId, LearnProfileId } from './labels'
 export { learnEpisodes } from './episodes'
 export { learnRubrics } from './rubrics'
+export {
+  LEARN_LEVELS,
+  LEARN_PROFILES,
+  LEARN_KNOWLEDGE_MAP_TAG,
+  hasKnowledgeMapTag,
+  isLearnLevelId,
+  isLearnProfileId,
+  levelLabel,
+  normalizeLevel,
+  normalizeProfiles,
+  normalizeStringList,
+  profileLabel,
+  withKnowledgeMapTag,
+} from './labels'
 
 const episodeBySlug = new Map(learnEpisodes.map((episode) => [episode.slug, episode]))
 

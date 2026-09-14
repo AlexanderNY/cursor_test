@@ -4,9 +4,11 @@ from __future__ import annotations
 from typing import Any, List, Optional
 
 from fastapi import APIRouter, Header, HTTPException, Query
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, EmailStr, Field
 
 from database import get_db_connection, release_db_connection
+from services.learn_article_md import load_article_template, parse_learn_article_md
 from services.learn_service import VALID_RUBRICS, learn_service
 from services.system_settings_service import system_settings_service
 
@@ -51,7 +53,25 @@ class LearnPostIn(BaseModel):
     theoryFormat: str = "markdown"
     labFormat: str = "markdown"
     cheatsheetFormat: str = "markdown"
+    profiles: List[str] = Field(default_factory=list)
+    level: str = ""
+    tags: List[str] = Field(default_factory=list)
+    excerpt: str = ""
+    durationMin: int = 0
+    prerequisites: List[str] = Field(default_factory=list)
+    author: str = ""
+    authorUrl: str = ""
+    coverUrl: str = ""
+    seoTitle: str = ""
+    seoDescription: str = ""
+    seoKeywords: List[str] = Field(default_factory=list)
+    canonicalUrl: str = ""
     publishedAt: str
+
+
+class LearnImportIn(BaseModel):
+    markdown: str = Field(..., min_length=1)
+    save: bool = False
 
 
 class LearnScheduleIn(BaseModel):
@@ -189,6 +209,52 @@ async def admin_list_posts(
     _require_editor(x_user_id, x_user_role)
     posts = await learn_service.list_posts(include_unpublished=True)
     return {"posts": posts}
+
+
+@router.get("/admin/article-template")
+async def admin_article_template(
+    x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
+    x_user_role: Optional[str] = Header(None, alias="X-User-Role"),
+) -> PlainTextResponse:
+    """Скачиваемый эталон Learn-статьи (markdown + frontmatter)."""
+    _require_editor(x_user_id, x_user_role)
+    return PlainTextResponse(
+        content=load_article_template(),
+        media_type="text/markdown; charset=utf-8",
+        headers={
+            "Content-Disposition": 'attachment; filename="learn-article-template.md"'
+        },
+    )
+
+
+@router.post("/admin/posts/import")
+async def admin_import_post(
+    body: LearnImportIn,
+    x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
+    x_user_role: Optional[str] = Header(None, alias="X-User-Role"),
+) -> dict[str, Any]:
+    """Parse Learn .md; optionally upsert into learn_posts."""
+    _require_editor(x_user_id, x_user_role)
+    try:
+        payload, warnings = parse_learn_article_md(body.markdown)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if not payload.get("slug") or not payload.get("title"):
+        raise HTTPException(
+            status_code=422,
+            detail="В frontmatter нужны slug и title",
+        )
+    if payload.get("rubricId") not in VALID_RUBRICS:
+        raise HTTPException(status_code=422, detail="Invalid rubricId")
+    saved = False
+    post: dict[str, Any] = payload
+    if body.save:
+        try:
+            post = await learn_service.upsert_post(payload)
+            saved = True
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"post": post, "warnings": warnings, "saved": saved}
 
 
 @router.post("/admin/posts")

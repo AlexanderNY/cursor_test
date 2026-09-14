@@ -1,6 +1,9 @@
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { LearnPostBadges } from '@/components/learn-post-badges'
 import { PageShell } from '@/components/page-shell'
-import { getSortedRubrics } from '@/data/learn'
+import { getSortedRubrics, LEARN_LEVELS, LEARN_PROFILES } from '@/data/learn'
+import type { LearnLevelId, LearnProfileId } from '@/data/learn/labels'
 import {
   getPostsByRubric,
   getPublishedPosts,
@@ -18,9 +21,25 @@ export function LearnIndexPage() {
   const published = getPublishedPosts(posts)
   const seasonTracks = getSeasonTracks(posts)
   const { completedSlugs, isAuthed, isReady: progressReady } = useSiteLearnProgress()
-  const doneCount = published.filter((p) => completedSlugs.has(p.slug)).length
-  const pct = progressPercent(doneCount, published.length)
-  const continuePost = published.find((p) => !completedSlugs.has(p.slug)) || published[0]
+  const [profileFilter, setProfileFilter] = useState<LearnProfileId | ''>('')
+  const [levelFilter, setLevelFilter] = useState<LearnLevelId | ''>('')
+
+  const filtered = useMemo(() => {
+    return published.filter((post) => {
+      if (profileFilter && !(post.profiles || []).includes(profileFilter)) {
+        return false
+      }
+      if (levelFilter && post.level !== levelFilter) {
+        return false
+      }
+      return true
+    })
+  }, [published, profileFilter, levelFilter])
+
+  const filteredSlugs = useMemo(() => new Set(filtered.map((p) => p.slug)), [filtered])
+  const doneCount = filtered.filter((p) => completedSlugs.has(p.slug)).length
+  const pct = progressPercent(doneCount, filtered.length)
+  const continuePost = filtered.find((p) => !completedSlugs.has(p.slug)) || filtered[0]
 
   return (
     <PageShell>
@@ -35,9 +54,9 @@ export function LearnIndexPage() {
           Сезон B — быстрый старт первого приложения (Git, Python, React, Docker). Сезон 1 —
           углубление со сквозным сервисом заявок. Выпуски перелинкованы между собой.
         </p>
-        {isAuthed && progressReady && published.length > 0 ? (
+        {isAuthed && progressReady && filtered.length > 0 ? (
           <p className="learn-section-note">
-            Прогресс: {doneCount}/{published.length} ({pct}%)
+            Прогресс: {doneCount}/{filtered.length} ({pct}%)
             {continuePost ? (
               <>
                 {' · '}
@@ -59,14 +78,53 @@ export function LearnIndexPage() {
         </p>
       </header>
 
+      <div className="learn-filters" aria-label="Фильтр по треку и уровню">
+        <label className="learn-filter-field">
+          <span>Трек</span>
+          <select
+            value={profileFilter}
+            onChange={(event) => setProfileFilter(event.target.value as LearnProfileId | '')}
+          >
+            <option value="">Все</option>
+            {LEARN_PROFILES.map((profile) => (
+              <option key={profile.id} value={profile.id}>
+                {profile.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="learn-filter-field">
+          <span>Уровень</span>
+          <select
+            value={levelFilter}
+            onChange={(event) => setLevelFilter(event.target.value as LearnLevelId | '')}
+          >
+            <option value="">Все</option>
+            {LEARN_LEVELS.map((level) => (
+              <option key={level.id} value={level.id}>
+                {level.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
       {!isReady ? (
         <p className="learn-section-note">Загрузка…</p>
-      ) : published.length === 0 ? (
-        <p className="learn-section-note">Пока нет опубликованных выпусков. Загляните позже.</p>
+      ) : filtered.length === 0 ? (
+        <p className="learn-section-note">
+          {published.length === 0
+            ? 'Пока нет опубликованных выпусков. Загляните позже.'
+            : 'Нет выпусков по выбранным фильтрам.'}
+        </p>
       ) : (
         <>
           {seasonTracks.map((track) => {
-            const trackDone = track.episodes.filter((e) => completedSlugs.has(e.slug)).length
+            const episodes = track.episodes.filter((episode) => filteredSlugs.has(episode.slug))
+            if (episodes.length === 0) {
+              return null
+            }
+            const trackDone = episodes.filter((e) => completedSlugs.has(e.slug)).length
             return (
               <section
                 key={track.id}
@@ -79,21 +137,34 @@ export function LearnIndexPage() {
                   </h2>
                   <p className="learn-section-note">
                     {track.note}
-                    {isAuthed
-                      ? ` · ${trackDone}/${track.episodes.length} пройдено`
-                      : ''}
+                    {isAuthed ? ` · ${trackDone}/${episodes.length} пройдено` : ''}
                   </p>
                 </div>
                 <ol className="learn-season-list">
-                  {track.episodes.map((episode) => (
+                  {episodes.map((episode) => (
                     <li key={episode.slug}>
                       <Link to={`/game/learn/${episode.slug}`} className="learn-season-link">
+                        {episode.coverUrl?.trim() ? (
+                          <img
+                            className="learn-season-thumb"
+                            src={episode.coverUrl.trim()}
+                            alt=""
+                          />
+                        ) : null}
                         <span className="learn-episode-code">{episode.episode}</span>
                         <span className="learn-episode-name">
                           {completedSlugs.has(episode.slug) ? '✓ ' : ''}
                           {episode.shortTitle}
+                          {episode.author?.trim() ? ` · ${episode.author.trim()}` : ''}
                         </span>
                       </Link>
+                      <LearnPostBadges
+                        profiles={episode.profiles}
+                        level={episode.level}
+                        tags={episode.tags}
+                        durationMin={episode.durationMin}
+                        className="learn-badges-compact"
+                      />
                     </li>
                   ))}
                 </ol>
@@ -103,7 +174,7 @@ export function LearnIndexPage() {
 
           <div className="learn-rubrics">
             {rubrics.map((rubric) => {
-              const episodes = getPostsByRubric(published, rubric.id)
+              const episodes = getPostsByRubric(filtered, rubric.id)
               if (episodes.length === 0) {
                 return null
               }
@@ -123,12 +194,29 @@ export function LearnIndexPage() {
                     {episodes.map((episode) => (
                       <li key={episode.slug}>
                         <Link to={`/game/learn/${episode.slug}`} className="learn-episode-card">
+                          {episode.coverUrl?.trim() ? (
+                            <img
+                              className="learn-card-thumb"
+                              src={episode.coverUrl.trim()}
+                              alt=""
+                            />
+                          ) : null}
                           <span className="learn-episode-code">{episode.episode}</span>
                           <span className="learn-episode-title">
                             {completedSlugs.has(episode.slug) ? '✓ ' : ''}
                             {episode.title}
                           </span>
+                          {episode.author?.trim() ? (
+                            <span className="learn-card-author">{episode.author.trim()}</span>
+                          ) : null}
                         </Link>
+                        <LearnPostBadges
+                          profiles={episode.profiles}
+                          level={episode.level}
+                          tags={episode.tags}
+                          durationMin={episode.durationMin}
+                          className="learn-badges-compact"
+                        />
                       </li>
                     ))}
                   </ul>

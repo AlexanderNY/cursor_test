@@ -43,3 +43,9 @@ cp .env.9to18.example .env.9to18
 
 `docker-compose` подключает `.env.9to18` к сервису **core** (`env_file`).  
 Если файла нет — core при пустом `SITE_DATABASE_URL` сам подставит `dbname=db_9to18` в DSN из `DATABASE_URL`.
+
+## Прогресс Learn (ученик)
+
+Канон для пользователей 9to18: **`site_learn_progress`** через `GET/PUT /site/learn/progress` и site JWT (`aud=9to18`).
+
+Таблица `learn_progress` в `db_bot` и `/learn/progress` относятся к CopyParse-пользователям (авторы/админы CMS). UI 9to18 для учеников их не использует.

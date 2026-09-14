@@ -1,5 +1,11 @@
 import type { LearnEpisode, LearnLink, LearnRubricId } from '@/data/learn/types'
 import { learnEpisodes } from '@/data/learn/episodes'
+import type { LearnLevelId, LearnProfileId } from '@/data/learn/labels'
+import {
+  normalizeLevel,
+  normalizeProfiles,
+  normalizeStringList,
+} from '@/data/learn/labels'
 import {
   apiDeletePost,
   apiGetPublishedPost,
@@ -18,14 +24,31 @@ import {
 
 export type LearnContentFormat = 'markdown' | 'html'
 
-export type LearnPost = LearnEpisode & {
-  theoryFormat: LearnContentFormat
-  labFormat: LearnContentFormat
-  cheatsheetFormat: LearnContentFormat
-  structured: StructuredPost | null
-  publishedAt: string
-  updatedAt: string
+export type LearnPostMeta = {
+  profiles: LearnProfileId[]
+  level: LearnLevelId | ''
+  tags: string[]
+  excerpt: string
+  durationMin: number
+  prerequisites: string[]
+  author: string
+  authorUrl: string
+  coverUrl: string
+  seoTitle: string
+  seoDescription: string
+  seoKeywords: string[]
+  canonicalUrl: string
 }
+
+export type LearnPost = LearnEpisode &
+  LearnPostMeta & {
+    theoryFormat: LearnContentFormat
+    labFormat: LearnContentFormat
+    cheatsheetFormat: LearnContentFormat
+    structured: StructuredPost | null
+    publishedAt: string
+    updatedAt: string
+  }
 
 export type LearnPostInput = {
   slug: string
@@ -44,6 +67,47 @@ export type LearnPostInput = {
   labFormat: LearnContentFormat
   cheatsheetFormat: LearnContentFormat
   publishedAt: string
+} & LearnPostMeta
+
+export const EMPTY_LEARN_META: LearnPostMeta = {
+  profiles: [],
+  level: '',
+  tags: [],
+  excerpt: '',
+  durationMin: 0,
+  prerequisites: [],
+  author: '',
+  authorUrl: '',
+  coverUrl: '',
+  seoTitle: '',
+  seoDescription: '',
+  seoKeywords: [],
+  canonicalUrl: '',
+}
+
+export function normalizeLearnMeta(raw: Partial<LearnPostMeta> | Record<string, unknown> = {}): LearnPostMeta {
+  const record = raw as Record<string, unknown>
+  return {
+    profiles: normalizeProfiles(record.profiles),
+    level: normalizeLevel(record.level),
+    tags: normalizeStringList(record.tags),
+    excerpt: String(record.excerpt || '').trim(),
+    durationMin: Math.max(0, Number(record.durationMin ?? record.duration_min ?? 0) || 0),
+    prerequisites: normalizeStringList(record.prerequisites, 128, 24).map((s) =>
+      s.toLowerCase().replace(/\s+/g, '-'),
+    ),
+    author: String(record.author || '').trim().slice(0, 128),
+    authorUrl: String(record.authorUrl || record.author_url || '').trim().slice(0, 512),
+    coverUrl: String(record.coverUrl || record.cover_url || '').trim().slice(0, 1024),
+    seoTitle: String(record.seoTitle || record.seo_title || '').trim().slice(0, 200),
+    seoDescription: String(record.seoDescription || record.seo_description || '')
+      .trim()
+      .slice(0, 400),
+    seoKeywords: normalizeStringList(record.seoKeywords || record.seo_keywords),
+    canonicalUrl: String(record.canonicalUrl || record.canonical_url || '')
+      .trim()
+      .slice(0, 512),
+  }
 }
 
 function seedPublishedAt(order: number, baseMs: number): string {
@@ -57,6 +121,7 @@ export function seedPostsLocal(): LearnPost[] {
   const updatedAt = new Date(now).toISOString()
   return learnEpisodes.map((episode) => ({
     ...episode,
+    ...normalizeLearnMeta(episode),
     theoryFormat: 'markdown' as const,
     labFormat: 'markdown' as const,
     cheatsheetFormat: 'markdown' as const,
@@ -240,5 +305,6 @@ export function createEmptyPost(order: number): LearnPostInput {
     labFormat: 'markdown',
     cheatsheetFormat: 'html',
     publishedAt,
+    ...EMPTY_LEARN_META,
   }
 }

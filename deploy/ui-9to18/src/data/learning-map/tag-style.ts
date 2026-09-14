@@ -156,25 +156,3 @@ export function pickPrimaryTag(
   return tags[0]
 }
 
-export function mixHex(hex: string, withHex: string, amount: number): string {
-  const parse = (value: string): [number, number, number] => {
-    const raw = value.replace('#', '')
-    return [
-      Number.parseInt(raw.slice(0, 2), 16),
-      Number.parseInt(raw.slice(2, 4), 16),
-      Number.parseInt(raw.slice(4, 6), 16),
-    ]
-  }
-  const [r1, g1, b1] = parse(hex)
-  const [r2, g2, b2] = parse(withHex)
-  const t = Math.min(1, Math.max(0, amount))
-  const to = (n: number) => n.toString(16).padStart(2, '0')
-  const r = Math.round(r1 * (1 - t) + r2 * t)
-  const g = Math.round(g1 * (1 - t) + g2 * t)
-  const b = Math.round(b1 * (1 - t) + b2 * t)
-  return `#${to(r)}${to(g)}${to(b)}`
-}
-
-export function nodeFillFromTag(tagColor: string, isRoot: boolean): string {
-  return mixHex(tagColor, isRoot ? '#0f172a' : '#1e293b', isRoot ? 0.55 : 0.72)
-}
