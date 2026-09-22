@@ -54,6 +54,7 @@ const QuizPage = lazy(() =>
   import('@/pages/quiz-page').then((module) => ({ default: module.QuizPage })),
 )
 
+<<<<<<< Updated upstream
 const MnemonicsPage = lazy(() =>
   import('@/pages/mnemonics-page').then((module) => ({ default: module.MnemonicsPage })),
 )
@@ -68,6 +69,10 @@ const CodeSandboxPage = lazy(() =>
   import('@/pages/code-sandbox-page').then((module) => ({
     default: module.CodeSandboxPage,
   })),
+=======
+const HhResumePage = lazy(() =>
+  import('@/pages/hh-resume-page').then((module) => ({ default: module.HhResumePage })),
+>>>>>>> Stashed changes
 )
 
 function BowlGameFallback() {
@@ -126,14 +131,22 @@ export default function App() {
         }
       />
       <Route
+<<<<<<< Updated upstream
         path="/game/mnemonics"
         element={
           <Suspense fallback={<LearnFallback />}>
             <MnemonicsPage />
+=======
+        path="/game/hh-resume"
+        element={
+          <Suspense fallback={<LearnFallback />}>
+            <HhResumePage />
+>>>>>>> Stashed changes
           </Suspense>
         }
       />
       <Route
+<<<<<<< Updated upstream
         path="/game/mnemonics/:technique"
         element={
           <Suspense fallback={<LearnFallback />}>
@@ -151,6 +164,8 @@ export default function App() {
       />
       <Route path="/game/map" element={<Navigate to="/game/learning-map" replace />} />
       <Route
+=======
+>>>>>>> Stashed changes
         path="/game/bowl"
         element={
           <Suspense fallback={<BowlGameFallback />}>

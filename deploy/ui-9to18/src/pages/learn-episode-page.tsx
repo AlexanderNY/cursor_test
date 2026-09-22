@@ -215,6 +215,11 @@ export function LearnEpisodePage() {
               Войти, чтобы отмечать прогресс
             </Link>
           )}
+          {isAuthed && isDone ? (
+            <Link to="/game/hh-resume" className="learn-admin-btn">
+              Добавить в резюме
+            </Link>
+          ) : null}
           <Link to={`/game/learn/admin/${episode.slug}`} className="learn-admin-btn">
             Редактировать
           </Link>

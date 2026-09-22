@@ -139,6 +139,38 @@ CREATE INDEX IF NOT EXISTS idx_site_anki_cards_due
     ON site_anki_cards (user_id, due_at);
 """
 
+SITE_USER_PROFILES_TABLE = """
+CREATE TABLE IF NOT EXISTS site_user_profiles (
+    user_id INT PRIMARY KEY REFERENCES site_users(id) ON DELETE CASCADE,
+    last_name VARCHAR(120) NOT NULL DEFAULT '',
+    first_name VARCHAR(120) NOT NULL DEFAULT '',
+    patronymic VARCHAR(120) NOT NULL DEFAULT '',
+    phone VARCHAR(64) NOT NULL DEFAULT '',
+    birth_date DATE,
+    city VARCHAR(120) NOT NULL DEFAULT '',
+    citizenship VARCHAR(120) NOT NULL DEFAULT '',
+    ready_for_trips BOOLEAN NOT NULL DEFAULT FALSE,
+    photo_key VARCHAR(512) NOT NULL DEFAULT '',
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
+SITE_RESUMES_TABLE = """
+CREATE TABLE IF NOT EXISTS site_resumes (
+    user_id INT PRIMARY KEY REFERENCES site_users(id) ON DELETE CASCADE,
+    title VARCHAR(255) NOT NULL DEFAULT '',
+    specialization VARCHAR(255) NOT NULL DEFAULT '',
+    salary_amount INT,
+    salary_currency VARCHAR(8) NOT NULL DEFAULT 'RUB',
+    employment_types JSONB NOT NULL DEFAULT '[]'::jsonb,
+    work_formats JSONB NOT NULL DEFAULT '[]'::jsonb,
+    about TEXT NOT NULL DEFAULT '',
+    selected_skill_keys JSONB NOT NULL DEFAULT '[]'::jsonb,
+    generated_skills JSONB NOT NULL DEFAULT '[]'::jsonb,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
 # Idempotent patches for already-created DBs (run AFTER CREATE TABLE IF NOT EXISTS)
 SITE_SCHEMA_PATCHES: list[str] = [
     """
@@ -161,4 +193,6 @@ SITE_ALL_TABLES: list[str] = [
     SITE_PASSWORD_RESET_TABLE,
     SITE_QUIZ_ATTEMPTS_TABLE,
     SITE_ANKI_CARDS_TABLE,
+    SITE_USER_PROFILES_TABLE,
+    SITE_RESUMES_TABLE,
 ]

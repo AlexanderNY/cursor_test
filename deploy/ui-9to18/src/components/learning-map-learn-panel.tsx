@@ -51,6 +51,12 @@ export function LearningMapLearnPanel({
       {lectures.length > 0 && completedSlugs ? (
         <p className="lm-detail-empty">
           Прогресс ветки: {doneCount}/{lectures.length}
+          {doneCount > 0 ? (
+            <>
+              {' · '}
+              <Link to="/game/hh-resume">Добавить в резюме</Link>
+            </>
+          ) : null}
         </p>
       ) : null}
 

@@ -4123,6 +4123,7 @@ button.lm-tag:hover {
   }
 }
 
+<<<<<<< Updated upstream
 /* Code sandbox + lab Pyodide runner */
 .code-sandbox {
   display: flex;
@@ -4226,6 +4227,8 @@ button.lm-tag:hover {
   }
 }
 
+=======
+>>>>>>> Stashed changes
 /* HH-резюме */
 .hh-resume-form {
   margin-bottom: 1.5rem;
@@ -4381,6 +4384,7 @@ button.lm-tag:hover {
     background: #fff !important;
   }
 }
+<<<<<<< Updated upstream
 
 /* HH questionnaire wizard */
 .hh-quiz-card {
@@ -4443,3 +4447,5 @@ button.lm-tag:hover {
   white-space: nowrap;
   border: 0;
 }
+=======
+>>>>>>> Stashed changes

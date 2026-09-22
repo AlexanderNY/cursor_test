@@ -65,6 +65,12 @@ export function LearnIndexPage() {
             ) : null}
             {' · '}
             <Link to="/game/tasks">Чек-лист</Link>
+            {doneCount > 0 ? (
+              <>
+                {' · '}
+                <Link to="/game/hh-resume">Добавить в резюме</Link>
+              </>
+            ) : null}
           </p>
         ) : (
           <p className="learn-section-note">

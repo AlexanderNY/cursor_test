@@ -14,8 +14,13 @@ import {
 } from '@/data/learn/use-learn-posts'
 import {
   siteChangePassword,
+  siteFetchPhotoBlob,
+  siteGetProfile,
   siteGetStudySummary,
+  sitePutProfile,
+  siteUploadPhoto,
   type SiteStudySummary,
+  type SiteUserProfile,
 } from '@/data/site/site-api'
 import {
   clearSiteAuthSession,
@@ -38,6 +43,7 @@ type AccountSectionId =
   | 'learn'
   | 'study'
   | 'learning-map'
+  | 'hh-resume'
   | 'contact'
   | 'password'
   | `app:${string}`
@@ -87,6 +93,18 @@ export function SiteAccountPage() {
   const { completedSlugs, isReady: progressReady } = useSiteLearnProgress()
   const [study, setStudy] = useState<SiteStudySummary | null>(null)
   const [studyReady, setStudyReady] = useState(false)
+  const [profile, setProfile] = useState<SiteUserProfile | null>(null)
+  const [profileReady, setProfileReady] = useState(false)
+  const [profileSaving, setProfileSaving] = useState(false)
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null)
+  const [lastName, setLastName] = useState('')
+  const [firstName, setFirstName] = useState('')
+  const [patronymic, setPatronymic] = useState('')
+  const [phone, setPhone] = useState('')
+  const [birthDate, setBirthDate] = useState('')
+  const [city, setCity] = useState('')
+  const [citizenship, setCitizenship] = useState('')
+  const [readyForTrips, setReadyForTrips] = useState(false)
   const published = getPublishedPosts(posts)
   const seasons = getSeasonTracks(posts)
   const learnSession = getLearnAuthSession()
@@ -138,6 +156,50 @@ export function SiteAccountPage() {
     }
   }, [])
 
+  useEffect(() => {
+    if (!getSiteAuthSession()?.accessToken) {
+      setProfile(null)
+      setProfileReady(true)
+      return
+    }
+    let cancelled = false
+    void siteGetProfile()
+      .then(async (next) => {
+        if (cancelled) return
+        setProfile(next)
+        setLastName(next.lastName)
+        setFirstName(next.firstName)
+        setPatronymic(next.patronymic)
+        setPhone(next.phone)
+        setBirthDate(next.birthDate || '')
+        setCity(next.city)
+        setCitizenship(next.citizenship)
+        setReadyForTrips(next.readyForTrips)
+        if (next.hasPhoto) {
+          const url = await siteFetchPhotoBlob()
+          if (!cancelled) {
+            setPhotoPreview((prev) => {
+              if (prev) URL.revokeObjectURL(prev)
+              return url
+            })
+          }
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setProfile(null)
+      })
+      .finally(() => {
+        if (!cancelled) setProfileReady(true)
+      })
+    return () => {
+      cancelled = true
+      setPhotoPreview((prev) => {
+        if (prev) URL.revokeObjectURL(prev)
+        return null
+      })
+    }
+  }, [])
+
   const managed = session ? getManagedAppSlugs(session) : []
   const doneCount = published.filter((p) => completedSlugs.has(p.slug)).length
   const pct = progressPercent(doneCount, published.length)
@@ -147,10 +209,11 @@ export function SiteAccountPage() {
       return []
     }
     const cabinetMeta: AccountNavMeta[] = [
-      { id: 'profile', label: 'Профиль', hint: 'Роль и возможности' },
+      { id: 'profile', label: 'Профиль', hint: 'Анкета и роль' },
       { id: 'study', label: 'Учёба', hint: 'Тесты и anki' },
       { id: 'learn', label: 'Learn', hint: 'Теория и прогресс' },
       { id: 'learning-map', label: 'Карта обучения', hint: 'Mind map · собеседование' },
+      { id: 'hh-resume', label: 'HH-резюме', hint: 'Навыки из Learn' },
       { id: 'contact', label: 'Форма связи', hint: 'Написать команде' },
       { id: 'password', label: 'Смена пароля', hint: 'Безопасность аккаунта' },
     ]
@@ -194,10 +257,11 @@ export function SiteAccountPage() {
         group.items.map((item) => {
           const id = item.id as AccountSectionId
           const hintById: Partial<Record<AccountSectionId, string>> = {
-            profile: 'Роль и возможности',
+            profile: 'Анкета и роль',
             study: 'Тесты и anki',
             learn: 'Теория и прогресс',
             'learning-map': 'Mind map · собеседование',
+            'hh-resume': 'Навыки из Learn',
             contact: 'Написать команде',
             password: 'Безопасность аккаунта',
             'site-admin': 'Витрина и пользователи',
@@ -267,6 +331,49 @@ export function SiteAccountPage() {
       setOk('Пароль обновлён')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Ошибка смены пароля')
+    }
+  }
+
+  async function onSaveProfile(event: FormEvent) {
+    event.preventDefault()
+    setError('')
+    setOk('')
+    setProfileSaving(true)
+    try {
+      const next = await sitePutProfile({
+        last_name: lastName,
+        first_name: firstName,
+        patronymic,
+        phone,
+        birth_date: birthDate || null,
+        city,
+        citizenship,
+        ready_for_trips: readyForTrips,
+      })
+      setProfile(next)
+      setOk('Анкета сохранена')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Ошибка сохранения анкеты')
+    } finally {
+      setProfileSaving(false)
+    }
+  }
+
+  async function onPhotoChange(file: File | null) {
+    if (!file) return
+    setError('')
+    setOk('')
+    try {
+      await siteUploadPhoto(file)
+      const url = await siteFetchPhotoBlob()
+      setPhotoPreview((prev) => {
+        if (prev) URL.revokeObjectURL(prev)
+        return url
+      })
+      setOk('Фото обновлено')
+      setProfile((prev) => (prev ? { ...prev, hasPhoto: true } : prev))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Ошибка загрузки фото')
     }
   }
 
@@ -341,16 +448,130 @@ export function SiteAccountPage() {
               <p className="account-role">
                 Роль: <strong>{describeSiteRole(session)}</strong>
               </p>
+              <h3 className="account-subheading">Анкета для резюме</h3>
+              <p className="learn-section-note">
+                Поля опциональны. Используются сервисом{' '}
+                <Link to="/game/hh-resume">HH-резюме</Link>. Email:{' '}
+                <strong>{session.email}</strong>
+                {profile?.email && profile.email !== session.email
+                  ? ` (${profile.email})`
+                  : null}
+              </p>
+              {!profileReady ? (
+                <p className="learn-section-note">Загрузка анкеты…</p>
+              ) : (
+                <form className="learn-admin-form" onSubmit={onSaveProfile}>
+                  <div className="hh-profile-photo-row">
+                    {photoPreview ? (
+                      <img src={photoPreview} alt="" className="hh-resume-photo" />
+                    ) : (
+                      <div className="hh-resume-photo hh-resume-photo-placeholder" aria-hidden>
+                        фото
+                      </div>
+                    )}
+                    <label className="learn-admin-field">
+                      <span>Фото (JPEG/PNG/WebP)</span>
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0] || null
+                          void onPhotoChange(file)
+                          e.target.value = ''
+                        }}
+                      />
+                    </label>
+                  </div>
+                  <div className="learn-admin-grid">
+                    <label className="learn-admin-field">
+                      <span>Фамилия</span>
+                      <input
+                        value={lastName}
+                        onChange={(e) => setLastName(e.target.value)}
+                        maxLength={120}
+                        autoComplete="family-name"
+                      />
+                    </label>
+                    <label className="learn-admin-field">
+                      <span>Имя</span>
+                      <input
+                        value={firstName}
+                        onChange={(e) => setFirstName(e.target.value)}
+                        maxLength={120}
+                        autoComplete="given-name"
+                      />
+                    </label>
+                    <label className="learn-admin-field">
+                      <span>Отчество</span>
+                      <input
+                        value={patronymic}
+                        onChange={(e) => setPatronymic(e.target.value)}
+                        maxLength={120}
+                        autoComplete="additional-name"
+                      />
+                    </label>
+                    <label className="learn-admin-field">
+                      <span>Телефон</span>
+                      <input
+                        value={phone}
+                        onChange={(e) => setPhone(e.target.value)}
+                        maxLength={64}
+                        autoComplete="tel"
+                      />
+                    </label>
+                    <label className="learn-admin-field">
+                      <span>Дата рождения</span>
+                      <input
+                        type="date"
+                        value={birthDate}
+                        onChange={(e) => setBirthDate(e.target.value)}
+                      />
+                    </label>
+                    <label className="learn-admin-field">
+                      <span>Город</span>
+                      <input
+                        value={city}
+                        onChange={(e) => setCity(e.target.value)}
+                        maxLength={120}
+                      />
+                    </label>
+                    <label className="learn-admin-field">
+                      <span>Гражданство</span>
+                      <input
+                        value={citizenship}
+                        onChange={(e) => setCitizenship(e.target.value)}
+                        maxLength={120}
+                      />
+                    </label>
+                  </div>
+                  <label className="hh-resume-check">
+                    <input
+                      type="checkbox"
+                      checked={readyForTrips}
+                      onChange={(e) => setReadyForTrips(e.target.checked)}
+                    />
+                    Готовность к командировкам
+                  </label>
+                  <div className="account-actions">
+                    <button
+                      type="submit"
+                      className="learn-admin-btn learn-admin-btn-primary"
+                      disabled={profileSaving}
+                    >
+                      Сохранить анкету
+                    </button>
+                    <Link to="/game/hh-resume" className="learn-admin-btn">
+                      Открыть HH-резюме
+                    </Link>
+                  </div>
+                </form>
+              )}
               <h3 className="account-subheading">Доступные функции</h3>
               <ul className="account-feature-list">
                 {functions.map((line) => (
                   <li key={line}>{line}</li>
                 ))}
               </ul>
-              <p className="learn-section-note">
-                Сверху — меню разделов в том же стиле, что и админка: Learn, карта, сервисы и
-                админ-пункты, если они вам доступны.
-              </p>
             </div>
           ) : null}
 
@@ -472,6 +693,26 @@ export function SiteAccountPage() {
                   className="learn-admin-btn learn-admin-btn-primary"
                 >
                   Открыть карту обучения
+                </Link>
+              </div>
+            </div>
+          ) : null}
+
+          {activeId === 'hh-resume' ? (
+            <div className="account-panel-body">
+              <p className="learn-section-note">
+                Резюме в формате HeadHunter: анкета из профиля и навыки из пройденных выпусков Learn
+                и веток карты обучения.
+              </p>
+              <div className="account-actions">
+                <Link
+                  to="/game/hh-resume"
+                  className="learn-admin-btn learn-admin-btn-primary"
+                >
+                  Открыть HH-резюме
+                </Link>
+                <Link to="/account" className="learn-admin-btn">
+                  Анкета
                 </Link>
               </div>
             </div>

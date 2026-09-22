@@ -40,6 +40,10 @@ export type SiteUser = {
   username: string
   siteRole: 'user' | 'site_admin'
   appAdmin: string[]
+  hasProfile?: boolean
+  firstName?: string
+  lastName?: string
+  patronymic?: string
 }
 
 export type SiteAppWrite = {
@@ -500,4 +504,158 @@ export async function siteReviewAnkiCard(input: {
     method: 'PUT',
     body: JSON.stringify(input),
   })
+}
+
+export type SiteUserProfile = {
+  lastName: string
+  firstName: string
+  patronymic: string
+  phone: string
+  birthDate: string | null
+  city: string
+  citizenship: string
+  readyForTrips: boolean
+  hasPhoto: boolean
+  email: string
+  updatedAt: string | null
+}
+
+export type SiteResumeSkill = {
+  key: string
+  name: string
+  level: string
+  evidence: string
+  sourceSlugs: string[]
+  mapBranch?: string | null
+  display: string
+}
+
+export type SiteResume = {
+  title: string
+  specialization: string
+  salaryAmount: number | null
+  salaryCurrency: string
+  employmentTypes: string[]
+  workFormats: string[]
+  about: string
+  selectedSkillKeys: string[]
+  generatedSkills: SiteResumeSkill[]
+  updatedAt: string | null
+}
+
+export type SiteResumePreview = {
+  profile: SiteUserProfile
+  resume: SiteResume
+  skills: SiteResumeSkill[]
+  branchHints: string[]
+  suggestedSpecialization: string | null
+  completedCount: number
+  username: string
+}
+
+export async function siteGetProfile(): Promise<SiteUserProfile> {
+  return request('/site/me/profile')
+}
+
+export async function sitePutProfile(body: {
+  last_name?: string
+  first_name?: string
+  patronymic?: string
+  phone?: string
+  birth_date?: string | null
+  city?: string
+  citizenship?: string
+  ready_for_trips?: boolean
+}): Promise<SiteUserProfile> {
+  return request('/site/me/profile', {
+    method: 'PUT',
+    body: JSON.stringify(body),
+  })
+}
+
+export async function siteUploadPhoto(file: File): Promise<{ ok: boolean; hasPhoto: boolean }> {
+  const token = getSiteAccessToken()
+  const form = new FormData()
+  form.append('photo', file)
+  const headers = new Headers()
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`)
+  }
+  const response = await fetch(`${API_BASE}/site/me/photo`, {
+    method: 'POST',
+    headers,
+    body: form,
+  })
+  if (!response.ok) {
+    let detail = response.statusText
+    try {
+      const data = (await response.json()) as { detail?: unknown }
+      if (typeof data.detail === 'string') {
+        detail = data.detail
+      }
+    } catch {
+      /* ignore */
+    }
+    throw new SiteApiError(detail || `HTTP ${response.status}`, response.status)
+  }
+  return (await response.json()) as { ok: boolean; hasPhoto: boolean }
+}
+
+/** URL фото профиля (требует Authorization — используйте blob через siteFetchPhotoBlob). */
+export function sitePhotoUrl(): string {
+  return `${API_BASE}/site/me/photo`
+}
+
+export async function siteFetchPhotoBlob(): Promise<string | null> {
+  const token = getSiteAccessToken()
+  if (!token) {
+    return null
+  }
+  const response = await fetch(sitePhotoUrl(), {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!response.ok) {
+    return null
+  }
+  const blob = await response.blob()
+  return URL.createObjectURL(blob)
+}
+
+export async function siteGetResume(): Promise<SiteResume> {
+  return request('/site/resume')
+}
+
+export async function sitePutResume(body: {
+  title?: string
+  specialization?: string
+  salary_amount?: number | null
+  salary_currency?: string
+  employment_types?: string[]
+  work_formats?: string[]
+  about?: string
+  selected_skill_keys?: string[]
+}): Promise<SiteResume> {
+  return request('/site/resume', {
+    method: 'PUT',
+    body: JSON.stringify(body),
+  })
+}
+
+export async function siteGenerateResume(input?: {
+  selected_skill_keys?: string[]
+  persist?: boolean
+}): Promise<{
+  skills: SiteResumeSkill[]
+  branchHints: string[]
+  suggestedSpecialization: string | null
+  completedCount: number
+}> {
+  return request('/site/resume/generate', {
+    method: 'POST',
+    body: JSON.stringify(input || {}),
+  })
+}
+
+export async function siteGetResumePreview(): Promise<SiteResumePreview> {
+  return request('/site/resume/preview')
 }

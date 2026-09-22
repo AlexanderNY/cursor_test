@@ -43,9 +43,25 @@ export const sections: Section[] = [
     appPath: '/game/learning-map',
   },
   {
+<<<<<<< Updated upstream
     slug: 'code',
     title: 'Code',
     subtitle: 'Python в браузере',
+=======
+    slug: 'hh-resume',
+    title: 'HH-резюме',
+    subtitle: 'Learn · навыки · превью',
+    description:
+      'Соберите резюме в формате HeadHunter: анкета в кабинете и навыки из пройденных выпусков Learn и веток карты обучения.',
+    accent: '#d6001c',
+    emoji: '📄',
+    appPath: '/game/hh-resume',
+  },
+  {
+    slug: 'e2e-tester',
+    title: 'E2E Tester',
+    subtitle: 'Локально · Playwright',
+>>>>>>> Stashed changes
     description:
       'Песочница Pyodide: короткие упражнения и эксперименты без установки IDE. Лабы Learn можно запускать здесь.',
     accent: '#2dd4bf',

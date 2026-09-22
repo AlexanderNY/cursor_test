@@ -8,16 +8,32 @@ import hashlib
 import json
 import re
 import secrets as py_secrets
-import jwt
-from datetime import datetime, timedelta, timezone
+import uuid
+from pathlib import Path
 from typing import Any, Optional
 
 import bcrypt
-from fastapi import APIRouter, Header, HTTPException
+import jwt
+from datetime import date, datetime, timedelta, timezone
+from fastapi import APIRouter, File, Header, HTTPException, UploadFile
+from fastapi.responses import Response
 from pydantic import BaseModel, EmailStr, Field
 
 from config import settings
 from site_database import get_site_db_connection, release_site_db_connection
+from storage_client import get_storage
+from upload_limits import read_upload_limited
+
+from shared import async_fs
+from services.resume_skills import (
+    branch_completion_hints,
+    generate_skills_from_progress,
+    suggest_specialization,
+)
+
+UPLOADS_SITE_RESUME_DIR = Path("uploads/site/resume")
+S3_SITE_RESUME_PREFIX = "site/resume"
+ALLOWED_RESUME_PHOTO_EXT = {".jpg", ".jpeg", ".png", ".webp"}
 
 router = APIRouter(prefix="/site", tags=["Site9to18"])
 
@@ -151,6 +167,19 @@ DEFAULT_APPS: list[dict[str, Any]] = [
         "emoji": "🧩",
         "app_path": "/game/mnemonics",
         "sort_order": 11,
+    },
+    {
+        "slug": "hh-resume",
+        "title": "HH-резюме",
+        "subtitle": "Learn · навыки · превью",
+        "description": (
+            "Соберите резюме в формате HeadHunter: анкета в кабинете и навыки "
+            "из пройденных выпусков Learn и веток карты обучения."
+        ),
+        "accent": "#d6001c",
+        "emoji": "📄",
+        "app_path": "/game/hh-resume",
+        "sort_order": 21,
     },
 ]
 
@@ -294,6 +323,37 @@ class AnkiReviewIn(BaseModel):
     back: str = Field(default="", max_length=8000)
     source_key: str = Field(default="", max_length=255)
     ease: int = Field(..., ge=1, le=4)  # 1 again, 2 hard, 3 good, 4 easy
+
+
+class ProfileUpdateIn(BaseModel):
+    last_name: Optional[str] = Field(default=None, max_length=120)
+    first_name: Optional[str] = Field(default=None, max_length=120)
+    patronymic: Optional[str] = Field(default=None, max_length=120)
+    phone: Optional[str] = Field(default=None, max_length=64)
+    birth_date: Optional[str] = Field(default=None, max_length=32)  # YYYY-MM-DD or empty
+    city: Optional[str] = Field(default=None, max_length=120)
+    citizenship: Optional[str] = Field(default=None, max_length=120)
+    ready_for_trips: Optional[bool] = None
+
+
+class ResumeUpdateIn(BaseModel):
+    title: Optional[str] = Field(default=None, max_length=255)
+    specialization: Optional[str] = Field(default=None, max_length=255)
+    salary_amount: Optional[int] = Field(default=None, ge=0, le=100_000_000)
+    salary_currency: Optional[str] = Field(default=None, max_length=8)
+    employment_types: Optional[list[str]] = None
+    work_formats: Optional[list[str]] = None
+    about: Optional[str] = Field(default=None, max_length=8000)
+    selected_skill_keys: Optional[list[str]] = None
+
+
+class ResumeGenerateIn(BaseModel):
+    selected_skill_keys: Optional[list[str]] = None
+    persist: bool = True
+
+
+EMPLOYMENT_ALLOWED = {"full", "part", "project", "volunteer", "internship"}
+WORK_FORMAT_ALLOWED = {"office", "remote", "hybrid", "travel"}
 
 
 def _secret() -> str:
@@ -521,8 +581,23 @@ async def ensure_site_seeded() -> None:
 
 async def _upsert_featured_apps(cur: Any) -> None:
     """Синхронизация «живых» сервисов на уже заполненной БД (без полного ресида)."""
+<<<<<<< Updated upstream
     featured_slugs = {app["slug"] for app in DEFAULT_APPS}
     # Legacy / local-only tiles: keep rows but hide from the public home grid.
+=======
+    featured_slugs = {
+        "e2e-tester",
+        "copyparse",
+        "learning-map",
+        "learn",
+        "bowl",
+        "profile",
+        "tasks",
+        "cert",
+        "quiz",
+        "hh-resume",
+    }
+>>>>>>> Stashed changes
     stub_hide_slugs = {
         "e2e-tester",
         "menu",
@@ -715,13 +790,214 @@ async def login(body: LoginIn) -> dict[str, Any]:
 @router.get("/me")
 async def me(authorization: Optional[str] = Header(None)) -> dict[str, Any]:
     user = await _require_user(authorization)
+    profile_meta = await _load_profile_meta(int(user["user_id"]))
     return {
         "id": user["user_id"],
         "email": user.get("email") or "",
         "username": user["username"],
         "siteRole": user["site_role"],
         "appAdmin": user["app_admin"],
+        "hasProfile": profile_meta["hasProfile"],
+        "firstName": profile_meta["firstName"],
+        "lastName": profile_meta["lastName"],
+        "patronymic": profile_meta["patronymic"],
     }
+
+
+def _parse_optional_date(value: Optional[str]) -> Optional[date]:
+    if value is None:
+        return None
+    text = value.strip()
+    if not text:
+        return None
+    try:
+        return date.fromisoformat(text[:10])
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="birth_date must be YYYY-MM-DD") from exc
+
+
+def _normalize_string_list(values: Optional[list[str]], allowed: set[str]) -> list[str]:
+    if values is None:
+        return []
+    out: list[str] = []
+    for raw in values:
+        key = str(raw or "").strip().lower()
+        if key in allowed and key not in out:
+            out.append(key)
+    return out
+
+
+def _json_list(value: Any) -> list[Any]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return value
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+            return parsed if isinstance(parsed, list) else []
+        except json.JSONDecodeError:
+            return []
+    return []
+
+
+async def _load_profile_meta(user_id: int) -> dict[str, Any]:
+    conn = await get_site_db_connection()
+    try:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                """
+                SELECT first_name, last_name, patronymic, phone, birth_date, city,
+                       citizenship, ready_for_trips, photo_key
+                FROM site_user_profiles
+                WHERE user_id = %s
+                """,
+                (user_id,),
+            )
+            row = await cur.fetchone()
+    finally:
+        await release_site_db_connection(conn)
+    if not row:
+        return {
+            "hasProfile": False,
+            "firstName": "",
+            "lastName": "",
+            "patronymic": "",
+        }
+    first_name = str(row[0] or "")
+    last_name = str(row[1] or "")
+    patronymic = str(row[2] or "")
+    has_any = bool(
+        first_name
+        or last_name
+        or patronymic
+        or row[3]
+        or row[4]
+        or row[5]
+        or row[6]
+        or row[7]
+        or row[8]
+    )
+    return {
+        "hasProfile": has_any,
+        "firstName": first_name,
+        "lastName": last_name,
+        "patronymic": patronymic,
+    }
+
+
+def _row_profile(row: tuple, *, email: str = "", has_photo: bool = False) -> dict[str, Any]:
+    birth = row[5]
+    return {
+        "lastName": str(row[1] or ""),
+        "firstName": str(row[2] or ""),
+        "patronymic": str(row[3] or ""),
+        "phone": str(row[4] or ""),
+        "birthDate": birth.isoformat() if hasattr(birth, "isoformat") else (str(birth) if birth else None),
+        "city": str(row[6] or ""),
+        "citizenship": str(row[7] or ""),
+        "readyForTrips": bool(row[8]),
+        "hasPhoto": has_photo or bool(row[9]),
+        "email": email,
+        "updatedAt": row[10].isoformat() if hasattr(row[10], "isoformat") else str(row[10] or ""),
+    }
+
+
+def _empty_profile(*, email: str = "") -> dict[str, Any]:
+    return {
+        "lastName": "",
+        "firstName": "",
+        "patronymic": "",
+        "phone": "",
+        "birthDate": None,
+        "city": "",
+        "citizenship": "",
+        "readyForTrips": False,
+        "hasPhoto": False,
+        "email": email,
+        "updatedAt": None,
+    }
+
+
+def _row_resume(row: tuple) -> dict[str, Any]:
+    return {
+        "title": str(row[1] or ""),
+        "specialization": str(row[2] or ""),
+        "salaryAmount": int(row[3]) if row[3] is not None else None,
+        "salaryCurrency": str(row[4] or "RUB"),
+        "employmentTypes": [str(x) for x in _json_list(row[5])],
+        "workFormats": [str(x) for x in _json_list(row[6])],
+        "about": str(row[7] or ""),
+        "selectedSkillKeys": [str(x) for x in _json_list(row[8])],
+        "generatedSkills": _json_list(row[9]),
+        "updatedAt": row[10].isoformat() if hasattr(row[10], "isoformat") else str(row[10] or ""),
+    }
+
+
+def _empty_resume() -> dict[str, Any]:
+    return {
+        "title": "",
+        "specialization": "",
+        "salaryAmount": None,
+        "salaryCurrency": "RUB",
+        "employmentTypes": [],
+        "workFormats": [],
+        "about": "",
+        "selectedSkillKeys": [],
+        "generatedSkills": [],
+        "updatedAt": None,
+    }
+
+
+async def _fetch_completed_slugs(user_id: int) -> list[str]:
+    conn = await get_site_db_connection()
+    try:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                "SELECT slug FROM site_learn_progress WHERE user_id = %s",
+                (user_id,),
+            )
+            rows = await cur.fetchall()
+            return [str(r[0]) for r in rows]
+    finally:
+        await release_site_db_connection(conn)
+
+
+async def _fetch_profile_row(user_id: int) -> Optional[tuple]:
+    conn = await get_site_db_connection()
+    try:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                """
+                SELECT user_id, last_name, first_name, patronymic, phone, birth_date,
+                       city, citizenship, ready_for_trips, photo_key, updated_at
+                FROM site_user_profiles
+                WHERE user_id = %s
+                """,
+                (user_id,),
+            )
+            return await cur.fetchone()
+    finally:
+        await release_site_db_connection(conn)
+
+
+async def _fetch_resume_row(user_id: int) -> Optional[tuple]:
+    conn = await get_site_db_connection()
+    try:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                """
+                SELECT user_id, title, specialization, salary_amount, salary_currency,
+                       employment_types, work_formats, about, selected_skill_keys,
+                       generated_skills, updated_at
+                FROM site_resumes
+                WHERE user_id = %s
+                """,
+                (user_id,),
+            )
+            return await cur.fetchone()
+    finally:
+        await release_site_db_connection(conn)
 
 
 @router.get("/apps")
@@ -1827,6 +2103,370 @@ async def change_password(
     finally:
         await release_site_db_connection(conn)
     return {"ok": True}
+
+
+@router.get("/me/profile")
+async def get_my_profile(authorization: Optional[str] = Header(None)) -> dict[str, Any]:
+    user = await _require_user(authorization)
+    row = await _fetch_profile_row(int(user["user_id"]))
+    email = str(user.get("email") or "")
+    if not row:
+        return _empty_profile(email=email)
+    return _row_profile(row, email=email)
+
+
+@router.put("/me/profile")
+async def put_my_profile(
+    body: ProfileUpdateIn,
+    authorization: Optional[str] = Header(None),
+) -> dict[str, Any]:
+    user = await _require_user(authorization)
+    user_id = int(user["user_id"])
+    existing = await _fetch_profile_row(user_id)
+    cur_vals = {
+        "last_name": str(existing[1] or "") if existing else "",
+        "first_name": str(existing[2] or "") if existing else "",
+        "patronymic": str(existing[3] or "") if existing else "",
+        "phone": str(existing[4] or "") if existing else "",
+        "birth_date": existing[5] if existing else None,
+        "city": str(existing[6] or "") if existing else "",
+        "citizenship": str(existing[7] or "") if existing else "",
+        "ready_for_trips": bool(existing[8]) if existing else False,
+        "photo_key": str(existing[9] or "") if existing else "",
+    }
+    if body.last_name is not None:
+        cur_vals["last_name"] = body.last_name.strip()
+    if body.first_name is not None:
+        cur_vals["first_name"] = body.first_name.strip()
+    if body.patronymic is not None:
+        cur_vals["patronymic"] = body.patronymic.strip()
+    if body.phone is not None:
+        cur_vals["phone"] = body.phone.strip()
+    if body.birth_date is not None:
+        cur_vals["birth_date"] = _parse_optional_date(body.birth_date)
+    if body.city is not None:
+        cur_vals["city"] = body.city.strip()
+    if body.citizenship is not None:
+        cur_vals["citizenship"] = body.citizenship.strip()
+    if body.ready_for_trips is not None:
+        cur_vals["ready_for_trips"] = bool(body.ready_for_trips)
+
+    conn = await get_site_db_connection()
+    try:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                """
+                INSERT INTO site_user_profiles (
+                    user_id, last_name, first_name, patronymic, phone, birth_date,
+                    city, citizenship, ready_for_trips, photo_key, updated_at
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+                ON CONFLICT (user_id) DO UPDATE SET
+                    last_name = EXCLUDED.last_name,
+                    first_name = EXCLUDED.first_name,
+                    patronymic = EXCLUDED.patronymic,
+                    phone = EXCLUDED.phone,
+                    birth_date = EXCLUDED.birth_date,
+                    city = EXCLUDED.city,
+                    citizenship = EXCLUDED.citizenship,
+                    ready_for_trips = EXCLUDED.ready_for_trips,
+                    updated_at = CURRENT_TIMESTAMP
+                RETURNING user_id, last_name, first_name, patronymic, phone, birth_date,
+                          city, citizenship, ready_for_trips, photo_key, updated_at
+                """,
+                (
+                    user_id,
+                    cur_vals["last_name"],
+                    cur_vals["first_name"],
+                    cur_vals["patronymic"],
+                    cur_vals["phone"],
+                    cur_vals["birth_date"],
+                    cur_vals["city"],
+                    cur_vals["citizenship"],
+                    cur_vals["ready_for_trips"],
+                    cur_vals["photo_key"],
+                ),
+            )
+            row = await cur.fetchone()
+    finally:
+        await release_site_db_connection(conn)
+    assert row is not None
+    return _row_profile(row, email=str(user.get("email") or ""))
+
+
+@router.post("/me/photo")
+async def upload_my_photo(
+    photo: UploadFile = File(...),
+    authorization: Optional[str] = Header(None),
+) -> dict[str, Any]:
+    user = await _require_user(authorization)
+    user_id = int(user["user_id"])
+    if not photo.filename:
+        raise HTTPException(status_code=400, detail="No file name")
+    ext = Path(photo.filename).suffix.lower()
+    if ext not in ALLOWED_RESUME_PHOTO_EXT:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Allowed formats: {', '.join(sorted(ALLOWED_RESUME_PHOTO_EXT))}",
+        )
+    content = await read_upload_limited(
+        photo, max_bytes=settings.MAX_UPLOAD_IMAGE_BYTES, label="Photo"
+    )
+    name = f"{uuid.uuid4().hex}{ext}"
+    key = f"{S3_SITE_RESUME_PREFIX}/{user_id}/{name}"
+    storage = get_storage()
+    if storage:
+        await storage.put(key, content)
+        photo_key = key
+    else:
+        target_dir = UPLOADS_SITE_RESUME_DIR / str(user_id)
+        await async_fs.makedirs(target_dir)
+        await async_fs.write_bytes(target_dir / name, content)
+        photo_key = f"local:{user_id}/{name}"
+
+    conn = await get_site_db_connection()
+    try:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                """
+                INSERT INTO site_user_profiles (user_id, photo_key, updated_at)
+                VALUES (%s, %s, CURRENT_TIMESTAMP)
+                ON CONFLICT (user_id) DO UPDATE SET
+                    photo_key = EXCLUDED.photo_key,
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                (user_id, photo_key),
+            )
+    finally:
+        await release_site_db_connection(conn)
+    return {"ok": True, "hasPhoto": True}
+
+
+@router.get("/me/photo")
+async def get_my_photo(authorization: Optional[str] = Header(None)) -> Response:
+    user = await _require_user(authorization)
+    row = await _fetch_profile_row(int(user["user_id"]))
+    if not row or not row[9]:
+        raise HTTPException(status_code=404, detail="Photo not found")
+    photo_key = str(row[9])
+    media = "image/jpeg"
+    if photo_key.endswith(".png"):
+        media = "image/png"
+    elif photo_key.endswith(".webp"):
+        media = "image/webp"
+
+    if photo_key.startswith("local:"):
+        rel = photo_key[len("local:") :]
+        if ".." in rel or rel.startswith("/") or "\\" in rel:
+            raise HTTPException(status_code=400, detail="Invalid photo key")
+        path = UPLOADS_SITE_RESUME_DIR / rel
+        if not path.is_file():
+            raise HTTPException(status_code=404, detail="Photo not found")
+        data = path.read_bytes()
+        return Response(content=data, media_type=media)
+
+    storage = get_storage()
+    if not storage:
+        raise HTTPException(status_code=404, detail="Photo storage unavailable")
+    try:
+        data = await storage.get_bytes(photo_key)
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail="Photo not found") from exc
+    if not data:
+        raise HTTPException(status_code=404, detail="Photo not found")
+    return Response(content=data, media_type=media)
+
+
+@router.get("/resume")
+async def get_resume(authorization: Optional[str] = Header(None)) -> dict[str, Any]:
+    user = await _require_user(authorization)
+    row = await _fetch_resume_row(int(user["user_id"]))
+    if not row:
+        return _empty_resume()
+    return _row_resume(row)
+
+
+@router.put("/resume")
+async def put_resume(
+    body: ResumeUpdateIn,
+    authorization: Optional[str] = Header(None),
+) -> dict[str, Any]:
+    user = await _require_user(authorization)
+    user_id = int(user["user_id"])
+    existing = await _fetch_resume_row(user_id)
+    cur = _row_resume(existing) if existing else _empty_resume()
+
+    title = body.title.strip() if body.title is not None else cur["title"]
+    specialization = (
+        body.specialization.strip() if body.specialization is not None else cur["specialization"]
+    )
+    dumped = body.model_dump(exclude_unset=True)
+    if "salary_amount" in dumped:
+        salary_amount = dumped["salary_amount"]
+    else:
+        salary_amount = cur["salaryAmount"]
+
+    salary_currency = (
+        body.salary_currency.strip().upper()
+        if body.salary_currency is not None
+        else cur["salaryCurrency"]
+    ) or "RUB"
+    employment_types = (
+        _normalize_string_list(body.employment_types, EMPLOYMENT_ALLOWED)
+        if body.employment_types is not None
+        else cur["employmentTypes"]
+    )
+    work_formats = (
+        _normalize_string_list(body.work_formats, WORK_FORMAT_ALLOWED)
+        if body.work_formats is not None
+        else cur["workFormats"]
+    )
+    about = body.about.strip() if body.about is not None else cur["about"]
+    selected_skill_keys = (
+        [str(k).strip() for k in body.selected_skill_keys if str(k).strip()]
+        if body.selected_skill_keys is not None
+        else cur["selectedSkillKeys"]
+    )
+    generated_skills = cur["generatedSkills"]
+
+    conn = await get_site_db_connection()
+    try:
+        async with conn.cursor() as cur_db:
+            await cur_db.execute(
+                """
+                INSERT INTO site_resumes (
+                    user_id, title, specialization, salary_amount, salary_currency,
+                    employment_types, work_formats, about, selected_skill_keys,
+                    generated_skills, updated_at
+                )
+                VALUES (
+                    %s, %s, %s, %s, %s,
+                    %s::jsonb, %s::jsonb, %s, %s::jsonb,
+                    %s::jsonb, CURRENT_TIMESTAMP
+                )
+                ON CONFLICT (user_id) DO UPDATE SET
+                    title = EXCLUDED.title,
+                    specialization = EXCLUDED.specialization,
+                    salary_amount = EXCLUDED.salary_amount,
+                    salary_currency = EXCLUDED.salary_currency,
+                    employment_types = EXCLUDED.employment_types,
+                    work_formats = EXCLUDED.work_formats,
+                    about = EXCLUDED.about,
+                    selected_skill_keys = EXCLUDED.selected_skill_keys,
+                    updated_at = CURRENT_TIMESTAMP
+                RETURNING user_id, title, specialization, salary_amount, salary_currency,
+                          employment_types, work_formats, about, selected_skill_keys,
+                          generated_skills, updated_at
+                """,
+                (
+                    user_id,
+                    title,
+                    specialization,
+                    salary_amount,
+                    salary_currency,
+                    json.dumps(employment_types, ensure_ascii=False),
+                    json.dumps(work_formats, ensure_ascii=False),
+                    about,
+                    json.dumps(selected_skill_keys, ensure_ascii=False),
+                    json.dumps(generated_skills, ensure_ascii=False),
+                ),
+            )
+            row = await cur_db.fetchone()
+    finally:
+        await release_site_db_connection(conn)
+    assert row is not None
+    return _row_resume(row)
+
+
+@router.post("/resume/generate")
+async def generate_resume(
+    body: ResumeGenerateIn,
+    authorization: Optional[str] = Header(None),
+) -> dict[str, Any]:
+    user = await _require_user(authorization)
+    user_id = int(user["user_id"])
+    completed = await _fetch_completed_slugs(user_id)
+    resume_row = await _fetch_resume_row(user_id)
+    resume = _row_resume(resume_row) if resume_row else _empty_resume()
+
+    selected = body.selected_skill_keys
+    if selected is None and resume["selectedSkillKeys"]:
+        selected = resume["selectedSkillKeys"]
+
+    skills = generate_skills_from_progress(completed, selected_keys=selected)
+    hints = branch_completion_hints(completed)
+    suggested = suggest_specialization(completed)
+
+    if body.persist:
+        conn = await get_site_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    INSERT INTO site_resumes (
+                        user_id, generated_skills, selected_skill_keys, updated_at
+                    )
+                    VALUES (%s, %s::jsonb, %s::jsonb, CURRENT_TIMESTAMP)
+                    ON CONFLICT (user_id) DO UPDATE SET
+                        generated_skills = EXCLUDED.generated_skills,
+                        selected_skill_keys = COALESCE(
+                            NULLIF(EXCLUDED.selected_skill_keys, '[]'::jsonb),
+                            site_resumes.selected_skill_keys
+                        ),
+                        updated_at = CURRENT_TIMESTAMP
+                    """,
+                    (
+                        user_id,
+                        json.dumps(skills, ensure_ascii=False),
+                        json.dumps(
+                            selected if selected is not None else [s["key"] for s in skills],
+                            ensure_ascii=False,
+                        ),
+                    ),
+                )
+        finally:
+            await release_site_db_connection(conn)
+
+    return {
+        "skills": skills,
+        "branchHints": hints,
+        "suggestedSpecialization": suggested,
+        "completedCount": len(completed),
+    }
+
+
+@router.get("/resume/preview")
+async def resume_preview(authorization: Optional[str] = Header(None)) -> dict[str, Any]:
+    user = await _require_user(authorization)
+    user_id = int(user["user_id"])
+    email = str(user.get("email") or "")
+    profile_row = await _fetch_profile_row(user_id)
+    resume_row = await _fetch_resume_row(user_id)
+    completed = await _fetch_completed_slugs(user_id)
+
+    profile = _row_profile(profile_row, email=email) if profile_row else _empty_profile(email=email)
+    resume = _row_resume(resume_row) if resume_row else _empty_resume()
+
+    selected = resume["selectedSkillKeys"] or None
+    skills = resume["generatedSkills"]
+    if not skills:
+        skills = generate_skills_from_progress(completed, selected_keys=selected)
+    elif selected:
+        allow = set(selected)
+        skills = [s for s in skills if isinstance(s, dict) and s.get("key") in allow]
+
+    hints = branch_completion_hints(completed)
+    suggested = suggest_specialization(completed)
+
+    return {
+        "profile": profile,
+        "resume": resume,
+        "skills": skills,
+        "branchHints": hints,
+        "suggestedSpecialization": suggested,
+        "completedCount": len(completed),
+        "username": user["username"],
+    }
 
 
 @router.post("/auth/forgot-password")
