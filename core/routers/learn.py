@@ -1,4 +1,7 @@
-"""Learn API for 9to18.ru (public read + admin/author write + progress)."""
+"""DEPRECATED for CopyParse core: 9to18 Learn lives in nine-to-eighteen/api.
+
+This file is no longer included from core/main.py. Prefer site-api.
+"""
 from __future__ import annotations
 
 from typing import Any, List, Optional

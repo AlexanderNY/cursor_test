@@ -1,0 +1,57 @@
+# Standalone 9to18.ru stack: UI + site-api. Requires: docker network create edge_net
+# Public traffic via ui-edge (Host 9to18.ru).
+
+services:
+  site-api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: site-api
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-}
+    ports:
+      - "${BIND_HOST:-127.0.0.1}:8020:8020/tcp"
+    networks:
+      - edge_net
+    restart: unless-stopped
+
+  resume-api:
+    build:
+      context: ./resume
+      dockerfile: Dockerfile
+    container_name: resume-api
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-}
+    ports:
+      - "${BIND_HOST:-127.0.0.1}:8021:8021/tcp"
+    networks:
+      - edge_net
+    restart: unless-stopped
+
+  ui-9to18:
+    build:
+      context: ./ui
+      dockerfile: Dockerfile
+      target: production
+    container_name: ui-9to18
+    ports:
+      - "${BIND_HOST:-127.0.0.1}:8200:8200/tcp"
+    depends_on:
+      - site-api
+      - resume-api
+    networks:
+      - edge_net
+    restart: unless-stopped
+
+networks:
+  edge_net:
+    external: true
+    name: edge_net

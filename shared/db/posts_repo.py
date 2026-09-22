@@ -69,6 +69,8 @@ CLAIM_PROCESS_COLUMNS: tuple[str, ...] = (
     "url",
     "extras",
     "platform_texts",
+    "target_channels",
+    "target_groups",
     "status",
 )
 
@@ -237,8 +239,14 @@ INSERT INTO {_TARGETS} (post_id, user_id, platform, status, target_channels, tar
 VALUES {values_sql}
 ON CONFLICT (post_id, platform) DO UPDATE
 SET status = EXCLUDED.status,
-    target_channels = COALESCE(EXCLUDED.target_channels, {_TARGETS}.target_channels),
-    target_groups = COALESCE(EXCLUDED.target_groups, {_TARGETS}.target_groups),
+    target_channels = COALESCE(
+        NULLIF(EXCLUDED.target_channels, '[]'::jsonb),
+        {_TARGETS}.target_channels
+    ),
+    target_groups = COALESCE(
+        NULLIF(EXCLUDED.target_groups, '[]'::jsonb),
+        {_TARGETS}.target_groups
+    ),
     updated_at = CURRENT_TIMESTAMP
 WHERE {_TARGETS}.status IN ('pending', 'ready')
 RETURNING id, post_id, platform, status

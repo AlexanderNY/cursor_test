@@ -41,6 +41,8 @@ export interface DzenProfile {
   rss_token?: string | null
   yandex_login?: string | null
   yandex_password?: string | null
+  yandex_first_name?: string | null
+  yandex_last_name?: string | null
   dzen_studio_url?: string | null
   collect_source?: DzenCollectSource
   last_auth_error?: string | null

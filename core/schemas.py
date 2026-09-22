@@ -752,8 +752,10 @@ class DzenProfileBase(BaseModel):
     channel_name: Optional[str] = None
     channels_to_read: List[str] = []  # RSS URL чужих каналов для вычитки
     rss_token: Optional[str] = None  # опционально: защита RSS по ?token=...
-    yandex_login: Optional[str] = None
+    yandex_login: Optional[str] = None  # телефон для входа (7XXXXXXXXXX)
     yandex_password: Optional[str] = None  # при сохранении пусто или "***" — не менять в БД
+    yandex_first_name: Optional[str] = None  # для экрана «Введите имя и фамилию»
+    yandex_last_name: Optional[str] = None
     dzen_studio_url: Optional[str] = None  # URL студии / списка публикаций для Selenium-сбора
     collect_source: Optional[str] = "rss"  # rss | selenium | both
 

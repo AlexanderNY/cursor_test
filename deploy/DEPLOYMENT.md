@@ -12,6 +12,7 @@ Internet :80/:443
         ▼
    ui-edge (nginx) ── Host copyparse.ru ──► ui:8100 (+ /tg/game/media/ → gateway:8000)
                    └── Host 9to18.ru   ──► ui-9to18:8200
+                                       └── /api/(site|learn) → site-api:8020
 ```
 
 ## 1. VM и DNS
@@ -64,14 +65,14 @@ Internet :80/:443
 # 1) copyparse (монорепо): ui + gateway + backend
 docker compose up -d
 
-# 2) сайт 9to18
-docker compose -f deploy/ui-9to18/docker-compose.yml up -d
+# 2) сайт 9to18 (UI + site-api)
+docker compose -f nine-to-eighteen/docker-compose.yml up -d --build
 
 # 3) edge (публичные 80/443)
 docker compose -f deploy/ui-edge/docker-compose.yml up -d
 ```
 
-Имена сервисов в `edge_net` должны совпадать с upstream’ами nginx: `ui`, `ui-9to18`, `gateway`.
+Имена сервисов в `edge_net` должны совпадать с upstream’ами nginx: `ui`, `ui-9to18`, `site-api`, `gateway`.
 
 ## 5. Проверка
 

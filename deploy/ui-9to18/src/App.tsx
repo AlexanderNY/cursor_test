@@ -54,6 +54,16 @@ const QuizPage = lazy(() =>
   import('@/pages/quiz-page').then((module) => ({ default: module.QuizPage })),
 )
 
+const MnemonicsPage = lazy(() =>
+  import('@/pages/mnemonics-page').then((module) => ({ default: module.MnemonicsPage })),
+)
+
+const MnemonicsTechniquePage = lazy(() =>
+  import('@/pages/mnemonics-technique-page').then((module) => ({
+    default: module.MnemonicsTechniquePage,
+  })),
+)
+
 const CodeSandboxPage = lazy(() =>
   import('@/pages/code-sandbox-page').then((module) => ({
     default: module.CodeSandboxPage,
@@ -112,6 +122,22 @@ export default function App() {
         element={
           <Suspense fallback={<LearnFallback />}>
             <QuizPage />
+          </Suspense>
+        }
+      />
+      <Route
+        path="/game/mnemonics"
+        element={
+          <Suspense fallback={<LearnFallback />}>
+            <MnemonicsPage />
+          </Suspense>
+        }
+      />
+      <Route
+        path="/game/mnemonics/:technique"
+        element={
+          <Suspense fallback={<LearnFallback />}>
+            <MnemonicsTechniquePage />
           </Suspense>
         }
       />

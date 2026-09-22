@@ -4,6 +4,7 @@ import asyncio
 import logging
 import signal
 import sys
+from typing import Optional
 
 import uvicorn
 from fastapi import FastAPI, Request
@@ -99,7 +100,11 @@ def _x_user_id(request: Request) -> int | None:
 
 @app.post("/dzen-bot/verify-yandex/start")
 async def verify_yandex_start(request: Request):
-    """Старт: вход через dzen.ru, при пуше — сессия до push-code."""
+    """Старт: вход через dzen.ru, при пуше — сессия до push-code.
+
+    Опционально в body: phone / yandex_login — телефон для этой проверки
+    (может отличаться от сохранённого в профиле).
+    """
     user_id = _x_user_id(request)
     if user_id is None:
         return {
@@ -110,7 +115,16 @@ async def verify_yandex_start(request: Request):
             "message": None,
             "diag_image_url": None,
         }
-    return await verify_yandex_start_for_user(user_id)
+    phone_override: Optional[str] = None
+    try:
+        body = await request.json()
+        if isinstance(body, dict):
+            raw = body.get("phone") or body.get("yandex_login") or ""
+            if isinstance(raw, str) and raw.strip():
+                phone_override = raw.strip()
+    except Exception:
+        phone_override = None
+    return await verify_yandex_start_for_user(user_id, phone_override=phone_override)
 
 
 @app.post("/dzen-bot/verify-yandex/push-code")

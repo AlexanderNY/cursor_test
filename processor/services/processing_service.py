@@ -48,22 +48,141 @@ async def _log_cycle(
         items_processed=items_processed,
     )
 
-def _match_url_config(urls: List[Any], post_url: Optional[str]) -> Optional[Dict[str, Any]]:
-    """Находит curl urls[] item по URL поста."""
-    if not post_url or not isinstance(urls, list):
+def _match_url_config(
+    urls: List[Any],
+    post_url: Optional[str],
+    url_item_id: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    """Находит curl urls[] item по id (Channels/URL) или URL поста."""
+    if not isinstance(urls, list):
+        return None
+    candidates = [u for u in urls if isinstance(u, dict)]
+    item_id = str(url_item_id or "").strip()
+    if item_id:
+        for item in candidates:
+            if str(item.get("id") or "").strip() == item_id:
+                return item
+    if not post_url:
         return None
     needle = str(post_url).strip()
     if not needle:
         return None
-    candidates = [u for u in urls if isinstance(u, dict)]
-    for u in candidates:
-        if str(u.get("url") or "").strip() == needle:
-            return u
+    for item in candidates:
+        if str(item.get("url") or "").strip() == needle:
+            return item
     needle_norm = needle.rstrip("/")
-    for u in candidates:
-        if str(u.get("url") or "").strip().rstrip("/") == needle_norm:
-            return u
+    for item in candidates:
+        if str(item.get("url") or "").strip().rstrip("/") == needle_norm:
+            return item
     return None
+
+
+def _parse_str_list(raw: Any) -> List[str]:
+    if raw is None:
+        return []
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            return [raw] if raw.strip() else []
+    if not isinstance(raw, list):
+        return []
+    out: List[str] = []
+    for item in raw:
+        if item is None:
+            continue
+        value = str(item).strip()
+        if value:
+            out.append(value)
+    return out
+
+
+def _url_item_id_from_post(post: Dict[str, Any]) -> Optional[str]:
+    extras = post.get("extras") or {}
+    if isinstance(extras, str):
+        try:
+            extras = json.loads(extras)
+        except (json.JSONDecodeError, TypeError):
+            extras = {}
+    if not isinstance(extras, dict):
+        return None
+    item_id = str(extras.get("url_item_id") or "").strip()
+    return item_id or None
+
+
+def _platforms_from_url_targets(url_item: Optional[Dict[str, Any]]) -> List[str]:
+    if not url_item:
+        return []
+    found: List[str] = []
+
+    def _add(platform: str) -> None:
+        if platform and platform not in found:
+            found.append(platform)
+
+    tsn = url_item.get("target_social_networks") or {}
+    if isinstance(tsn, str):
+        try:
+            tsn = json.loads(tsn)
+        except (json.JSONDecodeError, TypeError):
+            tsn = {}
+    if isinstance(tsn, dict):
+        for key, platform in (("tg", "tg"), ("tw", "tw"), ("vk", "vk"), ("wp", "wp")):
+            if tsn.get(key):
+                _add(platform)
+    if _parse_str_list(url_item.get("target_channels")):
+        _add("tg")
+    if _parse_str_list(url_item.get("target_groups")):
+        _add("vk")
+    return found
+
+
+def resolve_process_destinations(
+    post: Dict[str, Any],
+    proc_settings: Dict[str, Any],
+    existing_targets: Optional[List[Dict[str, Any]]] = None,
+) -> tuple[List[str], List[str], List[str]]:
+    """Platforms + channel/group ids from hub, URL Channels config, or existing post_targets."""
+    platforms = resolve_publish_platforms(
+        legacy_flags=post,
+        process_services=proc_settings.get("process_services"),
+        source_platform=post.get("source_platform"),
+    )
+    channels = _parse_str_list(post.get("target_channels"))
+    groups = _parse_str_list(post.get("target_groups"))
+    url_channels = _parse_str_list(proc_settings.get("url_target_channels"))
+    url_groups = _parse_str_list(proc_settings.get("url_target_groups"))
+    for item in url_channels:
+        if item not in channels:
+            channels.append(item)
+    for item in url_groups:
+        if item not in groups:
+            groups.append(item)
+    for platform in _platforms_from_url_targets(
+        {
+            "target_social_networks": proc_settings.get("url_target_social_networks"),
+            "target_channels": url_channels,
+            "target_groups": url_groups,
+        }
+    ):
+        if platform not in platforms:
+            platforms.append(platform)
+    for target in existing_targets or []:
+        platform = str(target.get("platform") or "").strip()
+        if platform and platform not in platforms:
+            platforms.append(platform)
+        if platform == "tg":
+            for item in _parse_str_list(target.get("target_channels")):
+                if item not in channels:
+                    channels.append(item)
+        if platform == "vk":
+            for item in _parse_str_list(target.get("target_groups")):
+                if item not in groups:
+                    groups.append(item)
+    if channels and "tg" not in platforms:
+        platforms.append("tg")
+    if groups and "vk" not in platforms:
+        platforms.append("vk")
+    return platforms, channels, groups
 
 
 class ProcessingService:
@@ -85,6 +204,10 @@ class ProcessingService:
             Количество обработанных постов за цикл.
         """
         cycle_count = 0
+
+        promoted = await self._promote_pending_targets_with_destinations()
+        if promoted:
+            logger.info("Promoted %d pending post_targets with Channels destinations to ready", promoted)
 
         requeued = await self._requeue_orphan_reviews()
         if requeued:
@@ -113,6 +236,7 @@ class ProcessingService:
             return 0
 
         # 3. Обработать посты параллельно (CPU в threads; AI — семафор shared.ai_client)
+        existing_by_post = await self._load_existing_targets(records)
         await self._prefetch_processing_settings(records)
         concurrency = max(1, int(getattr(settings, "PROCESS_CONCURRENCY", 8)))
         cycle_timeout = float(getattr(settings, "PROCESS_CYCLE_TIMEOUT_SEC", 90.0))
@@ -128,7 +252,10 @@ class ProcessingService:
                     return
                 try:
                     await asyncio.wait_for(
-                        self._process_single_post(record),
+                        self._process_single_post(
+                            record,
+                            existing_targets=existing_by_post.get(int(record["id"]), []),
+                        ),
                         timeout=remaining,
                     )
                     done_ids.add(int(record["id"]))
@@ -176,6 +303,7 @@ class ProcessingService:
         fields: list[str],
         row_values: tuple[Any, ...],
         post_url: Optional[str],
+        url_item_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         mapping = PROFILE_TABLE_MAP[source_platform]
         process_flag = mapping["process_flag"]
@@ -190,7 +318,11 @@ class ProcessingService:
                         value = json.loads(value) if value else []
                     except (json.JSONDecodeError, TypeError):
                         value = []
-                url_item = _match_url_config(value if isinstance(value, list) else [], post_url)
+                url_item = _match_url_config(
+                    value if isinstance(value, list) else [],
+                    post_url,
+                    url_item_id=url_item_id,
+                )
                 continue
             if field == process_flag:
                 result["process_enabled"] = bool(value) if value is not None else False
@@ -223,6 +355,9 @@ class ProcessingService:
                         except (json.JSONDecodeError, TypeError):
                             value = None
                     result[key] = value
+            result["url_target_social_networks"] = url_item.get("target_social_networks") or {}
+            result["url_target_channels"] = url_item.get("target_channels") or []
+            result["url_target_groups"] = url_item.get("target_groups") or []
         return result
 
     async def _prefetch_processing_settings(self, posts: List[Dict[str, Any]]) -> None:
@@ -257,11 +392,16 @@ class ProcessingService:
             except Exception:
                 logger.exception("Failed to prefetch profiles from %s", table)
 
-    async def _process_single_post(self, post: Dict[str, Any]) -> None:
+    async def _process_single_post(
+        self,
+        post: Dict[str, Any],
+        existing_targets: Optional[List[Dict[str, Any]]] = None,
+    ) -> None:
         """Обрабатывает один пост полным pipeline.
 
         Args:
-            post: Словарь с данными поста (id, user_id, source_platform, post_text, images, to_*).
+            post: Словарь с данными поста (id, user_id, source_platform, post_text, images).
+            existing_targets: Уже созданные post_targets (каналы из Channels).
         """
         post_id = post["id"]
         user_id = post["user_id"]
@@ -283,11 +423,12 @@ class ProcessingService:
             user_id,
             source_platform,
             post_url=post.get("url"),
+            url_item_id=_url_item_id_from_post(post),
         )
-        platforms = resolve_publish_platforms(
-            legacy_flags=post,
-            process_services=proc_settings.get("process_services"),
-            source_platform=source_platform,
+        platforms, target_channels, target_groups = resolve_process_destinations(
+            post,
+            proc_settings,
+            existing_targets=existing_targets,
         )
         post_flags = flags_from_platforms(platforms)
         is_process_enabled = proc_settings.get("process_enabled", False)
@@ -332,6 +473,8 @@ class ProcessingService:
             platform_texts=platform_texts,
             status=final_status,
             platforms=platforms,
+            target_channels=target_channels,
+            target_groups=target_groups,
         )
 
         logger.info(
@@ -346,6 +489,7 @@ class ProcessingService:
         user_id: int,
         source_platform: Optional[str],
         post_url: Optional[str] = None,
+        url_item_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Загружает настройки обработки из профиля пользователя.
 
@@ -372,7 +516,13 @@ class ProcessingService:
         cached = self._profile_row_cache.get((source_platform, user_id))
         if cached is not None:
             fields, row_values = cached
-            return self._row_to_processing_settings(source_platform, fields, row_values, post_url)
+            return self._row_to_processing_settings(
+                source_platform,
+                fields,
+                row_values,
+                post_url,
+                url_item_id=url_item_id,
+            )
 
         mapping_fields = self._fields_for_platform(source_platform)
         if mapping_fields is None:
@@ -403,6 +553,7 @@ class ProcessingService:
                         fields,
                         tuple(row),
                         post_url,
+                        url_item_id=url_item_id,
                     )
 
         except Exception:
@@ -470,6 +621,69 @@ class ProcessingService:
             logger.exception("AI enrichment failed")
             return None
 
+    async def _load_existing_targets(
+        self,
+        posts: List[Dict[str, Any]],
+    ) -> Dict[int, List[Dict[str, Any]]]:
+        ids = [int(item["id"]) for item in posts if item.get("id") is not None]
+        if not ids:
+            return {}
+        placeholders = ", ".join(["%s"] * len(ids))
+        try:
+            async with get_db_connection() as conn:
+                async with conn.cursor() as cur:
+                    await cur.execute(
+                        f"""
+                        SELECT post_id, platform, status, target_channels, target_groups
+                        FROM post_targets
+                        WHERE post_id IN ({placeholders})
+                        """,
+                        ids,
+                    )
+                    by_post: Dict[int, List[Dict[str, Any]]] = {}
+                    for row in await cur.fetchall():
+                        post_id = int(row[0])
+                        by_post.setdefault(post_id, []).append(
+                            {
+                                "post_id": post_id,
+                                "platform": row[1],
+                                "status": row[2],
+                                "target_channels": row[3],
+                                "target_groups": row[4],
+                            }
+                        )
+                    return by_post
+        except Exception:
+            logger.exception("Failed to load existing post_targets")
+            return {}
+
+    async def _promote_pending_targets_with_destinations(self) -> int:
+        """pending + Channels destination → ready (processor used to leave them pending)."""
+        try:
+            async with get_db_connection() as conn:
+                async with conn.cursor() as cur:
+                    await cur.execute(
+                        """
+                        UPDATE post_targets t
+                        SET status = 'ready', updated_at = CURRENT_TIMESTAMP
+                        WHERE t.status = 'pending'
+                          AND (
+                            (
+                              jsonb_typeof(COALESCE(t.target_channels, '[]'::jsonb)) = 'array'
+                              AND jsonb_array_length(COALESCE(t.target_channels, '[]'::jsonb)) > 0
+                            )
+                            OR (
+                              jsonb_typeof(COALESCE(t.target_groups, '[]'::jsonb)) = 'array'
+                              AND jsonb_array_length(COALESCE(t.target_groups, '[]'::jsonb)) > 0
+                            )
+                          )
+                        """
+                    )
+                    return int(cur.rowcount or 0)
+        except Exception:
+            logger.exception("Failed to promote pending post_targets with destinations")
+            return 0
+
     async def _requeue_orphan_reviews(self) -> int:
         """Return review posts with no destinations back to collected."""
         try:
@@ -480,6 +694,12 @@ class ProcessingService:
                         UPDATE posts p
                         SET status = 'collected', updated_at = CURRENT_TIMESTAMP
                         WHERE p.status = 'review'
+                          AND (
+                            jsonb_typeof(COALESCE(p.target_channels, '[]'::jsonb)) = 'array'
+                            AND jsonb_array_length(COALESCE(p.target_channels, '[]'::jsonb)) > 0
+                            OR jsonb_typeof(COALESCE(p.target_groups, '[]'::jsonb)) = 'array'
+                            AND jsonb_array_length(COALESCE(p.target_groups, '[]'::jsonb)) > 0
+                          )
                           AND NOT EXISTS (
                             SELECT 1
                             FROM post_targets t
@@ -502,6 +722,8 @@ class ProcessingService:
         platform_texts: Dict[str, str],
         status: str,
         platforms: List[str],
+        target_channels: Optional[List[str]] = None,
+        target_groups: Optional[List[str]] = None,
     ) -> None:
         """Save hub content and post_targets."""
         target_status = "ready" if status == "ready" else "pending"
@@ -521,6 +743,8 @@ class ProcessingService:
                         user_id=user_id,
                         platforms=platforms,
                         status=target_status,
+                        target_channels=target_channels,
+                        target_groups=target_groups,
                     )
 
     async def _reset_post_status(self, post_id: int, status: str) -> None:

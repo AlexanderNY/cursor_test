@@ -19,10 +19,11 @@ _lock = threading.RLock()
 _store: Dict[int, "PendingSession"] = {}
 # Последний JPEG data URL по user_id — отдаём в UI, даже если HTTP-ответ проверки уже отвалился по таймауту.
 _last_diag_url: Dict[int, str] = {}
+_last_diag_step: Dict[int, str] = {}
 _live_stop: Dict[int, threading.Event] = {}
 _live_threads: Dict[int, threading.Thread] = {}
 
-LIVE_SCREENCAP_INTERVAL_SEC = 3.0
+LIVE_SCREENCAP_INTERVAL_SEC = 1.5
 
 
 @dataclass
@@ -59,9 +60,23 @@ def get_last_diag_url(user_id: int) -> Optional[str]:
         return _last_diag_url.get(user_id)
 
 
+def set_last_diag_step(user_id: int, step: Optional[str]) -> None:
+    with _lock:
+        if step:
+            _last_diag_step[user_id] = step
+        else:
+            _last_diag_step.pop(user_id, None)
+
+
+def get_last_diag_step(user_id: int) -> Optional[str]:
+    with _lock:
+        return _last_diag_step.get(user_id)
+
+
 def clear_last_diag_url(user_id: int) -> None:
     with _lock:
         _last_diag_url.pop(user_id, None)
+        _last_diag_step.pop(user_id, None)
 
 
 def cleanup_stale_unlocked() -> None:

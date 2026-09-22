@@ -98,6 +98,16 @@ export const sections: Section[] = [
     emoji: '🎓',
     appPath: '/game/cert',
   },
+  {
+    slug: 'mnemonics',
+    title: 'Мнемотехники',
+    subtitle: 'Акронимы · цепочки · крючки',
+    description:
+      'Тренажёр кодирования для собеса: акронимы, акростихи, чанкинг, цепочки и система крючков. Дриллы из статей Learn и с карты знаний.',
+    accent: '#a78bfa',
+    emoji: '🧩',
+    appPath: '/game/mnemonics',
+  },
 ]
 
 const sectionBySlug = new Map(sections.map((section) => [section.slug, section]))

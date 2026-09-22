@@ -79,9 +79,6 @@ services:
     ports:
       # Только localhost: не публиковать Core наружу (иначе X-User-* spoof в обход gateway)
       - "127.0.0.1:8002:8002"
-    env_file:
-      - path: .env.9to18
-        required: false
     environment:
       <<: *ai-environment
       DATABASE_URL: ${DATABASE_URL}

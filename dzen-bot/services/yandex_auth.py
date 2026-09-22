@@ -42,6 +42,8 @@ def dismiss_remind_later_popup(driver, timeout: float = 4.0) -> bool:
     from selenium.webdriver.support import expected_conditions as EC
 
     xpaths = [
+        "//button[@data-testid='webauthn-reg-later-button']",
+        "//*[@data-testid='webauthn-reg-later-button']",
         "//button[contains(normalize-space(.), 'Напомнить позже')]",
         "//a[contains(normalize-space(.), 'Напомнить позже')]",
         "//*[@role='button' and contains(normalize-space(.), 'Напомнить позже')]",

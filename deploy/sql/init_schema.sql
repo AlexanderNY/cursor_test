@@ -1317,6 +1317,8 @@ CREATE TABLE IF NOT EXISTS dzen_profiles (
     rss_token VARCHAR(255),
     yandex_login VARCHAR(255),
     yandex_password TEXT,
+    yandex_first_name VARCHAR(255),
+    yandex_last_name VARCHAR(255),
     dzen_studio_url TEXT,
     collect_source VARCHAR(20) DEFAULT 'rss',
     last_auth_error TEXT,

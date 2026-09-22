@@ -18,6 +18,7 @@ from shared.retry import retry_async
 from shared import async_fs
 from .client_manager import TelegramClientManager
 from .channel_counter import bump_channel_counter
+from .brand_channel_flow import list_tg_publish_channels
 from telethon.errors import FloodWaitError, RPCError
 
 
@@ -141,17 +142,19 @@ class PostPublisher:
             claimed = [claimed_target_as_post(row) for row in claimed_rows]
             user_ids = sorted({int(p["user_id"]) for p in claimed})
             profiles = await self._load_tg_profiles(user_ids)
+            publish_channels = await self._load_publish_channel_ids(user_ids)
             result: List[Dict] = []
             release_ids: List[int] = []
             for post in claimed:
                 profile = profiles.get(int(post["user_id"])) or {}
                 post.update(profile)
                 explicit_targets = _parse_json_list(post.get("target_channels"))
-                if post.get("publish_enabled") is False and not explicit_targets:
-                    release_ids.append(int(post["id"]))
-                    continue
+                brand_dests = publish_channels.get(int(post["user_id"])) or []
+                if not explicit_targets and brand_dests:
+                    post["target_channels"] = brand_dests
+                    explicit_targets = brand_dests
                 schedule_type = (post.get("schedule_type") or "immediate").strip()
-                if schedule_type == "by_intervals":
+                if schedule_type == "by_intervals" and not explicit_targets:
                     intervals = _parse_json_list(post.get("time_intervals"))
                     if not _now_in_time_windows(intervals):
                         release_ids.append(int(post["id"]))
@@ -168,6 +171,32 @@ class PostPublisher:
             return result
         finally:
             await release_db_connection(conn)
+
+    async def _load_publish_channel_ids(self, user_ids: List[int]) -> Dict[int, List[str]]:
+        """Own Channels with publish_enabled → telegram chat ids per user."""
+        by_user: Dict[int, List[str]] = {uid: [] for uid in user_ids}
+        if not user_ids:
+            return by_user
+        try:
+            if len(user_ids) == 1:
+                channels = await list_tg_publish_channels(user_ids[0])
+            else:
+                channels = await list_tg_publish_channels()
+        except Exception as exc:
+            logger.warning("list_tg_publish_channels failed: %s", exc)
+            return by_user
+        allowed = set(user_ids)
+        for channel in channels:
+            uid = int(channel.get("user_id") or 0)
+            if uid not in allowed:
+                continue
+            ext = str(channel.get("external_id") or "").strip()
+            if not ext:
+                continue
+            dests = by_user.setdefault(uid, [])
+            if ext not in dests:
+                dests.append(ext)
+        return by_user
 
     async def _load_tg_profiles(self, user_ids: List[int]) -> Dict[int, Dict]:
         if not user_ids:

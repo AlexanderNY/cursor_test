@@ -1,18 +1,41 @@
-# Local all-in-one: copyparse + ui-9to18 + ui-edge on edge_net
+# Local all-in-one: copyparse + 9to18 (UI + site-api) + ui-edge on edge_net
 # Usage:
 #   .\deploy\scripts\create-edge-net.ps1
 #   .\deploy\ui-edge\scripts\gen-self-signed.ps1   # if certs missing
 #   docker compose -f docker-compose.yaml -f docker-compose.dev.yaml up -d
+#
+# Prefer standalone: docker compose -f nine-to-eighteen/docker-compose.yml up -d
 
 services:
+  site-api:
+    build:
+      context: ./nine-to-eighteen/api
+      dockerfile: Dockerfile
+    container_name: site-api
+    env_file:
+      - path: ./nine-to-eighteen/.env
+        required: false
+    environment:
+      DATABASE_URL: ${SITE_DATABASE_URL:-${DATABASE_URL:-}}
+      JWT_SECRET_KEY: ${SITE_JWT_SECRET_KEY:-${JWT_SECRET_KEY:-}}
+    ports:
+      - "${BIND_HOST:-127.0.0.1}:8020:8020/tcp"
+    networks:
+      edge_net:
+        aliases:
+          - site-api
+    restart: unless-stopped
+
   ui-9to18:
     build:
-      context: ./deploy/ui-9to18
+      context: ./nine-to-eighteen/ui
       dockerfile: Dockerfile
       target: production
     container_name: ui-9to18
     ports:
       - "${BIND_HOST:-127.0.0.1}:8200:8200/tcp"
+    depends_on:
+      - site-api
     networks:
       edge_net:
         aliases:
@@ -25,6 +48,7 @@ services:
     depends_on:
       - ui
       - ui-9to18
+      - site-api
       - gateway
     ports:
       - "${BIND_HOST:-0.0.0.0}:80:80/tcp"

@@ -1,0 +1,3 @@
+# Java Learn series
+
+См. [`SERIES.md`](SERIES.md).

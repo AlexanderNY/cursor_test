@@ -1,0 +1,49 @@
+# Локальный WordPress на внешнем PostgreSQL (db_wp), драйвер PG4WP.
+# Не входит в корневой docker-compose.yaml CopyParse.
+#
+#   cd wp-site
+#   copy .env.example .env   # пароль как у DATABASE_URL
+#   psql -U postgres -f ..\deploy\sql\create_db_wp.sql
+#   docker compose up -d --build
+#
+# Админка: http://127.0.0.1:8088/wp-admin
+# REST:    http://127.0.0.1:8088/wp-json/wp/v2
+
+name: copyparse-wp-site
+
+x-host-docker-internal: &host-docker-internal
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+
+services:
+  wordpress:
+    <<: *host-docker-internal
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${WORDPRESS_PORT:-8088}:80"
+    environment:
+      WORDPRESS_DB_HOST: ${WORDPRESS_DB_HOST:-host.docker.internal}:${WORDPRESS_DB_PORT:-5432}
+      WORDPRESS_DB_USER: ${WORDPRESS_DB_USER:-postgres}
+      WORDPRESS_DB_PASSWORD: ${WORDPRESS_DB_PASSWORD:-}
+      WORDPRESS_DB_NAME: ${WORDPRESS_DB_NAME:-db_wp}
+      WORDPRESS_TABLE_PREFIX: wp_
+      WORDPRESS_DEBUG: "1"
+      WORDPRESS_DB_CHARSET: utf8
+      WORDPRESS_CONFIG_EXTRA: |
+        define('WP_ENVIRONMENT_TYPE', 'local');
+        define('WP_HOME', 'http://127.0.0.1:${WORDPRESS_PORT:-8088}');
+        define('WP_SITEURL', 'http://127.0.0.1:${WORDPRESS_PORT:-8088}');
+    volumes:
+      - wp_content:/var/www/html/wp-content
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1/wp-login.php"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 60s
+
+volumes:
+  wp_content:

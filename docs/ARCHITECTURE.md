@@ -70,14 +70,13 @@ flowchart TB
 flowchart LR
   NET[Internet :80/:443] --> EDGE[ui-edge]
   EDGE -->|Host: copyparse.ru| UI[ui + gateway + backend]
-  EDGE -->|Host: 9to18.ru| NINE[ui-9to18]
-  EDGE -->|/api → gateway| GW[gateway]
+  EDGE -->|Host: 9to18.ru| NINE[ui-9to18 + site-api + resume-api]
 ```
 
 | Юнит | Compose | Роль |
 |------|---------|------|
 | copyparse (монорепо) | `docker-compose.yaml` | UI, gateway, auth, core, scheduler, collector, processor, боты, MinIO, Ollama |
-| ui-9to18 | `deploy/ui-9to18/docker-compose.yml` | Статический сайт на nginx :8200; Learn API через edge `/api/learn` + `/api/auth` → gateway |
+| 9to18 | `nine-to-eighteen/docker-compose.yml` | SPA :8200 + site-api :8020 + resume-api :8021 на `db_9to18`; edge `/api/(site|learn)` → site-api, `/api/resume` → resume-api |
 | ui-edge | `deploy/ui-edge/docker-compose.yml` | Публичный reverse-proxy :80/:443 |
 | e2e-tester | `deploy/e2e-tester/docker-compose.yml` | On-demand E2E (1 container + SQLite), 127.0.0.1:8300 |
 

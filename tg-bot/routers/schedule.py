@@ -47,7 +47,8 @@ async def handle_schedule(request: ScheduleRequest) -> Dict[str, Any]:
         return {"status": "error", "message": "Bot service not initialized"}
 
     tg_schedules = [s for s in request.schedules if s.platform in ("tg", "telegram")]
-    should_publish = any(s.publish_enabled for s in tg_schedules) if tg_schedules else True
+    # Публикация не зависит от tg_profiles.publish_enabled: канал задаётся в Channels.
+    should_publish = True
 
     publish_result = None
     if should_publish:

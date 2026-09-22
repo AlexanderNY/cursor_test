@@ -90,6 +90,8 @@ export function DzenPage() {
   const [rssToken, setRssToken] = useState('')
   const [yandexLogin, setYandexLogin] = useState('')
   const [yandexPassword, setYandexPassword] = useState('')
+  const [yandexFirstName, setYandexFirstName] = useState('')
+  const [yandexLastName, setYandexLastName] = useState('')
   const [dzenStudioUrl, setDzenStudioUrl] = useState('')
   const [collectSource, setCollectSource] = useState<DzenCollectSource>('rss')
   const [lastAuthError, setLastAuthError] = useState<string | null>(null)
@@ -159,6 +161,8 @@ export function DzenPage() {
         setRssToken(profile.rss_token ?? '')
         setYandexLogin(profile.yandex_login ?? '')
         setYandexPassword('')
+        setYandexFirstName(profile.yandex_first_name ?? '')
+        setYandexLastName(profile.yandex_last_name ?? '')
         setDzenStudioUrl(profile.dzen_studio_url ?? '')
         setCollectSource((profile.collect_source as DzenCollectSource) ?? 'rss')
       }
@@ -317,6 +321,8 @@ export function DzenPage() {
       channels_to_read: channelsToReadPayload,
       rss_token: rssToken || undefined,
       yandex_login: yandexLogin || undefined,
+      yandex_first_name: yandexFirstName || undefined,
+      yandex_last_name: yandexLastName || undefined,
       dzen_studio_url: dzenStudioUrl || undefined,
       collect_source: collectSource,
     }
@@ -396,15 +402,19 @@ export function DzenPage() {
           }
           if (diag.need_push_code) {
             setNeedPushCode(true)
-            setVerifyInfoMessage(diag.message ?? 'Введите код из пуш-уведомления.')
+          }
+          if (diag.message) {
+            setVerifyInfoMessage(diag.message)
+          } else if (diag.need_push_code) {
+            setVerifyInfoMessage('На телефон отправлен код. Введите 6 цифр.')
           }
           if (diag.diag_image_url) {
             setDiagFromResponse(diag.diag_image_url, false)
           }
         } catch {
-          /* keep polling every 3s */
+          /* keep polling */
         }
-        await sleep(3000)
+        await sleep(1500)
       }
       if (liveDiagGenerationRef.current === generation) {
         setIsLiveDiag(false)
@@ -421,14 +431,18 @@ export function DzenPage() {
     try {
       while (first || Date.now() < deadline) {
         if (!first) {
-          await sleep(3000)
+          await sleep(1500)
         }
         first = false
         try {
           const diag = await dzenService.fetchVerifyPendingDiag()
           if (diag.need_push_code) {
             setNeedPushCode(true)
-            setVerifyInfoMessage(diag.message ?? 'Введите код из пуш-уведомления.')
+          }
+          if (diag.message) {
+            setVerifyInfoMessage(diag.message)
+          } else if (diag.need_push_code) {
+            setVerifyInfoMessage('На телефон отправлен код. Введите 6 цифр.')
           }
           if (diag.diag_image_url) {
             setDiagFromResponse(diag.diag_image_url, false)
@@ -482,6 +496,11 @@ export function DzenPage() {
   }
 
   async function handleVerifyAuth() {
+    const phone = yandexLogin.trim()
+    if (!phone) {
+      setError('Укажите телефон Яндекс для входа (может отличаться от Telegram/VK).')
+      return
+    }
     setError('')
     setSuccess('')
     setVerifyInfoMessage(null)
@@ -491,13 +510,19 @@ export function DzenPage() {
     setIsVerifyingAuth(true)
     startLiveDiagStream()
     try {
-      const res = await dzenService.verifyYandexStart()
+      // Сохраняем телефон/ФИО с формы перед проверкой
+      try {
+        await dzenService.saveProfile(buildProfilePayload())
+      } catch {
+        /* start всё равно передаст phone в body */
+      }
+      const res = await dzenService.verifyYandexStart(phone)
       await loadProfile()
       if (res.ok && res.need_push_code) {
         setNeedPushCode(true)
-        setVerifyInfoMessage(res.message ?? 'Введите код из пуш-уведомления.')
+        setVerifyInfoMessage(res.message ?? 'На телефон отправлен код. Введите 6 цифр.')
         setDiagFromResponse(res.diag_image_url, false)
-        // live-стрим продолжает показывать экран пуш-кода каждые 3 с
+        // live-стрим продолжает показывать экран SMS-кода ~1.5 с
         return
       }
       stopLiveDiagStream()
@@ -506,7 +531,7 @@ export function DzenPage() {
       setVerifySubscriptions([])
       if (isTimeoutError(err)) {
         setError(
-          'Превышен таймаут ожидания ответа. На экране — live-снимок браузера бота (обновление каждые 3 с).'
+          'Превышен таймаут ожидания ответа. На экране — live-снимок браузера бота (обновление ~1.5 с).'
         )
       } else {
         setError(getErrorMessage(err) || 'Ошибка проверки авторизации')
@@ -520,9 +545,13 @@ export function DzenPage() {
   }
 
   async function handlePushCodeSubmit() {
-    const code = pushCode.trim()
+    const code = pushCode.trim().replace(/\D/g, '')
     if (!code) {
-      setError('Введите код из пуш-уведомления.')
+      setError('Введите код из SMS.')
+      return
+    }
+    if (code.length !== 6) {
+      setError('Код должен содержать ровно 6 цифр.')
       return
     }
     setError('')
@@ -553,7 +582,7 @@ export function DzenPage() {
     } catch (err) {
       if (isTimeoutError(err)) {
         setError(
-          'Превышен таймаут после отправки кода. Live-скрин бота продолжает обновляться каждые 3 с.'
+          'Превышен таймаут после отправки кода. Live-скрин бота продолжает обновляться ~1.5 с.'
         )
       } else {
         setError(getErrorMessage(err) || 'Ошибка отправки кода')
@@ -766,7 +795,7 @@ export function DzenPage() {
         <Card className="animate-slide-up">
           <CardHeader>
             <CardTitle>Настройки канала Дзен</CardTitle>
-            <CardDescription>RSS, Selenium (студия), вычитка каналов, расписание. Логин Яндекса — во вкладке «Авторизация».</CardDescription>
+            <CardDescription>RSS, Selenium (студия), вычитка каналов, расписание. Телефон Яндекса — во вкладке «Авторизация».</CardDescription>
           </CardHeader>
           <CardContent>
             {isLoadingProfile ? (
@@ -911,7 +940,8 @@ export function DzenPage() {
           <CardHeader>
             <CardTitle>Авторизация Яндекс</CardTitle>
             <CardDescription>
-              Учётные данные для dzen-bot (Selenium). Пароль с сервера не подставляется — введите заново, чтобы сменить.
+              Вход через dzen.ru → Яндекс ID по телефону и SMS. Перед проверкой укажите телефон Яндекса
+              (он может отличаться от номера в Telegram/VK). Пароль и ФИО — по необходимости.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -926,18 +956,39 @@ export function DzenPage() {
                 )}
                 <form onSubmit={handleSaveCredentials} className="space-y-4">
                   <Input
-                    label="Логин Яндекс"
+                    label="Телефон Яндекс (для этой проверки)"
                     value={yandexLogin}
                     onChange={(e) => setYandexLogin(e.target.value)}
-                    placeholder="email или логин"
-                    autoComplete="username"
+                    placeholder="79001234567"
+                    autoComplete="tel"
+                    inputMode="tel"
+                    required
                   />
+                  <p className="text-xs text-[var(--text-muted)] -mt-2">
+                    Введите номер, на который придёт SMS от Яндекса. Не подставляется из Telegram/VK.
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <Input
+                      label="Имя"
+                      value={yandexFirstName}
+                      onChange={(e) => setYandexFirstName(e.target.value)}
+                      placeholder="Имя"
+                      autoComplete="given-name"
+                    />
+                    <Input
+                      label="Фамилия"
+                      value={yandexLastName}
+                      onChange={(e) => setYandexLastName(e.target.value)}
+                      placeholder="Фамилия"
+                      autoComplete="family-name"
+                    />
+                  </div>
                   <Input
-                    label="Пароль Яндекс"
+                    label="Пароль Яндекс (опционально)"
                     type="password"
                     value={yandexPassword}
                     onChange={(e) => setYandexPassword(e.target.value)}
-                    placeholder="Оставьте пустым в настройках, чтобы не менять сохранённый"
+                    placeholder="Оставьте пустым, чтобы не менять сохранённый"
                     autoComplete="current-password"
                   />
                   <div className="flex flex-wrap gap-3">
@@ -966,7 +1017,7 @@ export function DzenPage() {
                   <div className="space-y-2">
                     <p className="text-xs text-[var(--text-muted)]">
                       {isLiveDiag || isVerifyingAuth
-                        ? 'Live: экран браузера бота (обновление каждые 3 секунды)'
+                        ? 'Live: экран браузера бота (обновление ~1.5 с, снимок на каждом шаге)'
                         : 'Снимок экрана для диагностики (страница в браузере бота):'}
                     </p>
                     {verifyDiagImageUrl && !diagImageLoadError ? (
@@ -989,16 +1040,21 @@ export function DzenPage() {
                 )}
                 {needPushCode && (
                   <div className="space-y-3 p-4 rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)]">
-                    <p className="text-sm text-[var(--text-primary)]">Введите код из пуш-уведомления в приложении Яндекса.</p>
+                    <p className="text-sm text-[var(--text-primary)]">
+                      На телефон отправлен код. Введите 6 цифр из SMS.
+                    </p>
                     <div className="flex flex-col sm:flex-row gap-3 sm:items-end">
                       <div className="flex-1">
                         <Input
-                          label="Код"
+                          label="Код из SMS"
                           value={pushCode}
-                          onChange={(e) => setPushCode(e.target.value.replace(/\s/g, ''))}
-                          placeholder="Например 123456"
+                          onChange={(e) =>
+                            setPushCode(e.target.value.replace(/\D/g, '').slice(0, 6))
+                          }
+                          placeholder="123456"
                           inputMode="numeric"
                           autoComplete="one-time-code"
+                          maxLength={6}
                         />
                       </div>
                       <Button

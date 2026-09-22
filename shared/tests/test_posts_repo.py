@@ -77,6 +77,7 @@ def test_ensure_targets_sql_binds_platform_not_table():
     assert "ON CONFLICT (post_id, platform)" in sql
     assert "vk_posts" not in sql
     assert "SET status = EXCLUDED.status" in sql
+    assert "NULLIF(EXCLUDED.target_channels, '[]'::jsonb)" in sql
     assert params == [
         3, 9, "vk", "ready", "[]", "[]",
         3, 9, "tg", "ready", "[]", "[]",

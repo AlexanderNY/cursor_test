@@ -101,6 +101,10 @@ class TelegramClientManager:
                               COALESCE(c.collect_enabled, FALSE) = TRUE
                               OR COALESCE(c.alert_enabled, FALSE) = TRUE
                               OR COALESCE(c.comments_collect_enabled, FALSE) = TRUE
+                              OR (
+                                COALESCE(c.publish_enabled, FALSE) = TRUE
+                                AND COALESCE(c.role, 'source') = 'own'
+                              )
                             )
                         )
                       )

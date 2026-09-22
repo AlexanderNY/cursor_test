@@ -21,10 +21,12 @@ from .selenium_driver import create_chrome_driver
 from .selenium_errors import format_selenium_exception
 from .pending_yandex_session import (
     clear_last_diag_url,
+    get_last_diag_step,
     get_last_diag_url,
     get_session,
     pop_and_quit,
     put_session,
+    set_last_diag_step,
     set_last_diag_url,
     start_live_screencap,
     update_session_flags,
@@ -40,11 +42,73 @@ from .yandex_dzen_flow import (
 
 logger = logging.getLogger(__name__)
 
-_PUSH_MESSAGE = "Введите код из пуш-уведомления Яндекса."
+_PUSH_MESSAGE = "На телефон отправлен код. Введите 6 цифр."
+
+# Подписи шагов для live-UI (ключ = label checkpoint)
+_STEP_TITLES: Dict[str, str] = {
+    "verify_yandex_navigate": "Открываем dzen.ru…",
+    "verify_yandex_start_chrome": "Запуск браузера…",
+    "verify_yandex_dzen_home": "Главная dzen.ru",
+    "verify_yandex_before_voyti": "Ищем кнопку «Войти»…",
+    "verify_yandex_after_voyti": "Popup авторизации",
+    "verify_yandex_id_entry": "Яндекс ID",
+    "verify_yandex_before_phone_tab": "Переключаем на телефон…",
+    "verify_yandex_phone_tab": "Ввод телефона",
+    "verify_yandex_after_phone": "Телефон отправлен",
+    "verify_yandex_wait_after_phone": "Ожидание ответа Яндекса…",
+    "verify_yandex_sms_code": "Ожидание SMS-кода",
+    "verify_yandex_sms_code_delayed": "Ожидание SMS-кода",
+    "verify_yandex_push_before_phone": "Ожидание SMS-кода",
+    "verify_yandex_sms_after_optional": "Ожидание SMS-кода",
+    "verify_yandex_sms_final": "Ожидание SMS-кода",
+    "verify_yandex_before_sms_input": "Вводим SMS-код…",
+    "verify_yandex_sms_digits_entered": "Код введён",
+    "verify_yandex_after_sms": "После ввода кода",
+    "verify_yandex_after_sms_ok": "Код принят",
+    "verify_yandex_auth_finished": "Passport: вход завершён",
+    "verify_yandex_after_finished_redirect": "Переход на dzen.ru…",
+    "verify_yandex_sms_rejected": "Код не принят",
+    "verify_yandex_sms_still": "Снова экран кода",
+    "verify_yandex_name_form": "Имя и фамилия",
+    "verify_yandex_after_name": "ФИО отправлены",
+    "verify_yandex_account_suggest": "Выбор аккаунта",
+    "verify_yandex_after_account": "Аккаунт выбран",
+    "verify_yandex_after_remind_later": "Биометрия: позже",
+    "verify_yandex_password": "Ввод пароля",
+    "verify_yandex_after_password": "Пароль отправлен",
+    "verify_yandex_sms_after_password": "Ожидание SMS после пароля",
+    "verify_yandex_waiting_next": "Ожидание следующего экрана…",
+    "verify_yandex_after_optional": "Завершение входа…",
+    "verify_yandex_ok": "Вход выполнен",
+    "verify_yandex_captcha": "Капча на dzen.ru",
+    "verify_yandex_captcha_id": "Капча на Яндекс ID",
+    "verify_yandex_error": "Ошибка входа",
+    "verify_yandex_start_push": "Ожидание SMS-кода",
+    "verify_yandex_start_collect": "Сбор подписок…",
+}
+
+
+def _step_title(label: str) -> str:
+    return _STEP_TITLES.get(label) or label.replace("_", " ")
 
 
 def _diag_url(driver: Optional[WebDriver], label: str, user_id: Optional[int]) -> Optional[str]:
+    """Полный diag (JPEG + опционально S3) — ключевые/ошибочные шаги."""
+    if user_id is not None:
+        set_last_diag_step(user_id, _step_title(label))
     url = capture_diag_for_ui(driver, label, user_id=user_id).get("diag_image_url")
+    if user_id is not None and url:
+        set_last_diag_url(user_id, url)
+    return url
+
+
+def _step_checkpoint(driver: Optional[WebDriver], label: str, user_id: Optional[int]) -> Optional[str]:
+    """Быстрый скрин шага для live-UI (без S3), чтобы пользователь видел динамику."""
+    if user_id is not None:
+        set_last_diag_step(user_id, _step_title(label))
+    if driver is None:
+        return None
+    url = capture_live_jpeg_for_ui(driver)
     if user_id is not None and url:
         set_last_diag_url(user_id, url)
     return url
@@ -76,7 +140,7 @@ def _live_capture_tick(user_id: int) -> None:
 
 
 def _ensure_live_screencap(user_id: int) -> None:
-    start_live_screencap(user_id, _live_capture_tick, interval_sec=3.0)
+    start_live_screencap(user_id, _live_capture_tick, interval_sec=1.5)
 
 
 def _push_code_start_response(driver: WebDriver, user_id: int, label: str) -> Dict[str, Any]:
@@ -207,12 +271,12 @@ def verify_subscriptions_sync(
     login: str, password: str, user_id: Optional[int] = None
 ) -> Tuple[bool, List[Dict[str, str]], Optional[str]]:
     """
-    Один заход: вход (dzen-флоу / passport) + подписки. При пуш-экране — YandexAuthError.
+    Один заход: вход (dzen-флоу / passport) + подписки. При SMS-экране — YandexAuthError.
     """
     login = (login or "").strip()
     password = (password or "").strip()
-    if not login or not password:
-        return False, [], "Не заданы логин или пароль в профиле Дзен"
+    if not login:
+        return False, [], "Не задан номер телефона в профиле Дзен"
 
     driver: Optional[WebDriver] = None
     try:
@@ -239,18 +303,26 @@ def verify_subscriptions_sync(
                 pass
 
 
-def verify_yandex_start_sync(user_id: int, login: str, password: str) -> Dict[str, Any]:
-    """Dzen-вход с возможностью паузы на пуш. При пуше WebDriver в pending (не quit)."""
+def verify_yandex_start_sync(
+    user_id: int,
+    login: str,
+    password: str = "",
+    first_name: Optional[str] = None,
+    last_name: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Dzen-вход с возможностью паузы на SMS. При коде WebDriver в pending (не quit)."""
     clear_last_diag_url(user_id)
     pop_and_quit(user_id)
     login = (login or "").strip()
     password = (password or "").strip()
-    if not login or not password:
+    first_name = (first_name or "").strip() or None
+    last_name = (last_name or "").strip() or None
+    if not login:
         return {
             "ok": False,
             "need_push_code": False,
             "subscriptions": [],
-            "error": "Не заданы логин или пароль в профиле Дзен",
+            "error": "Не задан номер телефона в профиле Дзен",
             "message": None,
             "diag_image_url": None,
         }
@@ -265,7 +337,9 @@ def verify_yandex_start_sync(user_id: int, login: str, password: str) -> Dict[st
             driver,
             login,
             password,
-            on_checkpoint=lambda d, label: _diag_url(d, label, user_id),
+            on_checkpoint=lambda d, label: _step_checkpoint(d, label, user_id),
+            first_name=first_name,
+            last_name=last_name,
         )
         if rflow == "push":
             keep_driver = True
@@ -325,7 +399,11 @@ def verify_yandex_start_sync(user_id: int, login: str, password: str) -> Dict[st
 
 
 def verify_yandex_push_code_sync(
-    user_id: int, code: str, password: Optional[str] = None
+    user_id: int,
+    code: str,
+    password: Optional[str] = None,
+    first_name: Optional[str] = None,
+    last_name: Optional[str] = None,
 ) -> Dict[str, Any]:
     s = get_session(user_id)
     if not s:
@@ -333,7 +411,7 @@ def verify_yandex_push_code_sync(
             "ok": False,
             "need_push_code": True,
             "subscriptions": [],
-            "error": "Сессия ожидания пуша не найдена. Нажмите «Проверить» снова.",
+            "error": "Сессия ожидания кода не найдена. Нажмите «Проверить» снова.",
             "message": None,
             "diag_image_url": None,
         }
@@ -341,8 +419,15 @@ def verify_yandex_push_code_sync(
     with s.op_lock:
         driver = s.driver
         try:
-            dzen_entry_submit_push_code(driver, code)
-            complete_auth_after_push_code(driver, password or "")
+            checkpoint = lambda d, label: _step_checkpoint(d, label, user_id)
+            dzen_entry_submit_push_code(driver, code, on_checkpoint=checkpoint)
+            complete_auth_after_push_code(
+                driver,
+                password or "",
+                first_name=first_name,
+                last_name=last_name,
+                on_checkpoint=checkpoint,
+            )
             if page_indicates_push_code(driver):
                 du = _diag_url(driver, "push_code_retry", user_id)
                 update_session_flags(user_id, awaiting_push=True, in_progress=False)
@@ -354,6 +439,7 @@ def verify_yandex_push_code_sync(
                     "message": None,
                     "diag_image_url": du,
                 }
+            _step_checkpoint(driver, "verify_yandex_ok", user_id)
             subs, wmsg = run_subscriptions_collection_driver(driver, user_id)
             pop_and_quit(user_id)
             return {
@@ -362,7 +448,7 @@ def verify_yandex_push_code_sync(
                 "subscriptions": subs,
                 "message": wmsg,
                 "error": None,
-                "diag_image_url": None,
+                "diag_image_url": get_last_diag_url(user_id),
             }
         except StaleElementReferenceException as e:
             friendly = (
@@ -406,10 +492,16 @@ def verify_yandex_push_code_sync(
 
 
 def verify_yandex_pending_diag_sync(user_id: int) -> Dict[str, Any]:
-    """Актуальный кадр live-стрима (кэш обновляется каждые ~3 с) или свежий снимок."""
+    """Актуальный кадр live-стрима (кэш обновляется ~1.5 с) или свежий снимок."""
     s = get_session(user_id)
     need_push = bool(s and s.awaiting_push)
-    message = _PUSH_MESSAGE if need_push else None
+    step = get_last_diag_step(user_id)
+    if need_push:
+        message = _PUSH_MESSAGE
+    elif step:
+        message = step
+    else:
+        message = None
 
     # Если драйвер свободен — снимем свежий кадр сразу.
     if s and not s.in_progress:
@@ -448,14 +540,31 @@ def verify_yandex_pending_diag_sync(user_id: int) -> Dict[str, Any]:
     }
 
 
-async def fetch_yandex_credentials(user_id: int) -> Tuple[Optional[str], Optional[str]]:
-    """Читает логин и пароль из БД (как в publisher)."""
+async def fetch_yandex_credentials(
+    user_id: int,
+) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[str]]:
+    """Читает телефон, пароль и ФИО из БД."""
     conn = await get_db_connection()
     try:
         async with conn.cursor() as cur:
+            try:
+                await cur.execute(
+                    """
+                    ALTER TABLE dzen_profiles
+                    ADD COLUMN IF NOT EXISTS yandex_first_name VARCHAR(255)
+                    """
+                )
+                await cur.execute(
+                    """
+                    ALTER TABLE dzen_profiles
+                    ADD COLUMN IF NOT EXISTS yandex_last_name VARCHAR(255)
+                    """
+                )
+            except Exception:
+                logger.debug("dzen_profiles name columns ensure failed", exc_info=True)
             await cur.execute(
                 """
-                SELECT yandex_login, yandex_password
+                SELECT yandex_login, yandex_password, yandex_first_name, yandex_last_name
                 FROM dzen_profiles
                 WHERE user_id = %s
                 """,
@@ -463,10 +572,12 @@ async def fetch_yandex_credentials(user_id: int) -> Tuple[Optional[str], Optiona
             )
             row = await cur.fetchone()
             if not row:
-                return None, None
+                return None, None, None, None
             login = (row[0] or "").strip() if row[0] else None
             password = (row[1] or "").strip() if row[1] else None
-            return login, password
+            first_name = (row[2] or "").strip() if len(row) > 2 and row[2] else None
+            last_name = (row[3] or "").strip() if len(row) > 3 and row[3] else None
+            return login, password, first_name, last_name
     finally:
         await release_db_connection(conn)
 
@@ -486,13 +597,23 @@ async def set_last_auth_error(user_id: int, message: Optional[str]) -> None:
         await release_db_connection(conn)
 
 
-async def verify_yandex_start_for_user(user_id: int) -> Dict[str, Any]:
-    """Старт проверки: dzen-вход, при необходимости пуш, иначе подписки."""
+async def verify_yandex_start_for_user(
+    user_id: int,
+    phone_override: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Старт проверки: dzen-вход, при необходимости SMS, иначе подписки.
+
+    phone_override — телефон с формы авторизации (приоритетнее сохранённого в БД).
+    """
     import asyncio
 
-    login, password = await fetch_yandex_credentials(user_id)
-    if not login or not password:
-        err = "Сохраните логин и пароль Яндекса во вкладке «Авторизация» (профиль Дзен)."
+    login, password, first_name, last_name = await fetch_yandex_credentials(user_id)
+    if phone_override and phone_override.strip():
+        login = phone_override.strip()
+        # Сохраняем в профиль, чтобы следующий collect/publish видел актуальный номер
+        await _persist_yandex_login(user_id, login)
+    if not login:
+        err = "Укажите номер телефона Яндекса на вкладке «Авторизация» и нажмите «Проверить»."
         await set_last_auth_error(user_id, err)
         return {
             "ok": False,
@@ -503,7 +624,14 @@ async def verify_yandex_start_for_user(user_id: int) -> Dict[str, Any]:
             "diag_image_url": None,
         }
 
-    d = await asyncio.to_thread(verify_yandex_start_sync, user_id, login, password)
+    d = await asyncio.to_thread(
+        verify_yandex_start_sync,
+        user_id,
+        login,
+        password or "",
+        first_name,
+        last_name,
+    )
     if d.get("ok") and d.get("need_push_code"):
         await set_last_auth_error(user_id, None)
     elif d.get("error"):
@@ -511,6 +639,27 @@ async def verify_yandex_start_for_user(user_id: int) -> Dict[str, Any]:
     else:
         await set_last_auth_error(user_id, None)
     return d
+
+
+async def _persist_yandex_login(user_id: int, login: str) -> None:
+    """Обновляет yandex_login в dzen_profiles (upsert минимальный)."""
+    conn = await get_db_connection()
+    try:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                """
+                INSERT INTO dzen_profiles (user_id, yandex_login)
+                VALUES (%s, %s)
+                ON CONFLICT (user_id) DO UPDATE SET
+                    yandex_login = EXCLUDED.yandex_login,
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                (user_id, login),
+            )
+    except Exception:
+        logger.exception("persist yandex_login failed user_id=%s", user_id)
+    finally:
+        await release_db_connection(conn)
 
 
 async def verify_yandex_pending_diag_for_user(user_id: int) -> Dict[str, Any]:
@@ -522,8 +671,15 @@ async def verify_yandex_pending_diag_for_user(user_id: int) -> Dict[str, Any]:
 async def verify_yandex_push_for_user(user_id: int, code: str) -> Dict[str, Any]:
     import asyncio
 
-    _, password = await fetch_yandex_credentials(user_id)
-    d = await asyncio.to_thread(verify_yandex_push_code_sync, user_id, code, password)
+    _, password, first_name, last_name = await fetch_yandex_credentials(user_id)
+    d = await asyncio.to_thread(
+        verify_yandex_push_code_sync,
+        user_id,
+        code,
+        password,
+        first_name,
+        last_name,
+    )
     if d.get("ok") and not d.get("error"):
         await set_last_auth_error(user_id, None)
     elif d.get("error"):

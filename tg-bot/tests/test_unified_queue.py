@@ -30,3 +30,11 @@ def test_tg_collector_inserts_hub_posts():
     assert "INSERT INTO tg_posts" not in source
     assert "InboundPostCreate" in source
     assert 'source_platform="tg"' in source
+
+
+def test_publisher_uses_channels_not_profile_publish_flag():
+    source = Path(__file__).resolve().parents[1].joinpath(
+        "services", "post_publisher.py"
+    ).read_text(encoding="utf-8")
+    assert "list_tg_publish_channels" in source
+    assert "if post.get(\"publish_enabled\") is False and not explicit_targets" not in source

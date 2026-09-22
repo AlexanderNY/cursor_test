@@ -6,6 +6,38 @@ from typing import Any
 from database import get_db_connection, release_db_connection
 
 
+def merge_brand_channel_schedule_flags(
+    result: list[dict[str, Any]],
+    *,
+    platform: str,
+    rows: list[tuple[Any, ...]],
+) -> None:
+    """OR collect/publish flags from smm_brand_channels onto platform schedules."""
+    by_user: dict[int, dict[str, Any]] = {}
+    for item in result:
+        if item.get("platform") == platform:
+            by_user[int(item["user_id"])] = item
+    for row in rows:
+        uid = int(row[0])
+        ch_pub = bool(row[1])
+        ch_col = bool(row[2])
+        existing = by_user.get(uid)
+        if existing:
+            existing["publish_enabled"] = bool(existing.get("publish_enabled")) or ch_pub
+            existing["collect_enabled"] = bool(existing.get("collect_enabled")) or ch_col
+            continue
+        result.append(
+            {
+                "user_id": uid,
+                "platform": platform,
+                "publish_enabled": ch_pub,
+                "collect_enabled": ch_col,
+                "schedule_type": "immediate",
+                "time_intervals": [],
+            }
+        )
+
+
 class SchedulesService:
     """Агрегирует schedule-relevant поля из tg/tw/wp/vk_profiles."""
 
@@ -131,33 +163,38 @@ class SchedulesService:
                 )
                 wp_ch_rows = await cur.fetchall()
                 if wp_ch_rows:
-                    by_user: dict[int, dict[str, Any]] = {}
+                    before = len(result)
+                    merge_brand_channel_schedule_flags(
+                        result, platform="wp", rows=wp_ch_rows
+                    )
+                    for item in result[before:]:
+                        item["schedule_type"] = "on_new_messages"
                     for item in result:
-                        if item.get("platform") == "wp":
-                            by_user[int(item["user_id"])] = item
-                    for row in wp_ch_rows:
-                        uid = int(row[0])
-                        ch_pub = bool(row[1])
-                        ch_col = bool(row[2])
-                        existing = by_user.get(uid)
-                        if existing:
-                            existing["publish_enabled"] = bool(
-                                existing.get("publish_enabled")
-                            ) or ch_pub
-                            existing["collect_enabled"] = bool(
-                                existing.get("collect_enabled")
-                            ) or ch_col
-                            if not existing.get("schedule_type"):
-                                existing["schedule_type"] = "on_new_messages"
-                        else:
-                            result.append({
-                                "user_id": uid,
-                                "platform": "wp",
-                                "publish_enabled": ch_pub,
-                                "collect_enabled": ch_col,
-                                "schedule_type": "on_new_messages",
-                                "time_intervals": [],
-                            })
+                        if item.get("platform") == "wp" and not item.get("schedule_type"):
+                            item["schedule_type"] = "on_new_messages"
+                for network in ("tg", "vk"):
+                    await cur.execute(
+                        """
+                        SELECT b.user_id,
+                               BOOL_OR(
+                                   COALESCE(c.publish_enabled, FALSE) = TRUE
+                                   AND COALESCE(c.role, 'source') = 'own'
+                               ) AS publish_enabled,
+                               BOOL_OR(COALESCE(c.collect_enabled, FALSE) = TRUE) AS collect_enabled
+                        FROM smm_brand_channels c
+                        JOIN smm_brands b ON b.id = c.brand_id
+                        WHERE c.network = %s
+                          AND (
+                              COALESCE(c.publish_enabled, FALSE) = TRUE
+                              OR COALESCE(c.collect_enabled, FALSE) = TRUE
+                          )
+                        GROUP BY b.user_id
+                        """,
+                        (network,),
+                    )
+                    merge_brand_channel_schedule_flags(
+                        result, platform=network, rows=await cur.fetchall()
+                    )
                 # url: из curl_settings (collect_enabled + urls); run_once уже выполненные исключаем
                 await cur.execute(
                     """

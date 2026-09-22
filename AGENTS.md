@@ -38,16 +38,16 @@ Python 3.12 FastAPI microservices + React/Vite UIs. Each backend service is a to
 | `shared/` | Cross-service Python (`ai_client`, `retry`, `db` schemas, billing) | — |
 | `shared_storage/` | Shared storage helpers copied into images | — |
 | `ui-app/` | CopyParse SPA (React 18, Vite, Tailwind, TanStack Query) | 8100 |
-| `deploy/ui-9to18/` | 9to18.ru SPA source | 8200 |
+| `nine-to-eighteen/` | 9to18.ru: UI + site-api + resume-api (`db_9to18`) | 8200 / 8020 / 8021 |
 | `deploy/ui-edge/` | Public nginx :80/:443 | 80/443 |
 | `deploy/e2e-tester/` | On-demand browser E2E (SQLite) | 8300 |
 | `k8s/` | Minikube manifests (`Makefile` targets) | — |
 
 There is **no root `package.json` or `pyproject.toml`**. Install and test inside the service you change.
 
-`ui-9to18/` at the repo root is a leftover tree (includes `node_modules`). Canonical 9to18 app is `deploy/ui-9to18/`.
+`ui-9to18/` at the repo root is a leftover tree. Canonical 9to18 stack is [`nine-to-eighteen/`](nine-to-eighteen/) (UI + `site-api` + `resume-api`). `deploy/ui-9to18/` is a pointer README only.
 
-PostgreSQL 16 is **external** (not a compose service). Databases: `db_bot` (CopyParse) and `db_9to18` (site). MinIO, Redis, and Ollama **are** in `docker-compose.yaml`.
+PostgreSQL 16 is **external** (not a compose service). Databases: `db_bot` (CopyParse), `db_9to18` (9to18 site-api), and `db_wp` (local WordPress in `wp-site/`). MinIO, Redis, and Ollama **are** in `docker-compose.yaml`.
 
 ## Commands
 
@@ -87,10 +87,18 @@ npm run dev            # Vite :8100, proxies /api → gateway:8000
 ### UI (9to18)
 
 ```bash
-cd deploy/ui-9to18
+cd nine-to-eighteen/ui
 npm install
 npm run lint
 npm run build          # copies pyodide, then tsc -b && vite build
+```
+
+Full 9to18 stack (UI + site-api):
+
+```bash
+cd nine-to-eighteen
+cp .env.example .env   # DATABASE_URL=db_9to18, JWT_SECRET_KEY
+docker compose up -d --build
 ```
 
 ### Full stack (only when you need running services)
@@ -144,7 +152,7 @@ K8s: `k8s/README.md` and root `Makefile` (`build-images`, `apply-all`). Copy `k8
 ### Scope
 
 - Change the smallest set of services that implement the request. Do not “fix” unrelated bots, SQL dumps (`backub*.sql`), or leftover `ui-9to18/` at repo root.
-- Do not commit `.env`, `.env.9to18`, `k8s/base/secret.yaml`, `*.pem` / `*.key`, or live credentials. Compose interpolates `$` in `.env` — JWT must be hex, not bcrypt.
+- Do not commit `.env`, `nine-to-eighteen/.env`, `k8s/base/secret.yaml`, `*.pem` / `*.key`, or live credentials. Compose interpolates `$` in `.env` — JWT must be hex, not bcrypt.
 - Do not deploy, publish, or mutate production (copyparse.ru / 9to18.ru) from an agent session.
 
 ## Testing
@@ -162,7 +170,7 @@ Cloud Agent VMs do not ship the production Postgres, Telegram/VK tokens, GPU Oll
 
 1. Python: `python3 -m pip install -r <service>/requirements.txt pytest pytest-asyncio`, then `PYTHONPATH=. python3 -m pytest shared/tests -q` and `PYTHONPATH=..:. python3 -m pytest tests -q` in the service you edited.
 2. ui-app: `npm install && npm run lint && npm run build` from `ui-app/`. Expect existing failures on `main`; report only new ones on files you touched.
-3. 9to18: same npm commands from `deploy/ui-9to18/` when that app changed.
+3. 9to18: same npm commands from `nine-to-eighteen/ui/` when that app changed; API tests under `nine-to-eighteen/api` if present.
 
 **When you must run services:** confirm Docker, `edge_net`, and a usable `DATABASE_URL` first. Bind host ports stay on `127.0.0.1` except the public edge. Do not start Ollama or Chromium bots unless the change depends on them.
 

@@ -341,7 +341,12 @@ export async function siteListUsers(): Promise<SiteAdminUser[]> {
 
 export async function sitePatchUser(
   userId: number,
-  body: { site_role?: 'user' | 'site_admin'; is_active?: boolean; password?: string },
+  body: {
+    site_role?: 'user' | 'site_admin'
+    is_active?: boolean
+    password?: string
+    app_admin?: string[]
+  },
 ): Promise<SiteAdminUser> {
   return request(`/site/admin/users/${userId}`, {
     method: 'PATCH',

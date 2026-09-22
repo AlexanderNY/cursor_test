@@ -1,0 +1,33 @@
+"""Конфигурация resume-api (9to18)."""
+from pydantic_settings import BaseSettings
+
+
+class Settings(BaseSettings):
+    DATABASE_URL: str = ""
+    DB_POOL_MINSIZE: int = 1
+    DB_POOL_MAXSIZE: int = 8
+    JWT_SECRET_KEY: str = ""
+    JWT_ALGORITHM: str = "HS256"
+
+    class Config:
+        env_file = ".env"
+        case_sensitive = True
+
+
+settings = Settings()
+
+
+def validate_required_secrets() -> None:
+    missing: list[str] = []
+    if not (settings.DATABASE_URL or "").strip():
+        missing.append("DATABASE_URL")
+    if not (settings.JWT_SECRET_KEY or "").strip():
+        missing.append("JWT_SECRET_KEY")
+    if missing:
+        raise RuntimeError(
+            "Missing required secrets (set via .env or environment): "
+            + ", ".join(missing)
+        )
+
+
+validate_required_secrets()

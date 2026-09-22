@@ -3,6 +3,17 @@
 from services.brand_channel_flow import channel_alert_rules_as_profile_rules
 
 
+def test_list_tg_publish_channels_query_is_own_publish():
+    from pathlib import Path
+
+    source = Path(__file__).resolve().parents[1].joinpath(
+        "services", "brand_channel_flow.py"
+    ).read_text(encoding="utf-8")
+    assert "async def list_tg_publish_channels" in source
+    assert "COALESCE(c.role, 'source') = 'own'" in source
+    assert "COALESCE(c.publish_enabled, FALSE) = TRUE" in source
+
+
 def test_alert_rules_expand_to_selected_destinations():
     channel = {
         "id": 10,

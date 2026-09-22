@@ -1,10 +1,6 @@
-"""9to18.ru site contour: auth, apps, blogs, contacts.
+"""DEPRECATED for CopyParse core: 9to18 site contour lives in nine-to-eighteen/api.
 
-Роли:
-- user — чтение опубликованных страниц и статей всех сервисов
-- админ сервиса (site_app_admins) — плашка, страница и блог своих сервисов
-- супер-админ (site_users.site_role = site_admin) — всё выше + любой сервис,
-  спотлайт, назначение админов сервисов
+This file is no longer included from core/main.py. Prefer site-api.
 """
 from __future__ import annotations
 
@@ -129,6 +125,32 @@ DEFAULT_APPS: list[dict[str, Any]] = [
         "emoji": "🎓",
         "app_path": "/game/cert",
         "sort_order": 9,
+    },
+    {
+        "slug": "hh-resume",
+        "title": "HH-резюме",
+        "subtitle": "Learn · навыки · превью",
+        "description": (
+            "Соберите резюме в формате HeadHunter: анкета в кабинете и навыки "
+            "из пройденных выпусков Learn и веток карты обучения."
+        ),
+        "accent": "#d6001c",
+        "emoji": "📄",
+        "app_path": "/game/hh-resume",
+        "sort_order": 10,
+    },
+    {
+        "slug": "mnemonics",
+        "title": "Мнемотехники",
+        "subtitle": "Акронимы · цепочки · крючки",
+        "description": (
+            "Тренажёр кодирования для собеса: акронимы, акростихи, чанкинг, "
+            "цепочки и система крючков. Дриллы из статей Learn и с карты знаний."
+        ),
+        "accent": "#a78bfa",
+        "emoji": "🧩",
+        "app_path": "/game/mnemonics",
+        "sort_order": 11,
     },
 ]
 

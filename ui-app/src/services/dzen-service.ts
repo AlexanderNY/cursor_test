@@ -62,8 +62,16 @@ export const dzenService = {
     return response.data
   },
 
-  async verifyYandexStart(): Promise<DzenVerifyResponse> {
-    const response = await apiClient.post<DzenVerifyResponse>('/dzen-bot/verify-yandex/start', {}, { timeout: 300_000 })
+  async verifyYandexStart(phone?: string): Promise<DzenVerifyResponse> {
+    const body =
+      phone && phone.trim()
+        ? { phone: phone.trim() }
+        : {}
+    const response = await apiClient.post<DzenVerifyResponse>(
+      '/dzen-bot/verify-yandex/start',
+      body,
+      { timeout: 300_000 }
+    )
     return response.data
   },
 

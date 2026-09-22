@@ -1779,6 +1779,18 @@ class ProfileService:
         try:
             async with conn.cursor() as cur:
                 await cur.execute(
+                    """
+                    ALTER TABLE dzen_profiles
+                    ADD COLUMN IF NOT EXISTS yandex_first_name VARCHAR(255)
+                    """
+                )
+                await cur.execute(
+                    """
+                    ALTER TABLE dzen_profiles
+                    ADD COLUMN IF NOT EXISTS yandex_last_name VARCHAR(255)
+                    """
+                )
+                await cur.execute(
                     "SELECT * FROM dzen_profiles WHERE user_id = %s",
                     (user_id,)
                 )
@@ -1803,13 +1815,27 @@ class ProfileService:
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
+                # Живые БД без миграции: добавить колонки ФИО при первом сохранении
+                await cur.execute(
+                    """
+                    ALTER TABLE dzen_profiles
+                    ADD COLUMN IF NOT EXISTS yandex_first_name VARCHAR(255)
+                    """
+                )
+                await cur.execute(
+                    """
+                    ALTER TABLE dzen_profiles
+                    ADD COLUMN IF NOT EXISTS yandex_last_name VARCHAR(255)
+                    """
+                )
                 await cur.execute(
                     """
                     INSERT INTO dzen_profiles (
                         user_id, publish_enabled, collect_enabled, schedule_type,
                         time_intervals, rss_feed_url, channel_name, channels_to_read, rss_token,
-                        yandex_login, yandex_password, dzen_studio_url, collect_source
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        yandex_login, yandex_password, yandex_first_name, yandex_last_name,
+                        dzen_studio_url, collect_source
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (user_id) DO UPDATE SET
                         publish_enabled = EXCLUDED.publish_enabled,
                         collect_enabled = EXCLUDED.collect_enabled,
@@ -1821,6 +1847,8 @@ class ProfileService:
                         rss_token = EXCLUDED.rss_token,
                         yandex_login = EXCLUDED.yandex_login,
                         yandex_password = COALESCE(NULLIF(EXCLUDED.yandex_password, ''), dzen_profiles.yandex_password),
+                        yandex_first_name = EXCLUDED.yandex_first_name,
+                        yandex_last_name = EXCLUDED.yandex_last_name,
                         dzen_studio_url = EXCLUDED.dzen_studio_url,
                         collect_source = EXCLUDED.collect_source,
                         updated_at = CURRENT_TIMESTAMP
@@ -1838,6 +1866,8 @@ class ProfileService:
                         data.get("rss_token"),
                         data.get("yandex_login"),
                         yandex_password,
+                        data.get("yandex_first_name"),
+                        data.get("yandex_last_name"),
                         data.get("dzen_studio_url"),
                         collect_source,
                     )

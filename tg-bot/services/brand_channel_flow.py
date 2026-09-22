@@ -55,6 +55,7 @@ def _row_to_channel(row: tuple, columns: List[str]) -> Dict[str, Any]:
         "network": raw.get("network") or "tg",
         "external_id": str(raw.get("external_id") or "").strip(),
         "title": raw.get("title"),
+        "role": (raw.get("role") or "source").strip() or "source",
         "collect_enabled": bool(raw.get("collect_enabled")),
         "alert_enabled": bool(raw.get("alert_enabled")),
         "publish_enabled": bool(raw.get("publish_enabled")),
@@ -82,7 +83,7 @@ async def list_tg_flow_channels(user_id: Optional[int] = None) -> List[Dict[str,
                 params.append(user_id)
             await cur.execute(
                 f"""
-                SELECT c.id, c.brand_id, b.user_id, c.network, c.external_id, c.title,
+                SELECT c.id, c.brand_id, b.user_id, c.network, c.external_id, c.title, c.role,
                        c.collect_enabled, c.alert_enabled, c.publish_enabled,
                        c.save_conditions, c.conditions_mode, c.processing, c.publish_targets,
                        c.alert_delivery, c.alert_rules
@@ -99,6 +100,44 @@ async def list_tg_flow_channels(user_id: Optional[int] = None) -> List[Dict[str,
             return [_row_to_channel(r, columns) for r in rows]
     except Exception as exc:
         logger.debug("list_tg_flow_channels failed: %s", exc)
+        return []
+    finally:
+        await release_db_connection(conn)
+
+
+async def list_tg_publish_channels(user_id: Optional[int] = None) -> List[Dict[str, Any]]:
+    """Own TG brand channels with publish_enabled (Channels → post dest)."""
+    conn = await get_db_connection()
+    try:
+        async with conn.cursor() as cur:
+            where = [
+                "c.network = 'tg'",
+                "COALESCE(c.role, 'source') = 'own'",
+                "COALESCE(c.publish_enabled, FALSE) = TRUE",
+            ]
+            params: list[Any] = []
+            if user_id is not None:
+                where.append("b.user_id = %s")
+                params.append(user_id)
+            await cur.execute(
+                f"""
+                SELECT c.id, c.brand_id, b.user_id, c.network, c.external_id, c.title, c.role,
+                       c.collect_enabled, c.alert_enabled, c.publish_enabled,
+                       c.save_conditions, c.conditions_mode, c.processing, c.publish_targets,
+                       c.alert_delivery, c.alert_rules
+                FROM smm_brand_channels c
+                JOIN smm_brands b ON b.id = c.brand_id
+                WHERE {' AND '.join(where)}
+                """,
+                params,
+            )
+            rows = await cur.fetchall()
+            if not rows:
+                return []
+            columns = [col.name for col in cur.description]
+            return [_row_to_channel(r, columns) for r in rows]
+    except Exception as exc:
+        logger.debug("list_tg_publish_channels failed: %s", exc)
         return []
     finally:
         await release_db_connection(conn)

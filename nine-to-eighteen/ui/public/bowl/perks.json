@@ -1,0 +1,222 @@
+{
+  "leg": {
+    "id": "leg",
+    "title": "Нога",
+    "emoji": "🦵",
+    "max_level": 3,
+    "levels": {
+      "0": {
+        "speed_mult": 1.0,
+        "limb_count": 2,
+        "stub": true,
+        "description": "Два коротких отростка по бокам."
+      },
+      "1": {
+        "speed_mult": 1.5,
+        "limb_count": 2,
+        "description": "Две ножки по бокам. Скорость +50% к базовой."
+      },
+      "2": {
+        "speed_mult": 2.0,
+        "limb_count": 4,
+        "description": "Четыре ножки по бокам. Скорость +100% к базовой."
+      },
+      "3": {
+        "speed_mult": 2.5,
+        "limb_count": 6,
+        "description": "Шесть ножек по бокам. Скорость +150% к базовой."
+      }
+    }
+  },
+  "eye": {
+    "id": "eye",
+    "title": "Глаз",
+    "emoji": "👁",
+    "max_level": 3,
+    "levels": {
+      "0": {
+        "speed_mult": 1.0,
+        "limb_count": 2,
+        "visibility_mult": 1.0,
+        "lightness_mult": 1.0,
+        "dots_only": true,
+        "description": "Две точки по центру."
+      },
+      "1": {
+        "speed_mult": 1.5,
+        "limb_count": 2,
+        "visibility_mult": 1.4,
+        "lightness_mult": 1.35,
+        "description": "Два глаза. Скорость +50%, обзор +40%."
+      },
+      "2": {
+        "speed_mult": 2.0,
+        "limb_count": 4,
+        "visibility_mult": 1.85,
+        "lightness_mult": 1.7,
+        "description": "Четыре глаза. Скорость +100%, обзор +85%."
+      },
+      "3": {
+        "speed_mult": 2.5,
+        "limb_count": 6,
+        "visibility_mult": 2.4,
+        "lightness_mult": 2.1,
+        "description": "Шесть глаз. Скорость +150%, обзор +140%."
+      }
+    }
+  },
+  "tentacle": {
+    "id": "tentacle",
+    "title": "Щупальце",
+    "emoji": "🦑",
+    "max_level": 3,
+    "levels": {
+      "0": {
+        "grab_range": 0,
+        "grab_duration": 0,
+        "limb_count": 2,
+        "waves": true,
+        "description": "Две волны по бокам."
+      },
+      "1": {
+        "grab_range": 200,
+        "grab_duration": 5.0,
+        "limb_count": 2,
+        "description": "Space — захват точки впереди на 200 px, удержание 5 с."
+      },
+      "2": {
+        "grab_range": 400,
+        "grab_duration": 7.0,
+        "limb_count": 4,
+        "description": "Space — захват на 400 px, удержание 7 с."
+      },
+      "3": {
+        "grab_range": 600,
+        "grab_duration": 10.0,
+        "limb_count": 6,
+        "description": "Space — захват на 600 px, удержание 10 с."
+      }
+    }
+  },
+  "spike": {
+    "id": "spike",
+    "title": "Шип",
+    "emoji": "🌵",
+    "max_level": 3,
+    "levels": {
+      "0": {
+        "damage": 0,
+        "spike_length": 5,
+        "spike_count": 0,
+        "forehead": true,
+        "cooldown": 999.0,
+        "description": "Небольшой шип на лбу."
+      },
+      "1": {
+        "damage": 8,
+        "spike_length": 8,
+        "spike_count": 1,
+        "cooldown": 0.85,
+        "description": "Space — укол шипом. Урон 8."
+      },
+      "2": {
+        "damage": 16,
+        "spike_length": 12,
+        "spike_count": 2,
+        "cooldown": 0.7,
+        "description": "Space — два шипа. Урон 16."
+      },
+      "3": {
+        "damage": 50,
+        "spike_length": 20,
+        "spike_count": 4,
+        "cooldown": 0.55,
+        "description": "Space — четыре шипа. Урон 50."
+      }
+    }
+  },
+  "shell": {
+    "id": "shell",
+    "title": "Панцирь",
+    "emoji": "🛡️",
+    "max_level": 3,
+    "levels": {
+      "0": {
+        "damage_taken_mult": 1.0,
+        "knockback_mult": 1.0,
+        "description": "Без защиты."
+      },
+      "1": {
+        "damage_taken_mult": 0.85,
+        "knockback_mult": 0.9,
+        "description": "−15% урона, слабее отбрасывание."
+      },
+      "2": {
+        "damage_taken_mult": 0.7,
+        "knockback_mult": 0.75,
+        "description": "−30% урона, заметно стабильнее."
+      },
+      "3": {
+        "damage_taken_mult": 0.55,
+        "knockback_mult": 0.6,
+        "description": "−45% урона — танк против Титана и Кровососа."
+      }
+    }
+  },
+  "dash": {
+    "id": "dash",
+    "title": "Рывок+",
+    "emoji": "💨",
+    "max_level": 3,
+    "levels": {
+      "0": {
+        "sprint_mult_bonus": 0.0,
+        "stamina_drain_mult": 1.0,
+        "iframe_chance": 0.0,
+        "description": "Обычный Shift."
+      },
+      "1": {
+        "sprint_mult_bonus": 0.15,
+        "stamina_drain_mult": 0.9,
+        "iframe_chance": 0.15,
+        "description": "Рывок сильнее, реже тратит stamina; шанс i-frame."
+      },
+      "2": {
+        "sprint_mult_bonus": 0.3,
+        "stamina_drain_mult": 0.8,
+        "iframe_chance": 0.3,
+        "description": "Ещё быстрее на Shift; i-frame чаще."
+      },
+      "3": {
+        "sprint_mult_bonus": 0.5,
+        "stamina_drain_mult": 0.65,
+        "iframe_chance": 0.45,
+        "description": "Максимальный рывок против Сталкера и Вихря."
+      }
+    }
+  },
+  "anchor": {
+    "id": "anchor",
+    "title": "Якорь",
+    "emoji": "⚓",
+    "max_level": 3,
+    "levels": {
+      "0": {
+        "pull_resist": 0.0,
+        "description": "Полностью поддаётесь притяжению."
+      },
+      "1": {
+        "pull_resist": 0.25,
+        "description": "−25% силы водоворота и Вихря."
+      },
+      "2": {
+        "pull_resist": 0.45,
+        "description": "−45% притяжения."
+      },
+      "3": {
+        "pull_resist": 0.65,
+        "description": "−65% притяжения — контр к vortex/whirlpool."
+      }
+    }
+  }
+}

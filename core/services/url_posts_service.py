@@ -154,7 +154,11 @@ async def save_url_post(item: dict[str, Any]) -> int | None:
             text=post_text,
             url=url,
             images=images,
-            extras={"screenshot_only": screenshot_only},
+            extras={
+                "screenshot_only": screenshot_only,
+                "url_item_id": str(item.get("url_item_id") or item.get("id") or "").strip()
+                or None,
+            },
             target_channels=target_channels,
             target_groups=target_groups,
             status="collected",
