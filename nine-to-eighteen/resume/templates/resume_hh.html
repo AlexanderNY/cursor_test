@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <title>{{ name }}</title>
+  <style>
+    body {
+      font-family: "Segoe UI", Arial, sans-serif;
+      color: #0f172a;
+      margin: 0;
+      padding: 28px 32px;
+      font-size: 12.5px;
+      line-height: 1.45;
+    }
+    h1 { margin: 0 0 6px; font-size: 26px; color: #d6001c; }
+    h2 {
+      margin: 18px 0 6px;
+      font-size: 14px;
+      color: #d6001c;
+      border-bottom: 1px solid #e2e8f0;
+      padding-bottom: 4px;
+    }
+    .meta { margin: 2px 0; color: #64748b; }
+    ul { margin: 6px 0 0; padding-left: 18px; }
+    li { margin: 3px 0; }
+    .footer { margin-top: 22px; color: #94a3b8; font-size: 11px; }
+  </style>
+</head>
+<body>
+  <h1>{{ name }}</h1>
+  <p class="meta">{{ city }}{% if birth %} · {{ birth }}{% endif %}</p>
+  <p class="meta">{{ phone }} · {{ email }}</p>
+  <p class="meta">Гражданство: {{ citizenship }} · Командировки: {{ trips }}</p>
+  {% if version %}<p class="meta">Версия: {{ version }}</p>{% endif %}
+
+  <h2>Желаемая должность</h2>
+  <p>{{ specialization }}</p>
+  <p>Оклад: {{ salary }}</p>
+
+  <h2>О себе</h2>
+  <p>{{ about|safe }}</p>
+
+  <h2>Ключевые навыки</h2>
+  <ul>
+    {% for skill in skills %}
+    <li>{{ skill }}</li>
+    {% else %}
+    <li>—</li>
+    {% endfor %}
+  </ul>
+
+  <p class="footer">9to18.ru · резюме</p>
+</body>
+</html>

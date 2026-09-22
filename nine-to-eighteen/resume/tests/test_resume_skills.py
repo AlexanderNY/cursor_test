@@ -16,6 +16,7 @@ sys.modules["resume_skills"] = _mod
 _SPEC.loader.exec_module(_mod)
 
 branch_completion_hints = _mod.branch_completion_hints
+build_gap_catalog = _mod.build_gap_catalog
 generate_skills_from_progress = _mod.generate_skills_from_progress
 missing_slugs_for_upgrade = _mod.missing_slugs_for_upgrade
 skill_level_and_evidence = _mod.skill_level_and_evidence
@@ -93,3 +94,20 @@ def test_skill_level_helper_docker():
     level, evidence = skill_level_and_evidence(rule, ["b10-docker", "b11-compose"])
     assert level == "middle"
     assert "docker-compose" in evidence
+
+
+def test_build_gap_catalog_includes_missing_docker_slug():
+    catalog = build_gap_catalog(["b10-docker"], selected_keys=["docker"])
+    docker = next(c for c in catalog if c["skillKey"] == "docker")
+    assert docker["missingSlugs"] == ["b11-compose"]
+    assert docker["inResume"] is True
+
+
+def test_build_gap_catalog_flags_skill_not_in_resume():
+    catalog = build_gap_catalog(
+        ["b10-docker", "b11-compose"],
+        selected_keys=[],
+    )
+    docker = next(c for c in catalog if c["skillKey"] == "docker")
+    assert docker["inResume"] is False
+    assert docker["missingSlugs"] == []

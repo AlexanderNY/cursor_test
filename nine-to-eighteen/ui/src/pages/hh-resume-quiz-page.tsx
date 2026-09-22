@@ -1,8 +1,9 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { PageShell } from '@/components/page-shell'
 import {
   resumeApplyQuestionnaire,
+  resumeCreate,
   resumeGetQuestionnaire,
   type ResumeQuestion,
   type ResumeQuestionnaire,
@@ -31,8 +32,10 @@ function isAnswered(q: ResumeQuestion, answers: Record<string, unknown>): boolea
 }
 
 export function HhResumeQuizPage() {
+  const { resumeId: resumeIdParam } = useParams()
   const session = getSiteAuthSession()
   const navigate = useNavigate()
+  const [resumeId, setResumeId] = useState(resumeIdParam || '')
   const [schema, setSchema] = useState<ResumeQuestionnaire | null>(null)
   const [answers, setAnswers] = useState<Record<string, unknown>>({})
   const [step, setStep] = useState(0)
@@ -46,24 +49,31 @@ export function HhResumeQuizPage() {
       return
     }
     let cancelled = false
-    void resumeGetQuestionnaire()
-      .then((data) => {
+    void (async () => {
+      try {
+        let id = resumeIdParam || ''
+        if (!id) {
+          const created = await resumeCreate({ version_name: 'Основное' })
+          id = created.id
+          if (!cancelled) setResumeId(id)
+          navigate(`/game/hh-resume/${id}/quiz`, { replace: true })
+        }
+        const data = await resumeGetQuestionnaire()
         if (cancelled) return
         setSchema(data)
         setAnswers(emptyAnswers(data.questions))
-      })
-      .catch((err) => {
+      } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : 'Не удалось загрузить опросник')
         }
-      })
-      .finally(() => {
+      } finally {
         if (!cancelled) setLoading(false)
-      })
+      }
+    })()
     return () => {
       cancelled = true
     }
-  }, [session])
+  }, [session, resumeIdParam, navigate])
 
   const questions = schema?.questions || []
   const current = questions[step]
@@ -88,7 +98,7 @@ export function HhResumeQuizPage() {
 
   async function onSubmit(event?: FormEvent) {
     event?.preventDefault()
-    if (!schema) return
+    if (!schema || !resumeId) return
     for (const q of schema.questions) {
       if (q.required && !isAnswered(q, answers)) {
         setError(`Ответьте на вопрос: ${q.title}`)
@@ -100,8 +110,11 @@ export function HhResumeQuizPage() {
     setSubmitting(true)
     setError('')
     try {
-      await resumeApplyQuestionnaire({ answers, persist: true })
-      navigate('/game/hh-resume/edit', { replace: false, state: { fromQuiz: true } })
+      await resumeApplyQuestionnaire(resumeId, { answers, persist: true })
+      navigate(`/game/hh-resume/${resumeId}/edit`, {
+        replace: false,
+        state: { fromQuiz: true },
+      })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Не удалось применить опросник')
     } finally {
@@ -127,34 +140,25 @@ export function HhResumeQuizPage() {
     return (
       <PageShell>
         <Link to="/game/hh-resume" className="back-link">
-          ← К резюме
+          ← К списку
         </Link>
-        <header className="learn-header">
-          <p className="learn-eyebrow">Опросник резюме</p>
-          <h1 className="learn-title">Нужен вход</h1>
-          <p className="learn-section-note">
-            <Link to="/login">Войти</Link>
-            {' · '}
-            <Link to="/register">Регистрация</Link>
-          </p>
-        </header>
+        <p className="learn-section-note">
+          <Link to="/login">Войти</Link>
+        </p>
       </PageShell>
     )
   }
 
   return (
     <PageShell>
-      <Link to="/game/hh-resume" className="back-link">
-        ← К превью
+      <Link to={resumeId ? `/game/hh-resume/${resumeId}` : '/game/hh-resume'} className="back-link">
+        ← Назад
       </Link>
 
       <header className="learn-header">
         <p className="learn-eyebrow">HH-резюме · опросник</p>
         <h1 className="learn-title">{schema?.title || 'Идеальное резюме'}</h1>
-        <p className="learn-lead">
-          {schema?.lead ||
-            'Ответьте на вопросы — заполним шаблон. Потом можно править текст вручную.'}
-        </p>
+        <p className="learn-lead">{schema?.lead || ''}</p>
         {error ? <p className="learn-admin-error">{error}</p> : null}
       </header>
 
@@ -234,9 +238,11 @@ export function HhResumeQuizPage() {
             >
               {step >= questions.length - 1 ? 'Собрать резюме' : 'Далее'}
             </button>
-            <Link to="/game/hh-resume/edit" className="learn-admin-btn">
-              Пропустить → правка
-            </Link>
+            {resumeId ? (
+              <Link to={`/game/hh-resume/${resumeId}/edit`} className="learn-admin-btn">
+                Пропустить → правка
+              </Link>
+            ) : null}
           </div>
         </form>
       )}

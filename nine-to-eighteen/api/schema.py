@@ -201,7 +201,9 @@ CREATE TABLE IF NOT EXISTS site_user_profiles (
 
 SITE_RESUMES_TABLE = """
 CREATE TABLE IF NOT EXISTS site_resumes (
-    user_id INT PRIMARY KEY REFERENCES site_users(id) ON DELETE CASCADE,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id INT NOT NULL REFERENCES site_users(id) ON DELETE CASCADE,
+    version_name VARCHAR(120) NOT NULL DEFAULT 'Основное',
     title VARCHAR(255) NOT NULL DEFAULT '',
     specialization VARCHAR(255) NOT NULL DEFAULT '',
     salary_amount INT,
@@ -212,8 +214,11 @@ CREATE TABLE IF NOT EXISTS site_resumes (
     selected_skill_keys JSONB NOT NULL DEFAULT '[]'::jsonb,
     generated_skills JSONB NOT NULL DEFAULT '[]'::jsonb,
     questionnaire_answers JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+CREATE INDEX IF NOT EXISTS idx_site_resumes_user_updated
+    ON site_resumes (user_id, updated_at DESC);
 """
 
 # Idempotent patches for already-created DBs (run AFTER CREATE TABLE IF NOT EXISTS)
@@ -225,9 +230,79 @@ SITE_SCHEMA_PATCHES: list[str] = [
     """
     CREATE INDEX IF NOT EXISTS idx_site_contacts_status ON site_contacts (status)
     """,
+    "CREATE EXTENSION IF NOT EXISTS pgcrypto",
+    # Migrate legacy one-resume-per-user → multi UUID (no-op if already migrated)
+    """
+DO $migrate$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_schema = 'public' AND table_name = 'site_resumes'
+  ) AND EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'site_resumes' AND column_name = 'user_id'
+  ) AND NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'site_resumes' AND column_name = 'id'
+  ) THEN
+    ALTER TABLE site_resumes RENAME TO site_resumes_legacy_v1;
+    CREATE TABLE site_resumes (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id INT NOT NULL REFERENCES site_users(id) ON DELETE CASCADE,
+      version_name VARCHAR(120) NOT NULL DEFAULT 'Основное',
+      title VARCHAR(255) NOT NULL DEFAULT '',
+      specialization VARCHAR(255) NOT NULL DEFAULT '',
+      salary_amount INT,
+      salary_currency VARCHAR(8) NOT NULL DEFAULT 'RUB',
+      employment_types JSONB NOT NULL DEFAULT '[]'::jsonb,
+      work_formats JSONB NOT NULL DEFAULT '[]'::jsonb,
+      about TEXT NOT NULL DEFAULT '',
+      selected_skill_keys JSONB NOT NULL DEFAULT '[]'::jsonb,
+      generated_skills JSONB NOT NULL DEFAULT '[]'::jsonb,
+      questionnaire_answers JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    INSERT INTO site_resumes (
+      id, user_id, version_name, title, specialization, salary_amount, salary_currency,
+      employment_types, work_formats, about, selected_skill_keys, generated_skills,
+      questionnaire_answers, created_at, updated_at
+    )
+    SELECT
+      gen_random_uuid(), user_id, 'Основное',
+      COALESCE(title, ''), COALESCE(specialization, ''), salary_amount,
+      COALESCE(salary_currency, 'RUB'),
+      COALESCE(employment_types, '[]'::jsonb),
+      COALESCE(work_formats, '[]'::jsonb),
+      COALESCE(about, ''),
+      COALESCE(selected_skill_keys, '[]'::jsonb),
+      COALESCE(generated_skills, '[]'::jsonb),
+      COALESCE(questionnaire_answers, '{}'::jsonb),
+      COALESCE(updated_at, CURRENT_TIMESTAMP),
+      COALESCE(updated_at, CURRENT_TIMESTAMP)
+    FROM site_resumes_legacy_v1;
+    DROP TABLE site_resumes_legacy_v1;
+    CREATE INDEX IF NOT EXISTS idx_site_resumes_user_updated
+      ON site_resumes (user_id, updated_at DESC);
+  END IF;
+END
+$migrate$;
+    """,
+    """
+    ALTER TABLE site_resumes
+    ADD COLUMN IF NOT EXISTS version_name VARCHAR(120) NOT NULL DEFAULT 'Основное'
+    """,
+    """
+    ALTER TABLE site_resumes
+    ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    """,
     """
     ALTER TABLE site_resumes
     ADD COLUMN IF NOT EXISTS questionnaire_answers JSONB NOT NULL DEFAULT '{}'::jsonb
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_site_resumes_user_updated
+    ON site_resumes (user_id, updated_at DESC)
     """,
 ]
 

@@ -8,6 +8,13 @@ class Settings(BaseSettings):
     DB_POOL_MAXSIZE: int = 8
     JWT_SECRET_KEY: str = ""
     JWT_ALGORITHM: str = "HS256"
+    S3_ENDPOINT_URL: str = ""
+    S3_PUBLIC_ENDPOINT_URL: str = ""
+    S3_BUCKET: str = ""
+    S3_ACCESS_KEY: str = ""
+    S3_SECRET_KEY: str = ""
+    S3_REGION: str = "us-east-1"
+    S3_USE_SSL: bool = False
 
     class Config:
         env_file = ".env"

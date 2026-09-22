@@ -50,15 +50,29 @@ psql -U postgres -d db_9to18 -f sql/migrate_learn_from_db_bot.sql
 
 ## HH-резюме
 
+Несколько версий на пользователя (`site_resumes.id` UUID + `version_name`).
+
 - Анкета и фото: `site-api` (`/site/me/profile`, `/site/me/photo`)
 - Формирование: `resume-api`
-  - опросник → шаблон: `GET /resume/questionnaire`, `POST /resume/questionnaire/apply`
-  - навыки Learn: `POST /resume/generate`
-  - правка: `PUT /resume`, превью: `GET /resume/preview`
+  - список / CRUD: `GET|POST /resume`, `GET|PUT|DELETE /resume/{id}`
+  - опросник: `GET /resume/questionnaire`, `POST /resume/{id}/questionnaire/apply`
+  - навыки Learn: `POST /resume/{id}/generate`
+  - превью: `GET /resume/{id}/preview`
+  - экспорт PDF/DOCX (sync): `POST /resume/{id}/export` → файл в MinIO или локально, URL `GET /resume/files/{file_id}`
+  - AI (Ollama через `shared.ai_client`):
+    - `POST /resume/{id}/ai/improve-about` — переписать «О себе»
+    - `POST /resume/{id}/ai/skill-gap` — пробелы vs Learn (`SKILL_RULES`)
+    - `POST /resume/{id}/ai/cover-letter` — сопроводительное по тексту вакансии
+    - `POST /resume/{id}/ai/mock-interview` (+ `/evaluate`) — тренировочное собеседование
+  - сила резюме: в `GET /resume/{id}/preview` → `strength` и `GET /resume/{id}/strength`
+    (+10 фото, +15 «О себе», +20 за релевантный модуль Learn, cap 100)
+- Storage: env `S3_*` (как у site-api); без S3 — каталог `uploads/resume/exports/` в контейнере
+- AI: локальный Ollama на `:11434` (`AI_SERVICE_URL=http://host.docker.internal:11434`); без Ollama эндпоинты отдают 503
 - UI:
-  - `/game/hh-resume/quiz` — опросник
-  - `/game/hh-resume/edit` — правка текста + «Обогатить навыками из Learn»
-  - `/game/hh-resume` — превью / печать
+  - `/game/hh-resume` — список версий
+  - `/game/hh-resume/:resumeId` — полноэкранное превью + PDF/DOCX + сила
+  - `/game/hh-resume/:resumeId/edit` — split (редактор | live-превью) + AI + mock-interview
+  - `/game/hh-resume/:resumeId/quiz` — опросник (или `/game/hh-resume/quiz` создаёт новую версию)
 
 ## Edge
 

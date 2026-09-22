@@ -703,22 +703,16 @@ export function SiteAccountPage() {
                   На главную · плашка
                 </Link>
                 <Link
-                  to="/game/hh-resume/quiz"
-                  className="learn-admin-btn learn-admin-btn-primary"
-                >
-                  Опросник
-                </Link>
-                <Link
                   to="/game/hh-resume"
                   className="learn-admin-btn learn-admin-btn-primary"
                 >
-                  Превью
+                  Мои резюме
                 </Link>
                 <Link
-                  to="/game/hh-resume/edit"
+                  to="/game/hh-resume/quiz"
                   className="learn-admin-btn learn-admin-btn-primary"
                 >
-                  Доработать
+                  Новый опросник
                 </Link>
                 <Link to="/account" className="learn-admin-btn">
                   Анкета

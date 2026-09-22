@@ -24,6 +24,8 @@ export default defineConfig({
         target: process.env.VITE_RESUME_API_URL || 'http://127.0.0.1:8021',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ''),
+        timeout: 90_000,
+        proxyTimeout: 90_000,
       },
       '/api': {
         target: process.env.VITE_SITE_API_URL || 'http://127.0.0.1:8020',

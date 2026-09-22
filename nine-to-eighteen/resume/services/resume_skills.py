@@ -276,3 +276,51 @@ def missing_slugs_for_upgrade(skill_key: str, completed_slugs: list[str] | set[s
     if level == "middle":
         return []
     return [s for s in rule.episode_slugs if s not in completed]
+
+
+def build_gap_catalog(
+    completed_slugs: list[str] | set[str],
+    *,
+    selected_keys: Optional[list[str]] = None,
+) -> list[dict[str, Any]]:
+    """Каталог пробелов для AI skill-gap: только реальные Learn slug из SKILL_RULES.
+
+    Включает навыки, у которых есть непройденные episode_slugs, либо навык ещё не
+    выбран в резюме, но в Learn есть связанные модули.
+    """
+    completed = {str(s).strip() for s in completed_slugs if str(s).strip()}
+    selected = (
+        {k.strip() for k in selected_keys if k and str(k).strip()}
+        if selected_keys is not None
+        else None
+    )
+    catalog: list[dict[str, Any]] = []
+    for rule in SKILL_RULES:
+        missing = missing_slugs_for_upgrade(rule.key, completed)
+        matched = _completed_for_rule(rule, completed)
+        not_in_resume = selected is not None and rule.key not in selected and bool(matched)
+        if not missing and not not_in_resume:
+            continue
+        if not_in_resume and not missing:
+            # Навык уже middle в прогрессе, но не выбран — предложить добавить в резюме.
+            episode_hint = f"добавьте навык «{rule.name}» в резюме (уже есть прогресс Learn)"
+            missing_for_ai: list[str] = []
+        else:
+            episode_hint = (
+                f"для «{rule.name}» пройдите: {', '.join(missing)}"
+                if missing
+                else rule.name
+            )
+            missing_for_ai = list(missing)
+        catalog.append(
+            {
+                "skillKey": rule.key,
+                "name": rule.name,
+                "mapBranch": rule.map_branch or None,
+                "missingSlugs": missing_for_ai,
+                "completedSlugs": matched,
+                "inResume": selected is None or rule.key in selected,
+                "episodeHint": episode_hint,
+            }
+        )
+    return catalog

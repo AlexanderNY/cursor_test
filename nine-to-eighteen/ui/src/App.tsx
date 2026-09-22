@@ -53,6 +53,11 @@ const CertPage = lazy(() =>
 const HhResumePage = lazy(() =>
   import('@/pages/hh-resume-page').then((module) => ({ default: module.HhResumePage })),
 )
+const HhResumePreviewPage = lazy(() =>
+  import('@/pages/hh-resume-preview-page').then((module) => ({
+    default: module.HhResumePreviewPage,
+  })),
+)
 const HhResumeEditPage = lazy(() =>
   import('@/pages/hh-resume-edit-page').then((module) => ({
     default: module.HhResumeEditPage,
@@ -140,7 +145,23 @@ export default function App() {
         }
       />
       <Route
-        path="/game/hh-resume/edit"
+        path="/game/hh-resume/quiz"
+        element={
+          <Suspense fallback={<LearnFallback />}>
+            <HhResumeQuizPage />
+          </Suspense>
+        }
+      />
+      <Route
+        path="/game/hh-resume/:resumeId"
+        element={
+          <Suspense fallback={<LearnFallback />}>
+            <HhResumePreviewPage />
+          </Suspense>
+        }
+      />
+      <Route
+        path="/game/hh-resume/:resumeId/edit"
         element={
           <Suspense fallback={<LearnFallback />}>
             <HhResumeEditPage />
@@ -148,7 +169,7 @@ export default function App() {
         }
       />
       <Route
-        path="/game/hh-resume/quiz"
+        path="/game/hh-resume/:resumeId/quiz"
         element={
           <Suspense fallback={<LearnFallback />}>
             <HhResumeQuizPage />
