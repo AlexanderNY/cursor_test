@@ -34,6 +34,14 @@ CREATE TABLE IF NOT EXISTS site_resume_exports (
 );
 """
 
+SITE_SETTINGS_TABLE = """
+CREATE TABLE IF NOT EXISTS site_settings (
+    key VARCHAR(100) PRIMARY KEY,
+    value JSONB NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
 # Idempotent migration from legacy PK(user_id) → UUID id
 MIGRATE_SITE_RESUMES_TO_MULTI = """
 DO $migrate$
@@ -125,6 +133,7 @@ RESUME_SCHEMA_PATCHES: list[str] = [
 ]
 
 RESUME_TABLES: list[str] = [
+    SITE_SETTINGS_TABLE,
     SITE_RESUMES_TABLE,
     SITE_RESUME_EXPORTS_TABLE,
 ] + RESUME_SCHEMA_PATCHES

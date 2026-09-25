@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     DB_POOL_MAXSIZE: int = 16
     JWT_SECRET_KEY: str = ""
     JWT_ALGORITHM: str = "HS256"
-    MAX_UPLOAD_IMAGE_BYTES: int = 10 * 1024 * 1024
+    MAX_UPLOAD_IMAGE_BYTES: int = 5 * 1024 * 1024
     S3_ENDPOINT_URL: str = ""
     S3_PUBLIC_ENDPOINT_URL: str = ""
     S3_BUCKET: str = ""

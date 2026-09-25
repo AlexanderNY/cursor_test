@@ -6,6 +6,8 @@ from io import BytesIO
 from pathlib import Path
 from typing import Any
 
+from services.text_sanitize import sanitize_plain_text
+
 TEMPLATES_DIR = Path(__file__).resolve().parents[1] / "templates"
 
 
@@ -35,7 +37,7 @@ def render_resume_html(
         if salary is not None
         else "не указан"
     )
-    about_raw = str(resume.get("about") or "").strip()
+    about_raw = sanitize_plain_text(str(resume.get("about") or ""))
     about_html = html.escape(about_raw).replace("\n", "<br/>") if about_raw else "—"
     skill_labels = [
         str(s.get("display") or s.get("name") or "").strip()
@@ -132,7 +134,7 @@ def build_docx_bytes(
         doc.add_paragraph("Формат: " + ", ".join(str(x) for x in work_formats))
 
     doc.add_heading("О себе", level=2)
-    about = str(resume.get("about") or "").strip() or "—"
+    about = sanitize_plain_text(str(resume.get("about") or "")) or "—"
     paragraph = doc.add_paragraph(about)
     for run in paragraph.runs:
         run.font.size = Pt(11)

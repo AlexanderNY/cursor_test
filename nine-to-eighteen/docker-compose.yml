@@ -4,8 +4,9 @@
 services:
   site-api:
     build:
-      context: ./api
-      dockerfile: Dockerfile
+      # Repo root so we can COPY shared/ (pg_pool) into the image.
+      context: ..
+      dockerfile: nine-to-eighteen/api/Dockerfile
     container_name: site-api
     env_file:
       - path: .env

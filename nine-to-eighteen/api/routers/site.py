@@ -27,6 +27,7 @@ from config import settings
 from database import get_site_db_connection, release_site_db_connection
 from upload_limits import read_upload_limited
 import async_fs
+from services.photo_process import process_profile_photo
 from storage_client import get_storage
 
 UPLOADS_SITE_RESUME_DIR = Path("uploads/site/resume")
@@ -1845,24 +1846,33 @@ async def list_users(authorization: Optional[str] = Header(None)) -> dict[str, A
         async with conn.cursor() as cur:
             await cur.execute(
                 """
-                SELECT id, email, username, site_role, is_active, created_at
-                FROM site_users
-                ORDER BY id ASC
+                SELECT
+                    u.id,
+                    u.email,
+                    u.username,
+                    u.site_role,
+                    u.is_active,
+                    u.created_at,
+                    COALESCE(
+                        ARRAY_AGG(a.app_slug ORDER BY a.app_slug)
+                        FILTER (WHERE a.app_slug IS NOT NULL),
+                        '{}'
+                    ) AS app_slugs
+                FROM site_users u
+                LEFT JOIN site_app_admins a ON a.user_id = u.id
+                GROUP BY u.id, u.email, u.username, u.site_role, u.is_active, u.created_at
+                ORDER BY u.id ASC
                 LIMIT 500
                 """
             )
             rows = await cur.fetchall()
             users: list[dict[str, Any]] = []
             for row in rows:
-                uid = int(row[0])
-                await cur.execute(
-                    "SELECT app_slug FROM site_app_admins WHERE user_id = %s ORDER BY app_slug",
-                    (uid,),
-                )
-                apps = [str(r[0]) for r in await cur.fetchall()]
+                raw_apps = row[6] or []
+                apps = [str(slug) for slug in raw_apps]
                 users.append(
                     {
-                        "id": uid,
+                        "id": int(row[0]),
                         "email": str(row[1] or ""),
                         "username": str(row[2] or ""),
                         "siteRole": str(row[3] or "user"),
@@ -2129,10 +2139,11 @@ async def upload_my_photo(
             status_code=400,
             detail=f"Allowed formats: {', '.join(sorted(ALLOWED_RESUME_PHOTO_EXT))}",
         )
-    content = await read_upload_limited(
+    raw = await read_upload_limited(
         photo, max_bytes=settings.MAX_UPLOAD_IMAGE_BYTES, label="Photo"
     )
-    name = f"{uuid.uuid4().hex}{ext}"
+    content = process_profile_photo(raw)
+    name = f"{uuid.uuid4().hex}.jpg"
     key = f"{S3_SITE_RESUME_PREFIX}/{user_id}/{name}"
     storage = get_storage()
     if storage:

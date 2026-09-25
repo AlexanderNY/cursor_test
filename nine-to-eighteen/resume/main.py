@@ -17,6 +17,12 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db(RESUME_TABLES)
+    try:
+        from services.runtime_settings import load_settings
+
+        await load_settings(force=True)
+    except Exception:
+        logger.warning("resume runtime settings not loaded at startup", exc_info=True)
     yield
     await close_db()
 

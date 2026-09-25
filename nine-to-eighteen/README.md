@@ -68,6 +68,11 @@ psql -U postgres -d db_9to18 -f sql/migrate_learn_from_db_bot.sql
     (+10 фото, +15 «О себе», +20 за релевантный модуль Learn, cap 100)
 - Storage: env `S3_*` (как у site-api); без S3 — каталог `uploads/resume/exports/` в контейнере
 - AI: локальный Ollama на `:11434` (`AI_SERVICE_URL=http://host.docker.internal:11434`); без Ollama эндпоинты отдают 503
+- Rate limits (in-memory, ключ `user_id`): AI 8/мин, generate 20/мин, preview 60/мин, export 10/мин (429 + `Retry-After`)
+- Photo (`POST /site/me/photo`): max **5 МБ**, MIME по magic bytes, сжатие Pillow → JPEG ≤1280px
+- «О себе»: санитизация HTML/control chars при записи и перед PDF/DOCX
+- Админка настроек (site_admin): `/game/hh-resume/admin` → `GET|PUT /resume/admin/settings`
+  (rate limits, AI URL/model, баллы силы, флаги фич; JWT/DB/S3 — только env)
 - UI:
   - `/game/hh-resume` — список версий
   - `/game/hh-resume/:resumeId` — полноэкранное превью + PDF/DOCX + сила

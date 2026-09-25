@@ -19,6 +19,7 @@ export type AdminNavGroup = {
 export const ADMIN_GLOBAL_MENU: AdminNavItem[] = [
   { id: 'nav-site-admin', label: 'Админка сайта', href: '/admin' },
   { id: 'nav-learn-cms', label: 'Learn CMS', href: '/game/learn/admin' },
+  { id: 'nav-resume-admin', label: 'Резюме · настройки', href: '/game/hh-resume/admin' },
   { id: 'nav-learn-new', label: 'Новая запись', href: '/game/learn/admin/new' },
   { id: 'nav-learning-map', label: 'Карта обучения', href: '/game/learning-map' },
   { id: 'nav-learn-public', label: 'Каталог Learn', href: '/game/learn' },

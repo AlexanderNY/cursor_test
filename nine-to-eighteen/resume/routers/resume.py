@@ -1,6 +1,7 @@
 """API: несколько версий HH-резюме + sync PDF/DOCX export."""
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 import uuid
@@ -11,8 +12,9 @@ from fastapi import APIRouter, Header, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
-from auth import require_user
+from auth import require_site_admin, require_user
 from database import get_db_connection, release_db_connection
+from rate_limit import enforce_rate_limit
 from services.resume_export import build_docx_bytes, build_pdf_bytes, render_resume_html
 from services.resume_questionnaire import (
     apply_questionnaire_to_template,
@@ -26,6 +28,13 @@ from services.resume_skills import (
     suggest_specialization,
 )
 from services.resume_strength import compute_resume_strength
+from services.runtime_settings import (
+    feature_enabled,
+    load_settings,
+    public_settings_view,
+    save_settings,
+)
+from services.text_sanitize import sanitize_plain_text
 from services import resume_ai
 from storage_client import (
     build_api_file_url,
@@ -114,10 +123,13 @@ def _normalize_string_list(values: Optional[list[str]], allowed: set[str]) -> li
     if values is None:
         return []
     out: list[str] = []
+    seen: set[str] = set()
     for raw in values:
         key = str(raw or "").strip().lower()
-        if key in allowed and key not in out:
-            out.append(key)
+        if key not in allowed or key in seen:
+            continue
+        seen.add(key)
+        out.append(key)
     return out
 
 
@@ -388,6 +400,28 @@ async def questionnaire_schema() -> dict[str, Any]:
     return get_questionnaire()
 
 
+@router.get("/admin/settings")
+async def admin_get_settings(
+    authorization: Optional[str] = Header(None),
+) -> dict[str, Any]:
+    await require_site_admin(authorization)
+    doc = await load_settings(force=True)
+    return public_settings_view(doc)
+
+
+@router.put("/admin/settings")
+async def admin_put_settings(
+    body: dict[str, Any],
+    authorization: Optional[str] = Header(None),
+) -> dict[str, Any]:
+    await require_site_admin(authorization)
+    payload = body.get("settings") if isinstance(body.get("settings"), dict) else body
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Expected settings object")
+    doc = await save_settings(payload)
+    return public_settings_view(doc)
+
+
 @router.get("/files/{file_id}")
 async def download_export_file(
     file_id: str,
@@ -500,7 +534,11 @@ async def put_resume(
         if body.work_formats is not None
         else cur["workFormats"]
     )
-    about = body.about.strip() if body.about is not None else cur["about"]
+    about = (
+        sanitize_plain_text(body.about)
+        if body.about is not None
+        else cur["about"]
+    )
     selected_skill_keys = (
         [str(k).strip() for k in body.selected_skill_keys if str(k).strip()]
         if body.selected_skill_keys is not None
@@ -577,10 +615,14 @@ async def resume_preview(
 ) -> dict[str, Any]:
     user = await require_user(authorization)
     user_id = int(user["user_id"])
+    enforce_rate_limit(user_id, "preview")
+    await load_settings()
     email = str(user.get("email") or "")
-    resume = await _require_resume(_parse_resume_id(resume_id), user_id)
-    profile_row = await _fetch_profile_row(user_id)
-    completed = await _fetch_completed_slugs(user_id)
+    resume, profile_row, completed = await asyncio.gather(
+        _require_resume(_parse_resume_id(resume_id), user_id),
+        _fetch_profile_row(user_id),
+        _fetch_completed_slugs(user_id),
+    )
     profile = _row_profile(profile_row, email=email) if profile_row else _empty_profile(email=email)
     skills = _skills_for_resume(resume, completed)
     hints = branch_completion_hints(completed)
@@ -633,6 +675,7 @@ async def generate_resume(
 ) -> dict[str, Any]:
     user = await require_user(authorization)
     user_id = int(user["user_id"])
+    enforce_rate_limit(user_id, "generate")
     rid = _parse_resume_id(resume_id)
     await _require_resume(rid, user_id)
     completed = await _fetch_completed_slugs(user_id)
@@ -672,6 +715,11 @@ async def generate_resume(
     }
 
 
+def _require_feature(name: str) -> None:
+    if not feature_enabled(name, True):
+        raise HTTPException(status_code=403, detail=f"Feature disabled: {name}")
+
+
 def _ai_http_error(exc: Exception) -> HTTPException:
     if isinstance(exc, ValueError):
         return HTTPException(status_code=400, detail=str(exc))
@@ -689,6 +737,8 @@ async def ai_improve_about(
 ) -> dict[str, Any]:
     user = await require_user(authorization)
     user_id = int(user["user_id"])
+    enforce_rate_limit(user_id, "ai")
+    _require_feature("aiImproveAbout")
     rid = _parse_resume_id(resume_id)
     resume = await _require_resume(rid, user_id)
     completed = await _fetch_completed_slugs(user_id)
@@ -702,6 +752,8 @@ async def ai_improve_about(
         )
     except Exception as exc:
         raise _ai_http_error(exc) from exc
+
+    improved = sanitize_plain_text(improved)
 
     persisted = False
     if body.persist:
@@ -732,6 +784,8 @@ async def ai_skill_gap(
 ) -> dict[str, Any]:
     user = await require_user(authorization)
     user_id = int(user["user_id"])
+    enforce_rate_limit(user_id, "ai")
+    _require_feature("aiSkillGap")
     resume = await _require_resume(_parse_resume_id(resume_id), user_id)
     completed = await _fetch_completed_slugs(user_id)
     skills = _skills_for_resume(resume, completed)
@@ -758,6 +812,8 @@ async def ai_cover_letter(
 ) -> dict[str, Any]:
     user = await require_user(authorization)
     user_id = int(user["user_id"])
+    enforce_rate_limit(user_id, "ai")
+    _require_feature("aiCoverLetter")
     email = str(user.get("email") or "")
     resume = await _require_resume(_parse_resume_id(resume_id), user_id)
     profile_row = await _fetch_profile_row(user_id)
@@ -802,6 +858,8 @@ async def ai_mock_interview_start(
 ) -> dict[str, Any]:
     user = await require_user(authorization)
     user_id = int(user["user_id"])
+    enforce_rate_limit(user_id, "ai")
+    _require_feature("aiMockInterview")
     resume = await _require_resume(_parse_resume_id(resume_id), user_id)
     completed = await _fetch_completed_slugs(user_id)
     skills = _skills_for_resume(resume, completed)
@@ -824,7 +882,10 @@ async def ai_mock_interview_evaluate(
     authorization: Optional[str] = Header(None),
 ) -> dict[str, Any]:
     user = await require_user(authorization)
-    await _require_resume(_parse_resume_id(resume_id), int(user["user_id"]))
+    user_id = int(user["user_id"])
+    enforce_rate_limit(user_id, "ai")
+    _require_feature("aiMockInterview")
+    await _require_resume(_parse_resume_id(resume_id), user_id)
     try:
         result = await resume_ai.evaluate_mock_answer(
             question=body.question,
@@ -854,6 +915,7 @@ async def questionnaire_apply(
     completed = await _fetch_completed_slugs(user_id)
     hints = branch_completion_hints(completed)
     draft = apply_questionnaire_to_template(answers, branch_hints=hints)
+    draft["about"] = sanitize_plain_text(draft.get("about") or "")
 
     resume_out = {
         **existing,
@@ -922,6 +984,8 @@ async def export_resume(
 ) -> dict[str, Any]:
     user = await require_user(authorization)
     user_id = int(user["user_id"])
+    enforce_rate_limit(user_id, "export")
+    _require_feature("exportEnabled")
     rid = _parse_resume_id(resume_id)
     resume = await _require_resume(rid, user_id)
     email = str(user.get("email") or "")

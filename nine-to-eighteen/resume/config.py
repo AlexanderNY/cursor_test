@@ -15,6 +15,15 @@ class Settings(BaseSettings):
     S3_SECRET_KEY: str = ""
     S3_REGION: str = "us-east-1"
     S3_USE_SSL: bool = False
+    # Rate limits (also overridable via RATE_LIMIT_{BUCKET}_REQUESTS / _WINDOW_SEC)
+    RATE_LIMIT_AI_REQUESTS: int = 8
+    RATE_LIMIT_AI_WINDOW_SEC: int = 60
+    RATE_LIMIT_GENERATE_REQUESTS: int = 20
+    RATE_LIMIT_GENERATE_WINDOW_SEC: int = 60
+    RATE_LIMIT_PREVIEW_REQUESTS: int = 60
+    RATE_LIMIT_PREVIEW_WINDOW_SEC: int = 60
+    RATE_LIMIT_EXPORT_REQUESTS: int = 10
+    RATE_LIMIT_EXPORT_WINDOW_SEC: int = 60
 
     class Config:
         env_file = ".env"

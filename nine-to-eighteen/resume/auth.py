@@ -76,3 +76,10 @@ async def require_user(authorization: Optional[str]) -> dict[str, Any]:
         "site_role": str(row[1] or "user"),
         "email": str(row[3] or ""),
     }
+
+
+async def require_site_admin(authorization: Optional[str]) -> dict[str, Any]:
+    user = await require_user(authorization)
+    if str(user.get("site_role") or "") != "site_admin":
+        raise HTTPException(status_code=403, detail="site_admin required")
+    return user

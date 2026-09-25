@@ -12,6 +12,21 @@ LEARN_POINTS_PER_MODULE = 20
 MAX_SCORE = 100
 
 
+def _strength_weights() -> dict[str, int]:
+    try:
+        from services.runtime_settings import strength_override
+
+        return strength_override()
+    except Exception:
+        return {
+            "photoPoints": PHOTO_POINTS,
+            "aboutPoints": ABOUT_POINTS,
+            "aboutMinLen": ABOUT_MIN_LEN,
+            "learnPointsPerModule": LEARN_POINTS_PER_MODULE,
+            "maxScore": MAX_SCORE,
+        }
+
+
 def _branch_for_resume(
     specialization: str,
     completed_slugs: list[str] | set[str],
@@ -70,6 +85,13 @@ def compute_resume_strength(
     done_relevant = [s for s in pool if s in completed]
     missing_relevant = [s for s in pool if s not in completed]
 
+    weights = _strength_weights()
+    photo_pts = int(weights.get("photoPoints", PHOTO_POINTS))
+    about_pts = int(weights.get("aboutPoints", ABOUT_POINTS))
+    about_min = int(weights.get("aboutMinLen", ABOUT_MIN_LEN))
+    learn_pts = int(weights.get("learnPointsPerModule", LEARN_POINTS_PER_MODULE))
+    max_score = int(weights.get("maxScore", MAX_SCORE))
+
     parts: list[dict[str, Any]] = []
     score = 0
 
@@ -78,35 +100,35 @@ def compute_resume_strength(
         {
             "id": "photo",
             "label": "Фото",
-            "points": PHOTO_POINTS if photo_ok else 0,
-            "maxPoints": PHOTO_POINTS,
+            "points": photo_pts if photo_ok else 0,
+            "maxPoints": photo_pts,
             "done": photo_ok,
         }
     )
     if photo_ok:
-        score += PHOTO_POINTS
+        score += photo_pts
 
     about_text = (about or "").strip()
-    about_ok = len(about_text) >= ABOUT_MIN_LEN
+    about_ok = len(about_text) >= about_min
     parts.append(
         {
             "id": "about",
             "label": "О себе",
-            "points": ABOUT_POINTS if about_ok else 0,
-            "maxPoints": ABOUT_POINTS,
+            "points": about_pts if about_ok else 0,
+            "maxPoints": about_pts,
             "done": about_ok,
         }
     )
     if about_ok:
-        score += ABOUT_POINTS
+        score += about_pts
 
-    learn_points = LEARN_POINTS_PER_MODULE * len(done_relevant)
+    learn_points = learn_pts * len(done_relevant)
     parts.append(
         {
             "id": "learn",
             "label": "Модули Learn",
             "points": learn_points,
-            "maxPoints": LEARN_POINTS_PER_MODULE * max(len(pool), 1),
+            "maxPoints": learn_pts * max(len(pool), 1),
             "done": len(done_relevant) > 0,
             "doneCount": len(done_relevant),
             "totalRelevant": len(pool),
@@ -114,15 +136,15 @@ def compute_resume_strength(
         }
     )
     score += learn_points
-    score = min(MAX_SCORE, score)
+    score = min(max_score, score)
 
     actions: list[dict[str, Any]] = []
     if not photo_ok:
         actions.append(
             {
                 "id": "photo",
-                "points": PHOTO_POINTS,
-                "title": f"Загрузите фото в кабинете (+{PHOTO_POINTS}%)",
+                "points": photo_pts,
+                "title": f"Загрузите фото в кабинете (+{photo_pts}%)",
                 "href": "/account",
             }
         )
@@ -130,12 +152,11 @@ def compute_resume_strength(
         actions.append(
             {
                 "id": "about",
-                "points": ABOUT_POINTS,
-                "title": f"Заполните «О себе» (≥{ABOUT_MIN_LEN} символов, +{ABOUT_POINTS}%)",
+                "points": about_pts,
+                "title": f"Заполните «О себе» (≥{about_min} символов, +{about_pts}%)",
                 "href": None,
             }
         )
-    # Показываем до 5 ближайших модулей для геймификации.
     for slug in missing_relevant[:5]:
         rule_name = next(
             (r.name for r in SKILL_RULES if slug in r.episode_slugs),
@@ -144,8 +165,8 @@ def compute_resume_strength(
         actions.append(
             {
                 "id": f"learn:{slug}",
-                "points": LEARN_POINTS_PER_MODULE,
-                "title": f"Пройдите модуль «{rule_name}» ({slug}), чтобы получить +{LEARN_POINTS_PER_MODULE}%",
+                "points": learn_pts,
+                "title": f"Пройдите модуль «{rule_name}» ({slug}), чтобы получить +{learn_pts}%",
                 "href": f"/game/learn/{slug}",
                 "slug": slug,
             }
@@ -153,7 +174,7 @@ def compute_resume_strength(
 
     return {
         "score": score,
-        "maxScore": MAX_SCORE,
+        "maxScore": max_score,
         "parts": parts,
         "actions": actions,
         "relevantBranch": branch,

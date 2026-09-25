@@ -1,10 +1,12 @@
 # Standalone 9to18.ru frontend. Requires: docker network create edge_net
 # Reachable from ui-edge as ui-9to18:8200
+#
+# Canonical sources: nine-to-eighteen/ui (this folder is a deploy pointer).
 
 services:
   ui-9to18:
     build:
-      context: .
+      context: ../../nine-to-eighteen/ui
       dockerfile: Dockerfile
       target: production
     container_name: ui-9to18

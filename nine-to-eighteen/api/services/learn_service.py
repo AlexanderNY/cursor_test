@@ -7,8 +7,13 @@ from pathlib import Path
 from typing import Any, Optional
 
 from database import get_db_connection, release_db_connection
+from services.ttl_cache import TtlCache
 
 SEED_PATH = Path(__file__).resolve().parents[1] / "data" / "learn_seed.json"
+
+# Public /learn/posts reads; invalidated on admin writes.
+PUBLIC_POSTS_CACHE_TTL_SEC = 300
+_public_posts_cache = TtlCache(ttl_sec=PUBLIC_POSTS_CACHE_TTL_SEC)
 
 POST_COLUMNS = (
     "id, slug, episode, title, short_title, rubric_id, sort_order, "
@@ -357,8 +362,15 @@ class LearnService:
                 return inserted
         finally:
             await release_db_connection(conn)
+            _public_posts_cache.clear()
 
     async def list_posts(self, *, include_unpublished: bool = False) -> list[dict[str, Any]]:
+        cache_key = "list:published"
+        if not include_unpublished:
+            cached = _public_posts_cache.get(cache_key)
+            if cached is not None:
+                return cached
+
         await self.ensure_seeded()
         conn = await get_db_connection()
         try:
@@ -381,13 +393,23 @@ class LearnService:
                         """
                     )
                 rows = await cur.fetchall()
-                return [_row_post(r) for r in rows]
+                posts = [_row_post(r) for r in rows]
         finally:
             await release_db_connection(conn)
+
+        if not include_unpublished:
+            _public_posts_cache.set(cache_key, posts)
+        return posts
 
     async def get_post(
         self, slug: str, *, include_unpublished: bool = False
     ) -> Optional[dict[str, Any]]:
+        cache_key = f"post:{slug}"
+        if not include_unpublished:
+            cached = _public_posts_cache.get(cache_key)
+            if cached is not None:
+                return cached
+
         await self.ensure_seeded()
         conn = await get_db_connection()
         try:
@@ -410,9 +432,13 @@ class LearnService:
                         (slug,),
                     )
                 row = await cur.fetchone()
-                return _row_post(row) if row else None
+                post = _row_post(row) if row else None
         finally:
             await release_db_connection(conn)
+
+        if not include_unpublished and post is not None:
+            _public_posts_cache.set(cache_key, post)
+        return post
 
     async def upsert_post(self, payload: dict[str, Any]) -> dict[str, Any]:
         row = seed_payload_to_row(payload)
@@ -477,6 +503,7 @@ class LearnService:
                 return _row_post(saved)
         finally:
             await release_db_connection(conn)
+            _public_posts_cache.clear()
 
     async def delete_post(self, slug: str) -> bool:
         conn = await get_db_connection()
@@ -489,6 +516,7 @@ class LearnService:
                 return await cur.fetchone() is not None
         finally:
             await release_db_connection(conn)
+            _public_posts_cache.clear()
 
     async def schedule_all(self, start_iso: str, interval_days: float) -> list[dict[str, Any]]:
         start = _parse_dt(start_iso)
@@ -509,6 +537,7 @@ class LearnService:
                     )
         finally:
             await release_db_connection(conn)
+            _public_posts_cache.clear()
         return await self.list_posts(include_unpublished=True)
 
     async def list_progress(self, user_id: int) -> list[dict[str, Any]]:

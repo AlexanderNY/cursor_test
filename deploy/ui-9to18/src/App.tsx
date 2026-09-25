@@ -50,11 +50,34 @@ const CertPage = lazy(() =>
   import('@/pages/cert-page').then((module) => ({ default: module.CertPage })),
 )
 
+const HhResumePage = lazy(() =>
+  import('@/pages/hh-resume-page').then((module) => ({ default: module.HhResumePage })),
+)
+const HhResumePreviewPage = lazy(() =>
+  import('@/pages/hh-resume-preview-page').then((module) => ({
+    default: module.HhResumePreviewPage,
+  })),
+)
+const HhResumeEditPage = lazy(() =>
+  import('@/pages/hh-resume-edit-page').then((module) => ({
+    default: module.HhResumeEditPage,
+  })),
+)
+const HhResumeQuizPage = lazy(() =>
+  import('@/pages/hh-resume-quiz-page').then((module) => ({
+    default: module.HhResumeQuizPage,
+  })),
+)
+const HhResumeAdminPage = lazy(() =>
+  import('@/pages/hh-resume-admin-page').then((module) => ({
+    default: module.HhResumeAdminPage,
+  })),
+)
+
 const QuizPage = lazy(() =>
   import('@/pages/quiz-page').then((module) => ({ default: module.QuizPage })),
 )
 
-<<<<<<< Updated upstream
 const MnemonicsPage = lazy(() =>
   import('@/pages/mnemonics-page').then((module) => ({ default: module.MnemonicsPage })),
 )
@@ -69,10 +92,6 @@ const CodeSandboxPage = lazy(() =>
   import('@/pages/code-sandbox-page').then((module) => ({
     default: module.CodeSandboxPage,
   })),
-=======
-const HhResumePage = lazy(() =>
-  import('@/pages/hh-resume-page').then((module) => ({ default: module.HhResumePage })),
->>>>>>> Stashed changes
 )
 
 function BowlGameFallback() {
@@ -123,6 +142,54 @@ export default function App() {
         }
       />
       <Route
+        path="/game/hh-resume"
+        element={
+          <Suspense fallback={<LearnFallback />}>
+            <HhResumePage />
+          </Suspense>
+        }
+      />
+      <Route
+        path="/game/hh-resume/quiz"
+        element={
+          <Suspense fallback={<LearnFallback />}>
+            <HhResumeQuizPage />
+          </Suspense>
+        }
+      />
+      <Route
+        path="/game/hh-resume/admin"
+        element={
+          <Suspense fallback={<LearnFallback />}>
+            <HhResumeAdminPage />
+          </Suspense>
+        }
+      />
+      <Route
+        path="/game/hh-resume/:resumeId"
+        element={
+          <Suspense fallback={<LearnFallback />}>
+            <HhResumePreviewPage />
+          </Suspense>
+        }
+      />
+      <Route
+        path="/game/hh-resume/:resumeId/edit"
+        element={
+          <Suspense fallback={<LearnFallback />}>
+            <HhResumeEditPage />
+          </Suspense>
+        }
+      />
+      <Route
+        path="/game/hh-resume/:resumeId/quiz"
+        element={
+          <Suspense fallback={<LearnFallback />}>
+            <HhResumeQuizPage />
+          </Suspense>
+        }
+      />
+      <Route
         path="/game/quiz"
         element={
           <Suspense fallback={<LearnFallback />}>
@@ -131,22 +198,14 @@ export default function App() {
         }
       />
       <Route
-<<<<<<< Updated upstream
         path="/game/mnemonics"
         element={
           <Suspense fallback={<LearnFallback />}>
             <MnemonicsPage />
-=======
-        path="/game/hh-resume"
-        element={
-          <Suspense fallback={<LearnFallback />}>
-            <HhResumePage />
->>>>>>> Stashed changes
           </Suspense>
         }
       />
       <Route
-<<<<<<< Updated upstream
         path="/game/mnemonics/:technique"
         element={
           <Suspense fallback={<LearnFallback />}>
@@ -164,8 +223,6 @@ export default function App() {
       />
       <Route path="/game/map" element={<Navigate to="/game/learning-map" replace />} />
       <Route
-=======
->>>>>>> Stashed changes
         path="/game/bowl"
         element={
           <Suspense fallback={<BowlGameFallback />}>

@@ -310,6 +310,54 @@ export async function resumeMockInterviewEvaluate(
   })
 }
 
+export type ResumeAdminSettings = {
+  rateLimits: {
+    ai: { requests: number; windowSec: number }
+    generate: { requests: number; windowSec: number }
+    preview: { requests: number; windowSec: number }
+    export: { requests: number; windowSec: number }
+  }
+  ai: {
+    enabled: boolean
+    serviceUrl: string
+    model: string
+    timeoutSec: number
+  }
+  strength: {
+    photoPoints: number
+    aboutPoints: number
+    aboutMinLen: number
+    learnPointsPerModule: number
+    maxScore: number
+  }
+  features: {
+    exportEnabled: boolean
+    aiImproveAbout: boolean
+    aiSkillGap: boolean
+    aiCoverLetter: boolean
+    aiMockInterview: boolean
+  }
+}
+
+export type ResumeAdminSettingsResponse = {
+  settings: ResumeAdminSettings
+  defaults: ResumeAdminSettings
+  envOnly: string[]
+}
+
+export async function resumeAdminGetSettings(): Promise<ResumeAdminSettingsResponse> {
+  return request('/resume/admin/settings')
+}
+
+export async function resumeAdminPutSettings(
+  settings: ResumeAdminSettings,
+): Promise<ResumeAdminSettingsResponse> {
+  return request('/resume/admin/settings', {
+    method: 'PUT',
+    body: JSON.stringify({ settings }),
+  })
+}
+
 /** Скачать файл экспорта (JWT). Возвращает object URL. */
 export async function resumeDownloadExport(downloadUrl: string): Promise<{
   objectUrl: string

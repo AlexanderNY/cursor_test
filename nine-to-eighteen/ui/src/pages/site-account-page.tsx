@@ -714,6 +714,11 @@ export function SiteAccountPage() {
                 >
                   Новый опросник
                 </Link>
+                {isSuperAdmin(session) ? (
+                  <Link to="/game/hh-resume/admin" className="learn-admin-btn">
+                    Настройки сервиса
+                  </Link>
+                ) : null}
                 <Link to="/account" className="learn-admin-btn">
                   Анкета
                 </Link>
