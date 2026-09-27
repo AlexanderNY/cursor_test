@@ -8,6 +8,34 @@ import type {
 import { formatDateOnly } from '@/utils/date'
 
 export const AUTH_STATUS_POLL_INTERVAL_MS = 12_000
+export const TG_CODE_EXPIRED_ERROR = 'Code expired'
+export const TG_CODE_RESEND_INTERVAL_SEC = 120
+
+export function readTgCodeResendCooldownSec(userId: number, nowMs = Date.now()): number {
+  try {
+    const raw = sessionStorage.getItem(`tg-auth-code-resend-until:${userId}`)
+    if (!raw) return 0
+    const until = Number(raw)
+    if (!Number.isFinite(until)) return 0
+    const left = Math.ceil((until - nowMs) / 1000)
+    return left > 0 ? left : 0
+  } catch {
+    return 0
+  }
+}
+
+export function rememberTgCodeResendCooldown(
+  userId: number,
+  seconds: number,
+  nowMs = Date.now(),
+): void {
+  if (seconds <= 0) return
+  try {
+    sessionStorage.setItem(`tg-auth-code-resend-until:${userId}`, String(nowMs + seconds * 1000))
+  } catch {
+    /* sessionStorage may be unavailable */
+  }
+}
 export const MAX_ALERT_RULES = 10
 export const MAX_ALERT_LIST_ITEMS = 10
 

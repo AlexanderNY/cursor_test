@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { drawHeroFigureEight } from './hero-visual'
+import { drawHeroComicFace, drawHeroFigureEight, drawHeroPaws } from './hero-visual'
 
 interface HeroPreviewProps {
   color: string
@@ -14,8 +14,12 @@ export function HeroPreview({ color, size = 72 }: HeroPreviewProps) {
     if (!canvas) return
     const ctx = canvas.getContext('2d')
     if (!ctx) return
+    const facing = -Math.PI / 2
+    const radius = size / 2 - 8
     ctx.clearRect(0, 0, size, size)
-    drawHeroFigureEight(ctx, size / 2, size / 2, size / 2 - 8, -Math.PI / 2, color)
+    drawHeroFigureEight(ctx, size / 2, size / 2, radius, facing, color)
+    drawHeroPaws(ctx, size / 2, size / 2, radius, facing, color, 0.35)
+    drawHeroComicFace(ctx, size / 2, size / 2, radius, facing, null, 1, 0.15)
   }, [color, size])
 
   return (

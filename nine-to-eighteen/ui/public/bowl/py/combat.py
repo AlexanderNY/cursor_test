@@ -26,6 +26,11 @@ def apply_red_pickup(player: Player, pickup: Pickup) -> None:
     player.radius += float(cfg("red_growth"))
 
 
+def apply_yellow_pickup(player: Player, pickup: Pickup) -> None:
+    player.skill_bonus += int(cfg("yellow_perk_gain"))
+    player.radius += float(cfg("yellow_growth"))
+
+
 def apply_red_eats_green(red: Pickup, green: Pickup) -> None:
     red.radius += float(cfg("red_eats_green_growth"))
     if red.radius > float(cfg("red_pickup_max_radius")):

@@ -49,6 +49,30 @@
     {% endfor %}
   </ul>
 
+  {% if badges %}
+  <h2>Достижения</h2>
+  <ul>
+    {% for badge in badges %}
+    <li>{{ badge }}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  {% if projects %}
+  <h2>Проекты</h2>
+  <ul>
+    {% for project in projects %}
+    <li>
+      <strong>{{ project.name }}</strong>
+      {% if project.language %} · {{ project.language }}{% endif %}
+      {% if project.stars %} · ★{{ project.stars }}{% endif %}
+      {% if project.description %}<br/>{{ project.description }}{% endif %}
+      {% if project.url %}<br/><a href="{{ project.url }}">{{ project.url }}</a>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
   <p class="footer">9to18.ru · резюме</p>
 </body>
 </html>

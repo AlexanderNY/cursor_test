@@ -50,6 +50,17 @@ MOCK_EVAL_SYSTEM = (
     '{"score":1-5,"feedback":"...","passed":true|false}'
 ) + _SAFETY
 
+MOCK_CHAT_OPENER_SYSTEM = (
+    "Ты технический интервьюер. Задай один короткий первый вопрос по навыкам кандидата. "
+    "Отвечай только текстом вопроса на русском, без нумерации и пояснений."
+) + _SAFETY
+
+MOCK_CHAT_FOLLOWUP_SYSTEM = (
+    "Ты технический интервьюер в диалоге. Учитывая предыдущий ответ и оценку, задай "
+    "следующий короткий уточняющий или новый вопрос по навыкам кандидата. "
+    "Отвечай только текстом вопроса на русском."
+) + _SAFETY
+
 _JSON_BLOCK_RE = re.compile(r"\{[\s\S]*\}")
 
 
@@ -285,8 +296,27 @@ async def generate_mock_interview(
     if not skills:
         raise ValueError("Сначала обогатите резюме навыками из Learn")
 
-    await _require_ai_ready()
     allowed = {str(s.get("key") or "") for s in skills if s.get("key")}
+
+    def _template_questions() -> list[dict[str, Any]]:
+        out: list[dict[str, Any]] = []
+        for skill in skills[:5]:
+            name = skill.get("name") or skill.get("key")
+            out.append(
+                {
+                    "id": f"q-{skill.get('key')}",
+                    "skillKey": str(skill.get("key") or ""),
+                    "question": f"Расскажите, как вы применяли {name} на практике.",
+                    "hint": str(skill.get("evidence") or ""),
+                }
+            )
+        return out
+
+    try:
+        await _require_ai_ready()
+    except RuntimeError:
+        return _template_questions()
+
     skills_line = ", ".join(
         str(s.get("display") or s.get("name") or s.get("key") or "") for s in skills
     )
@@ -297,20 +327,14 @@ async def generate_mock_interview(
         f"Допустимые skillKey: {', '.join(sorted(allowed))}\n"
         "Составь 3–5 вопросов junior/middle уровня."
     )
-    raw = await ai_client.complete(prompt, system=MOCK_INTERVIEW_SYSTEM, max_tokens=1024)
-    questions = _parse_questions_json(raw or "", allowed)
+    try:
+        raw = await ai_client.complete(prompt, system=MOCK_INTERVIEW_SYSTEM, max_tokens=1024)
+        questions = _parse_questions_json(raw or "", allowed)
+    except Exception:
+        logger.exception("mock interview AI failed; using template questions")
+        return _template_questions()
     if not questions:
-        # Fallback без LLM-качества: шаблонные вопросы по навыкам.
-        for skill in skills[:5]:
-            name = skill.get("name") or skill.get("key")
-            questions.append(
-                {
-                    "id": f"q-{skill.get('key')}",
-                    "skillKey": str(skill.get("key") or ""),
-                    "question": f"Расскажите, как вы применяли {name} на практике.",
-                    "hint": str(skill.get("evidence") or ""),
-                }
-            )
+        return _template_questions()
     return questions
 
 
@@ -351,3 +375,92 @@ async def evaluate_mock_answer(
         "feedback": str(data.get("feedback") or text or "Оценка получена.")[:800],
         "passed": bool(data.get("passed")) if "passed" in data else score >= 3,
     }
+
+
+async def generate_mock_chat_opener(
+    *,
+    specialization: str,
+    skills: list[dict[str, Any]],
+) -> str:
+    """Первый вопрос чат-интервью; fallback на шаблон."""
+    from shared import ai_client
+
+    if not skills:
+        return "Расскажите о своём самом интересном техническом проекте."
+
+    def _template() -> str:
+        name = skills[0].get("name") or skills[0].get("key") or "технологии"
+        return (
+            f"Расскажите, как вы применяли {name} на практике. "
+            "Приведите конкретный пример из проекта."
+        )
+
+    try:
+        await _require_ai_ready()
+    except RuntimeError:
+        return _template()
+
+    skills_line = ", ".join(
+        str(s.get("display") or s.get("name") or s.get("key") or "") for s in skills[:8]
+    )
+    role = (specialization or "").strip() or "специалист"
+    prompt = f"Должность: {role}\nНавыки: {skills_line}\nЗадай первый вопрос."
+    try:
+        raw = await ai_client.complete(prompt, system=MOCK_CHAT_OPENER_SYSTEM, max_tokens=200)
+        text = (raw or "").strip()
+        if text:
+            return text[:500]
+    except Exception:
+        logger.exception("mock chat opener AI failed")
+    return _template()
+
+
+async def generate_mock_chat_followup(
+    *,
+    specialization: str,
+    skills: list[dict[str, Any]],
+    messages: list[dict[str, str]],
+    last_score: int,
+    turn: int,
+) -> str:
+    """Следующий вопрос чата; fallback на шаблон."""
+    from shared import ai_client
+
+    def _template() -> str:
+        if not skills:
+            return "Какой технический риск вы бы проверили перед релизом?"
+        idx = min(turn, len(skills) - 1)
+        name = skills[idx].get("name") or skills[idx].get("key") or "систему"
+        if last_score >= 4:
+            return f"Какие trade-off вы учитывали, работая с {name}?"
+        return f"Как бы вы отладили проблему с {name} при росте latency в проде?"
+
+    try:
+        await _require_ai_ready()
+    except RuntimeError:
+        return _template()
+
+    skills_line = ", ".join(
+        str(s.get("display") or s.get("name") or s.get("key") or "") for s in skills[:8]
+    )
+    hist = "\n".join(
+        f"{m.get('role')}: {m.get('content')}" for m in messages[-6:] if m.get("content")
+    )
+    prompt = (
+        f"Должность: {(specialization or '').strip() or 'специалист'}\n"
+        f"Навыки: {skills_line}\n"
+        f"Оценка прошлого ответа: {last_score}/5\n"
+        f"Ход: {turn}\n"
+        f"Диалог:\n{hist}\n"
+        "Задай следующий вопрос."
+    )
+    try:
+        raw = await ai_client.complete(
+            prompt, system=MOCK_CHAT_FOLLOWUP_SYSTEM, max_tokens=220
+        )
+        text = (raw or "").strip()
+        if text:
+            return text[:500]
+    except Exception:
+        logger.exception("mock chat followup AI failed")
+    return _template()

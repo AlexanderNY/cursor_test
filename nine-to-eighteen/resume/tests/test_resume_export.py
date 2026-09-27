@@ -18,6 +18,7 @@ sys.modules["text_sanitize"] = _sanitize
 _sanitize_spec.loader.exec_module(_sanitize)
 
 services_pkg = types.ModuleType("services")
+services_pkg.__path__ = [str(API_DIR / "services")]  # type: ignore[attr-defined]
 services_pkg.text_sanitize = _sanitize
 sys.modules["services"] = services_pkg
 sys.modules["services.text_sanitize"] = _sanitize

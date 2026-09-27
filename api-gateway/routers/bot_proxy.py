@@ -60,6 +60,21 @@ async def tg_bot_auth_code(
     return await _forward_to_bot(settings.TG_BOT_SERVICE_URL, "/tg/auth/code", request)
 
 
+@router.post("/tg-bot/auth/resend-code/{user_id}")
+async def tg_bot_resend_code(
+    user_id: int,
+    request: Request,
+    current_user: Optional[dict] = Depends(get_current_user),
+) -> Response:
+    """POST /tg-bot/auth/resend-code/{user_id} -> tg-bot. Только свой user_id или admin."""
+    _assert_self_or_admin(current_user, user_id)
+    return await _forward_to_bot(
+        settings.TG_BOT_SERVICE_URL,
+        f"/tg/auth/resend-code/{user_id}",
+        request,
+    )
+
+
 @router.post("/tg-bot/auth/password")
 async def tg_bot_auth_password(
     request: Request,

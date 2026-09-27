@@ -15,7 +15,7 @@ type PyodideInterface = import('pyodide').PyodideInterface
 let pyodideInstance: PyodideInterface | null = null
 let loadPromise: Promise<PyodideInterface> | null = null
 let progressCallback: ProgressCallback = () => {}
-const PY_RUNTIME_VERSION = '22'
+const PY_RUNTIME_VERSION = '26'
 
 function getPyodideIndexUrl(): string {
   const base = import.meta.env.BASE_URL ?? '/'

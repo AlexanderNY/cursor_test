@@ -8,7 +8,7 @@ import {
   type ResumeQuestion,
   type ResumeQuestionnaire,
 } from '@/data/site/resume-api'
-import { getSiteAuthSession } from '@/data/site/site-auth'
+import { useSiteAuthSession } from '@/data/site/site-auth'
 
 function emptyAnswers(questions: ResumeQuestion[]): Record<string, unknown> {
   const out: Record<string, unknown> = {}
@@ -33,7 +33,7 @@ function isAnswered(q: ResumeQuestion, answers: Record<string, unknown>): boolea
 
 export function HhResumeQuizPage() {
   const { resumeId: resumeIdParam } = useParams()
-  const session = getSiteAuthSession()
+  const session = useSiteAuthSession()
   const navigate = useNavigate()
   const [resumeId, setResumeId] = useState(resumeIdParam || '')
   const [schema, setSchema] = useState<ResumeQuestionnaire | null>(null)
@@ -73,7 +73,7 @@ export function HhResumeQuizPage() {
     return () => {
       cancelled = true
     }
-  }, [session, resumeIdParam, navigate])
+  }, [session?.accessToken, resumeIdParam, navigate])
 
   const questions = schema?.questions || []
   const current = questions[step]

@@ -33,21 +33,25 @@ class EngagementService:
         return await self._refresh_rows(rows)
 
     async def refresh_one(self, user_id: int, post_id: int) -> dict:
+        """Refresh by hub ``posts.id`` (preferred) or legacy ``post_targets.id``."""
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
-                    SELECT t.id, t.user_id,
+                    SELECT t.id, t.post_id, t.user_id,
                            NULLIF(t.result->>'telegram_message_id', '')::bigint,
                            t.result->>'telegram_chat_id'
                     FROM post_targets t
-                    WHERE t.id = %s AND t.user_id = %s AND t.platform = 'tg'
+                    WHERE t.user_id = %s AND t.platform = 'tg'
+                      AND (t.post_id = %s OR t.id = %s)
                       AND t.status = 'published'
                       AND t.result->>'telegram_message_id' IS NOT NULL
                       AND COALESCE(t.result->>'telegram_chat_id', '') != ''
+                    ORDER BY CASE WHEN t.post_id = %s THEN 0 ELSE 1 END
+                    LIMIT 1
                     """,
-                    (post_id, user_id),
+                    (user_id, post_id, post_id, post_id),
                 )
                 row = await cur.fetchone()
         finally:
@@ -70,7 +74,7 @@ class EngagementService:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
-                    SELECT t.id, t.user_id,
+                    SELECT t.id, t.post_id, t.user_id,
                            NULLIF(t.result->>'telegram_message_id', '')::bigint,
                            t.result->>'telegram_chat_id'
                     FROM post_targets t
@@ -87,7 +91,7 @@ class EngagementService:
                 hot_ids = {r[0] for r in hot}
                 await cur.execute(
                     """
-                    SELECT t.id, t.user_id,
+                    SELECT t.id, t.post_id, t.user_id,
                            NULLIF(t.result->>'telegram_message_id', '')::bigint,
                            t.result->>'telegram_chat_id'
                     FROM post_targets t
@@ -108,8 +112,9 @@ class EngagementService:
 
     async def _refresh_rows(self, rows: list) -> int:
         updated = 0
-        metrics_by_post: list[tuple[int, int, int, int, int]] = []
-        for post_id, user_id, msg_id, chat_id in rows:
+        # (views, likes, reposts, comments, hub_post_id, user_id)
+        metrics_by_post: list[tuple[int, int, int, int, int, int]] = []
+        for _target_id, hub_post_id, user_id, msg_id, chat_id in rows:
             try:
                 metrics = await self._fetch_metrics(user_id, chat_id, int(msg_id))
                 if metrics is None:
@@ -120,12 +125,13 @@ class EngagementService:
                         metrics.get("likes", 0),
                         metrics.get("reposts", 0),
                         metrics.get("comments", 0),
-                        post_id,
+                        int(hub_post_id),
+                        int(user_id),
                     )
                 )
                 updated += 1
             except Exception as e:
-                logger.warning("Engagement refresh failed for post %s: %s", post_id, e)
+                logger.warning("Engagement refresh failed for post %s: %s", hub_post_id, e)
 
         if metrics_by_post:
             conn = await get_db_connection()
@@ -139,23 +145,24 @@ class EngagementService:
                             reposts = %s,
                             comments = %s,
                             updated_at = CURRENT_TIMESTAMP
-                        WHERE id = (SELECT post_id FROM post_targets WHERE id = %s)
+                        WHERE id = %s
                         """,
-                        metrics_by_post,
+                        [
+                            (views, likes, reposts, comments, hub_post_id)
+                            for views, likes, reposts, comments, hub_post_id, _uid in metrics_by_post
+                        ],
                     )
             finally:
                 await release_db_connection(conn)
-            for views, likes, reposts, comments, post_id in metrics_by_post:
-                row_user = next((r[1] for r in rows if r[0] == post_id), None)
-                if row_user:
-                    await record_post_metric_snapshot(
-                        row_user,
-                        post_id,
-                        views=views,
-                        likes=likes,
-                        comments=comments,
-                        reposts=reposts,
-                    )
+            for views, likes, reposts, comments, hub_post_id, row_user in metrics_by_post:
+                await record_post_metric_snapshot(
+                    row_user,
+                    hub_post_id,
+                    views=views,
+                    likes=likes,
+                    comments=comments,
+                    reposts=reposts,
+                )
 
         return updated
 

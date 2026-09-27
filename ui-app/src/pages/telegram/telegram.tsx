@@ -23,6 +23,10 @@ import type {
 } from '@/types/telegram'
 import {
   AUTH_STATUS_POLL_INTERVAL_MS,
+  TG_CODE_EXPIRED_ERROR,
+  TG_CODE_RESEND_INTERVAL_SEC,
+  readTgCodeResendCooldownSec,
+  rememberTgCodeResendCooldown,
   MAX_ALERT_RULES,
   MAX_ALERT_LIST_ITEMS,
   generateId,
@@ -131,6 +135,9 @@ export function TelegramPage() {
   const [authCode, setAuthCode] = useState('')
   const [authPassword, setAuthPassword] = useState('')
   const [isSubmittingAuth, setIsSubmittingAuth] = useState(false)
+  const [codeExpired, setCodeExpired] = useState(false)
+  const [resendCooldownSec, setResendCooldownSec] = useState(0)
+  const [isResendingCode, setIsResendingCode] = useState(false)
 
   const [publishEnabled, setPublishEnabled] = useState(false)
   const [collectEnabled, setCollectEnabled] = useState(false)
@@ -237,6 +244,22 @@ export function TelegramPage() {
     const interval = setInterval(loadAuthStatus, AUTH_STATUS_POLL_INTERVAL_MS)
     return () => clearInterval(interval)
   }, [user?.id, loadAuthStatus])
+
+  const resendCooldownActive = resendCooldownSec > 0
+
+  useEffect(() => {
+    if (!user?.id) return
+    setResendCooldownSec(readTgCodeResendCooldownSec(user.id))
+  }, [user?.id])
+
+  useEffect(() => {
+    const userId = user?.id
+    if (!userId || !resendCooldownActive) return
+    const timer = window.setInterval(() => {
+      setResendCooldownSec(readTgCodeResendCooldownSec(userId))
+    }, 1000)
+    return () => window.clearInterval(timer)
+  }, [user?.id, resendCooldownActive])
 
   useEffect(() => {
     if (activeTab === 'posts' && !hasLoadedPosts) {
@@ -752,12 +775,46 @@ export function TelegramPage() {
           /* non-blocking */
         }
       } else {
-        setError(res.error || res.message || 'Invalid code')
+        const message = res.error || res.message || 'Invalid code'
+        setCodeExpired(message === TG_CODE_EXPIRED_ERROR)
+        setError(message)
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to submit code')
     } finally {
       setIsSubmittingAuth(false)
+    }
+  }
+
+  function applyResendCooldown(seconds: number) {
+    if (!user?.id || seconds <= 0) return
+    rememberTgCodeResendCooldown(user.id, seconds)
+    setResendCooldownSec(readTgCodeResendCooldownSec(user.id))
+  }
+
+  async function handleResendAuthCode() {
+    if (!user?.id || isResendingCode || resendCooldownSec > 0) return
+    setIsResendingCode(true)
+    setSuccess('')
+    try {
+      const res = await telegramService.resendAuthCode(user.id)
+      if (res.success) {
+        applyResendCooldown(TG_CODE_RESEND_INTERVAL_SEC)
+        setCodeExpired(false)
+        setAuthCode('')
+        setError('')
+        setSuccess(res.message || 'Новый код отправлен в Telegram. Проверьте приложение.')
+        await loadAuthStatus()
+        return
+      }
+      if (res.retry_after_seconds && res.retry_after_seconds > 0) {
+        applyResendCooldown(res.retry_after_seconds)
+      }
+      setError(res.error || res.message || 'Не удалось запросить код')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Не удалось запросить код')
+    } finally {
+      setIsResendingCode(false)
     }
   }
 
@@ -850,6 +907,10 @@ export function TelegramPage() {
           onSubmitAuthCode={handleSubmitAuthCode}
           onSubmitAuthPassword={handleSubmitAuthPassword}
           onCheckChannels={handleCheckChannels}
+          showResendCode={codeExpired && authStatus?.auth_state === 'pending_code'}
+          resendCooldownSec={resendCooldownSec}
+          isResendingCode={isResendingCode}
+          onResendAuthCode={handleResendAuthCode}
         />
       ) : (
         <Alert variant="info">

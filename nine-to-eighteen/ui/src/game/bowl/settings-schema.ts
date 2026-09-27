@@ -29,7 +29,7 @@ export const EDITABLE_SETTINGS: SettingField[] = [
     group: 'Игрок',
     kind: 'number',
     min: 200,
-    max: 5000,
+    max: 8000,
     step: 50,
   },
   {

@@ -97,6 +97,16 @@ def safe_filename(name: str, ext: str) -> str:
     return f"{base}.{ext.lstrip('.')}"
 
 
+def content_disposition_attachment(file_name: str) -> str:
+    """Build Content-Disposition value safe for latin-1 HTTP headers (RFC 5987)."""
+    raw = (file_name or "resume.bin").replace('"', "").replace("\r", "").replace("\n", "")
+    ascii_name = raw.encode("ascii", "ignore").decode("ascii").strip(" ._") or "resume.bin"
+    if not ascii_name.lower().endswith(Path(raw).suffix.lower()) and Path(raw).suffix:
+        ascii_name = f"{ascii_name}{Path(raw).suffix}"
+    encoded = quote(raw, safe="")
+    return f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{encoded}"
+
+
 def build_api_file_url(file_id: str) -> str:
     return f"/api/resume/files/{quote(str(file_id))}"
 

@@ -16,8 +16,10 @@ import { applyGameConfig } from './game-bridge'
 import { setAutosaveIntervalMs } from './game-config'
 import { loadPyodideRuntime } from './pyodide-loader'
 import { hasSave, loadSave } from './save-storage'
+import { loadHighScore } from './score-storage'
 import { consumePendingPerkBoost } from './orders-storage'
 import { defaultPerkLevels, type PerkLevels } from './perks'
+import { clampBowlStage, BOWL_STAGES, type BowlStageId } from './stages'
 import type { GameScreen as GameScreenState, PerkKind } from './types'
 import '@/styles/bowl-game.css'
 
@@ -29,6 +31,7 @@ export function BowlGamePage() {
   const [canContinue, setCanContinue] = useState(false)
   const [loadError, setLoadError] = useState('')
   const [heroColor, setHeroColor] = useState(DEFAULT_HERO_COLOR)
+  const [startStage, setStartStage] = useState<BowlStageId>(1)
 
   useEffect(() => {
     let cancelled = false
@@ -68,17 +71,32 @@ export function BowlGamePage() {
       for (const [id, level] of Object.entries(boost)) {
         levels[id as keyof PerkLevels] = Math.max(levels[id as keyof PerkLevels] ?? 0, level)
       }
-      await gameBridge.newGameWithPerks(window.innerWidth, window.innerHeight, heroColor, levels)
+      await gameBridge.newGameWithPerks(
+        window.innerWidth,
+        window.innerHeight,
+        heroColor,
+        levels,
+        startStage,
+      )
       setScreen('playing')
     },
-    [heroColor],
+    [heroColor, startStage],
   )
 
-  const startTestGame = useCallback(async (color: string, perkLevels: PerkLevels) => {
-    await gameBridge.newGameWithPerks(window.innerWidth, window.innerHeight, color, perkLevels)
-    setHeroColor(color)
-    setScreen('playing')
-  }, [])
+  const startTestGame = useCallback(
+    async (color: string, perkLevels: PerkLevels) => {
+      await gameBridge.newGameWithPerks(
+        window.innerWidth,
+        window.innerHeight,
+        color,
+        perkLevels,
+        startStage,
+      )
+      setHeroColor(color)
+      setScreen('playing')
+    },
+    [startStage],
+  )
 
   const continueGame = useCallback(async () => {
     const saved = loadSave()
@@ -120,6 +138,9 @@ export function BowlGamePage() {
     return (
       <MenuScreen
         canContinue={canContinue}
+        highScore={loadHighScore()}
+        selectedStage={startStage}
+        onSelectStage={(stage) => setStartStage(clampBowlStage(stage))}
         onNewGame={() => setScreen('colorSelect')}
         onContinue={continueGame}
         onGuide={() => setScreen('guide')}
@@ -160,9 +181,11 @@ export function BowlGamePage() {
   }
 
   if (screen === 'perkSelect') {
+    const stageMeta = BOWL_STAGES.find((stage) => stage.id === startStage)
     return (
       <PerkSelectScreen
         level={1}
+        stageTitle={stageMeta ? `${stageMeta.id}. ${stageMeta.title}` : undefined}
         onSelect={startWithPerk}
         onBack={() => setScreen('colorSelect')}
       />

@@ -72,6 +72,7 @@ export function TelegramAnalyticsPanel({
   const [timeline, setTimeline] = useState<TgAnalyticsTimelinePoint[]>([])
   const [sentiment, setSentiment] = useState<TgAnalyticsSentimentBreakdown | null>(null)
   const [health, setHealth] = useState<TgAnalyticsHealth | null>(null)
+  const [error, setError] = useState('')
 
   useEffect(() => {
     localStorage.setItem(FILTERS_KEY, JSON.stringify({ period }))
@@ -79,6 +80,7 @@ export function TelegramAnalyticsPanel({
 
   const load = useCallback(async () => {
     setIsLoading(true)
+    setError('')
     try {
       const chatId = chatIdFilter || undefined
       const [ov, ch, kw, tl, sent, hl] = await Promise.all([
@@ -96,7 +98,13 @@ export function TelegramAnalyticsPanel({
       setSentiment(sent)
       setHealth(hl)
     } catch (err) {
-      console.warn('Telegram analytics load failed', err)
+      setOverview(null)
+      setChannels([])
+      setKeywords([])
+      setTimeline([])
+      setSentiment(null)
+      setHealth(null)
+      setError(err instanceof Error ? err.message : 'Не удалось загрузить TG Listening')
     } finally {
       setIsLoading(false)
     }
@@ -134,7 +142,7 @@ export function TelegramAnalyticsPanel({
       a.click()
       URL.revokeObjectURL(url)
     } catch (err) {
-      console.warn('CSV export failed', err)
+      setError(err instanceof Error ? err.message : 'Не удалось экспортировать CSV')
     }
   }
 
@@ -168,6 +176,7 @@ export function TelegramAnalyticsPanel({
         </div>
       </CardHeader>
       <CardContent className="space-y-6">
+        {error && <Alert variant="error">{error}</Alert>}
         {isLoading ? (
           <div className="text-center py-8 text-[var(--text-muted)]">Loading analytics...</div>
         ) : !hasData ? (

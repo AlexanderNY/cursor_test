@@ -2,6 +2,7 @@ import { getUpgradeOptions, type PerkId, type PerkLevels } from './perks'
 
 interface PerkSelectScreenProps {
   level: number
+  stageTitle?: string
   perkLevels?: PerkLevels
   onSelect: (perk: PerkId) => void
   onSkip?: () => void
@@ -11,6 +12,7 @@ interface PerkSelectScreenProps {
 
 export function PerkSelectScreen({
   level,
+  stageTitle,
   perkLevels = {},
   onSelect,
   onSkip,
@@ -30,7 +32,9 @@ export function PerkSelectScreen({
         <p className="bowl-subtitle">
           {overlay
             ? 'Съедено 10 врагов — выберите улучшение или новый перк.'
-            : 'Один бонус на старт. Чаша унитаза ждёт.'}
+            : stageTitle
+              ? `Старт: ${stageTitle}. Один бонус перед входом.`
+              : 'Один бонус на старт. Чаша унитаза ждёт.'}
         </p>
 
         {available.length === 0 ? (

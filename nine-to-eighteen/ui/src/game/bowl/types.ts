@@ -6,6 +6,7 @@ export const PY_FILES = [
   'perks.py',
   'physics.py',
   'combat.py',
+  'stages.py',
   'spawn_system.py',
   'save_codec.py',
   'bosses.py',
@@ -20,19 +21,26 @@ export const PY_VFS_PATH = '/bowl/py'
 export const GAME_CONFIG_PATH = '/bowl/game-config.json'
 export const PERKS_CONFIG_PATH = '/bowl/perks.json'
 
-export type GamePhase = 'normal' | 'whirlpool' | 'boss' | 'exit'
+export type GamePhase = 'normal' | 'hazard' | 'whirlpool' | 'boss' | 'exit'
 
 export type GameScreen = 'loading' | 'menu' | 'settings' | 'guide' | 'characterEditor' | 'colorSelect' | 'perkSelect' | 'orders' | 'playing' | 'gameOver'
 
-export type PickupKind = 'green' | 'red'
+export type PickupKind = 'green' | 'red' | 'yellow'
 export type EnemyState = 'patrol' | 'chase' | 'cooldown' | 'flee'
-export type EnemyKind = 'grazer' | 'hunter' | 'lurker'
+export type EnemyKind = string
 export type BossKind = 'titan' | 'stalker' | 'swarm' | 'leech' | 'vortex'
 export type PerkKind = 'leg' | 'eye' | 'tentacle' | 'spike' | 'shell' | 'dash' | 'anchor'
-export type ObstacleKind = 'paper' | 'toothbrush'
+export type ObstacleKind = string
+export type HazardKind = 'flush' | 'gas' | 'current' | 'chlorine' | 'waves'
 
 export interface RenderState {
   level: number
+  stage: number
+  stage_count: number
+  stage_id: string
+  stage_title: string
+  score: number
+  victory: boolean
   eat_count: number
   enemies_eaten: number
   enemies_eaten_mod: number
@@ -40,6 +48,14 @@ export interface RenderState {
   pending_perk_select: boolean
   world: { width: number; height: number }
   bowl: { cx: number; cy: number; rx: number; ry: number; outer_rx: number; outer_ry: number; rim_margin: number }
+  arena?: {
+    floor: string
+    water_inner: string
+    water_mid: string
+    water_outer: string
+    rim: string
+    rim_stroke: string
+  }
   camera: { x: number; y: number }
   visibility_radius: number
   lightness_mult: number
@@ -60,6 +76,7 @@ export interface RenderState {
     grab_kind?: 'none' | 'pickup' | 'obstacle'
     grab_time_left?: number
     move_angle?: number
+    speed?: number
   }
   obstacles: Array<{
     x: number
@@ -96,6 +113,9 @@ export interface RenderState {
     kind?: EnemyKind
     boss_kind?: BossKind
     burst_left?: number
+    color?: string
+    title?: string
+    speed?: number
   }>
   game_over: boolean
   phase: GamePhase
@@ -105,6 +125,10 @@ export interface RenderState {
   whirlpool_duration: number
   whirlpool_angle: number
   whirlpool_radius: number
+  hazard_kind?: HazardKind | string
+  hazard_title?: string
+  hazard_zones?: Array<{ x: number; y: number; radius: number }>
+  hazard_rings?: Array<{ radius: number; max_radius: number }>
   boss_active: boolean
   active_boss?: {
     kind: BossKind

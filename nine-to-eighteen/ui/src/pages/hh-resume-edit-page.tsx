@@ -8,12 +8,18 @@ import {
   resumeExport,
   resumeGenerate,
   resumeGetPreview,
+  resumeGithubFetch,
   resumeImproveAbout,
-  resumeMockInterviewEvaluate,
-  resumeMockInterviewStart,
+  resumeListBadges,
+  resumeMatchScore,
+  resumeMockChatMessage,
+  resumeMockChatStart,
   resumePut,
   resumeSkillGap,
-  type MockInterviewQuestion,
+  type GithubProject,
+  type MatchScoreResult,
+  type MockChatMessage,
+  type ResumeBadge,
   type SiteResumePreview,
   type SiteResumeSkill,
   type SkillGapResult,
@@ -25,12 +31,12 @@ import {
   toggleInList,
 } from '@/data/site/resume-options'
 import { siteFetchPhotoBlob } from '@/data/site/site-api'
-import { getSiteAuthSession } from '@/data/site/site-auth'
+import { useSiteAuthSession } from '@/data/site/site-auth'
 
 /** Редактор + live-превью (split) + сила резюме + mock-interview. */
 export function HhResumeEditPage() {
   const { resumeId = '' } = useParams()
-  const session = getSiteAuthSession()
+  const session = useSiteAuthSession()
   const location = useLocation()
   const fromQuiz = Boolean((location.state as { fromQuiz?: boolean } | null)?.fromQuiz)
 
@@ -64,12 +70,20 @@ export function HhResumeEditPage() {
   const [gapRole, setGapRole] = useState('')
   const [vacancyText, setVacancyText] = useState('')
   const [coverLetter, setCoverLetter] = useState('')
+  const [matchResult, setMatchResult] = useState<MatchScoreResult | null>(null)
 
-  const [mockQuestions, setMockQuestions] = useState<MockInterviewQuestion[]>([])
-  const [mockIndex, setMockIndex] = useState(0)
-  const [mockAnswer, setMockAnswer] = useState('')
-  const [mockFeedback, setMockFeedback] = useState('')
-  const [mockScores, setMockScores] = useState<number[]>([])
+  const [badges, setBadges] = useState<ResumeBadge[]>([])
+  const [selectedBadgeIds, setSelectedBadgeIds] = useState<string[]>([])
+  const [githubUsername, setGithubUsername] = useState('')
+  const [githubProjects, setGithubProjects] = useState<GithubProject[]>([])
+
+  const [chatSessionId, setChatSessionId] = useState('')
+  const [chatMessages, setChatMessages] = useState<MockChatMessage[]>([])
+  const [chatInput, setChatInput] = useState('')
+  const [chatDone, setChatDone] = useState(false)
+  const [chatSummary, setChatSummary] = useState('')
+  const [chatTurn, setChatTurn] = useState(0)
+  const [chatMaxTurns, setChatMaxTurns] = useState(5)
 
   const load = useCallback(async () => {
     if (!resumeId) return
@@ -91,12 +105,21 @@ export function HhResumeEditPage() {
       setEmployment(data.resume.employmentTypes)
       setWorkFormats(data.resume.workFormats)
       setAbout(data.resume.about)
+      setSelectedBadgeIds(data.resume.selectedBadgeIds || [])
+      setGithubUsername(data.resume.githubUsername || '')
+      setGithubProjects(data.resume.githubProjects || [])
       setSuggestedSpecialization(data.suggestedSpecialization)
       setBranchHints(data.branchHints)
       setCompletedCount(data.completedCount)
       setGapRole(data.resume.specialization || data.suggestedSpecialization || '')
       setDoneRelevant(data.strength?.doneRelevantSlugs || [])
       setMissingRelevant(data.strength?.missingRelevantSlugs || [])
+      try {
+        const badgeData = await resumeListBadges()
+        setBadges(badgeData.badges)
+      } catch {
+        setBadges([])
+      }
       if (data.profile.hasPhoto) {
         const blobUrl = await siteFetchPhotoBlob()
         setPhotoUrl((prev) => {
@@ -123,7 +146,7 @@ export function HhResumeEditPage() {
         return null
       })
     }
-  }, [session, resumeId, load])
+  }, [session?.accessToken, resumeId, load])
 
   const liveSkills = useMemo(
     () => skills.filter((s) => selectedKeys.includes(s.key)),
@@ -142,6 +165,16 @@ export function HhResumeEditPage() {
   )
 
   const salaryNumLive = salary.trim() ? Number(salary.replace(/\s/g, '')) : null
+
+  const badgeLabels = useMemo(() => {
+    const byId = new Map(badges.map((b) => [b.id, b.title]))
+    return selectedBadgeIds.map((id) => byId.get(id) || id)
+  }, [badges, selectedBadgeIds])
+
+  const selectedProjects = useMemo(
+    () => githubProjects.filter((p) => p.selected).slice(0, 6),
+    [githubProjects],
+  )
 
   async function onSave(event: FormEvent) {
     event.preventDefault()
@@ -164,6 +197,9 @@ export function HhResumeEditPage() {
         work_formats: workFormats,
         about: about.trim(),
         selected_skill_keys: selectedKeys,
+        selected_badge_ids: selectedBadgeIds,
+        github_username: githubUsername.trim(),
+        github_projects: githubProjects,
       })
       setOk('Изменения сохранены')
       await load()
@@ -303,64 +339,100 @@ export function HhResumeEditPage() {
     }
   }
 
-  async function onStartMock() {
-    if (!resumeId) return
+  async function onMatchScore() {
+    if (!resumeId || vacancyText.trim().length < 20) {
+      setError('Вставьте описание вакансии (≥20 символов)')
+      return
+    }
     setAiBusy(true)
     setError('')
     setOk('')
-    setMockFeedback('')
-    setMockAnswer('')
-    setMockScores([])
-    setMockIndex(0)
     try {
-      const result = await resumeMockInterviewStart(resumeId, 5)
-      setMockQuestions(result.questions)
-      setOk(`Вопросов: ${result.questions.length}`)
+      const result = await resumeMatchScore(resumeId, vacancyText.trim())
+      setMatchResult(result)
+      setOk(`Match Score: ${result.score}%`)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Не удалось начать собеседование')
+      setError(err instanceof Error ? err.message : 'Ошибка Match Score')
     } finally {
       setAiBusy(false)
     }
   }
 
-  async function onSubmitMockAnswer() {
-    if (!resumeId || !mockQuestions[mockIndex]) return
-    const q = mockQuestions[mockIndex]
-    if (!mockAnswer.trim()) {
+  async function onGithubFetch() {
+    if (!resumeId || !githubUsername.trim()) {
+      setError('Укажите GitHub username')
+      return
+    }
+    setAiBusy(true)
+    setError('')
+    setOk('')
+    try {
+      const result = await resumeGithubFetch(resumeId, githubUsername.trim())
+      setGithubUsername(result.username)
+      setGithubProjects(result.projects)
+      setOk(`Загружено репозиториев: ${result.projects.length}`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Не удалось загрузить GitHub')
+    } finally {
+      setAiBusy(false)
+    }
+  }
+
+  async function onStartChat() {
+    if (!resumeId) return
+    setAiBusy(true)
+    setError('')
+    setOk('')
+    setChatInput('')
+    setChatSummary('')
+    setChatDone(false)
+    try {
+      const result = await resumeMockChatStart(resumeId, 5)
+      setChatSessionId(result.sessionId)
+      setChatMessages(result.messages)
+      setChatTurn(result.turn)
+      setChatMaxTurns(result.maxTurns)
+      setOk('Чат-собеседование начато')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Не удалось начать чат')
+    } finally {
+      setAiBusy(false)
+    }
+  }
+
+  async function onSendChat() {
+    if (!resumeId || !chatSessionId || !chatInput.trim()) {
       setError('Введите ответ')
       return
     }
     setAiBusy(true)
     setError('')
     try {
-      const result = await resumeMockInterviewEvaluate(resumeId, {
-        question: q.question,
-        answer: mockAnswer.trim(),
-        skill_key: q.skillKey,
-      })
-      setMockFeedback(`${result.score}/5 — ${result.feedback}`)
-      setMockScores((prev) => [...prev, result.score])
-      setOk(result.passed ? 'Ответ принят' : 'Есть над чем поработать')
+      const result = await resumeMockChatMessage(
+        resumeId,
+        chatSessionId,
+        chatInput.trim(),
+      )
+      setChatMessages(result.messages)
+      setChatTurn(result.turn)
+      setChatMaxTurns(result.maxTurns)
+      setChatDone(result.done)
+      setChatInput('')
+      if (result.done) {
+        setChatSummary(
+          result.summary ||
+            (result.overallScore != null
+              ? `Средняя оценка ${result.overallScore}/5`
+              : 'Собеседование завершено'),
+        )
+        setOk('Собеседование завершено')
+      } else if (result.lastScore != null) {
+        setOk(`Оценка хода: ${result.lastScore}/5`)
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка оценки')
+      setError(err instanceof Error ? err.message : 'Ошибка чата')
     } finally {
       setAiBusy(false)
-    }
-  }
-
-  function onNextMock() {
-    setMockFeedback('')
-    setMockAnswer('')
-    if (mockIndex + 1 < mockQuestions.length) {
-      setMockIndex((i) => i + 1)
-    } else {
-      const avg =
-        mockScores.length > 0
-          ? (mockScores.reduce((a, b) => a + b, 0) / mockScores.length).toFixed(1)
-          : '—'
-      setOk(`Собеседование завершено. Средний балл: ${avg}/5`)
-      setMockQuestions([])
-      setMockIndex(0)
     }
   }
 
@@ -603,8 +675,8 @@ export function HhResumeEditPage() {
                 ) : null}
               </section>
 
-              <section className="hh-resume-ai-block" aria-label="Сопроводительное">
-                <h2 className="account-subheading">Сопроводительное письмо</h2>
+              <section className="hh-resume-ai-block" aria-label="Вакансия">
+                <h2 className="account-subheading">Вакансия · Match Score и письмо</h2>
                 <textarea
                   value={vacancyText}
                   onChange={(e) => setVacancyText(e.target.value)}
@@ -617,9 +689,17 @@ export function HhResumeEditPage() {
                     type="button"
                     className="learn-admin-btn learn-admin-btn-primary"
                     disabled={aiBusy || vacancyText.trim().length < 20}
+                    onClick={() => void onMatchScore()}
+                  >
+                    Match Score
+                  </button>
+                  <button
+                    type="button"
+                    className="learn-admin-btn"
+                    disabled={aiBusy || vacancyText.trim().length < 20}
                     onClick={() => void onCoverLetter()}
                   >
-                    Сгенерировать
+                    Сопроводительное
                   </button>
                   {coverLetter ? (
                     <button
@@ -627,64 +707,193 @@ export function HhResumeEditPage() {
                       className="learn-admin-btn"
                       onClick={() => void navigator.clipboard.writeText(coverLetter)}
                     >
-                      Копировать
+                      Копировать письмо
                     </button>
                   ) : null}
                 </div>
+                {matchResult ? (
+                  <div className="hh-match-score" aria-live="polite">
+                    <div className="hh-match-score-ring">
+                      <strong>{matchResult.score}%</strong>
+                      <span>совпадение</span>
+                    </div>
+                    <p className="learn-section-note">{matchResult.summary}</p>
+                    {matchResult.matchedKeys.length > 0 ? (
+                      <p className="learn-section-note">
+                        Есть: {matchResult.matchedKeys.join(', ')}
+                      </p>
+                    ) : null}
+                    {matchResult.missingKeys.length > 0 ? (
+                      <p className="learn-section-note">
+                        Не хватает: {matchResult.missingKeys.join(', ')}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
                 {coverLetter ? <pre className="hh-resume-cover-letter">{coverLetter}</pre> : null}
               </section>
 
-              <section className="hh-resume-ai-block" aria-label="Mock interview">
+              <section className="hh-resume-ai-block" aria-label="Бейджи">
+                <h2 className="account-subheading">Бейджи</h2>
+                <p className="learn-section-note">
+                  Только заработанные (Learn-сезон или квиз ≥70%). До 8 на резюме.
+                </p>
+                {badges.filter((b) => b.earned).length === 0 ? (
+                  <p className="learn-section-note">Пока нет заработанных бейджей.</p>
+                ) : (
+                  <ul className="hh-resume-skill-list">
+                    {badges
+                      .filter((b) => b.earned)
+                      .map((badge) => (
+                        <li key={badge.id}>
+                          <label className="hh-resume-check">
+                            <input
+                              type="checkbox"
+                              checked={selectedBadgeIds.includes(badge.id)}
+                              onChange={() =>
+                                setSelectedBadgeIds(toggleInList(selectedBadgeIds, badge.id))
+                              }
+                            />
+                            <span>
+                              {badge.title}
+                              <span className="learn-section-note"> · {badge.kind}</span>
+                            </span>
+                          </label>
+                        </li>
+                      ))}
+                  </ul>
+                )}
+              </section>
+
+              <section className="hh-resume-ai-block" aria-label="GitHub">
+                <h2 className="account-subheading">GitHub-проекты</h2>
+                <label className="learn-admin-field">
+                  <span>Публичный username</span>
+                  <input
+                    value={githubUsername}
+                    onChange={(e) => setGithubUsername(e.target.value)}
+                    maxLength={39}
+                    placeholder="octocat"
+                  />
+                </label>
+                <button
+                  type="button"
+                  className="learn-admin-btn learn-admin-btn-primary"
+                  disabled={aiBusy || !githubUsername.trim()}
+                  onClick={() => void onGithubFetch()}
+                >
+                  Загрузить репозитории
+                </button>
+                {githubProjects.length > 0 ? (
+                  <ul className="hh-resume-skill-list">
+                    {githubProjects.map((project) => (
+                      <li key={project.url}>
+                        <label className="hh-resume-check">
+                          <input
+                            type="checkbox"
+                            checked={project.selected}
+                            onChange={() =>
+                              setGithubProjects((prev) =>
+                                prev.map((p) =>
+                                  p.url === project.url
+                                    ? { ...p, selected: !p.selected }
+                                    : p,
+                                ),
+                              )
+                            }
+                          />
+                          <span>
+                            {project.name}
+                            {project.language ? ` · ${project.language}` : ''}
+                            {project.stars > 0 ? ` · ★${project.stars}` : ''}
+                          </span>
+                        </label>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </section>
+
+              <section className="hh-resume-ai-block" aria-label="Mock interview chat">
                 <h2 className="account-subheading">Тренировочное собеседование</h2>
                 <p className="learn-section-note">
-                  AI задаст 3–5 вопросов по навыкам из резюме.
+                  Чат с AI по навыкам из резюме (до {chatMaxTurns || 5} ходов).
                 </p>
-                {mockQuestions.length === 0 ? (
+                {!chatSessionId ? (
                   <button
                     type="button"
                     className="learn-admin-btn learn-admin-btn-primary"
                     disabled={aiBusy || skills.length === 0}
-                    onClick={() => void onStartMock()}
+                    onClick={() => void onStartChat()}
                   >
-                    Начать собеседование
+                    Начать чат
                   </button>
                 ) : (
-                  <div className="hh-mock-interview">
+                  <div className="hh-mock-chat">
                     <p className="learn-section-note">
-                      Вопрос {mockIndex + 1} из {mockQuestions.length}
-                      {mockQuestions[mockIndex]?.skillKey
-                        ? ` · ${mockQuestions[mockIndex].skillKey}`
-                        : ''}
+                      Ход {Math.min(chatTurn, chatMaxTurns)} / {chatMaxTurns}
+                      {chatDone ? ' · завершено' : ''}
                     </p>
-                    <p className="account-subheading">{mockQuestions[mockIndex]?.question}</p>
-                    {mockQuestions[mockIndex]?.hint ? (
-                      <p className="learn-section-note">Подсказка: {mockQuestions[mockIndex].hint}</p>
-                    ) : null}
-                    <textarea
-                      value={mockAnswer}
-                      onChange={(e) => setMockAnswer(e.target.value)}
-                      rows={4}
-                      placeholder="Ваш ответ"
-                    />
-                    {mockFeedback ? <p className="learn-admin-ok">{mockFeedback}</p> : null}
-                    <div className="account-actions">
+                    <div className="hh-mock-chat-log" role="log">
+                      {chatMessages.map((msg, idx) => (
+                        <div
+                          key={`${msg.role}-${idx}`}
+                          className={
+                            msg.role === 'user'
+                              ? 'hh-mock-chat-bubble is-user'
+                              : 'hh-mock-chat-bubble is-assistant'
+                          }
+                        >
+                          <span className="hh-mock-chat-role">
+                            {msg.role === 'user' ? 'Вы' : 'Интервьюер'}
+                          </span>
+                          <p>{msg.content}</p>
+                        </div>
+                      ))}
+                    </div>
+                    {chatSummary ? <p className="learn-admin-ok">{chatSummary}</p> : null}
+                    {!chatDone ? (
+                      <>
+                        <textarea
+                          value={chatInput}
+                          onChange={(e) => setChatInput(e.target.value)}
+                          rows={3}
+                          placeholder="Ваш ответ"
+                        />
+                        <div className="account-actions">
+                          <button
+                            type="button"
+                            className="learn-admin-btn learn-admin-btn-primary"
+                            disabled={aiBusy || !chatInput.trim()}
+                            onClick={() => void onSendChat()}
+                          >
+                            Отправить
+                          </button>
+                          <button
+                            type="button"
+                            className="learn-admin-btn"
+                            disabled={aiBusy}
+                            onClick={() => {
+                              setChatSessionId('')
+                              setChatMessages([])
+                              setChatSummary('')
+                              setChatDone(false)
+                            }}
+                          >
+                            Сбросить
+                          </button>
+                        </div>
+                      </>
+                    ) : (
                       <button
                         type="button"
                         className="learn-admin-btn learn-admin-btn-primary"
-                        disabled={aiBusy || !mockAnswer.trim()}
-                        onClick={() => void onSubmitMockAnswer()}
-                      >
-                        Оценить ответ
-                      </button>
-                      <button
-                        type="button"
-                        className="learn-admin-btn"
                         disabled={aiBusy}
-                        onClick={onNextMock}
+                        onClick={() => void onStartChat()}
                       >
-                        {mockIndex + 1 < mockQuestions.length ? 'Далее' : 'Завершить'}
+                        Ещё раз
                       </button>
-                    </div>
+                    )}
                   </div>
                 )}
               </section>
@@ -716,6 +925,8 @@ export function HhResumeEditPage() {
               employmentOverride={employment}
               workFormatsOverride={workFormats}
               versionNameOverride={versionName}
+              badgeLabels={badgeLabels}
+              projects={selectedProjects}
             />
           </aside>
         </div>

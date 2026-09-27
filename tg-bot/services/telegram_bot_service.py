@@ -344,6 +344,16 @@ class TelegramBotService:
                             event=event,
                             images=images,
                             profile=collect_profile,
+                            brand_id=(
+                                int(brand_ch["brand_id"])
+                                if brand_ch and brand_ch.get("brand_id")
+                                else None
+                            ),
+                            channel_id=(
+                                int(brand_ch["id"])
+                                if brand_ch and brand_ch.get("id")
+                                else None
+                            ),
                         )
                         if post:
                             enrichment = await self.post_enrichment.enrich_post_if_enabled(

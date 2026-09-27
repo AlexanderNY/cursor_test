@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { PageContainer, PageHeader, Select } from '@/components/ui'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -88,6 +88,8 @@ export function SmmAnalyticsPage() {
   const [compareBrandId, setCompareBrandId] = useState<number | null>(null)
   const [drillPost, setDrillPost] = useState<AnalyticsPost | null>(null)
   const [error, setError] = useState('')
+  const [partialError, setPartialError] = useState('')
+  const [bestTimesInsufficient, setBestTimesInsufficient] = useState(false)
   const [compNetwork, setCompNetwork] = useState<'tg' | 'vk' | 'url'>('tg')
   const [compId, setCompId] = useState('')
   const [compTitle, setCompTitle] = useState('')
@@ -203,7 +205,13 @@ export function SmmAnalyticsPage() {
 
   useEffect(() => {
     const tabParam = searchParams.get('tab')
-    if (tabParam === 'telegram' || tabParam === 'overview' || tabParam === 'channels' || tabParam === 'messages' || tabParam === 'competitors') {
+    if (
+      tabParam === 'telegram' ||
+      tabParam === 'overview' ||
+      tabParam === 'channels' ||
+      tabParam === 'messages' ||
+      tabParam === 'competitors'
+    ) {
       setTab(tabParam)
     }
     const periodParam = searchParams.get('period')
@@ -212,10 +220,12 @@ export function SmmAnalyticsPage() {
     }
   }, [searchParams])
 
-  const didApplyUrlBrand = useRef(false)
+  function selectTab(next: Tab) {
+    setTab(next)
+    patchSearch({ tab: next })
+  }
+
   useEffect(() => {
-    if (didApplyUrlBrand.current) return
-    didApplyUrlBrand.current = true
     const brandRaw = searchParams.get('brand_id')
     if (!brandRaw) return
     const brandId = Number(brandRaw)
@@ -323,10 +333,13 @@ export function SmmAnalyticsPage() {
 
   useEffect(() => {
     if (!canView || tab === 'telegram') return
+    let cancelled = false
     void (async () => {
       setError('')
+      setPartialError('')
       try {
         const plan = await smmService.getPlan().catch(() => null)
+        if (cancelled) return
         const feats = (plan?.limits?.features || {}) as Record<string, boolean>
         setCanCompetitors(Boolean(feats.competitors))
         setCanBestTimes(Boolean(feats.best_times))
@@ -342,6 +355,16 @@ export function SmmAnalyticsPage() {
           if (status === 402) setChannelStatsBlocked(true)
           else throw err
         }
+        if (cancelled) return
+
+        type SoftResult<T> = { ok: true; value: T } | { ok: false; label: string }
+        async function soft<T>(label: string, promise: Promise<T>): Promise<SoftResult<T>> {
+          try {
+            return { ok: true, value: await promise }
+          } catch {
+            return { ok: false, label }
+          }
+        }
 
         const [
           ov,
@@ -356,58 +379,97 @@ export function SmmAnalyticsPage() {
         ] = await Promise.all([
           smmService.analyticsOverview(selectedBrandId, period, focusChannelId),
           smmService.analyticsPosts(selectedBrandId, 'er', focusChannelId),
-          smmService.analyticsMessages(selectedBrandId, period, focusChannelId).catch(() => ({
-            posts: [],
-            events: [],
-          })),
-          smmService.analyticsGrowth(selectedBrandId, focusChannelId, period).catch(() => ({
-            points: [],
-            subscriber_growth: 0,
-          })),
-          smmService.analyticsPostTrends(selectedBrandId, period, focusChannelId).catch(() => ({
-            points: [],
-          })),
-          smmService.analyticsFunnel(selectedBrandId, period, focusChannelId).catch(() => null),
-          smmService.analyticsCohort(selectedBrandId, period, focusChannelId).catch(() => null),
-          smmService.analyticsComments(selectedBrandId, period, focusChannelId).catch(() => null),
-          smmService.analyticsInsights(selectedBrandId, period, focusChannelId).catch(() => ({
-            insights: [],
-          })),
+          soft('messages', smmService.analyticsMessages(selectedBrandId, period, focusChannelId)),
+          soft('growth', smmService.analyticsGrowth(selectedBrandId, focusChannelId, period)),
+          soft('trends', smmService.analyticsPostTrends(selectedBrandId, period, focusChannelId)),
+          soft('funnel', smmService.analyticsFunnel(selectedBrandId, period, focusChannelId)),
+          soft('cohort', smmService.analyticsCohort(selectedBrandId, period, focusChannelId)),
+          soft('comments', smmService.analyticsComments(selectedBrandId, period, focusChannelId)),
+          soft('insights', smmService.analyticsInsights(selectedBrandId, period, focusChannelId)),
         ])
+        if (cancelled) return
+
+        const failedLabels: string[] = []
         setOverview(ov)
         setPosts(list)
         setPipeline(stats)
-        setMessageEvents(messagesData.events ?? [])
-        setGrowthPoints(growth.points ?? [])
-        setTrendPoints(trends.points ?? [])
-        setFunnel(funnelData)
-        setCohort(cohortData)
-        setCommentsSummary(commentsData)
-        setInsights(insightsData.insights ?? [])
+        if (messagesData.ok) setMessageEvents(messagesData.value.events ?? [])
+        else {
+          setMessageEvents([])
+          failedLabels.push(messagesData.label)
+        }
+        if (growth.ok) setGrowthPoints(growth.value.points ?? [])
+        else {
+          setGrowthPoints([])
+          failedLabels.push(growth.label)
+        }
+        if (trends.ok) setTrendPoints(trends.value.points ?? [])
+        else {
+          setTrendPoints([])
+          failedLabels.push(trends.label)
+        }
+        if (funnelData.ok) setFunnel(funnelData.value)
+        else {
+          setFunnel(null)
+          failedLabels.push(funnelData.label)
+        }
+        if (cohortData.ok) setCohort(cohortData.value)
+        else {
+          setCohort(null)
+          failedLabels.push(cohortData.label)
+        }
+        if (commentsData.ok) setCommentsSummary(commentsData.value)
+        else {
+          setCommentsSummary(null)
+          failedLabels.push(commentsData.label)
+        }
+        if (insightsData.ok) setInsights(insightsData.value.insights ?? [])
+        else {
+          setInsights([])
+          failedLabels.push(insightsData.label)
+        }
 
         if (feats.best_times) {
-          const bt = await smmService.bestTimes(selectedBrandId, focusChannelId).catch(() => ({ slots: [] }))
-          setBestSlots(bt.slots ?? [])
+          const bt = await soft(
+            'best_times',
+            smmService.bestTimes(selectedBrandId, focusChannelId),
+          )
+          if (cancelled) return
+          if (bt.ok) {
+            setBestSlots(bt.value.slots ?? [])
+            setBestTimesInsufficient(
+              Boolean(
+                (bt.value as { insufficient_data?: boolean }).insufficient_data ||
+                  !(bt.value.slots ?? []).length,
+              ),
+            )
+          } else {
+            setBestSlots([])
+            setBestTimesInsufficient(false)
+            failedLabels.push(bt.label)
+          }
         } else {
           setBestSlots([])
+          setBestTimesInsufficient(false)
         }
 
         if (compareBrandId && compareBrandId !== selectedBrandId) {
           const other = await smmService
             .analyticsOverview(compareBrandId, period, null)
             .catch(() => null)
+          if (cancelled) return
           setCompareOverview(other)
         } else {
           setCompareOverview(null)
         }
 
-        // TG Listening SKU strip (ops) — shared period, shown on Overview
         try {
           const tgPeriod = period === '90d' ? '30d' : period
           const [tgOv, tgHealth] = await Promise.all([
             telegramService.getAnalyticsOverview(tgPeriod, focusChannel?.external_id || undefined),
             telegramService.getAnalyticsHealth('24h'),
           ])
+          if (cancelled) return
           setTgListening({
             messages_collected: tgOv?.messages_collected,
             alerts_sent: tgOv?.alerts_sent,
@@ -415,12 +477,23 @@ export function SmmAnalyticsPage() {
             health: tgHealth,
           })
         } catch {
+          if (cancelled) return
           setTgListening(null)
+          failedLabels.push('tg_listening')
+        }
+
+        if (failedLabels.length > 0) {
+          setPartialError(
+            `Не удалось загрузить: ${failedLabels.join(', ')}. Остальные блоки показаны.`,
+          )
         }
       } catch (err) {
-        setError(getErrorMessage(err))
+        if (!cancelled) setError(getErrorMessage(err))
       }
     })()
+    return () => {
+      cancelled = true
+    }
   }, [canView, selectedBrandId, period, tab, focusChannelId, compareBrandId, focusChannel?.external_id])
 
   async function handleExportCsv() {
@@ -487,6 +560,7 @@ export function SmmAnalyticsPage() {
         description="Engagement (охват/ER) и Telegram Listening (сбор/алерты/health) — общие фильтры периода и канала"
       />
       {error && <Alert variant="error">{error}</Alert>}
+      {partialError && <Alert variant="warning">{partialError}</Alert>}
       {focusChannel && (
         <Alert variant="info">
           Канал: <strong>{focusChannel.title || focusChannel.external_id}</strong>
@@ -505,22 +579,22 @@ export function SmmAnalyticsPage() {
       )}
 
       <div className="flex flex-wrap gap-2 mb-4">
-        <Button variant={tab === 'overview' ? 'primary' : 'secondary'} onClick={() => setTab('overview')}>
+        <Button variant={tab === 'overview' ? 'primary' : 'secondary'} onClick={() => selectTab('overview')}>
           Engagement
         </Button>
-        <Button variant={tab === 'channels' ? 'primary' : 'secondary'} onClick={() => setTab('channels')}>
+        <Button variant={tab === 'channels' ? 'primary' : 'secondary'} onClick={() => selectTab('channels')}>
           Каналы
         </Button>
-        <Button variant={tab === 'messages' ? 'primary' : 'secondary'} onClick={() => setTab('messages')}>
+        <Button variant={tab === 'messages' ? 'primary' : 'secondary'} onClick={() => selectTab('messages')}>
           Messages
         </Button>
         <Button
           variant={tab === 'competitors' ? 'primary' : 'secondary'}
-          onClick={() => setTab('competitors')}
+          onClick={() => selectTab('competitors')}
         >
           Competitors
         </Button>
-        <Button variant={tab === 'telegram' ? 'primary' : 'secondary'} onClick={() => setTab('telegram')}>
+        <Button variant={tab === 'telegram' ? 'primary' : 'secondary'} onClick={() => selectTab('telegram')}>
           TG Listening
         </Button>
         {(tab === 'overview' || tab === 'channels' || tab === 'messages') && (
@@ -898,10 +972,7 @@ export function SmmAnalyticsPage() {
                     <button
                       type="button"
                       className="underline text-primary-400"
-                      onClick={() => {
-                        setTab('telegram')
-                        patchSearch({ tab: 'telegram' })
-                      }}
+                      onClick={() => selectTab('telegram')}
                     >
                       подробнее
                     </button>
@@ -998,7 +1069,13 @@ export function SmmAnalyticsPage() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <BestTimesHeatmap slots={bestSlots} />
+                  {bestTimesInsufficient || bestSlots.length === 0 ? (
+                    <p className="text-sm text-[var(--text-muted)] py-4 text-center">
+                      Мало данных для расчёта лучшего времени публикации
+                    </p>
+                  ) : (
+                    <BestTimesHeatmap slots={bestSlots} />
+                  )}
                 </CardContent>
               </Card>
             </PlanGate>

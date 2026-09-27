@@ -3306,6 +3306,24 @@ class SmmService:
                     post_ids_by_platform[net].add(int(p["id"]))
             if not post_ids_by_platform["tg"] and not post_ids_by_platform["vk"]:
                 return {"period": period, "brand_id": brand_id, "channel_id": channel_id, "points": []}
+            # Include legacy snapshot keys that stored post_targets.id
+            conn_ids = await get_db_connection()
+            try:
+                async with conn_ids.cursor() as cur:
+                    for platform, hub_ids in list(post_ids_by_platform.items()):
+                        if not hub_ids:
+                            continue
+                        await cur.execute(
+                            """
+                            SELECT id FROM post_targets
+                            WHERE platform = %s AND post_id = ANY(%s) AND user_id = %s
+                            """,
+                            (platform, list(hub_ids), user_id),
+                        )
+                        for (tid,) in await cur.fetchall() or []:
+                            post_ids_by_platform[platform].add(int(tid))
+            finally:
+                await release_db_connection(conn_ids)
 
         conn = await get_db_connection()
         try:
@@ -3416,14 +3434,24 @@ class SmmService:
                 row = await cur.fetchone()
                 if not row:
                     return None
+                hub_post_id = int(row[0])
+                await cur.execute(
+                    """
+                    SELECT id FROM post_targets
+                    WHERE post_id = %s AND platform = %s AND user_id = %s
+                    """,
+                    (hub_post_id, platform, user_id),
+                )
+                target_ids = [int(r[0]) for r in (await cur.fetchall() or [])]
+                snapshot_ids = [hub_post_id, *target_ids]
                 await cur.execute(
                     """
                     SELECT views, likes, comments, reposts, captured_at
                     FROM smm_post_metric_snapshots
-                    WHERE user_id = %s AND platform = %s AND post_id = %s
+                    WHERE user_id = %s AND platform = %s AND post_id = ANY(%s)
                     ORDER BY captured_at ASC
                     """,
-                    (user_id, platform, post_id),
+                    (user_id, platform, snapshot_ids),
                 )
                 snap_rows = await cur.fetchall()
         finally:
@@ -3739,15 +3767,30 @@ class SmmService:
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
+                hub_ids = [int(p["id"]) for p in filtered[:100]]
+                await cur.execute(
+                    """
+                    SELECT platform, post_id, id FROM post_targets
+                    WHERE user_id = %s AND post_id = ANY(%s) AND platform IN ('tg', 'vk')
+                    """,
+                    (user_id, hub_ids),
+                )
+                target_by_hub: dict[tuple[str, int], list[int]] = {}
+                for platform, hub_id, tid in await cur.fetchall() or []:
+                    key = (str(platform), int(hub_id))
+                    target_by_hub.setdefault(key, []).append(int(tid))
                 for p in filtered[:100]:
+                    hub_id = int(p["id"])
+                    net = str(p["network"])
+                    snap_ids = [hub_id, *target_by_hub.get((net, hub_id), [])]
                     await cur.execute(
                         """
                         SELECT views, captured_at
                         FROM smm_post_metric_snapshots
-                        WHERE user_id = %s AND platform = %s AND post_id = %s
+                        WHERE user_id = %s AND platform = %s AND post_id = ANY(%s)
                         ORDER BY captured_at ASC
                         """,
-                        (user_id, p["network"], p["id"]),
+                        (user_id, net, snap_ids),
                     )
                     snaps = await cur.fetchall()
                     if not snaps:
@@ -4657,20 +4700,16 @@ class SmmService:
         if channel_id:
             channels = [c for c in channels if c.get("id") == channel_id]
         tg_channels = [c for c in channels if c.get("network") == "tg"]
-        default_slots = [
-            {"weekday": 2, "hour": 10, "score": 50.0},
-            {"weekday": 3, "hour": 12, "score": 48.0},
-            {"weekday": 4, "hour": 18, "score": 55.0},
-            {"weekday": 1, "hour": 9, "score": 40.0},
-        ]
+        empty = {
+            "brand_id": brand_id,
+            "channel_id": channel_id,
+            "horizon_days": horizon_days,
+            "slots": [],
+            "insufficient_data": True,
+        }
         if brand_id is not None or channel_id is not None:
             if not tg_channels:
-                return {
-                    "brand_id": brand_id,
-                    "channel_id": channel_id,
-                    "horizon_days": horizon_days,
-                    "slots": default_slots,
-                }
+                return empty
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
@@ -4702,13 +4741,12 @@ class SmmService:
                 }
                 for r in rows
             ]
-            if not slots:
-                slots = default_slots
             return {
                 "brand_id": brand_id,
                 "channel_id": channel_id,
                 "horizon_days": horizon_days,
                 "slots": slots,
+                "insufficient_data": len(slots) == 0,
             }
         finally:
             await release_db_connection(conn)

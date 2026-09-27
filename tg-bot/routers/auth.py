@@ -66,6 +66,16 @@ async def submit_phone_code(request: PhoneCodeRequest):
     return AuthResponse(**result)
 
 
+@router.post("/resend-code/{user_id}", response_model=AuthResponse)
+async def resend_phone_code(user_id: int):
+    """Повторно запрашивает код подтверждения. Не чаще одного раза в 120 секунд."""
+    if not client_manager:
+        raise HTTPException(status_code=503, detail="Client manager not initialized")
+
+    result = await client_manager.resend_authorization_code(user_id)
+    return AuthResponse(**result)
+
+
 @router.post("/password", response_model=AuthResponse)
 async def submit_password(request: PasswordRequest):
     """Обрабатывает 2FA пароль от пользователя.

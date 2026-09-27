@@ -28,6 +28,7 @@ export interface TgAuthResponse {
   message?: string
   error?: string
   requires_password?: boolean
+  retry_after_seconds?: number
 }
 
 export interface CreatePostOptions {
@@ -263,6 +264,17 @@ export const telegramService = {
         user_id: userId,
         code,
       })
+      return response.data
+    } catch (error) {
+      throw new Error(getErrorMessage(error))
+    }
+  },
+
+  async resendAuthCode(userId: number): Promise<TgAuthResponse> {
+    try {
+      const response = await apiClient.post<TgAuthResponse>(
+        `/tg-bot/auth/resend-code/${userId}`,
+      )
       return response.data
     } catch (error) {
       throw new Error(getErrorMessage(error))

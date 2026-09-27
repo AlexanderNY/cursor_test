@@ -33,6 +33,10 @@ export interface AuthTabProps {
   onSubmitAuthCode: (e: FormEvent) => void
   onSubmitAuthPassword: (e: FormEvent) => void
   onCheckChannels: () => void
+  showResendCode: boolean
+  resendCooldownSec: number
+  isResendingCode: boolean
+  onResendAuthCode: () => void
 }
 
 export function AuthTab({
@@ -62,6 +66,10 @@ export function AuthTab({
   onSubmitAuthCode,
   onSubmitAuthPassword,
   onCheckChannels,
+  showResendCode,
+  resendCooldownSec,
+  isResendingCode,
+  onResendAuthCode,
 }: AuthTabProps) {
   return (
     <Card className="animate-slide-up border-amber-500/30">
@@ -148,6 +156,24 @@ export function AuthTab({
               </div>
               <Button type="submit" isLoading={isSubmittingAuth} disabled={!authCode.trim()}>Отправить код</Button>
             </form>
+            {showResendCode && (
+              <div className="mt-4 flex flex-wrap items-center gap-3">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={onResendAuthCode}
+                  isLoading={isResendingCode}
+                  disabled={resendCooldownSec > 0}
+                >
+                  {resendCooldownSec > 0
+                    ? `Запросить код ещё раз (${resendCooldownSec} с)`
+                    : 'Запросить код ещё раз'}
+                </Button>
+                <span className="text-xs text-[var(--text-muted)]">
+                  Код истёк. Новый можно запросить не чаще одного раза в 2 минуты.
+                </span>
+              </div>
+            )}
           </div>
         )}
 

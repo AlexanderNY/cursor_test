@@ -2,37 +2,39 @@
 :root,
 [data-theme='dark'] {
   color-scheme: dark;
-  --color-bg: #0c1118;
-  --color-bg-rgb: 12, 17, 24;
-  --color-fg: #eef2f7;
-  --color-fg-muted: #9aa8b8;
-  --color-fg-subtle: #8b9cb0;
-  --color-fg-soft: #c5d0dc;
-  --color-fg-body: #d5dee8;
-  --color-fg-footer: #b7c4d2;
-  --color-fg-faint: #7f8d9d;
-  --color-fg-dim: #64748b;
-  --color-accent: #6ee7b7;
-  --color-accent-bright: #5eead4;
-  --color-accent-mark: #6ee7b7;
+  --color-bg: #070b10;
+  --color-bg-rgb: 7, 11, 16;
+  --color-fg: #f4f7fb;
+  --color-fg-muted: #c5d0dc;
+  --color-fg-subtle: #b4c2d2;
+  --color-fg-soft: #e4ebf3;
+  --color-fg-body: #e8eef5;
+  --color-fg-footer: #d2dce6;
+  --color-fg-faint: #aebccb;
+  --color-fg-dim: #9aabbd;
+  --color-accent: #5eead4;
+  --color-accent-hover: #99f6e4;
+  --color-accent-bright: #99f6e4;
+  --color-accent-mark: #5eead4;
   --color-accent-cta: #ecfdf5;
-  --color-accent-nav: #a7f3d0;
+  --color-on-accent: #042f2e;
+  --color-accent-nav: #99f6e4;
   --color-accent-episode: #5eead4;
-  --color-danger: #fca5a5;
-  --color-warning: #fbbf24;
-  --color-status: #b8c4d0;
-  --color-border: rgba(255, 255, 255, 0.08);
-  --color-border-strong: rgba(255, 255, 255, 0.12);
-  --color-border-soft: rgba(255, 255, 255, 0.06);
-  --color-border-nav: rgba(255, 255, 255, 0.08);
-  --color-border-input: rgba(255, 255, 255, 0.12);
-  --color-surface: rgba(255, 255, 255, 0.03);
-  --color-surface-2: rgba(255, 255, 255, 0.04);
-  --color-surface-3: rgba(255, 255, 255, 0.06);
-  --color-elevated: rgba(18, 24, 33, 0.72);
-  --color-input: rgba(8, 12, 18, 0.85);
-  --color-panel: rgba(8, 12, 18, 0.7);
-  --color-code-bg: rgba(255, 255, 255, 0.06);
+  --color-danger: #fecaca;
+  --color-warning: #fcd34d;
+  --color-status: #d2dce6;
+  --color-border: rgba(255, 255, 255, 0.2);
+  --color-border-strong: rgba(255, 255, 255, 0.32);
+  --color-border-soft: rgba(255, 255, 255, 0.14);
+  --color-border-nav: rgba(255, 255, 255, 0.22);
+  --color-border-input: rgba(255, 255, 255, 0.32);
+  --color-surface: rgba(255, 255, 255, 0.07);
+  --color-surface-2: rgba(255, 255, 255, 0.1);
+  --color-surface-3: rgba(255, 255, 255, 0.14);
+  --color-elevated: rgba(16, 22, 32, 0.94);
+  --color-input: #0c121a;
+  --color-panel: rgba(10, 14, 20, 0.92);
+  --color-code-bg: rgba(255, 255, 255, 0.1);
   --color-glow-a: rgba(56, 189, 148, 0.18);
   --color-glow-b: rgba(59, 130, 246, 0.14);
   --color-brand-bg: rgba(16, 185, 129, 0.12);
@@ -60,43 +62,45 @@
   --color-tile-base-2: rgba(18, 24, 33, 0.82);
   --color-promo-base: rgba(18, 24, 33, 0.92);
   --color-promo-base-2: rgba(18, 24, 33, 0.88);
-  --color-header-scrim: linear-gradient(180deg, #0c1118 70%, rgba(12, 17, 24, 0));
-  --color-dot: #34d399;
+  --color-header-scrim: linear-gradient(180deg, #070b10 70%, rgba(7, 11, 16, 0));
+  --color-dot: #5eead4;
 }
 
 [data-theme='light'] {
   color-scheme: light;
-  --color-bg: #eef3f8;
-  --color-bg-rgb: 238, 243, 248;
-  --color-fg: #152033;
-  --color-fg-muted: #5a6b80;
-  --color-fg-subtle: #6b7c90;
-  --color-fg-soft: #3d4f63;
-  --color-fg-body: #2a3a4d;
-  --color-fg-footer: #4a5c70;
-  --color-fg-faint: #7a8b9e;
-  --color-fg-dim: #8a9aab;
-  --color-accent: #0f766e;
-  --color-accent-bright: #0d9488;
-  --color-accent-mark: #0f766e;
-  --color-accent-cta: #134e4a;
-  --color-accent-nav: #0f766e;
-  --color-accent-episode: #0d9488;
-  --color-danger: #b91c1c;
-  --color-warning: #b45309;
-  --color-status: #4a5c70;
-  --color-border: rgba(21, 32, 51, 0.1);
-  --color-border-strong: rgba(21, 32, 51, 0.14);
-  --color-border-soft: rgba(21, 32, 51, 0.08);
-  --color-border-nav: rgba(21, 32, 51, 0.12);
-  --color-border-input: rgba(21, 32, 51, 0.16);
-  --color-surface: rgba(255, 255, 255, 0.55);
-  --color-surface-2: rgba(255, 255, 255, 0.7);
-  --color-surface-3: rgba(21, 32, 51, 0.06);
-  --color-elevated: rgba(255, 255, 255, 0.88);
-  --color-input: rgba(255, 255, 255, 0.95);
-  --color-panel: rgba(255, 255, 255, 0.82);
-  --color-code-bg: rgba(21, 32, 51, 0.06);
+  --color-bg: #e7edf4;
+  --color-bg-rgb: 231, 237, 244;
+  --color-fg: #0b1220;
+  --color-fg-muted: #243244;
+  --color-fg-subtle: #314256;
+  --color-fg-soft: #1a2838;
+  --color-fg-body: #152233;
+  --color-fg-footer: #243244;
+  --color-fg-faint: #3a4c62;
+  --color-fg-dim: #46586e;
+  --color-accent: #0b5c56;
+  --color-accent-hover: #084843;
+  --color-accent-bright: #0f766e;
+  --color-accent-mark: #0b5c56;
+  --color-accent-cta: #042f2e;
+  --color-on-accent: #f4fffb;
+  --color-accent-nav: #0b5c56;
+  --color-accent-episode: #0b5c56;
+  --color-danger: #9f1239;
+  --color-warning: #9a3412;
+  --color-status: #243244;
+  --color-border: rgba(11, 18, 32, 0.22);
+  --color-border-strong: rgba(11, 18, 32, 0.34);
+  --color-border-soft: rgba(11, 18, 32, 0.14);
+  --color-border-nav: rgba(11, 18, 32, 0.22);
+  --color-border-input: rgba(11, 18, 32, 0.36);
+  --color-surface: #ffffff;
+  --color-surface-2: #ffffff;
+  --color-surface-3: rgba(11, 18, 32, 0.08);
+  --color-elevated: #ffffff;
+  --color-input: #ffffff;
+  --color-panel: #ffffff;
+  --color-code-bg: rgba(11, 18, 32, 0.08);
   --color-glow-a: rgba(13, 148, 136, 0.14);
   --color-glow-b: rgba(37, 99, 235, 0.1);
   --color-brand-bg: rgba(13, 148, 136, 0.12);
@@ -124,8 +128,8 @@
   --color-tile-base-2: rgba(255, 255, 255, 0.86);
   --color-promo-base: rgba(255, 255, 255, 0.94);
   --color-promo-base-2: rgba(255, 255, 255, 0.9);
-  --color-header-scrim: linear-gradient(180deg, #eef3f8 70%, rgba(238, 243, 248, 0));
-  --color-dot: #0d9488;
+  --color-header-scrim: linear-gradient(180deg, #e7edf4 70%, rgba(231, 237, 244, 0));
+  --color-dot: #0b5c56;
 }
 
 *,
@@ -197,11 +201,11 @@ a.learn-admin-btn {
 }
 
 a.learn-admin-btn-primary {
-  color: var(--color-accent-cta);
+  color: var(--color-on-accent);
 }
 
 a.learn-admin-link {
-  color: var(--color-accent-cta);
+  color: var(--color-on-accent);
 }
 
 a.learn-admin-link.learn-admin-danger {
@@ -614,7 +618,8 @@ button.theme-toggle:hover {
   font-size: 0.8125rem;
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  color: color-mix(in srgb, var(--promo-accent, #2dd4bf) 85%, var(--color-fg));
+  font-weight: 700;
+  color: color-mix(in srgb, var(--promo-accent, var(--color-accent)) 28%, var(--color-fg));
 }
 
 .promo-spotlight-count {
@@ -680,19 +685,18 @@ button.theme-toggle:hover {
   align-items: center;
   padding: 0.6rem 1.1rem;
   border-radius: 0.65rem;
-  border: 1px solid color-mix(in srgb, var(--promo-accent, #2dd4bf) 45%, transparent);
-  background: color-mix(in srgb, var(--promo-accent, #2dd4bf) 18%, transparent);
-  color: var(--color-accent-cta);
+  border: 1px solid var(--color-accent);
+  background: var(--color-accent);
+  color: var(--color-on-accent);
   font-size: 0.95rem;
-  font-weight: 600;
-  transition:
-    background 0.15s ease,
-    border-color 0.15s ease;
+  font-weight: 700;
+  transition: background 0.15s ease;
 }
 
 .promo-spotlight-cta:hover {
-  border-color: color-mix(in srgb, var(--promo-accent, #2dd4bf) 65%, transparent);
-  background: color-mix(in srgb, var(--promo-accent, #2dd4bf) 28%, transparent);
+  background: var(--color-accent-hover);
+  border-color: var(--color-accent-hover);
+  color: var(--color-on-accent);
 }
 
 .promo-spotlight-controls {
@@ -737,8 +741,8 @@ button.theme-toggle:hover {
   padding: 0;
   border-radius: 999px;
   border: none;
-  background: var(--color-fg-dim);
-  opacity: 0.45;
+  background: var(--color-fg-muted);
+  opacity: 0.85;
   transition:
     opacity 0.2s ease,
     transform 0.2s ease,
@@ -1481,16 +1485,18 @@ a.mnemonic-hub-card:hover {
   cursor: pointer;
   padding: 0.6rem 1.15rem;
   border-radius: 0.65rem;
-  border: 1px solid var(--color-accent-border);
-  background: var(--color-accent-fill);
-  color: var(--color-accent-cta);
+  border: 1px solid var(--color-accent);
+  background: var(--color-accent);
+  color: var(--color-on-accent);
   font: inherit;
   font-size: 0.95rem;
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .contact-form-submit:hover:not(:disabled) {
-  background: var(--color-accent-fill-strong);
+  background: var(--color-accent-hover);
+  border-color: var(--color-accent-hover);
+  color: var(--color-on-accent);
 }
 
 .contact-form-submit:disabled {
@@ -2022,9 +2028,9 @@ button.learn-episode-card {
   min-height: 2.75rem;
   padding: 0.55rem 1.05rem;
   border-radius: 999px;
-  border: 1px solid var(--color-accent-border);
-  background: var(--color-accent-fill);
-  color: var(--color-accent-cta);
+  border: 1px solid var(--color-accent);
+  background: var(--color-accent);
+  color: var(--color-on-accent);
   font: inherit;
   font-size: 0.95rem;
   font-weight: 600;
@@ -2034,9 +2040,9 @@ button.learn-episode-card {
 }
 
 .learn-admin-link:hover {
-  color: var(--color-accent-cta);
-  background: var(--color-accent-fill-strong);
-  border-color: var(--color-accent-border-mid);
+  color: var(--color-on-accent);
+  background: var(--color-accent-hover);
+  border-color: var(--color-accent-hover);
 }
 
 .learn-admin-danger {
@@ -2076,13 +2082,15 @@ button.learn-episode-card {
 }
 
 .learn-admin-btn-primary {
-  border-color: var(--color-accent-border);
-  background: var(--color-accent-fill);
-  color: var(--color-accent-cta);
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+  color: var(--color-on-accent);
 }
 
 .learn-admin-btn-primary:hover:not(:disabled) {
-  background: var(--color-accent-fill-strong);
+  background: var(--color-accent-hover);
+  border-color: var(--color-accent-hover);
+  color: var(--color-on-accent);
 }
 
 .learn-admin-btn:disabled {
@@ -3773,9 +3781,9 @@ button.lm-tag:hover {
   min-height: 3rem;
   padding: 0.7rem 1.15rem;
   border-radius: 0.85rem;
-  border: 1px solid var(--color-border-nav);
-  background: var(--color-accent-fill);
-  color: var(--color-accent-cta);
+  border: 1px solid var(--color-accent);
+  background: var(--color-accent);
+  color: var(--color-on-accent);
   font: inherit;
   font-size: 1.05rem;
   font-weight: 700;
@@ -4286,6 +4294,99 @@ button.lm-tag:hover {
   max-width: 48rem;
 }
 
+.hh-match-score {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 0.85rem;
+}
+
+.hh-match-score-ring {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 5.5rem;
+  height: 5.5rem;
+  border-radius: 999px;
+  border: 3px solid var(--color-accent);
+  background: var(--color-surface);
+  color: var(--color-fg);
+}
+
+.hh-match-score-ring strong {
+  font-size: 1.35rem;
+  line-height: 1.1;
+}
+
+.hh-match-score-ring span {
+  font-size: 0.7rem;
+  color: var(--color-fg-muted);
+}
+
+.hh-resume-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.hh-resume-badge-chip {
+  display: inline-block;
+  padding: 0.25rem 0.65rem;
+  border-radius: 999px;
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-surface-3);
+  color: var(--color-fg);
+  font-size: 0.85rem;
+}
+
+.hh-mock-chat {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.hh-mock-chat-log {
+  display: grid;
+  gap: 0.55rem;
+  max-height: 22rem;
+  overflow: auto;
+  padding: 0.5rem;
+  border: 1px solid color-mix(in srgb, var(--border, #cbd5e1) 80%, transparent);
+  border-radius: 0.75rem;
+}
+
+.hh-mock-chat-bubble {
+  padding: 0.65rem 0.8rem;
+  border-radius: 0.75rem;
+  max-width: 92%;
+}
+
+.hh-mock-chat-bubble p {
+  margin: 0.25rem 0 0;
+  white-space: pre-wrap;
+}
+
+.hh-mock-chat-bubble.is-assistant {
+  background: var(--color-surface-3);
+  color: var(--color-fg);
+  justify-self: start;
+}
+
+.hh-mock-chat-bubble.is-user {
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+  justify-self: end;
+}
+
+.hh-mock-chat-role {
+  font-size: 0.75rem;
+  color: inherit;
+  font-weight: 700;
+  opacity: 0.85;
+}
+
 .hh-resume-split {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -4565,6 +4666,35 @@ button.lm-tag:hover {
 
 .hh-quiz-option input {
   margin-top: 0.2rem;
+}
+
+.hh-path-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0 0 1.25rem;
+}
+
+.hh-path-step {
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-surface);
+  color: var(--color-fg);
+  border-radius: 999px;
+  padding: 0.4rem 0.85rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.hh-path-step.is-active {
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+  font-weight: 700;
+}
+
+.hh-path-step:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .sr-only {

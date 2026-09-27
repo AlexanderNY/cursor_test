@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Alert } from '@/components/ui/alert'
 import { ConditionsEditor } from '@/components/conditions-editor'
 import { smmService } from '@/services/smm-service'
+import { useBrand } from '@/contexts/brand-context'
 import type {
   BrandChannel,
   ChannelAlertDelivery,
@@ -81,6 +82,7 @@ export function ChannelFlowPage() {
   const { channelId: channelIdParam } = useParams()
   const channelId = Number(channelIdParam)
   const navigate = useNavigate()
+  const { setSelectedBrandId } = useBrand()
 
   const [channel, setChannel] = useState<BrandChannel | null>(null)
   const [brandChannels, setBrandChannels] = useState<BrandChannel[]>([])
@@ -125,6 +127,9 @@ export function ChannelFlowPage() {
       try {
         const ch = await smmService.getChannel(channelId)
         setChannel(ch)
+        if (ch.brand_id) {
+          setSelectedBrandId(ch.brand_id)
+        }
         setConditions(ch.save_conditions || [])
         setConditionsMode(ch.conditions_mode === 'all_of' ? 'all_of' : 'any_of')
         setProcessing(ch.processing || {})
@@ -181,7 +186,7 @@ export function ChannelFlowPage() {
         setLoading(false)
       }
     })()
-  }, [channelId])
+  }, [channelId, setSelectedBrandId])
 
   useEffect(() => {
     if (channel?.network === 'url' && tab === 'alerting') {

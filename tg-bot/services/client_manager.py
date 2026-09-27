@@ -13,6 +13,7 @@ from telethon.errors import (
 )
 from database import get_db_connection, release_db_connection
 from config import settings
+from .code_resend import CodeResendLimiter
 from .notification_service import notification_service
 
 
@@ -73,6 +74,8 @@ class TelegramClientManager:
         self._clients: Dict[int, TelegramClient] = {}
         self._profiles: Dict[int, Dict] = {}
         self._pending_clients: Dict[int, TelegramClient] = {}  # Клиенты ожидающие авторизации
+        self._code_resend_limiter = CodeResendLimiter()
+        self._code_resend_locks: Dict[int, asyncio.Lock] = {}
     
     async def load_profiles(self) -> List[Dict]:
         """Загружает профили из БД (collect_enabled или publish_enabled).
@@ -281,6 +284,139 @@ class TelegramClientManager:
             return None
 
     @staticmethod
+    def _normalize_phone(raw_phone: object) -> Optional[str]:
+        """Приводит номер из БД к строке без @."""
+        if raw_phone is None:
+            return None
+        if isinstance(raw_phone, bytes):
+            phone_number = raw_phone.decode("utf-8", errors="replace").strip().lstrip("@")
+        else:
+            phone_number = str(raw_phone).strip().lstrip("@")
+        return phone_number or None
+
+    def _code_resend_lock(self, user_id: int) -> asyncio.Lock:
+        """Возвращает lock повторного запроса кода для пользователя."""
+        lock = self._code_resend_locks.get(user_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._code_resend_locks[user_id] = lock
+        return lock
+
+    async def _load_profile_by_user_id(self, user_id: int) -> Optional[Dict]:
+        """Загружает tg_profiles строку пользователя."""
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "SELECT * FROM tg_profiles WHERE user_id = %s",
+                    (user_id,),
+                )
+                row = await cur.fetchone()
+                if not row:
+                    return None
+                columns = [col.name for col in cur.description]
+                return dict(zip(columns, row))
+        finally:
+            await release_db_connection(conn)
+
+    async def resend_authorization_code(self, user_id: int) -> Dict:
+        """Повторно запрашивает код Telegram, не чаще одного раза в 120 секунд.
+
+        Args:
+            user_id: ID пользователя
+
+        Returns:
+            Словарь результата для AuthResponse
+        """
+        async with self._code_resend_lock(user_id):
+            retry_after = self._code_resend_limiter.retry_after_seconds(user_id)
+            if retry_after > 0:
+                return {
+                    "success": False,
+                    "error": f"Повторный запрос кода возможен через {retry_after} с",
+                    "retry_after_seconds": retry_after,
+                }
+
+            profile = await self._load_profile_by_user_id(user_id)
+            if not profile:
+                return {"success": False, "error": "Profile not found"}
+
+            if (profile.get("auth_state") or "") == "pending_password":
+                return {"success": False, "error": "2FA password required"}
+
+            phone_number = self._normalize_phone(profile.get("auth_phone_number"))
+            if not phone_number or not self._is_valid_phone_number(phone_number):
+                return {
+                    "success": False,
+                    "error": "Укажите номер телефона в формате +79001234567",
+                }
+
+            active = self._clients.get(user_id)
+            if active is not None:
+                try:
+                    if active.is_connected() and await active.is_user_authorized():
+                        return {"success": False, "error": "Already authorized"}
+                except Exception:
+                    logger.exception(
+                        "Failed to check active Telegram client for user %s",
+                        user_id,
+                    )
+
+            client = await self._ensure_pending_client(profile)
+            if client is None:
+                if user_id in self._clients:
+                    return {"success": False, "error": "Already authorized"}
+                return {
+                    "success": False,
+                    "error": (
+                        "Не удалось подключиться к Telegram. "
+                        "Проверьте прокси и номер телефона."
+                    ),
+                }
+
+            self._code_resend_limiter.mark_sent(user_id)
+            phone_code_hash = await self._request_authorization_code(
+                client,
+                phone_number,
+                user_id,
+            )
+            if not phone_code_hash:
+                return {
+                    "success": False,
+                    "error": "Не удалось запросить код. Проверьте номер телефона и прокси.",
+                    "retry_after_seconds": self._code_resend_limiter.retry_after_seconds(user_id),
+                }
+            return {
+                "success": True,
+                "message": "Новый код отправлен в Telegram",
+            }
+
+    async def _ensure_pending_client(self, profile: Dict) -> Optional[TelegramClient]:
+        """Возвращает подключённый клиент, который ждёт код.
+
+        Если сессия уже авторизована, кладёт клиент в активные и возвращает None.
+        """
+        user_id = profile["user_id"]
+        client = self._pending_clients.get(user_id)
+        if client is not None and client.is_connected():
+            return client
+        if client is not None:
+            try:
+                await client.disconnect()
+            except Exception:
+                logger.debug("Failed to disconnect stale pending client for user %s", user_id)
+            self._pending_clients.pop(user_id, None)
+
+        created = await self.create_client(profile, request_code=False)
+        if created is not None:
+            self._clients[user_id] = created
+            return None
+        pending = self._pending_clients.get(user_id)
+        if pending is not None and pending.is_connected():
+            return pending
+        return None
+
+    @staticmethod
     def _is_valid_phone_number(phone: str) -> bool:
         """Проверяет, что строка похожа на номер телефона (не username)."""
         if not phone or len(phone) < 10:
@@ -303,11 +439,17 @@ class TelegramClientManager:
                 await asyncio.sleep(wait_sec)
         return None
 
-    async def create_client(self, profile: Dict) -> Optional[TelegramClient]:
+    async def create_client(
+        self,
+        profile: Dict,
+        *,
+        request_code: bool = True,
+    ) -> Optional[TelegramClient]:
         """Создает TelegramClient для профиля.
         
         Args:
             profile: Словарь с данными профиля из БД
+            request_code: Запросить код, если сессия ещё не авторизована
             
         Returns:
             TelegramClient или None в случае ошибки или необходимости авторизации
@@ -395,17 +537,12 @@ class TelegramClientManager:
                         self._pending_clients[user_id] = client
                         return None
 
-                    raw_phone = profile.get('auth_phone_number')
-                    phone_number = None
-                    if raw_phone is not None:
-                        if isinstance(raw_phone, bytes):
-                            phone_number = raw_phone.decode("utf-8", errors="replace").strip().lstrip("@")
-                        else:
-                            phone_number = str(raw_phone).strip().lstrip("@")
-                        if not phone_number:
-                            phone_number = None
+                    phone_number = self._normalize_phone(profile.get("auth_phone_number"))
 
                     if phone_number and self._is_valid_phone_number(phone_number):
+                        if not request_code:
+                            self._pending_clients[user_id] = client
+                            return None
                         phone_code_hash = await self._request_authorization_code(
                             client, phone_number, user_id
                         )

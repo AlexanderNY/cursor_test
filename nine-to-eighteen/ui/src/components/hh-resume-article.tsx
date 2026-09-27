@@ -1,6 +1,10 @@
 import { Link } from 'react-router-dom'
 import { employmentLabel, workFormatLabel } from '@/data/site/resume-options'
-import type { SiteResumePreview, SiteResumeSkill } from '@/data/site/resume-api'
+import type {
+  GithubProject,
+  SiteResumePreview,
+  SiteResumeSkill,
+} from '@/data/site/resume-api'
 
 function fullName(preview: Pick<SiteResumePreview, 'profile' | 'username'>): string {
   const parts = [
@@ -23,6 +27,8 @@ export function HhResumeArticle({
   employmentOverride,
   workFormatsOverride,
   versionNameOverride,
+  badgeLabels,
+  projects,
 }: {
   preview: SiteResumePreview
   skills: SiteResumeSkill[]
@@ -34,6 +40,8 @@ export function HhResumeArticle({
   employmentOverride?: string[]
   workFormatsOverride?: string[]
   versionNameOverride?: string
+  badgeLabels?: string[]
+  projects?: GithubProject[]
 }) {
   const about = aboutOverride ?? preview.resume.about
   const specialization =
@@ -106,6 +114,39 @@ export function HhResumeArticle({
           </ul>
         )}
       </section>
+
+      {badgeLabels && badgeLabels.length > 0 ? (
+        <section className="hh-resume-block">
+          <h3>Достижения</h3>
+          <ul className="hh-resume-badges">
+            {badgeLabels.map((label) => (
+              <li key={label} className="hh-resume-badge-chip">
+                {label}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      {projects && projects.length > 0 ? (
+        <section className="hh-resume-block">
+          <h3>Проекты</h3>
+          <ul>
+            {projects.map((project) => (
+              <li key={project.url}>
+                <a href={project.url} target="_blank" rel="noreferrer">
+                  {project.name}
+                </a>
+                {project.language ? ` · ${project.language}` : ''}
+                {project.stars > 0 ? ` · ★${project.stars}` : ''}
+                {project.description ? (
+                  <p className="hh-resume-meta">{project.description}</p>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       <p className="hh-resume-footer">
         {versionName} · Learn · выпусков: {preview.completedCount}

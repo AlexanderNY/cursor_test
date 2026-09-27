@@ -204,6 +204,8 @@ class PostCollector:
         views: int,
         *,
         dest: Optional[Dict[str, Any]] = None,
+        brand_id: Optional[int] = None,
+        channel_id: Optional[int] = None,
     ) -> bool:
         dest = dest or {}
         platforms = dest_flags_to_platforms(dest)
@@ -217,6 +219,8 @@ class PostCollector:
                         user_id=user_id,
                         source_platform="vk",
                         post_text=post_text,
+                        brand_id=brand_id,
+                        channel_id=channel_id,
                         post_date=post_date,
                         author=author,
                         domain=domain,
@@ -237,16 +241,19 @@ class PostCollector:
                 )
                 post_row_id = int(created["id"])
                 _log_action(
-                    "Saved vk post user_id=%s domain=%s vk_source_id=%s platforms=%s",
+                    "Saved vk post user_id=%s domain=%s vk_source_id=%s platforms=%s brand=%s channel=%s",
                     user_id,
                     domain,
                     vk_source_id,
                     platforms,
+                    brand_id,
+                    channel_id,
                 )
                 await bump_channel_counter(
                     user_id,
                     network="vk",
                     external_id=domain,
+                    channel_id=channel_id,
                     received=1,
                     direction="collected",
                     platform="vk",
@@ -300,6 +307,8 @@ class PostCollector:
         dest: Optional[Dict[str, Any]] = None,
         alert_rules: Optional[List[Dict[str, Any]]] = None,
         source_external_id: str = "",
+        brand_id: Optional[int] = None,
+        channel_id: Optional[int] = None,
     ) -> int:
         domain = str(owner_id)
         max_id = await self.get_max_source_id(user_id, domain)
@@ -361,6 +370,8 @@ class PostCollector:
                 likes,
                 views,
                 dest=dest,
+                brand_id=brand_id,
+                channel_id=channel_id,
             )
             if ok:
                 saved += 1
@@ -411,6 +422,10 @@ class PostCollector:
                 dest=dest,
                 alert_rules=alert_rules,
                 source_external_id=str(channel.get("external_id") or ""),
+                brand_id=(
+                    int(channel["brand_id"]) if channel.get("brand_id") is not None else None
+                ),
+                channel_id=int(channel["id"]) if channel.get("id") is not None else None,
             )
             saved += n
             polled.add((user_id, owner_id))

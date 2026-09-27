@@ -5,12 +5,12 @@ import random
 from dataclasses import dataclass, field
 from typing import Literal
 
-PickupKind = Literal["green", "red"]
+PickupKind = Literal["green", "red", "yellow"]
 EnemyState = Literal["patrol", "chase", "cooldown", "flee"]
-EnemyKind = Literal["grazer", "hunter", "lurker"]
+EnemyKind = str
 BossKind = Literal["titan", "stalker", "swarm", "leech", "vortex"]
 PerkKind = Literal["leg", "eye", "tentacle", "spike", "shell", "dash", "anchor", "none"]
-ObjectKind = Literal["paper", "toothbrush"]
+ObjectKind = str
 
 
 @dataclass
@@ -27,6 +27,7 @@ class Player:
     action_cooldown: float = 0.0
     eat_count: int = 0
     enemies_eaten: int = 0
+    skill_bonus: int = 0
     color: str = "#60a5fa"
     stamina: float = 100.0
     is_sprinting: bool = False

@@ -7,6 +7,7 @@ import { PerkSelectScreen } from './perk-select-screen'
 import { writeSave } from './save-storage'
 import { getAutosaveIntervalMs } from './game-config'
 import { awardMatchCredits, loadOrders } from './orders-storage'
+import { loadHighScore, saveHighScore } from './score-storage'
 import type { PerkKind, RenderState } from './types'
 import { VirtualJoystick } from './virtual-joystick'
 
@@ -27,6 +28,9 @@ export function GameScreen({ onBackToMenu }: GameScreenProps) {
   const [renderState, setRenderState] = useState<RenderState | null>(null)
   const [loopError, setLoopError] = useState<string | null>(null)
   const [creditsGained, setCreditsGained] = useState(0)
+  const [finalScore, setFinalScore] = useState(0)
+  const [highScore, setHighScore] = useState(0)
+  const [isVictory, setIsVictory] = useState(false)
 
   const persistSave = useCallback(async () => {
     const stateJson = await gameBridge.exportState()
@@ -122,12 +126,15 @@ export function GameScreen({ onBackToMenu }: GameScreenProps) {
             drawHudBars(hudCtx, frameState, hudCanvas.width)
           }
 
-          if (frameState.game_over) {
+          if (frameState.game_over || frameState.victory) {
             gameOverRef.current = true
+            setFinalScore(frameState.score ?? 0)
+            setHighScore(saveHighScore(frameState.score ?? 0))
+            setIsVictory(Boolean(frameState.victory))
             if (!rewardedRef.current) {
               rewardedRef.current = true
               const before = loadOrders().credits
-              const survivedBoss = Boolean(frameState.boss_active || frameState.active_boss)
+              const survivedBoss = Boolean(frameState.boss_active || frameState.active_boss || frameState.victory)
               awardMatchCredits(frameState.enemies_eaten || 0, survivedBoss)
               setCreditsGained(loadOrders().credits - before)
             }
@@ -225,6 +232,9 @@ export function GameScreen({ onBackToMenu }: GameScreenProps) {
         <GameOverScreen
           enemiesEaten={renderState?.enemies_eaten || 0}
           creditsGained={creditsGained}
+          score={finalScore}
+          highScore={highScore || loadHighScore()}
+          victory={isVictory}
           onBackToMenu={onBackToMenu}
         />
       )}

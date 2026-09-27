@@ -7,17 +7,19 @@ import {
   resumeList,
   type SiteResumeSummary,
 } from '@/data/site/resume-api'
-import { getSiteAuthSession } from '@/data/site/site-auth'
+import { useSiteAuthSession } from '@/data/site/site-auth'
 
 /** Список версий резюме (несколько на пользователя). */
 export function HhResumePage() {
-  const session = getSiteAuthSession()
+  const session = useSiteAuthSession()
   const navigate = useNavigate()
   const [items, setItems] = useState<SiteResumeSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [ok, setOk] = useState('')
+
+  const accessToken = session?.accessToken ?? ''
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -33,12 +35,29 @@ export function HhResumePage() {
   }, [])
 
   useEffect(() => {
-    if (!session) {
+    if (!accessToken) {
       setLoading(false)
       return
     }
-    void load()
-  }, [session, load])
+    let cancelled = false
+    setLoading(true)
+    setError('')
+    void (async () => {
+      try {
+        const list = await resumeList()
+        if (!cancelled) setItems(list)
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'Не удалось загрузить список')
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [accessToken])
 
   async function onCreate(copyFrom?: string) {
     setBusy(true)
@@ -51,7 +70,7 @@ export function HhResumePage() {
           : { version_name: items.length === 0 ? 'Основное' : `Версия ${items.length + 1}` },
       )
       setOk('Резюме создано')
-      navigate(`/game/hh-resume/${created.id}/edit`)
+      navigate(`/game/hh-resume/${created.id}/path`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Не удалось создать')
     } finally {
@@ -108,8 +127,8 @@ export function HhResumePage() {
         <p className="learn-eyebrow">Сервис · Резюме</p>
         <h1 className="learn-title">Мои резюме</h1>
         <p className="learn-lead">
-          Несколько версий под разные роли (например Backend и Data Analyst). Анкета и фото — в{' '}
-          <Link to="/account">кабинете</Link>.
+          Несколько версий под разные роли. Путь: загрузка резюме → специальность → лекции и навыки →
+          интервью. Анкета и фото — в <Link to="/account">кабинете</Link>.
         </p>
         {error ? <p className="learn-admin-error">{error}</p> : null}
         {ok ? <p className="learn-admin-ok">{ok}</p> : null}
@@ -124,6 +143,9 @@ export function HhResumePage() {
         >
           Создать резюме
         </button>
+        <Link to="/game/hh-resume/path" className="learn-admin-btn learn-admin-btn-primary">
+          Пройти путь
+        </Link>
         <Link to="/account" className="learn-admin-btn">
           Анкета
         </Link>
@@ -133,7 +155,7 @@ export function HhResumePage() {
         <p className="learn-section-note">Загрузка…</p>
       ) : items.length === 0 ? (
         <p className="learn-section-note">
-          Пока нет резюме. Создайте первое — затем пройдите опросник и обогатите навыками из Learn.
+          Пока нет резюме. Создайте первое или нажмите «Пройти путь» — откроется мастер.
         </p>
       ) : (
         <ul className="hh-resume-version-list">
@@ -148,9 +170,12 @@ export function HhResumePage() {
               </div>
               <div className="account-actions">
                 <Link
-                  to={`/game/hh-resume/${item.id}`}
+                  to={`/game/hh-resume/${item.id}/path`}
                   className="learn-admin-btn learn-admin-btn-primary"
                 >
+                  Путь
+                </Link>
+                <Link to={`/game/hh-resume/${item.id}`} className="learn-admin-btn">
                   Открыть
                 </Link>
                 <Link to={`/game/hh-resume/${item.id}/edit`} className="learn-admin-btn">

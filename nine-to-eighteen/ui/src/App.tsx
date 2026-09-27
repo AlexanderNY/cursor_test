@@ -68,6 +68,11 @@ const HhResumeQuizPage = lazy(() =>
     default: module.HhResumeQuizPage,
   })),
 )
+const HhResumePathPage = lazy(() =>
+  import('@/pages/hh-resume-path-page').then((module) => ({
+    default: module.HhResumePathPage,
+  })),
+)
 const HhResumeAdminPage = lazy(() =>
   import('@/pages/hh-resume-admin-page').then((module) => ({
     default: module.HhResumeAdminPage,
@@ -162,6 +167,22 @@ export default function App() {
         element={
           <Suspense fallback={<LearnFallback />}>
             <HhResumeAdminPage />
+          </Suspense>
+        }
+      />
+      <Route
+        path="/game/hh-resume/path"
+        element={
+          <Suspense fallback={<LearnFallback />}>
+            <HhResumePathPage />
+          </Suspense>
+        }
+      />
+      <Route
+        path="/game/hh-resume/:resumeId/path"
+        element={
+          <Suspense fallback={<LearnFallback />}>
+            <HhResumePathPage />
           </Suspense>
         }
       />

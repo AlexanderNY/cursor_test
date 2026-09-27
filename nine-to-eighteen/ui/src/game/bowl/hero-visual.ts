@@ -1,4 +1,5 @@
 import { heroStrokeColor } from './hero-colors'
+import { drawComicBody, drawComicFace, drawComicPaws } from './character-visual'
 
 export interface HeroLobeLayout {
   lobeRadius: number
@@ -33,21 +34,45 @@ export function drawHeroFigureEight(
   fill: string,
   stroke?: string,
 ): void {
-  const layout = getHeroLobeLayout(radius, facing)
   const strokeColor = stroke ?? heroStrokeColor(fill)
+  drawComicBody(ctx, x, y, radius, facing, fill, strokeColor, 'hero')
+}
 
-  const lobes: Array<[number, number]> = [
-    [layout.backOffsetX, layout.backOffsetY],
-    [layout.frontOffsetX, layout.frontOffsetY],
-  ]
+export function drawHeroComicFace(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  radius: number,
+  facing: number,
+  lookTarget: { x: number; y: number } | null = null,
+  eyeScale = 1,
+  beakOpen = 0,
+): void {
+  const layout = getHeroLobeLayout(radius, facing)
+  drawComicFace(
+    ctx,
+    x + layout.frontOffsetX,
+    y + layout.frontOffsetY,
+    layout.lobeRadius,
+    facing,
+    {
+      lookTarget,
+      eyeScale,
+      beakScale: 1.05,
+      browAngle: 0.28,
+      beakOpen,
+    },
+  )
+}
 
-  for (const [offsetX, offsetY] of lobes) {
-    ctx.beginPath()
-    ctx.arc(x + offsetX, y + offsetY, layout.lobeRadius, 0, Math.PI * 2)
-    ctx.fillStyle = fill
-    ctx.fill()
-    ctx.strokeStyle = strokeColor
-    ctx.lineWidth = 2
-    ctx.stroke()
-  }
+export function drawHeroPaws(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  radius: number,
+  facing: number,
+  fill: string,
+  wag: number,
+): void {
+  drawComicPaws(ctx, x, y, radius, facing, fill, wag)
 }

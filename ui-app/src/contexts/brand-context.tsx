@@ -81,6 +81,7 @@ export function BrandProvider({ children }: { children: ReactNode }) {
       setChannels([])
       return
     }
+    setChannels([])
     try {
       const list = await smmService.listChannels(selectedBrandId)
       setChannels(list)

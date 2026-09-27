@@ -6,12 +6,13 @@ import random
 
 from ai.boss_brain import apply_vortex_pull
 from ai.mob_brain import compute_mob_intent
-from bosses import apply_boss_hit, boss_title, create_boss, pick_boss_kind
+from bosses import apply_boss_hit, boss_title, create_boss
 from combat import (
     apply_green_pickup,
     apply_ram_damage,
     apply_red_eats_green,
     apply_red_pickup,
+    apply_yellow_pickup,
     apply_spike_damage,
     can_eat_entity,
     enemy_hits_spike_segments,
@@ -33,7 +34,7 @@ from entities import (
     normalize,
     random_point_in_ellipse,
 )
-from ecosystem import try_ram_enemy, update_green_pickup, update_red_pickup
+from ecosystem import try_ram_enemy, update_green_pickup, update_red_pickup, update_yellow_pickup
 from perks import (
     active_perk_ids,
     can_upgrade,
@@ -60,7 +61,21 @@ from physics import (
     resolve_mover_obstacle,
 )
 from save_codec import export_state, import_state
-from spawn_system import create_enemy, try_spawn_enemy_batch, try_spawn_green_batch, try_spawn_red_batch
+from spawn_system import (
+    create_enemy,
+    try_spawn_enemy_batch,
+    try_spawn_green_batch,
+    try_spawn_red_batch,
+    try_spawn_yellow_batch,
+)
+from stages import (
+    clamp_stage,
+    get_enemy_def,
+    get_stage,
+    hazard_duration,
+    score_value,
+    stage_count,
+)
 
 GamePhase = str
 
@@ -76,6 +91,9 @@ class GameEngine:
         self.world_height = 900.0
         self.game_over = False
         self.level = 1
+        self.stage = 1
+        self.score = 0
+        self.victory = False
         self.pending_perk_select = False
         self.bowl_center_x = 800.0
         self.bowl_center_y = 450.0
@@ -91,8 +109,14 @@ class GameEngine:
         self._last_perk_milestone = 0
         self._green_spawn_timer = 0.0
         self._red_spawn_timer = 0.0
+        self._yellow_spawn_timer = 0.0
         self._enemy_spawn_timer = 0.0
         self._obstacle_id = 1
+        self._hazard_kind = "flush"
+        self._hazard_zones: list[dict] = []
+        self._hazard_rings: list[dict] = []
+        self._prev_enemies_eaten = 0
+        self._prev_boss_alive = False
         self._rng = random.Random()
 
     def load_config(self, json_raw: str) -> None:
@@ -108,6 +132,7 @@ class GameEngine:
         perk: str = "none",
         color: str = "#60a5fa",
         perk_levels: dict | None = None,
+        start_stage: int = 1,
     ) -> None:
         self._rng = random.Random()
         self.world_width = viewport_width * cfg("world_scale")
@@ -117,6 +142,9 @@ class GameEngine:
         self.bowl_radius_x = min(self.world_width, self.world_height) * 0.42
         self.bowl_radius_y = min(self.world_width, self.world_height) * 0.42
         self.level = 1
+        self.stage = clamp_stage(start_stage)
+        self.score = 0
+        self.victory = False
         self.game_over = False
         self.phase = "normal"
         self.match_timer = 0.0
@@ -128,7 +156,13 @@ class GameEngine:
         self._last_perk_milestone = 0
         self._green_spawn_timer = 0.0
         self._red_spawn_timer = 0.0
+        self._yellow_spawn_timer = 0.0
         self._enemy_spawn_timer = 0.0
+        self._hazard_kind = str(get_stage(self.stage).get("hazard", "flush"))
+        self._hazard_zones = []
+        self._hazard_rings = []
+        self._prev_enemies_eaten = 0
+        self._prev_boss_alive = False
         self.player = Player(
             x=self.bowl_center_x,
             y=self.bowl_center_y,
@@ -144,6 +178,7 @@ class GameEngine:
         self._spawn_nutrients()
         self._spawn_pickups("green", int(cfg("green_pickup_count")))
         self._spawn_pickups("red", int(cfg("red_pickup_count")))
+        self._spawn_pickups("yellow", int(cfg("yellow_pickup_count")))
         self._spawn_enemies(int(cfg("enemy_count")))
         if perk_levels is not None:
             self.player.perk_levels = sanitize_perk_levels(perk_levels)
@@ -198,6 +233,7 @@ class GameEngine:
         self._last_perk_milestone = int(data.get("last_perk_milestone", 0))
         self._green_spawn_timer = float(data.get("green_spawn_timer", 0.0))
         self._red_spawn_timer = float(data.get("red_spawn_timer", 0.0))
+        self._yellow_spawn_timer = float(data.get("yellow_spawn_timer", 0.0))
         self._enemy_spawn_timer = float(data.get("enemy_spawn_timer", 0.0))
         max_id = max((obj.id for obj in self.obstacles), default=0)
         self._obstacle_id = max_id + 1
@@ -213,6 +249,16 @@ class GameEngine:
         ]
         if not self.nutrients:
             self._spawn_nutrients()
+        self.stage = clamp_stage(int(data.get("stage", 1)))
+        self.score = int(data.get("score", 0))
+        self.victory = bool(data.get("victory", False))
+        self._hazard_kind = str(data.get("hazard_kind", get_stage(self.stage).get("hazard", "flush")))
+        self._hazard_zones = list(data.get("hazard_zones", []))
+        self._hazard_rings = list(data.get("hazard_rings", []))
+        self._prev_enemies_eaten = int(self.player.enemies_eaten)
+        self._prev_boss_alive = any(e.is_boss for e in self.enemies)
+        if self.phase == "whirlpool":
+            self.phase = "hazard"
 
     def export_state_json(self) -> str:
         return json.dumps(self.export_save())
@@ -244,7 +290,14 @@ class GameEngine:
         state["last_perk_milestone"] = self._last_perk_milestone
         state["green_spawn_timer"] = self._green_spawn_timer
         state["red_spawn_timer"] = self._red_spawn_timer
+        state["yellow_spawn_timer"] = self._yellow_spawn_timer
         state["enemy_spawn_timer"] = self._enemy_spawn_timer
+        state["stage"] = self.stage
+        state["score"] = self.score
+        state["victory"] = self.victory
+        state["hazard_kind"] = self._hazard_kind
+        state["hazard_zones"] = list(self._hazard_zones)
+        state["hazard_rings"] = list(self._hazard_rings)
         state["nutrients"] = [
             {
                 "x": n.x,
@@ -267,13 +320,22 @@ class GameEngine:
         camera_y = max(0.0, min(self.world_height - viewport_height, camera_y))
 
         per_enemy = int(cfg("enemies_per_perk"))
-        eaten_mod = self.player.enemies_eaten % per_enemy if per_enemy else 0
+        skill_progress = self._skill_progress()
+        eaten_mod = skill_progress % per_enemy if per_enemy else 0
         outer_rx, outer_ry = self._bowl_outer_radii()
 
+        stage_data = get_stage(self.stage)
         return {
             "level": self.level,
+            "stage": self.stage,
+            "stage_count": stage_count(),
+            "stage_id": stage_data.get("id", "toilet"),
+            "stage_title": stage_data.get("title", "Унитаз"),
+            "score": self.score,
+            "victory": self.victory,
             "eat_count": self.player.eat_count,
             "enemies_eaten": self.player.enemies_eaten,
+            "skill_progress": skill_progress,
             "enemies_eaten_mod": eaten_mod,
             "enemies_per_perk": per_enemy,
             "pending_perk_select": self.pending_perk_select,
@@ -286,6 +348,14 @@ class GameEngine:
                 "outer_rx": outer_rx,
                 "outer_ry": outer_ry,
                 "rim_margin": float(cfg("bowl_rim_margin")),
+            },
+            "arena": {
+                "floor": stage_data.get("floor", "#e8eef5"),
+                "water_inner": stage_data.get("water_inner", "#1e4d7a"),
+                "water_mid": stage_data.get("water_mid", "rgba(37, 99, 168, 0.75)"),
+                "water_outer": stage_data.get("water_outer", "rgba(15, 45, 82, 0.95)"),
+                "rim": stage_data.get("rim", "#cbd5e1"),
+                "rim_stroke": stage_data.get("rim_stroke", "#94a3b8"),
             },
             "camera": {"x": camera_x, "y": camera_y},
             "visibility_radius": visibility,
@@ -307,6 +377,7 @@ class GameEngine:
                 "grab_kind": self.player.grab_kind,
                 "grab_time_left": self.player.grab_time_left,
                 "move_angle": self._player_move_angle(),
+                "speed": math.hypot(self.player.vx, self.player.vy),
             },
             "obstacles": [
                 {
@@ -353,6 +424,9 @@ class GameEngine:
                     "kind": e.kind,
                     "boss_kind": e.boss_kind if e.is_boss else None,
                     "burst_left": e.burst_left,
+                    "color": get_enemy_def(e.kind).get("color", "#22c55e"),
+                    "title": get_enemy_def(e.kind).get("title", e.kind),
+                    "speed": math.hypot(e.vx, e.vy),
                 }
                 for e in self.enemies
             ],
@@ -364,6 +438,10 @@ class GameEngine:
             "whirlpool_duration": float(cfg("whirlpool_duration_sec")),
             "whirlpool_angle": self.whirlpool_angle,
             "whirlpool_radius": float(cfg("whirlpool_radius")),
+            "hazard_kind": self._hazard_kind,
+            "hazard_title": stage_data.get("hazard_title", "Событие"),
+            "hazard_zones": list(self._hazard_zones),
+            "hazard_rings": list(self._hazard_rings),
             "boss_active": any(e.is_boss for e in self.enemies),
             "active_boss": self._active_boss_state(),
             "exit_open": self.exit_open,
@@ -381,19 +459,25 @@ class GameEngine:
         }
 
     def _active_boss_state(self) -> dict | None:
+        stage_data = get_stage(self.stage)
         for enemy in self.enemies:
             if not enemy.is_boss:
                 continue
             return {
                 "kind": enemy.boss_kind,
-                "title": boss_title(enemy.boss_kind),
+                "title": stage_data.get("boss_title") or boss_title(enemy.boss_kind),
                 "health": enemy.health,
                 "max_health": enemy.display_max_health,
             }
         return None
 
+    def _add_score(self, key: str, amount: int | None = None) -> None:
+        gain = int(amount) if amount is not None else score_value(key)
+        if gain > 0:
+            self.score += gain
+
     def update(self, dt: float, move_x: float, move_y: float, action: bool, sprint: bool = False) -> None:
-        if self.game_over or self.pending_perk_select:
+        if self.game_over or self.victory or self.pending_perk_select:
             return
 
         if self.player.action_cooldown > 0:
@@ -404,10 +488,10 @@ class GameEngine:
         if self.phase == "normal":
             self.match_timer += dt
             if self.match_timer >= float(cfg("match_timer_sec")):
-                self._start_whirlpool()
+                self._start_hazard()
 
-        if self.phase == "whirlpool":
-            self._update_whirlpool(dt)
+        if self.phase == "hazard":
+            self._update_hazard(dt)
 
         if self.phase in ("boss", "exit"):
             self._update_boss_phase(dt)
@@ -422,12 +506,14 @@ class GameEngine:
         self._update_boss_abilities(dt)
         self._update_enemies(dt)
         self._apply_boss_auras(dt)
+        self._apply_enemy_auras(dt)
         self._integrate_all_bodies(dt)
         self._resolve_physics_collisions()
         self._enforce_bowl_bounds()
         self._update_tentacle_grab(dt)
         self._check_ram_collisions()
         self._process_eating()
+        self._sync_score_from_kills()
         self._check_boss_cleared()
         self._check_enemy_hits()
         self._check_exit_entry()
@@ -440,6 +526,7 @@ class GameEngine:
 
         self._green_spawn_timer += dt
         self._red_spawn_timer += dt
+        self._yellow_spawn_timer += dt
         self._enemy_spawn_timer += dt
 
         occupied = self._occupied_points()
@@ -473,6 +560,20 @@ class GameEngine:
                 self._rng,
             )
 
+        if self._yellow_spawn_timer >= float(cfg("edge_spawn_yellow_interval_sec")):
+            self._yellow_spawn_timer = 0.0
+            try_spawn_yellow_batch(
+                self.pickups,
+                self.bowl_center_x,
+                self.bowl_center_y,
+                outer_rx,
+                outer_ry,
+                self.player.x,
+                self.player.y,
+                occupied,
+                self._rng,
+            )
+
         if self._enemy_spawn_timer >= float(cfg("edge_spawn_enemy_interval_sec")):
             self._enemy_spawn_timer = 0.0
             try_spawn_enemy_batch(
@@ -487,14 +588,13 @@ class GameEngine:
                 self.bowl_radius_x,
                 self.bowl_radius_y,
                 self._rng,
+                stage=self.stage,
             )
 
     def _apply_player_input(self, dt: float, move_x: float, move_y: float, sprint: bool) -> None:
         nx, ny = normalize(move_x, move_y)
         if nx != 0.0 or ny != 0.0:
             self.player.facing_angle = math.atan2(ny, nx)
-        mass = entity_mass(self.player.radius, self.player.weight)
-        accel = float(cfg("physics_player_accel")) * perk_speed_mult(self.player.perk_levels)
         max_stamina = float(cfg("stamina_max"))
         is_moving = nx != 0.0 or ny != 0.0
         is_sprinting = sprint and is_moving and self.player.stamina > 0.0
@@ -502,7 +602,6 @@ class GameEngine:
         dash_bonus, stamina_drain_mult, _iframe = perk_dash_stats(self.player.perk_levels)
         if is_sprinting:
             sprint_mult = float(cfg("sprint_speed_mult")) + dash_bonus
-            accel *= sprint_mult
             self.player.stamina = max(
                 0.0,
                 self.player.stamina
@@ -513,16 +612,24 @@ class GameEngine:
                 max_stamina,
                 self.player.stamina + float(cfg("stamina_regen_per_sec")) * dt,
             )
+        # Крейсерская скорость не зависит от веса: иначе герой вязнет по мере роста.
+        cruise = float(cfg("player_speed")) * perk_speed_mult(self.player.perk_levels)
+        accel_scale = float(cfg("physics_player_accel")) / 9000.0
+        cruise *= max(0.45, accel_scale)
+        if is_sprinting:
+            cruise *= sprint_mult
+        drive_mass = 24.0
+        drive_accel = cruise * float(cfg("physics_friction")) * drive_mass
         self.player.vx, self.player.vy = apply_acceleration(
             self.player.vx,
             self.player.vy,
             nx,
             ny,
-            accel,
-            mass,
+            drive_accel,
+            drive_mass,
             dt,
         )
-        if self.phase == "whirlpool":
+        if self.phase == "hazard" and self._hazard_kind == "flush":
             pull = float(cfg("whirlpool_pull_speed")) * self._whirlpool_pull_factor(
                 self.player.x,
                 self.player.y,
@@ -541,6 +648,8 @@ class GameEngine:
                     if away > 0.15:
                         self.player.vx += nx * flee * away * dt
                         self.player.vy += ny * flee * away * dt
+        elif self.phase == "hazard":
+            self._apply_directional_hazard_to_player(dt, nx, ny)
 
     def _whirlpool_pull_factor(self, x: float, y: float) -> float:
         radius = float(cfg("whirlpool_radius"))
@@ -617,7 +726,7 @@ class GameEngine:
         whirlpool_flee = float(cfg("whirlpool_flee_speed"))
 
         player_max_speed = float(cfg("player_speed"))
-        if self.phase == "whirlpool":
+        if self.phase == "hazard" and self._hazard_kind == "flush":
             player_max_speed *= float(cfg("whirlpool_player_speed_mult"))
         if self.player.is_sprinting:
             player_max_speed *= float(cfg("sprint_speed_mult"))
@@ -641,7 +750,7 @@ class GameEngine:
 
         for enemy in self.enemies:
             enemy_max_speed = enemy.move_speed if enemy.move_speed > 0 else max_speed
-            if self.phase == "whirlpool":
+            if self.phase == "hazard" and self._hazard_kind == "flush":
                 enemy_max_speed = max(enemy_max_speed, whirlpool_flee)
             enemy.x, enemy.y, enemy.vx, enemy.vy = integrate_body(
                 enemy.x,
@@ -812,6 +921,7 @@ class GameEngine:
                 if distance(self.player.x, self.player.y, pickup.x, pickup.y) < self.player.radius + pickup.radius:
                     apply_green_pickup(self.player, pickup)
                     self.player.eat_count += 1
+                    self._add_score("green")
                     eaten = True
                 else:
                     for enemy in self.enemies:
@@ -819,15 +929,33 @@ class GameEngine:
                             apply_green_pickup(enemy, pickup)
                             eaten = True
                             break
-            elif distance(self.player.x, self.player.y, pickup.x, pickup.y) < self.player.radius + pickup.radius:
+            elif pickup.kind == "yellow":
+                if distance(self.player.x, self.player.y, pickup.x, pickup.y) < self.player.radius + pickup.radius:
+                    apply_yellow_pickup(self.player, pickup)
+                    self.player.eat_count += 1
+                    self._add_score("yellow")
+                    eaten = True
+            elif pickup.kind == "red" and distance(self.player.x, self.player.y, pickup.x, pickup.y) < self.player.radius + pickup.radius:
                 apply_red_pickup(self.player, pickup)
                 self.player.eat_count += 1
+                self._add_score("red")
                 eaten = True
             if not eaten:
                 remaining_pickups.append(pickup)
         self.pickups = remaining_pickups
 
         self._process_entity_combat()
+
+    def _sync_score_from_kills(self) -> None:
+        eaten_now = int(self.player.enemies_eaten)
+        gained = eaten_now - self._prev_enemies_eaten
+        if gained > 0:
+            self._add_score("enemy", score_value("enemy") * gained)
+        self._prev_enemies_eaten = eaten_now
+        boss_alive = any(enemy.is_boss for enemy in self.enemies)
+        if self._prev_boss_alive and not boss_alive and self._had_boss:
+            self._add_score("boss_kill")
+        self._prev_boss_alive = boss_alive
 
     def _process_entity_combat(self) -> None:
         for enemy in self.enemies:
@@ -859,36 +987,171 @@ class GameEngine:
             if enemy.health <= 0:
                 new_greens.extend(split_enemy_to_greens(enemy, self._rng))
                 spike_removed.append(idx)
+                if not enemy.is_boss:
+                    self.player.enemies_eaten += 1
         if spike_removed:
             self.enemies = [e for i, e in enumerate(self.enemies) if i not in spike_removed]
         self.pickups.extend(new_greens)
 
+    def _skill_progress(self) -> int:
+        return int(self.player.enemies_eaten) + int(self.player.skill_bonus)
+
     def _check_perk_milestone(self) -> None:
         step = int(cfg("enemies_per_perk"))
-        eaten = self.player.enemies_eaten
-        if eaten <= 0 or step <= 0:
+        if step <= 0 or self.pending_perk_select:
             return
-        if eaten % step != 0:
+        progress = self._skill_progress()
+        next_mark = self._last_perk_milestone + step
+        if progress < next_mark:
             return
-        if eaten == self._last_perk_milestone:
-            return
-        self._last_perk_milestone = eaten
+        self._last_perk_milestone = next_mark
         self.level += 1
         self.pending_perk_select = True
 
-    def _start_whirlpool(self) -> None:
-        self.phase = "whirlpool"
-        self.whirlpool_time_left = float(cfg("whirlpool_duration_sec"))
+    def _start_hazard(self) -> None:
+        stage_data = get_stage(self.stage)
+        self._hazard_kind = str(stage_data.get("hazard", "flush"))
+        self.phase = "hazard"
+        self.whirlpool_time_left = hazard_duration()
         self.whirlpool_angle = 0.0
+        self._hazard_zones = []
+        self._hazard_rings = []
+        if self._hazard_kind == "gas":
+            self._spawn_gas_clouds()
+        elif self._hazard_kind == "chlorine":
+            self._spawn_chlorine_rings()
 
-    def _end_whirlpool(self) -> None:
+    def _spawn_gas_clouds(self) -> None:
+        count = int(cfg("gas_cloud_count"))
+        radius = float(cfg("gas_cloud_radius"))
+        for _ in range(count):
+            x, y = random_point_in_ellipse(
+                self.bowl_center_x,
+                self.bowl_center_y,
+                self.bowl_radius_x * 0.75,
+                self.bowl_radius_y * 0.75,
+                40.0,
+                self._rng,
+            )
+            angle = self._rng.uniform(0.0, math.tau)
+            self._hazard_zones.append(
+                {
+                    "x": x,
+                    "y": y,
+                    "radius": radius,
+                    "vx": math.cos(angle) * float(cfg("gas_drift_speed")),
+                    "vy": math.sin(angle) * float(cfg("gas_drift_speed")),
+                }
+            )
+
+    def _spawn_chlorine_rings(self) -> None:
+        count = int(cfg("chlorine_ring_count"))
+        spacing = float(cfg("whirlpool_radius")) * 0.45
+        for index in range(count):
+            self._hazard_rings.append(
+                {
+                    "radius": 20.0 + index * spacing,
+                    "max_radius": max(self.bowl_radius_x, self.bowl_radius_y) * 0.95,
+                }
+            )
+
+    def _end_hazard(self) -> None:
+        self._add_score("hazard")
         self.phase = "boss"
         self.whirlpool_time_left = 0.0
         self.boss_fight_timer = 0.0
         self.exit_open = False
         self._had_boss = True
+        self._hazard_zones = []
+        self._hazard_rings = []
         self.enemies = [e for e in self.enemies if not e.is_boss]
         self._spawn_boss()
+        self._prev_boss_alive = True
+
+    def _apply_directional_hazard_to_player(self, dt: float, nx: float, ny: float) -> None:
+        push_x, push_y = self._hazard_push_vector()
+        if push_x == 0.0 and push_y == 0.0:
+            return
+        resist = 1.0 - perk_pull_resist(self.player.perk_levels)
+        self.player.vx += push_x * resist * dt
+        self.player.vy += push_y * resist * dt
+
+    def _hazard_push_vector(self) -> tuple[float, float]:
+        if self._hazard_kind == "current":
+            speed = float(cfg("current_push_speed"))
+            return speed, 0.0
+        if self._hazard_kind == "waves":
+            period = max(float(cfg("waves_period_sec")), 0.1)
+            wave = math.sin(self.whirlpool_angle * (math.tau / period))
+            return 0.0, float(cfg("waves_push_speed")) * wave
+        if self._hazard_kind == "chlorine":
+            dx, dy = normalize(
+                self.bowl_center_x - self.player.x,
+                self.bowl_center_y - self.player.y,
+            )
+            strength = float(cfg("chlorine_pull_strength"))
+            return dx * strength, dy * strength
+        return 0.0, 0.0
+
+    def _apply_push_to_body(self, body: object, dt: float) -> None:
+        push_x, push_y = self._hazard_push_vector()
+        if push_x == 0.0 and push_y == 0.0:
+            return
+        body.vx += push_x * dt  # type: ignore[attr-defined]
+        body.vy += push_y * dt  # type: ignore[attr-defined]
+
+    def _update_hazard(self, dt: float) -> None:
+        self.whirlpool_time_left -= dt
+        self.whirlpool_angle += float(cfg("whirlpool_spin_speed")) * dt
+        if self._hazard_kind == "flush":
+            self._update_flush_hazard(dt)
+        elif self._hazard_kind == "gas":
+            self._update_gas_hazard(dt)
+        elif self._hazard_kind in ("current", "waves", "chlorine"):
+            self._update_flow_hazard(dt)
+        if self.whirlpool_time_left <= 0:
+            self._end_hazard()
+
+    def _update_flush_hazard(self, dt: float) -> None:
+        self._update_whirlpool(dt, end_on_timeout=False)
+
+    def _update_gas_hazard(self, dt: float) -> None:
+        outer_rx, outer_ry = self._bowl_outer_radii()
+        damage = float(cfg("gas_damage_per_sec")) * dt
+        for zone in self._hazard_zones:
+            zone["x"] = float(zone["x"]) + float(zone["vx"]) * dt
+            zone["y"] = float(zone["y"]) + float(zone["vy"]) * dt
+            zone["x"], zone["y"] = clamp_circle_in_ellipse(
+                float(zone["x"]),
+                float(zone["y"]),
+                float(zone["radius"]),
+                self.bowl_center_x,
+                self.bowl_center_y,
+                outer_rx,
+                outer_ry,
+            )
+            if distance(self.player.x, self.player.y, float(zone["x"]), float(zone["y"])) < self.player.radius + float(zone["radius"]):
+                self.player.red = max(0.0, self.player.red - damage)
+
+    def _update_flow_hazard(self, dt: float) -> None:
+        for obj in self.obstacles:
+            self._apply_push_to_body(obj, dt)
+        for pickup in self.pickups:
+            if pickup.attached_to is None:
+                self._apply_push_to_body(pickup, dt)
+        for enemy in self.enemies:
+            self._apply_push_to_body(enemy, dt)
+        if self._hazard_kind == "chlorine":
+            ring_speed = float(cfg("chlorine_ring_speed"))
+            ring_width = float(cfg("chlorine_ring_width"))
+            damage = float(cfg("chlorine_damage_per_sec")) * dt
+            for ring in self._hazard_rings:
+                ring["radius"] = float(ring["radius"]) + ring_speed * dt
+                if float(ring["radius"]) > float(ring["max_radius"]):
+                    ring["radius"] = 24.0
+                dist = distance(self.player.x, self.player.y, self.bowl_center_x, self.bowl_center_y)
+                if abs(dist - float(ring["radius"])) <= ring_width * 0.5 + self.player.radius * 0.35:
+                    self.player.red = max(0.0, self.player.red - damage)
 
     def _update_boss_phase(self, dt: float) -> None:
         if self.exit_open:
@@ -922,10 +1185,17 @@ class GameEngine:
         exit_r = float(cfg("exit_portal_radius"))
         if distance(self.player.x, self.player.y, self.bowl_center_x, self.bowl_center_y) > exit_r + self.player.radius * 0.35:
             return
+        if self.stage >= stage_count():
+            self._add_score("stage_exit")
+            self._add_score("victory")
+            self.victory = True
+            self.exit_open = False
+            return
+        self._add_score("stage_exit")
         self._advance_to_next_level()
 
     def _advance_to_next_level(self) -> None:
-        self.level += 1
+        self.stage = clamp_stage(self.stage + 1)
         self.phase = "normal"
         self.match_timer = 0.0
         self.whirlpool_time_left = 0.0
@@ -933,8 +1203,11 @@ class GameEngine:
         self.boss_fight_timer = 0.0
         self.exit_open = False
         self._had_boss = False
+        self._hazard_zones = []
+        self._hazard_rings = []
         self._green_spawn_timer = 0.0
         self._red_spawn_timer = 0.0
+        self._yellow_spawn_timer = 0.0
         self._enemy_spawn_timer = 0.0
         self.player.x = self.bowl_center_x
         self.player.y = self.bowl_center_y
@@ -946,16 +1219,20 @@ class GameEngine:
         self.enemies = []
         self.obstacles = []
         self._obstacle_id = 1
+        self._prev_boss_alive = False
         self._spawn_obstacles()
         self._spawn_nutrients()
         self._spawn_pickups("green", int(cfg("green_pickup_count")))
         self._spawn_pickups("red", int(cfg("red_pickup_count")))
+        self._spawn_pickups("yellow", int(cfg("yellow_pickup_count")))
         self._spawn_enemies(int(cfg("enemy_count")))
 
     def _spawn_boss(self) -> None:
         angle = self._rng.uniform(0.0, math.tau)
         dist = float(cfg("boss_spawn_distance"))
-        boss_kind = pick_boss_kind(self._rng)
+        boss_kind = str(get_stage(self.stage).get("boss", "titan"))
+        if boss_kind not in ("titan", "stalker", "swarm", "leech", "vortex"):
+            boss_kind = "titan"
         radius = float(cfg(f"boss_{boss_kind}_radius"))
         bx = self.bowl_center_x + math.cos(angle) * dist
         by = self.bowl_center_y + math.sin(angle) * dist
@@ -1020,9 +1297,24 @@ class GameEngine:
             if enemy.is_boss:
                 apply_vortex_pull(enemy, self.player, dt)
 
-    def _update_whirlpool(self, dt: float) -> None:
-        self.whirlpool_time_left -= dt
-        self.whirlpool_angle += float(cfg("whirlpool_spin_speed")) * dt
+    def _apply_enemy_auras(self, dt: float) -> None:
+        for enemy in self.enemies:
+            if enemy.is_boss:
+                continue
+            aura = float(get_enemy_def(enemy.kind).get("aura", 0.0))
+            if aura <= 0.0:
+                continue
+            dist = distance(self.player.x, self.player.y, enemy.x, enemy.y)
+            if dist > aura + self.player.radius:
+                continue
+            dmg_mult, _kb = perk_shell_mults(self.player.perk_levels)
+            damage = float(cfg("hit_damage")) * 0.35 * dmg_mult * dt
+            self.player.red = max(0.0, self.player.red - damage)
+
+    def _update_whirlpool(self, dt: float, end_on_timeout: bool = True) -> None:
+        if end_on_timeout:
+            self.whirlpool_time_left -= dt
+            self.whirlpool_angle += float(cfg("whirlpool_spin_speed")) * dt
         base_pull = float(cfg("whirlpool_pull_speed"))
         flee = float(cfg("whirlpool_flee_speed"))
         spin = float(cfg("whirlpool_spin_speed"))
@@ -1071,8 +1363,8 @@ class GameEngine:
                 enemy.vx += ax * flee * 0.7 * dt
                 enemy.vy += ay * flee * 0.7 * dt
 
-        if self.whirlpool_time_left <= 0:
-            self._end_whirlpool()
+        if end_on_timeout and self.whirlpool_time_left <= 0:
+            self._end_hazard()
 
     def _occupied_points(self) -> list[tuple[float, float]]:
         points = [(self.player.x, self.player.y)]
@@ -1114,9 +1406,10 @@ class GameEngine:
             )
 
     def _spawn_obstacles(self) -> None:
-        kinds = cfg("obstacle_kinds")
+        stage_data = get_stage(self.stage)
+        kinds = stage_data.get("obstacle_kinds") or cfg("obstacle_kinds")
         for _ in range(int(cfg("obstacle_count"))):
-            kind = self._rng.choice(kinds)
+            kind = self._rng.choice(list(kinds))
             for _attempt in range(60):
                 x, y = random_point_in_ellipse(
                     self.bowl_center_x,
@@ -1130,16 +1423,7 @@ class GameEngine:
                     break
             else:
                 continue
-            if kind == "paper":
-                width, height = 720.0, 560.0
-                radius = 360.0
-                mass = float(cfg("paper_mass"))
-                pushable = False
-            else:
-                width, height = 240.0, 960.0
-                radius = 480.0
-                mass = float(cfg("toothbrush_mass"))
-                pushable = True
+            width, height, radius, mass, pushable = self._obstacle_stats(kind)
             self.obstacles.append(
                 WorldObject(
                     id=self._obstacle_id,
@@ -1155,6 +1439,21 @@ class GameEngine:
                 )
             )
             self._obstacle_id += 1
+
+    def _obstacle_stats(self, kind: str) -> tuple[float, float, float, float, bool]:
+        if kind == "paper":
+            return 720.0, 560.0, 360.0, float(cfg("paper_mass")), False
+        if kind == "toothbrush":
+            return 240.0, 960.0, 480.0, float(cfg("toothbrush_mass")), True
+        if kind == "pipe":
+            return 520.0, 180.0, 280.0, float(cfg("pipe_mass")), False
+        if kind == "log":
+            return 640.0, 160.0, 320.0, float(cfg("log_mass")), True
+        if kind == "grate":
+            return 420.0, 420.0, 260.0, float(cfg("grate_mass")), False
+        if kind == "rock":
+            return 300.0, 260.0, 200.0, float(cfg("rock_mass")), False
+        return 240.0, 960.0, 480.0, float(cfg("toothbrush_mass")), True
 
     def _spawn_pickups(self, kind: str, count: int) -> None:
         for _ in range(count):
@@ -1199,6 +1498,7 @@ class GameEngine:
                     self.bowl_radius_x,
                     self.bowl_radius_y,
                     self._rng,
+                    stage=self.stage,
                 )
             )
 
@@ -1214,7 +1514,9 @@ class GameEngine:
                     self._rng,
                 )
             elif pickup.kind == "red":
-                update_red_pickup(pickup, self.pickups, dt)
+                update_red_pickup(pickup, self.pickups, dt, self._rng)
+            elif pickup.kind == "yellow":
+                update_yellow_pickup(pickup, self.player, dt, self._rng)
             if pickup.attached_to is not None:
                 continue
             for obj in self.obstacles:
@@ -1225,8 +1527,10 @@ class GameEngine:
                     break
 
     def _update_enemies(self, dt: float) -> None:
-        default_speed = float(cfg("physics_max_speed"))
+        default_speed = float(cfg("enemy_speed_patrol"))
         whirlpool_flee = float(cfg("whirlpool_flee_speed"))
+        friction = float(cfg("physics_friction"))
+        drive_mass = 24.0
         cx, cy = self.bowl_center_x, self.bowl_center_y
         for enemy in self.enemies:
             if enemy.cooldown_left > 0:
@@ -1234,24 +1538,25 @@ class GameEngine:
                 if enemy.state == "cooldown" and enemy.cooldown_left <= 0:
                     enemy.state = "patrol"
 
-            if enemy.kind == "lurker" and enemy.burst_left > 0:
+            behavior = str(get_enemy_def(enemy.kind).get("behavior", enemy.kind))
+            if behavior == "lurker" and enemy.burst_left > 0:
                 enemy.burst_left = max(0.0, enemy.burst_left - dt)
             if enemy.is_boss and enemy.burst_left > 0:
                 enemy.burst_left = max(0.0, enemy.burst_left - dt)
 
-            if self.phase == "whirlpool":
+            if self.phase == "hazard" and self._hazard_kind == "flush":
                 dx, dy = normalize(enemy.x - cx, enemy.y - cy)
                 enemy.state = "flee"
                 enemy.move_speed = whirlpool_flee
                 if dx != 0.0 or dy != 0.0:
-                    em = entity_mass(enemy.radius)
+                    accel = whirlpool_flee * friction * drive_mass * 1.25
                     enemy.vx, enemy.vy = apply_acceleration(
                         enemy.vx,
                         enemy.vy,
                         dx,
                         dy,
-                        float(cfg("physics_enemy_accel")) * 1.35,
-                        em,
+                        accel,
+                        drive_mass,
                         dt,
                     )
                 continue
@@ -1259,16 +1564,21 @@ class GameEngine:
             intent = compute_mob_intent(enemy, self.player, self.enemies, self.pickups)
             enemy.state = intent.state
             enemy.move_speed = intent.speed if intent.speed > 0 else default_speed
-            if intent.ax != 0.0 or intent.ay != 0.0:
-                em = entity_mass(enemy.radius)
-                speed_scale = enemy.move_speed / float(cfg("enemy_speed_patrol"))
+            ax, ay = intent.ax, intent.ay
+            if ax != 0.0 or ay != 0.0:
+                wobble = math.sin(self.match_timer * 4.6 + enemy.x * 0.03 + enemy.y * 0.02)
+                wobble += math.sin(self.match_timer * 9.1 + enemy.radius) * 0.45
+                px, py = -ay, ax
+                ax, ay = normalize(ax + px * wobble * 0.85, ay + py * wobble * 0.85)
+                target_speed = max(enemy.move_speed, default_speed * 0.5)
+                accel = target_speed * friction * drive_mass * 1.25
                 enemy.vx, enemy.vy = apply_acceleration(
                     enemy.vx,
                     enemy.vy,
-                    intent.ax,
-                    intent.ay,
-                    float(cfg("physics_enemy_accel")) * max(speed_scale, 0.35),
-                    em,
+                    ax,
+                    ay,
+                    accel,
+                    drive_mass,
                     dt,
                 )
 
@@ -1290,8 +1600,12 @@ class GameEngine:
             if enemy.is_boss:
                 apply_boss_hit(enemy, self.player, damage_mult=dmg_mult)
             else:
-                damage = float(cfg("hit_damage")) * dmg_mult
+                enemy_def = get_enemy_def(enemy.kind)
+                damage = float(cfg("hit_damage")) * float(enemy_def.get("damage_mult", 1.0)) * dmg_mult
                 self.player.red = max(0.0, self.player.red - damage)
+                drain = float(enemy_def.get("drain", 0.0))
+                if drain > 0.0:
+                    self.player.red = max(0.0, self.player.red - drain * dmg_mult)
             enemy.cooldown_left = float(cfg("enemy_hit_cooldown"))
             enemy.state = "cooldown"
             dx, dy = normalize(self.player.x - enemy.x, self.player.y - enemy.y)

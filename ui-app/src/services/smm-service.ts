@@ -686,6 +686,7 @@ export const smmService = {
 
   async bestTimes(brandId?: number | null, channelId?: number | null): Promise<{
     slots: BestTimeSlot[]
+    insufficient_data?: boolean
   }> {
     const { data } = await apiClient.get('/smm/analytics/best-times', {
       params: {

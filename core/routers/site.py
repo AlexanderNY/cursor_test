@@ -581,23 +581,8 @@ async def ensure_site_seeded() -> None:
 
 async def _upsert_featured_apps(cur: Any) -> None:
     """Синхронизация «живых» сервисов на уже заполненной БД (без полного ресида)."""
-<<<<<<< Updated upstream
     featured_slugs = {app["slug"] for app in DEFAULT_APPS}
     # Legacy / local-only tiles: keep rows but hide from the public home grid.
-=======
-    featured_slugs = {
-        "e2e-tester",
-        "copyparse",
-        "learning-map",
-        "learn",
-        "bowl",
-        "profile",
-        "tasks",
-        "cert",
-        "quiz",
-        "hh-resume",
-    }
->>>>>>> Stashed changes
     stub_hide_slugs = {
         "e2e-tester",
         "menu",

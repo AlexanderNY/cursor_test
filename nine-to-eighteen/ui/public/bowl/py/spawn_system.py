@@ -7,18 +7,19 @@ from combat import init_enemy_health
 from config import cfg
 from entities import (
     Enemy,
-    EnemyKind,
     Pickup,
     distance,
     is_far_enough,
     random_point_in_ellipse,
     random_point_on_ellipse_edge,
 )
+from stages import get_enemy_def, get_stage
 
 
-def pick_enemy_kind(rng: random.Random) -> EnemyKind:
-    kinds = cfg("enemy_kinds")
-    weights = cfg("enemy_kind_weights")
+def pick_enemy_kind(rng: random.Random, stage: int = 1) -> str:
+    stage_data = get_stage(stage)
+    kinds = stage_data.get("enemy_kinds") or cfg("enemy_kinds")
+    weights = stage_data.get("enemy_weights") or cfg("enemy_kind_weights")
     if not kinds:
         return "grazer"
     if isinstance(weights, (list, tuple)) and len(weights) == len(kinds):
@@ -35,8 +36,12 @@ def create_enemy(
     bowl_ry: float,
     rng: random.Random,
     kind: str | None = None,
+    stage: int = 1,
 ) -> Enemy:
-    radius = rng.uniform(float(cfg("enemy_radius_min")), float(cfg("enemy_radius_max")))
+    chosen = kind or pick_enemy_kind(rng, stage)
+    enemy_def = get_enemy_def(chosen)
+    radius_mult = float(enemy_def.get("radius_mult", 1.0))
+    radius = rng.uniform(float(cfg("enemy_radius_min")), float(cfg("enemy_radius_max"))) * radius_mult
     waypoints = [
         random_point_in_ellipse(bowl_cx, bowl_cy, bowl_rx, bowl_ry, 30.0, rng)
         for _ in range(int(cfg("waypoints_per_enemy")))
@@ -47,7 +52,7 @@ def create_enemy(
         radius=radius,
         health=init_enemy_health(radius),
         waypoints=waypoints,
-        kind=kind or pick_enemy_kind(rng),
+        kind=chosen,
     )
 
 
@@ -164,6 +169,48 @@ def try_spawn_red_batch(
     return spawned
 
 
+def try_spawn_yellow_batch(
+    pickups: list[Pickup],
+    bowl_cx: float,
+    bowl_cy: float,
+    outer_rx: float,
+    outer_ry: float,
+    player_x: float,
+    player_y: float,
+    occupied: list[tuple[float, float]],
+    rng: random.Random,
+) -> int:
+    max_count = int(cfg("max_yellow_pickups"))
+    batch = int(cfg("edge_spawn_yellow_batch"))
+    yellow_count = sum(1 for p in pickups if p.kind == "yellow")
+    if yellow_count >= max_count:
+        return 0
+    spawned = 0
+    occ = list(occupied) + [(p.x, p.y) for p in pickups]
+    for _ in range(batch):
+        if yellow_count + spawned >= max_count:
+            break
+        radius = rng.uniform(float(cfg("pickup_radius_min")), float(cfg("pickup_radius_max"))) * 1.15
+        point = _find_rim_spawn(
+            bowl_cx,
+            bowl_cy,
+            outer_rx,
+            outer_ry,
+            radius,
+            player_x,
+            player_y,
+            occ,
+            rng,
+        )
+        if point is None:
+            continue
+        x, y = point
+        pickups.append(Pickup(x=x, y=y, kind="yellow", radius=radius))
+        occ.append((x, y))
+        spawned += 1
+    return spawned
+
+
 def try_spawn_enemy_batch(
     enemies: list[Enemy],
     bowl_cx: float,
@@ -176,6 +223,7 @@ def try_spawn_enemy_batch(
     bowl_rx: float,
     bowl_ry: float,
     rng: random.Random,
+    stage: int = 1,
 ) -> int:
     max_count = int(cfg("max_enemies"))
     batch = int(cfg("edge_spawn_enemy_batch"))
@@ -202,7 +250,7 @@ def try_spawn_enemy_batch(
         if point is None:
             continue
         x, y = point
-        enemies.append(create_enemy(x, y, bowl_cx, bowl_cy, bowl_rx, bowl_ry, rng))
+        enemies.append(create_enemy(x, y, bowl_cx, bowl_cy, bowl_rx, bowl_ry, rng, stage=stage))
         occ.append((x, y))
         spawned += 1
     return spawned

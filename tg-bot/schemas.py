@@ -29,6 +29,7 @@ class AuthResponse(BaseModel):
     message: Optional[str] = None
     error: Optional[str] = None
     requires_password: bool = False
+    retry_after_seconds: Optional[int] = None
 
 
 class ChannelItem(BaseModel):

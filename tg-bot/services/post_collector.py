@@ -112,6 +112,9 @@ class PostCollector:
         event: events.NewMessage.Event,
         images: List[str],
         profile: Dict,
+        *,
+        brand_id: Optional[int] = None,
+        channel_id: Optional[int] = None,
     ) -> Optional[Dict]:
         """Сохраняет пост в таблицу posts со статусом collected."""
         try:
@@ -143,6 +146,8 @@ class PostCollector:
                             user_id=user_id,
                             source_platform="tg",
                             post_text=post_text,
+                            brand_id=brand_id,
+                            channel_id=channel_id,
                             post_date=post_date,
                             author=author,
                             domain=domain,

@@ -51,11 +51,13 @@ export class GameBridge {
     viewportHeight: number,
     perk: PerkKind,
     color: string = DEFAULT_HERO_COLOR,
+    startStage = 1,
   ): Promise<void> {
     await ensureConfigLoaded()
     const safeColor = isAllowedHeroColor(color) ? color : DEFAULT_HERO_COLOR
+    const stage = Math.max(1, Math.min(5, Math.floor(startStage)))
     await runPython(
-      `engine.new_game(${viewportWidth}, ${viewportHeight}, "${perk}", "${safeColor}")`,
+      `engine.new_game(${viewportWidth}, ${viewportHeight}, "${perk}", "${safeColor}", None, ${stage})`,
     )
   }
 
@@ -64,9 +66,11 @@ export class GameBridge {
     viewportHeight: number,
     color: string,
     perkLevels: Record<string, number>,
+    startStage = 1,
   ): Promise<void> {
     await ensureConfigLoaded()
     const safeColor = isAllowedHeroColor(color) ? color : DEFAULT_HERO_COLOR
+    const stage = Math.max(1, Math.min(5, Math.floor(startStage)))
     const cleaned: Record<string, number> = {}
     for (const [key, value] of Object.entries(perkLevels)) {
       if (value > 0) {
@@ -83,6 +87,7 @@ engine.new_game(
     "none",
     "${safeColor}",
     json.loads(_bowl_perk_levels_json),
+    ${stage},
 )
 `)
   }

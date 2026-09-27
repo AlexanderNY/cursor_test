@@ -214,6 +214,7 @@ CREATE TABLE IF NOT EXISTS site_resumes (
     selected_skill_keys JSONB NOT NULL DEFAULT '[]'::jsonb,
     generated_skills JSONB NOT NULL DEFAULT '[]'::jsonb,
     questionnaire_answers JSONB NOT NULL DEFAULT '{}'::jsonb,
+    source_text TEXT NOT NULL DEFAULT '',
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -260,27 +261,29 @@ BEGIN
       selected_skill_keys JSONB NOT NULL DEFAULT '[]'::jsonb,
       generated_skills JSONB NOT NULL DEFAULT '[]'::jsonb,
       questionnaire_answers JSONB NOT NULL DEFAULT '{}'::jsonb,
+      source_text TEXT NOT NULL DEFAULT '',
       created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
     INSERT INTO site_resumes (
       id, user_id, version_name, title, specialization, salary_amount, salary_currency,
       employment_types, work_formats, about, selected_skill_keys, generated_skills,
-      questionnaire_answers, created_at, updated_at
+      questionnaire_answers, source_text, created_at, updated_at
     )
     SELECT
-      gen_random_uuid(), user_id, 'Основное',
-      COALESCE(title, ''), COALESCE(specialization, ''), salary_amount,
-      COALESCE(salary_currency, 'RUB'),
-      COALESCE(employment_types, '[]'::jsonb),
-      COALESCE(work_formats, '[]'::jsonb),
-      COALESCE(about, ''),
-      COALESCE(selected_skill_keys, '[]'::jsonb),
-      COALESCE(generated_skills, '[]'::jsonb),
-      COALESCE(questionnaire_answers, '{}'::jsonb),
-      COALESCE(updated_at, CURRENT_TIMESTAMP),
-      COALESCE(updated_at, CURRENT_TIMESTAMP)
-    FROM site_resumes_legacy_v1;
+      gen_random_uuid(), l.user_id, 'Основное',
+      COALESCE(l.title, ''), COALESCE(l.specialization, ''), l.salary_amount,
+      COALESCE(l.salary_currency, 'RUB'),
+      COALESCE(l.employment_types, '[]'::jsonb),
+      COALESCE(l.work_formats, '[]'::jsonb),
+      COALESCE(l.about, ''),
+      COALESCE(l.selected_skill_keys, '[]'::jsonb),
+      COALESCE(l.generated_skills, '[]'::jsonb),
+      '{}'::jsonb,
+      '',
+      COALESCE(l.updated_at, CURRENT_TIMESTAMP),
+      COALESCE(l.updated_at, CURRENT_TIMESTAMP)
+    FROM site_resumes_legacy_v1 l;
     DROP TABLE site_resumes_legacy_v1;
     CREATE INDEX IF NOT EXISTS idx_site_resumes_user_updated
       ON site_resumes (user_id, updated_at DESC);
@@ -299,6 +302,10 @@ $migrate$;
     """
     ALTER TABLE site_resumes
     ADD COLUMN IF NOT EXISTS questionnaire_answers JSONB NOT NULL DEFAULT '{}'::jsonb
+    """,
+    """
+    ALTER TABLE site_resumes
+    ADD COLUMN IF NOT EXISTS source_text TEXT NOT NULL DEFAULT ''
     """,
     """
     CREATE INDEX IF NOT EXISTS idx_site_resumes_user_updated

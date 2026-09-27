@@ -491,6 +491,16 @@ CREATE TABLE IF NOT EXISTS smm_post_metric_snapshots (
 );
 CREATE INDEX IF NOT EXISTS idx_smm_post_metric_snapshots_post
     ON smm_post_metric_snapshots(platform, post_id, captured_at);
+-- Legacy writers stored post_targets.id; remap to hub posts.id when unambiguous.
+UPDATE smm_post_metric_snapshots s
+SET post_id = t.post_id
+FROM post_targets t
+WHERE s.post_id = t.id
+  AND s.platform = t.platform
+  AND s.user_id = t.user_id
+  AND NOT EXISTS (
+    SELECT 1 FROM posts p WHERE p.id = s.post_id AND p.user_id = s.user_id
+  );
 CREATE TABLE IF NOT EXISTS smm_channel_metric_snapshots (
     id SERIAL PRIMARY KEY,
     channel_id INTEGER NOT NULL REFERENCES smm_brand_channels(id) ON DELETE CASCADE,

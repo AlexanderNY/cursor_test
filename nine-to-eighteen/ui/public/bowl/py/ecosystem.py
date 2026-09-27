@@ -127,26 +127,73 @@ def update_red_pickup(
     pickup: Pickup,
     pickups: list[Pickup],
     dt: float,
+    rng: random.Random,
 ) -> None:
     if pickup.attached_to is not None:
         return
-    vision_radius = float(cfg("red_green_vision_radius"))
+    vision_radius = max(
+        float(cfg("red_green_vision_radius")),
+        float(cfg("red_hunt_radius")),
+        900.0,
+    )
     target = nearest_green_pickup(
         pickup.x,
         pickup.y,
         pickups,
         vision_radius,
     )
+    hunt_speed = float(cfg("red_hunt_speed"))
+    pickup.wander_timer -= dt
     if target is None:
-        pickup.wander_timer -= dt
         if pickup.wander_timer <= 0:
-            pickup.wander_timer = float(cfg("pickup_wander_interval")) * 1.4
+            pickup.wander_timer = float(cfg("pickup_wander_interval")) * rng.uniform(0.25, 0.7)
+            angle = rng.uniform(0.0, math.tau)
+            kick = hunt_speed * rng.uniform(0.35, 0.7)
+            pickup.vx += math.cos(angle) * kick * 0.35
+            pickup.vy += math.sin(angle) * kick * 0.35
         return
     dx, dy = normalize(target.x - pickup.x, target.y - pickup.y)
-    hunt_speed = float(cfg("red_hunt_speed")) * dt
-    pickup.vx += dx * hunt_speed
-    pickup.vy += dy * hunt_speed
-    pickup.spike_angle = math.atan2(dy, dx)
+    sway = math.sin(pickup.x * 0.05 + pickup.y * 0.04) * 0.95
+    sway += math.sin(pickup.wander_timer * 8.0) * 0.35
+    px, py = -dy, dx
+    dx, dy = normalize(dx + px * sway, dy + py * sway)
+    pickup.vx += dx * hunt_speed * dt
+    pickup.vy += dy * hunt_speed * dt
+    if pickup.wander_timer <= 0:
+        pickup.wander_timer = rng.uniform(0.12, 0.38)
+        side = 1.0 if rng.random() < 0.5 else -1.0
+        pickup.vx += px * side * hunt_speed * 0.22
+        pickup.vy += py * side * hunt_speed * 0.22
+    pickup.spike_angle = math.atan2(target.y - pickup.y, target.x - pickup.x)
+
+
+def update_yellow_pickup(
+    pickup: Pickup,
+    player: Player,
+    dt: float,
+    rng: random.Random,
+) -> None:
+    if pickup.attached_to is not None:
+        return
+    flee_radius = float(cfg("yellow_flee_radius"))
+    dist = distance(pickup.x, pickup.y, player.x, player.y)
+    if dist < flee_radius and dist > 1e-6:
+        dx, dy = normalize(pickup.x - player.x, pickup.y - player.y)
+        sway = math.sin(pickup.x * 0.04 + pickup.wander_timer * 6.0) * 0.7
+        px, py = -dy, dx
+        dx, dy = normalize(dx + px * sway, dy + py * sway)
+        flee = float(cfg("yellow_flee_speed")) * dt
+        pickup.vx += dx * flee
+        pickup.vy += dy * flee
+        pickup.spike_angle = math.atan2(dy, dx)
+        return
+    pickup.wander_timer -= dt
+    if pickup.wander_timer <= 0:
+        pickup.wander_timer = float(cfg("pickup_wander_interval")) * rng.uniform(0.35, 0.9)
+        angle = rng.uniform(0.0, math.tau)
+        kick = float(cfg("yellow_flee_speed")) * 0.35
+        pickup.vx += math.cos(angle) * kick * 0.3
+        pickup.vy += math.sin(angle) * kick * 0.3
 
 
 def approach_speed(

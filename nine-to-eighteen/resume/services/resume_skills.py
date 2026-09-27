@@ -172,6 +172,33 @@ BRANCH_SPECIALIZATION: dict[str, str] = {
     "soft skills": "Специалист (soft skills)",
 }
 
+# Questionnaire role_track → skill keys for recommendations / path prepare.
+ROLE_SKILL_KEYS: dict[str, tuple[str, ...]] = {
+    "backend": ("python", "fastapi", "postgresql", "architecture", "git", "api_test"),
+    "frontend": ("react", "architecture", "git"),
+    "fullstack": (
+        "python",
+        "fastapi",
+        "react",
+        "postgresql",
+        "architecture",
+        "git",
+    ),
+    "devops": ("docker", "kubernetes", "cicd", "networking", "git"),
+    "qa": ("qa", "api_test", "git"),
+    "analyst": ("product", "postgresql", "architecture"),
+    "product": ("product", "soft_skills"),
+    "data": ("postgresql", "python", "regex"),
+    "general": (),
+}
+
+GENERAL_FALLBACK_KEYS: tuple[str, ...] = ("git", "python")
+
+
+def role_skill_keys(role_track: str) -> tuple[str, ...]:
+    key = (role_track or "").strip().lower()
+    return ROLE_SKILL_KEYS.get(key, ())
+
 
 def _completed_for_rule(rule: SkillRule, completed: set[str]) -> list[str]:
     return [slug for slug in rule.episode_slugs if slug in completed]

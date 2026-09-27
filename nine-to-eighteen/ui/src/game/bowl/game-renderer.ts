@@ -7,7 +7,8 @@ import {
   isPerkStub,
   isPerkWaves,
 } from './perks'
-import { drawHeroFigureEight, getHeroLobeLayout } from './hero-visual'
+import { comicBodyStyleForEnemyKind, drawComicBody, drawComicFace } from './character-visual'
+import { drawHeroComicFace, drawHeroFigureEight, drawHeroPaws, getHeroLobeLayout } from './hero-visual'
 import { heroStrokeColor } from './hero-colors'
 import type { RenderState } from './types'
 
@@ -18,17 +19,16 @@ export function drawGameFrame(
   viewportHeight: number,
 ): void {
   ctx.clearRect(0, 0, viewportWidth, viewportHeight)
-  ctx.fillStyle = '#dce4ef'
+  const arena = state.arena
+  ctx.fillStyle = arena?.floor ?? '#dce4ef'
   ctx.fillRect(0, 0, viewportWidth, viewportHeight)
 
   ctx.save()
   ctx.translate(-state.camera.x, -state.camera.y)
 
-  drawWorldFloor(ctx, state.world.width, state.world.height)
+  drawWorldFloor(ctx, state.world.width, state.world.height, arena?.floor ?? '#e8eef5')
 
-  if (state.level >= 1) {
-    drawToiletBowl(ctx, state.bowl)
-  }
+  drawArenaBowl(ctx, state.bowl, arena)
 
   for (const obstacle of state.obstacles) {
     drawObstacle(ctx, obstacle)
@@ -46,12 +46,12 @@ export function drawGameFrame(
     if (enemy.is_boss) {
       drawBoss(ctx, enemy, state.player.x, state.player.y)
     } else {
-      drawEnemy(ctx, enemy)
+      drawEnemy(ctx, enemy, state.player.x, state.player.y)
     }
   }
 
-  if (state.phase === 'whirlpool') {
-    drawWhirlpool(ctx, state)
+  if (state.phase === 'hazard' || state.phase === 'whirlpool') {
+    drawHazard(ctx, state)
   }
 
   if (state.exit_open && state.exit) {
@@ -68,8 +68,9 @@ function drawWorldFloor(
   ctx: CanvasRenderingContext2D,
   worldWidth: number,
   worldHeight: number,
+  floorColor = '#e8eef5',
 ): void {
-  ctx.fillStyle = '#e8eef5'
+  ctx.fillStyle = floorColor
   ctx.fillRect(0, 0, worldWidth, worldHeight)
 
   ctx.strokeStyle = 'rgba(148, 163, 184, 0.22)'
@@ -89,36 +90,42 @@ function drawWorldFloor(
   }
 }
 
-function drawToiletBowl(
+function drawArenaBowl(
   ctx: CanvasRenderingContext2D,
   bowl: { cx: number; cy: number; rx: number; ry: number; outer_rx?: number; outer_ry?: number; rim_margin?: number },
+  arena?: RenderState['arena'],
 ): void {
   const { cx, cy, rx, ry } = bowl
   const outerRx = bowl.outer_rx ?? rx + (bowl.rim_margin ?? 48)
   const outerRy = bowl.outer_ry ?? ry + (bowl.rim_margin ?? 48)
+  const rim = arena?.rim ?? '#cbd5e1'
+  const rimStroke = arena?.rim_stroke ?? '#94a3b8'
+  const waterInner = arena?.water_inner ?? '#1e4d7a'
+  const waterMid = arena?.water_mid ?? 'rgba(37, 99, 168, 0.75)'
+  const waterOuter = arena?.water_outer ?? 'rgba(15, 45, 82, 0.95)'
 
   ctx.save()
   ctx.beginPath()
   ctx.ellipse(cx, cy, outerRx, outerRy, 0, 0, Math.PI * 2)
-  ctx.fillStyle = '#cbd5e1'
+  ctx.fillStyle = rim
   ctx.fill()
-  ctx.strokeStyle = '#94a3b8'
+  ctx.strokeStyle = rimStroke
   ctx.lineWidth = 8
   ctx.stroke()
 
   ctx.beginPath()
   ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2)
-  ctx.fillStyle = '#1e4d7a'
+  ctx.fillStyle = waterInner
   ctx.fill()
 
   const waterGrad = ctx.createRadialGradient(cx, cy - ry * 0.15, rx * 0.1, cx, cy, rx)
-  waterGrad.addColorStop(0, 'rgba(96, 165, 250, 0.55)')
-  waterGrad.addColorStop(0.55, 'rgba(37, 99, 168, 0.75)')
-  waterGrad.addColorStop(1, 'rgba(15, 45, 82, 0.95)')
+  waterGrad.addColorStop(0, 'rgba(255, 255, 255, 0.18)')
+  waterGrad.addColorStop(0.45, waterMid)
+  waterGrad.addColorStop(1, waterOuter)
   ctx.fillStyle = waterGrad
   ctx.fill()
 
-  ctx.strokeStyle = 'rgba(191, 219, 254, 0.25)'
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.18)'
   ctx.lineWidth = 2
   ctx.stroke()
 
@@ -133,6 +140,55 @@ function drawToiletBowl(
   ctx.restore()
 }
 
+function drawHazard(ctx: CanvasRenderingContext2D, state: RenderState): void {
+  const kind = state.hazard_kind ?? 'flush'
+  if (kind === 'flush' || state.phase === 'whirlpool') {
+    drawWhirlpool(ctx, state)
+    return
+  }
+  if (kind === 'gas') {
+    for (const zone of state.hazard_zones ?? []) {
+      ctx.beginPath()
+      ctx.arc(zone.x, zone.y, zone.radius, 0, Math.PI * 2)
+      ctx.fillStyle = 'rgba(132, 204, 22, 0.28)'
+      ctx.fill()
+      ctx.strokeStyle = 'rgba(190, 242, 100, 0.7)'
+      ctx.lineWidth = 2
+      ctx.stroke()
+    }
+    return
+  }
+  if (kind === 'chlorine') {
+    for (const ring of state.hazard_rings ?? []) {
+      ctx.beginPath()
+      ctx.ellipse(state.bowl.cx, state.bowl.cy, ring.radius, ring.radius * 0.72, 0, 0, Math.PI * 2)
+      ctx.strokeStyle = 'rgba(103, 232, 249, 0.85)'
+      ctx.lineWidth = 10
+      ctx.stroke()
+    }
+    return
+  }
+  if (kind === 'current' || kind === 'waves') {
+    const angle = state.whirlpool_angle ?? 0
+    ctx.save()
+    ctx.strokeStyle = kind === 'waves' ? 'rgba(125, 211, 252, 0.45)' : 'rgba(74, 222, 128, 0.4)'
+    ctx.lineWidth = 3
+    for (let i = -3; i <= 3; i += 1) {
+      const offset = i * 55 + Math.sin(angle + i) * 12
+      ctx.beginPath()
+      if (kind === 'waves') {
+        ctx.moveTo(state.bowl.cx - state.bowl.rx, state.bowl.cy + offset)
+        ctx.lineTo(state.bowl.cx + state.bowl.rx, state.bowl.cy + offset)
+      } else {
+        ctx.moveTo(state.bowl.cx + offset, state.bowl.cy - state.bowl.ry)
+        ctx.lineTo(state.bowl.cx + offset, state.bowl.cy + state.bowl.ry)
+      }
+      ctx.stroke()
+    }
+    ctx.restore()
+  }
+}
+
 function drawObstacle(
   ctx: CanvasRenderingContext2D,
   obstacle: RenderState['obstacles'][number],
@@ -145,11 +201,83 @@ function drawObstacle(
 
   if (kind === 'paper') {
     drawPaperObstacle(ctx, width, height)
+  } else if (kind === 'pipe') {
+    drawPipeObstacle(ctx, width, height)
+  } else if (kind === 'log') {
+    drawLogObstacle(ctx, width, height)
+  } else if (kind === 'grate') {
+    drawGrateObstacle(ctx, width, height)
+  } else if (kind === 'rock') {
+    drawRockObstacle(ctx, width, height)
   } else {
     drawToothbrushObstacle(ctx, width, height)
   }
 
   ctx.restore()
+}
+
+function drawPipeObstacle(ctx: CanvasRenderingContext2D, width: number, height: number): void {
+  const hw = width / 2
+  const hh = height / 2
+  ctx.fillStyle = '#57534e'
+  ctx.fillRect(-hw, -hh, width, height)
+  ctx.strokeStyle = '#a8a29e'
+  ctx.lineWidth = 4
+  ctx.strokeRect(-hw, -hh, width, height)
+  ctx.fillStyle = '#292524'
+  ctx.beginPath()
+  ctx.ellipse(-hw * 0.15, 0, hh * 0.55, hh * 0.55, 0, 0, Math.PI * 2)
+  ctx.fill()
+}
+
+function drawLogObstacle(ctx: CanvasRenderingContext2D, width: number, height: number): void {
+  const hw = width / 2
+  const hh = height / 2
+  ctx.fillStyle = '#92400e'
+  ctx.beginPath()
+  ctx.ellipse(0, 0, hw, hh, 0, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.strokeStyle = '#fbbf24'
+  ctx.lineWidth = 3
+  ctx.stroke()
+}
+
+function drawGrateObstacle(ctx: CanvasRenderingContext2D, width: number, height: number): void {
+  const hw = width / 2
+  const hh = height / 2
+  ctx.fillStyle = 'rgba(148, 163, 184, 0.35)'
+  ctx.fillRect(-hw, -hh, width, height)
+  ctx.strokeStyle = '#e2e8f0'
+  ctx.lineWidth = 3
+  for (let x = -hw; x <= hw; x += width / 5) {
+    ctx.beginPath()
+    ctx.moveTo(x, -hh)
+    ctx.lineTo(x, hh)
+    ctx.stroke()
+  }
+  for (let y = -hh; y <= hh; y += height / 5) {
+    ctx.beginPath()
+    ctx.moveTo(-hw, y)
+    ctx.lineTo(hw, y)
+    ctx.stroke()
+  }
+}
+
+function drawRockObstacle(ctx: CanvasRenderingContext2D, width: number, height: number): void {
+  const hw = width / 2
+  const hh = height / 2
+  ctx.fillStyle = '#64748b'
+  ctx.beginPath()
+  ctx.moveTo(-hw * 0.8, hh * 0.7)
+  ctx.lineTo(-hw * 0.2, -hh)
+  ctx.lineTo(hw * 0.55, -hh * 0.55)
+  ctx.lineTo(hw, hh * 0.35)
+  ctx.lineTo(0, hh)
+  ctx.closePath()
+  ctx.fill()
+  ctx.strokeStyle = '#cbd5e1'
+  ctx.lineWidth = 3
+  ctx.stroke()
 }
 
 function drawPaperObstacle(ctx: CanvasRenderingContext2D, width: number, height: number): void {
@@ -328,23 +456,52 @@ function drawPickup(
   pickup: RenderState['pickups'][number],
 ): void {
   const { x, y, radius, kind, spike_angle: spikeAngle } = pickup
-  const color = kind === 'green' ? '#34d399' : '#f87171'
+  const color = kind === 'green' ? '#34d399' : kind === 'yellow' ? '#facc15' : '#f87171'
 
   ctx.beginPath()
   ctx.arc(x, y, radius, 0, Math.PI * 2)
   ctx.fillStyle = color
   ctx.fill()
-  ctx.strokeStyle = kind === 'green' ? '#86efac' : '#fca5a5'
-  ctx.lineWidth = 2
+  ctx.strokeStyle = kind === 'green' ? '#86efac' : kind === 'yellow' ? '#fde68a' : '#fca5a5'
+  ctx.lineWidth = kind === 'yellow' ? 3 : 2
   ctx.stroke()
 
   if (kind === 'green') {
     drawPickupLegs(ctx, x, y, radius, 6)
     drawSimpleDots(ctx, x, y, radius, 2, '#ecfdf5', '#065f46')
+  } else if (kind === 'yellow') {
+    drawYellowStar(ctx, x, y, radius)
+    drawSimpleDots(ctx, x, y, radius, 2, '#fffbeb', '#854d0e')
   } else {
     drawRedPickupSpikes(ctx, x, y, radius, spikeAngle)
     drawSimpleDots(ctx, x, y, radius, 2, '#fff1f2', '#7f1d1d')
   }
+}
+
+function drawYellowStar(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  radius: number,
+): void {
+  const spikes = 5
+  const outer = radius * 0.72
+  const inner = radius * 0.32
+  ctx.beginPath()
+  for (let i = 0; i < spikes * 2; i += 1) {
+    const angle = -Math.PI / 2 + (i * Math.PI) / spikes
+    const r = i % 2 === 0 ? outer : inner
+    const px = x + Math.cos(angle) * r
+    const py = y + Math.sin(angle) * r
+    if (i === 0) ctx.moveTo(px, py)
+    else ctx.lineTo(px, py)
+  }
+  ctx.closePath()
+  ctx.fillStyle = '#fff7d6'
+  ctx.fill()
+  ctx.strokeStyle = '#b45309'
+  ctx.lineWidth = 1.2
+  ctx.stroke()
 }
 
 function drawSimpleDots(
@@ -535,6 +692,8 @@ function drawBoss(
   const palette = BOSS_KIND_PALETTE[bossKind] ?? BOSS_KIND_PALETTE.titan
   const facing = Math.atan2(playerY - y, playerX - x)
   const isDashing = bossKind === 'stalker' && burstLeft > 0
+  const fill = isDashing ? palette.dash : palette.fill
+  const stroke = state === 'chase' || isDashing ? palette.chaseStroke : palette.stroke
 
   if (bossKind === 'titan' || bossKind === 'swarm') {
     drawLegs(ctx, x, y, radius, facing, 2)
@@ -559,17 +718,17 @@ function drawBoss(
     ctx.restore()
   }
 
-  ctx.beginPath()
-  ctx.arc(x, y, radius, 0, Math.PI * 2)
-  ctx.fillStyle = isDashing ? palette.dash : palette.fill
-  ctx.fill()
-  ctx.strokeStyle = state === 'chase' || isDashing ? palette.chaseStroke : palette.stroke
-  ctx.lineWidth = isDashing ? 5 : 4
-  ctx.stroke()
+  drawComicBody(ctx, x, y, radius, facing, fill, stroke, 'boss')
+  const bossSpeed = enemy.speed ?? 0
+  drawComicFace(ctx, x, y, radius * 0.85, facing, {
+    lookTarget: { x: playerX, y: playerY },
+    eyeScale: 1.15,
+    beakScale: 1.35,
+    browAngle: 0.45,
+    beakFill: '#f59e0b',
+    beakOpen: beakOpenForSpeed(bossSpeed, radius),
+  })
 
-  if (bossKind === 'leech') {
-    drawEyes(ctx, x, y, facing, 2, { x: playerX, y: playerY })
-  }
   if (bossKind === 'swarm') {
     ctx.fillStyle = '#431407'
     for (let i = 0; i < 4; i += 1) {
@@ -651,14 +810,20 @@ const BOSS_KIND_PALETTE: Record<
 function drawEnemy(
   ctx: CanvasRenderingContext2D,
   enemy: RenderState['enemies'][number],
+  playerX: number,
+  playerY: number,
 ): void {
   const { x, y, radius, state, health, max_health: maxHealth, burst_left: burstLeft = 0 } = enemy
   const kind = enemy.kind ?? 'grazer'
-  const palette = ENEMY_KIND_PALETTE[kind] ?? ENEMY_KIND_PALETTE.grazer
-  const isBursting = kind === 'lurker' && burstLeft > 0
-
-  ctx.beginPath()
-  ctx.arc(x, y, radius, 0, Math.PI * 2)
+  const palette = ENEMY_KIND_PALETTE[kind] ?? {
+    fill: enemy.color ?? '#22c55e',
+    burst: enemy.color ?? '#22c55e',
+    stroke: '#e2e8f0',
+    chaseStroke: '#f8fafc',
+  }
+  const isBursting = burstLeft > 0 && (kind === 'lurker' || kind === 'roach' || kind === 'stoneback' || kind === 'filter' || kind === 'jelly')
+  const facing = Math.atan2(playerY - y, playerX - x)
+  const bodyStyle = comicBodyStyleForEnemyKind(kind)
   const fill =
     state === 'cooldown'
       ? '#64748b'
@@ -667,18 +832,24 @@ function drawEnemy(
         : isBursting
           ? palette.burst
           : palette.fill
-  ctx.fillStyle = fill
-  ctx.fill()
+  const stroke = state === 'chase' || isBursting ? palette.chaseStroke : palette.stroke
 
-  ctx.strokeStyle = state === 'chase' || isBursting ? palette.chaseStroke : palette.stroke
-  ctx.lineWidth = state === 'chase' || isBursting ? 3 : 2
-  if (kind === 'lurker' && state === 'patrol' && burstLeft <= 0) {
+  if ((kind === 'lurker' || kind === 'roach' || kind === 'jelly') && state === 'patrol' && burstLeft <= 0) {
+    ctx.save()
     ctx.setLineDash([4, 5])
+    drawComicBody(ctx, x, y, radius, facing, fill, stroke, bodyStyle)
+    ctx.restore()
+  } else {
+    drawComicBody(ctx, x, y, radius, facing, fill, stroke, bodyStyle)
   }
-  ctx.stroke()
-  ctx.setLineDash([])
 
-  drawEnemyKindMark(ctx, x, y, radius, kind, state)
+  drawComicFace(ctx, x, y, radius, facing, {
+    lookTarget: { x: playerX, y: playerY },
+    eyeScale: bodyStyle === 'hunter' ? 0.95 : 1,
+    beakScale: bodyStyle === 'hunter' ? 1.15 : bodyStyle === 'lurker' ? 0.85 : 1,
+    browAngle: bodyStyle === 'hunter' ? 0.55 : 0.3,
+    beakOpen: beakOpenForSpeed(enemy.speed ?? 0, radius),
+  })
 
   const hpRatio = maxHealth > 0 ? Math.max(0, health / maxHealth) : 1
   const barW = radius * 1.6
@@ -689,62 +860,24 @@ function drawEnemy(
 }
 
 const ENEMY_KIND_PALETTE: Record<
-  NonNullable<RenderState['enemies'][number]['kind']>,
+  string,
   { fill: string; burst: string; stroke: string; chaseStroke: string }
 > = {
-  grazer: {
-    fill: '#22c55e',
-    burst: '#22c55e',
-    stroke: '#86efac',
-    chaseStroke: '#86efac',
-  },
-  hunter: {
-    fill: '#ef4444',
-    burst: '#ef4444',
-    stroke: '#fca5a5',
-    chaseStroke: '#f472b6',
-  },
-  lurker: {
-    fill: '#f59e0b',
-    burst: '#fb923c',
-    stroke: '#fcd34d',
-    chaseStroke: '#fdba74',
-  },
-}
-
-function drawEnemyKindMark(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  radius: number,
-  kind: RenderState['enemies'][number]['kind'] | undefined,
-  state: RenderState['enemies'][number]['state'],
-): void {
-  const enemyKind = kind ?? 'grazer'
-  ctx.save()
-  if (enemyKind === 'grazer') {
-    ctx.fillStyle = '#14532d'
-    ctx.beginPath()
-    ctx.arc(x - radius * 0.22, y - radius * 0.18, radius * 0.14, 0, Math.PI * 2)
-    ctx.arc(x + radius * 0.22, y - radius * 0.18, radius * 0.14, 0, Math.PI * 2)
-    ctx.fill()
-  } else if (enemyKind === 'hunter') {
-    ctx.strokeStyle = state === 'chase' ? '#fff1f2' : '#7f1d1d'
-    ctx.lineWidth = 2
-    ctx.lineCap = 'round'
-    for (const side of [-1, 1]) {
-      ctx.beginPath()
-      ctx.moveTo(x + side * radius * 0.18, y - radius * 0.12)
-      ctx.lineTo(x + side * radius * 0.42, y + radius * 0.08)
-      ctx.stroke()
-    }
-  } else {
-    ctx.fillStyle = '#78350f'
-    ctx.beginPath()
-    ctx.arc(x, y, radius * 0.18, 0, Math.PI * 2)
-    ctx.fill()
-  }
-  ctx.restore()
+  grazer: { fill: '#22c55e', burst: '#22c55e', stroke: '#86efac', chaseStroke: '#86efac' },
+  hunter: { fill: '#ef4444', burst: '#ef4444', stroke: '#fca5a5', chaseStroke: '#f472b6' },
+  lurker: { fill: '#f59e0b', burst: '#fb923c', stroke: '#fcd34d', chaseStroke: '#fdba74' },
+  sludge: { fill: '#65a30d', burst: '#84cc16', stroke: '#bef264', chaseStroke: '#d9f99d' },
+  rat: { fill: '#a16207', burst: '#ca8a04', stroke: '#fde68a', chaseStroke: '#fef08a' },
+  roach: { fill: '#854d0e', burst: '#b45309', stroke: '#fdba74', chaseStroke: '#fed7aa' },
+  fry: { fill: '#4ade80', burst: '#86efac', stroke: '#bbf7d0', chaseStroke: '#dcfce7' },
+  leech_fish: { fill: '#be123c', burst: '#e11d48', stroke: '#fda4af', chaseStroke: '#fecdd3' },
+  stoneback: { fill: '#78716c', burst: '#a8a29e', stroke: '#d6d3d1', chaseStroke: '#e7e5e4' },
+  bacterium: { fill: '#a3e635', burst: '#bef264', stroke: '#d9f99d', chaseStroke: '#ecfccb' },
+  chlorine: { fill: '#67e8f9', burst: '#22d3ee', stroke: '#a5f3fc', chaseStroke: '#cffafe' },
+  filter: { fill: '#94a3b8', burst: '#cbd5e1', stroke: '#e2e8f0', chaseStroke: '#f8fafc' },
+  school: { fill: '#38bdf8', burst: '#0ea5e9', stroke: '#7dd3fc', chaseStroke: '#bae6fd' },
+  jelly: { fill: '#c084fc', burst: '#a855f7', stroke: '#e9d5ff', chaseStroke: '#f3e8ff' },
+  crab: { fill: '#fb7185', burst: '#f43f5e', stroke: '#fecdd3', chaseStroke: '#ffe4e6' },
 }
 
 function drawPlayer(
@@ -762,6 +895,7 @@ function drawPlayer(
     move_angle: moveAngle,
     grab_kind: grabKind = 'none',
     grab_time_left: grabTimeLeft = 0,
+    speed = 0,
   } = player
   const fill = color ?? '#60a5fa'
   const stroke = heroStrokeColor(fill)
@@ -791,27 +925,37 @@ function drawPlayer(
   }
 
   drawHeroFigureEight(ctx, x, y, radius, facing, fill, stroke)
+  const moving = speed > 40
+  const wag = moving ? Math.sin(performance.now() / 70 + x * 0.01) : 0
+  drawHeroPaws(ctx, x, y, radius, facing, fill, wag)
 
   const lobes = getHeroLobeLayout(radius, facing)
   const eyeCenterX = x + lobes.frontOffsetX
   const eyeCenterY = y + lobes.frontOffsetY
   const lookTarget = nearestLookTarget(eyeCenterX, eyeCenterY, pickups)
+  const comicEyeScale = eyeLevel > 0 ? 1 + Math.min(eyeLevel, 3) * 0.08 : 1
+  drawHeroComicFace(ctx, x, y, radius, facing, lookTarget, comicEyeScale, beakOpenForSpeed(speed, radius))
+
   if (isPerkDotsOnly(perkLevels, 'eye')) {
-    drawLookingDots(ctx, eyeCenterX, eyeCenterY, radius * 0.55, 2, lookTarget, '#ffffff', '#0f172a')
+    drawLookingDots(ctx, eyeCenterX, eyeCenterY - lobes.lobeRadius * 0.55, radius * 0.4, 2, lookTarget, '#ffffff', '#0f172a')
   } else if (eyeLevel > 0) {
-    drawEyes(
-      ctx,
-      eyeCenterX,
-      eyeCenterY,
-      facing,
-      getPerkLimbCount(perkLevels, 'eye'),
-      lookTarget,
-    )
+    const extraEyes = Math.max(0, getPerkLimbCount(perkLevels, 'eye') - 2)
+    if (extraEyes > 0) {
+      drawEyes(ctx, eyeCenterX, eyeCenterY - lobes.lobeRadius * 0.7, facing, extraEyes, lookTarget)
+    }
   }
 
   if (grabKind !== 'none' && grabTimeLeft > 0) {
     drawGrabLink(ctx, x, y, radius, facing)
   }
+}
+
+function beakOpenForSpeed(speed: number, radius: number): number {
+  if (speed < 50) return 0.04
+  const pace = 5 + Math.min(speed, 2200) / 280
+  const flap = Math.abs(Math.sin(performance.now() / (1000 / pace)))
+  const effort = Math.min(1, speed / Math.max(280, radius * 18))
+  return 0.12 + flap * 0.82 * effort
 }
 
 function nearestLookTarget(
@@ -1217,25 +1361,32 @@ export function drawHudBars(
   ctx.fillStyle = '#ffffff'
   ctx.font = '600 14px Segoe UI, system-ui, sans-serif'
   ctx.fillText(`Вес: ${Math.round(weight)} · R ${Math.round(radius)}px`, x, top + (height + gap) * 3 + 18)
+  ctx.fillStyle = '#fde68a'
+  ctx.font = '700 15px Segoe UI, system-ui, sans-serif'
+  ctx.fillText(`Очки: ${Math.round(state.score ?? 0)}`, x, top + (height + gap) * 3 + 38)
   ctx.fillStyle = '#e2e8f0'
   ctx.font = '12px Segoe UI, system-ui, sans-serif'
+  const stageTitle = state.stage_title ?? 'Унитаз'
+  const stageIndex = state.stage ?? 1
+  const stageTotal = state.stage_count ?? 5
   const perkText = formatPerkLevels(state.player.perk_levels ?? {})
-  ctx.fillText(`Уровень ${state.level} · ${perkText}`, x, top + (height + gap) * 3 + 36)
+  ctx.fillText(`Этап ${stageIndex}/${stageTotal} · ${stageTitle}`, x, top + (height + gap) * 3 + 56)
+  ctx.fillText(`Перк-ур. ${state.level} · ${perkText}`, x, top + (height + gap) * 3 + 72)
   ctx.fillText(
-    `Врагов съедено: ${state.enemies_eaten_mod}/${state.enemies_per_perk} (всего ${state.enemies_eaten})`,
+    `Навыки: ${state.enemies_eaten_mod}/${state.enemies_per_perk} · врагов ${state.enemies_eaten}`,
     x,
-    top + (height + gap) * 3 + 52,
+    top + (height + gap) * 3 + 88,
   )
   ctx.fillStyle = '#cbd5e1'
   ctx.fillText(
     `Обзор: ${Math.round(state.visibility_radius)}px`,
     x,
-    top + (height + gap) * 3 + 68,
+    top + (height + gap) * 3 + 104,
   )
 
-  drawMatchTimer(ctx, state, viewportWidth, x, top + (height + gap) * 3 + 88)
+  drawMatchTimer(ctx, state, viewportWidth, x, top + (height + gap) * 3 + 124)
 
-  ctx.fillText('Space — щупальце / шип · Shift — рывок', x, top + (height + gap) * 3 + 112)
+  ctx.fillText('Space — щупальце / шип · Shift — рывок', x, top + (height + gap) * 3 + 148)
 }
 
 function formatTimer(seconds: number): string {
@@ -1263,9 +1414,10 @@ function drawMatchTimer(
   const escapeLeft = Math.max(0, escapeSec - fightTimer)
   const exitOpen = Boolean(state.exit_open)
 
-  let label = `До водоворота: ${formatTimer(remaining)}`
-  if (phase === 'whirlpool') {
-    label = `Водоворот: ${formatTimer(whirlpoolLeft)}`
+  let label = `До события: ${formatTimer(remaining)}`
+  if (phase === 'hazard' || phase === 'whirlpool') {
+    const hazardTitle = state.hazard_title ?? 'Событие'
+    label = `${hazardTitle}: ${formatTimer(whirlpoolLeft)}`
   } else if (exitOpen) {
     label = 'ВЫХОД ОТКРЫТ'
   } else if (phase === 'boss') {
@@ -1279,7 +1431,7 @@ function drawMatchTimer(
   const boxY = 12
 
   ctx.fillStyle =
-    phase === 'whirlpool'
+    phase === 'hazard' || phase === 'whirlpool'
       ? 'rgba(37, 99, 235, 0.92)'
       : exitOpen
         ? 'rgba(15, 23, 42, 0.95)'
@@ -1298,15 +1450,19 @@ function drawMatchTimer(
   if (phase === 'normal') {
     ctx.fillStyle = '#dbe4ef'
     ctx.font = '12px Segoe UI, system-ui, sans-serif'
-    ctx.fillText('Обратный отсчёт до водоворота', statusX, statusY)
-  } else if (phase === 'whirlpool') {
+    ctx.fillText(`Этап ${state.stage ?? 1}/${state.stage_count ?? 5}: ${state.stage_title ?? 'Унитаз'}`, statusX, statusY)
+  } else if (phase === 'hazard' || phase === 'whirlpool') {
     ctx.fillStyle = '#93c5fd'
     ctx.font = '12px Segoe UI, system-ui, sans-serif'
-    ctx.fillText('Всё стягивается в центр водоворота', statusX, statusY)
+    ctx.fillText(state.hazard_title ? `Опасное событие: ${state.hazard_title}` : 'Опасное событие на этапе', statusX, statusY)
   } else if (exitOpen) {
     ctx.fillStyle = '#e2e8f0'
     ctx.font = '12px Segoe UI, system-ui, sans-serif'
-    ctx.fillText('Чёрный круг в центре — войдите, чтобы перейти на следующий уровень', statusX, statusY)
+    const exitHint =
+      (state.stage ?? 1) >= (state.stage_count ?? 5)
+        ? 'Чёрный круг — финал кампании'
+        : 'Чёрный круг в центре — следующий этап'
+    ctx.fillText(exitHint, statusX, statusY)
   } else {
     ctx.fillStyle = '#fca5a5'
     ctx.font = '12px Segoe UI, system-ui, sans-serif'

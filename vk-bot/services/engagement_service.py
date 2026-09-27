@@ -26,23 +26,27 @@ class VkEngagementService:
         return await self._refresh_rows(rows)
 
     async def refresh_one(self, user_id: int, post_id: int) -> dict:
+        """Refresh by hub ``posts.id`` (preferred) or legacy ``post_targets.id``."""
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
-                    SELECT t.id, t.user_id,
+                    SELECT t.id, t.post_id, t.user_id,
                            NULLIF(t.result->>'published_vk_post_id', '')::int,
                            NULLIF(t.result->>'published_owner_id', '')::bigint,
                            pr.access_token, pr.user_access_token
                     FROM post_targets t
                     JOIN vk_profiles pr ON pr.user_id = t.user_id
-                    WHERE t.id = %s AND t.user_id = %s AND t.platform = 'vk'
+                    WHERE t.user_id = %s AND t.platform = 'vk'
+                      AND (t.post_id = %s OR t.id = %s)
                       AND t.status = 'published'
                       AND t.result->>'published_vk_post_id' IS NOT NULL
                       AND t.result->>'published_owner_id' IS NOT NULL
+                    ORDER BY CASE WHEN t.post_id = %s THEN 0 ELSE 1 END
+                    LIMIT 1
                     """,
-                    (post_id, user_id),
+                    (user_id, post_id, post_id, post_id),
                 )
                 row = await cur.fetchone()
         finally:
@@ -60,7 +64,7 @@ class VkEngagementService:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
-                    SELECT t.id, t.user_id,
+                    SELECT t.id, t.post_id, t.user_id,
                            NULLIF(t.result->>'published_vk_post_id', '')::int,
                            NULLIF(t.result->>'published_owner_id', '')::bigint,
                            pr.access_token, pr.user_access_token
@@ -79,7 +83,7 @@ class VkEngagementService:
                 hot_ids = {r[0] for r in hot}
                 await cur.execute(
                     """
-                    SELECT t.id, t.user_id,
+                    SELECT t.id, t.post_id, t.user_id,
                            NULLIF(t.result->>'published_vk_post_id', '')::int,
                            NULLIF(t.result->>'published_owner_id', '')::bigint,
                            pr.access_token, pr.user_access_token
@@ -101,7 +105,7 @@ class VkEngagementService:
 
     async def _refresh_rows(self, rows: list) -> int:
         updated = 0
-        for post_id, user_id, vk_post_id, owner_id, token, user_token in rows:
+        for _target_id, hub_post_id, user_id, vk_post_id, owner_id, token, user_token in rows:
             client = self._client_for_owner(int(owner_id), token, user_token)
             if client is None:
                 continue
@@ -126,15 +130,21 @@ class VkEngagementService:
                             UPDATE posts
                             SET views = %s, likes = %s, reposts = %s, comments = %s,
                                 updated_at = CURRENT_TIMESTAMP
-                            WHERE id = (SELECT post_id FROM post_targets WHERE id = %s)
+                            WHERE id = %s
                             """,
-                            (int(views), int(likes), int(reposts), int(comments), post_id),
+                            (
+                                int(views),
+                                int(likes),
+                                int(reposts),
+                                int(comments),
+                                int(hub_post_id),
+                            ),
                         )
                 finally:
                     await release_db_connection(conn)
                 await record_post_metric_snapshot(
                     user_id,
-                    post_id,
+                    int(hub_post_id),
                     views=int(views),
                     likes=int(likes),
                     comments=int(comments),
@@ -142,7 +152,9 @@ class VkEngagementService:
                 )
                 updated += 1
             except Exception as exc:
-                logger.warning("VK engagement refresh failed for post %s: %s", post_id, exc)
+                logger.warning(
+                    "VK engagement refresh failed for post %s: %s", hub_post_id, exc
+                )
         return updated
 
     @staticmethod

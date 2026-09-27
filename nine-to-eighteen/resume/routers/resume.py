@@ -8,7 +8,7 @@ import uuid
 from typing import Any, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, File, Form, Header, HTTPException, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
@@ -27,6 +27,21 @@ from services.resume_skills import (
     generate_skills_from_progress,
     suggest_specialization,
 )
+from services.resume_source import (
+    build_path,
+    detect_skill_keys_in_text,
+    extract_text_from_upload,
+    merge_evidenced_skills,
+    normalize_source_text,
+)
+from services.resume_badges import compute_badges, filter_selected_badge_ids
+from services.resume_github import (
+    fetch_public_repos,
+    filter_selected_projects,
+    normalize_github_username,
+)
+from services.resume_match import compute_match_score, enrich_match_summary
+from services import resume_mock_chat
 from services.resume_strength import compute_resume_strength
 from services.runtime_settings import (
     feature_enabled,
@@ -38,6 +53,7 @@ from services.text_sanitize import sanitize_plain_text
 from services import resume_ai
 from storage_client import (
     build_api_file_url,
+    content_disposition_attachment,
     expires_iso,
     get_resume_storage,
     safe_filename,
@@ -54,7 +70,8 @@ UUID_RE = re.compile(
 RESUME_SELECT = """
     id, user_id, version_name, title, specialization, salary_amount, salary_currency,
     employment_types, work_formats, about, selected_skill_keys, generated_skills,
-    questionnaire_answers, created_at, updated_at
+    questionnaire_answers, source_text, selected_badge_ids, github_username,
+    github_projects, created_at, updated_at
 """
 
 
@@ -73,6 +90,9 @@ class ResumeUpdateIn(BaseModel):
     work_formats: Optional[list[str]] = None
     about: Optional[str] = Field(default=None, max_length=8000)
     selected_skill_keys: Optional[list[str]] = None
+    selected_badge_ids: Optional[list[str]] = None
+    github_username: Optional[str] = Field(default=None, max_length=39)
+    github_projects: Optional[list[dict[str, Any]]] = None
 
 
 class ResumeGenerateIn(BaseModel):
@@ -102,6 +122,14 @@ class CoverLetterIn(BaseModel):
     vacancy_text: str = Field(..., min_length=20, max_length=8000)
 
 
+class MatchScoreIn(BaseModel):
+    vacancy_text: str = Field(..., min_length=20, max_length=8000)
+
+
+class GithubFetchIn(BaseModel):
+    username: str = Field(..., min_length=1, max_length=39)
+
+
 class MockInterviewStartIn(BaseModel):
     count: int = Field(default=5, ge=3, le=5)
 
@@ -110,6 +138,23 @@ class MockInterviewEvalIn(BaseModel):
     question: str = Field(..., min_length=5, max_length=500)
     answer: str = Field(..., min_length=1, max_length=4000)
     skill_key: Optional[str] = Field(default=None, max_length=64)
+
+
+class MockChatStartIn(BaseModel):
+    max_turns: int = Field(default=5, ge=3, le=5)
+
+
+class MockChatMessageIn(BaseModel):
+    session_id: str = Field(..., min_length=8, max_length=64)
+    content: str = Field(..., min_length=1, max_length=4000)
+
+
+class ResumeSourceJsonIn(BaseModel):
+    text: str = Field(..., min_length=1, max_length=50_000)
+
+
+class PathPrepareIn(BaseModel):
+    persist: bool = True
 
 
 def _parse_resume_id(raw: str) -> UUID:
@@ -209,8 +254,12 @@ def _row_resume(row: tuple) -> dict[str, Any]:
         "selectedSkillKeys": [str(x) for x in _json_list(row[10])],
         "generatedSkills": _json_list(row[11]),
         "questionnaireAnswers": _json_object(row[12]),
-        "createdAt": row[13].isoformat() if hasattr(row[13], "isoformat") else str(row[13] or ""),
-        "updatedAt": row[14].isoformat() if hasattr(row[14], "isoformat") else str(row[14] or ""),
+        "sourceText": str(row[13] or ""),
+        "selectedBadgeIds": [str(x) for x in _json_list(row[14])],
+        "githubUsername": str(row[15] or ""),
+        "githubProjects": _json_list(row[16]),
+        "createdAt": row[17].isoformat() if hasattr(row[17], "isoformat") else str(row[17] or ""),
+        "updatedAt": row[18].isoformat() if hasattr(row[18], "isoformat") else str(row[18] or ""),
     }
 
 
@@ -239,9 +288,43 @@ def _empty_resume(*, version_name: str = "Основное") -> dict[str, Any]:
         "selectedSkillKeys": [],
         "generatedSkills": [],
         "questionnaireAnswers": {},
+        "sourceText": "",
+        "selectedBadgeIds": [],
+        "githubUsername": "",
+        "githubProjects": [],
         "createdAt": None,
         "updatedAt": None,
     }
+
+
+async def _fetch_quiz_attempts(user_id: int) -> list[dict[str, Any]]:
+    conn = await get_db_connection()
+    try:
+        async with conn.cursor() as cur:
+            try:
+                await cur.execute(
+                    """
+                    SELECT source_key, score, total
+                    FROM site_quiz_attempts
+                    WHERE user_id = %s
+                    ORDER BY finished_at DESC
+                    LIMIT 200
+                    """,
+                    (user_id,),
+                )
+            except Exception:
+                return []
+            rows = await cur.fetchall()
+            return [
+                {
+                    "source_key": str(r[0] or ""),
+                    "score": int(r[1] or 0),
+                    "total": int(r[2] or 0),
+                }
+                for r in rows
+            ]
+    finally:
+        await release_db_connection(conn)
 
 
 async def _fetch_completed_slugs(user_id: int) -> list[str]:
@@ -304,7 +387,16 @@ def _skills_for_resume(resume: dict[str, Any], completed: list[str]) -> list[Any
     selected = resume["selectedSkillKeys"] or None
     skills = resume["generatedSkills"]
     if not skills:
-        return generate_skills_from_progress(completed, selected_keys=selected)
+        from_progress = generate_skills_from_progress(completed)
+        text_keys = detect_skill_keys_in_text(resume.get("sourceText") or "")
+        skills = merge_evidenced_skills(
+            from_progress=from_progress,
+            from_text_keys=text_keys,
+        )
+        if selected is not None:
+            allow = {k.strip() for k in selected if k and str(k).strip()}
+            skills = [s for s in skills if s.get("key") in allow]
+        return skills
     if selected:
         allow = set(selected)
         return [s for s in skills if isinstance(s, dict) and s.get("key") in allow]
@@ -355,12 +447,14 @@ async def create_resume(
                     INSERT INTO site_resumes (
                         user_id, version_name, title, specialization, salary_amount,
                         salary_currency, employment_types, work_formats, about,
-                        selected_skill_keys, generated_skills, questionnaire_answers
+                        selected_skill_keys, generated_skills, questionnaire_answers,
+                        source_text, selected_badge_ids, github_username, github_projects
                     )
                     VALUES (
                         %s, %s, %s, %s, %s,
                         %s, %s::jsonb, %s::jsonb, %s,
-                        %s::jsonb, %s::jsonb, %s::jsonb
+                        %s::jsonb, %s::jsonb, %s::jsonb,
+                        %s, %s::jsonb, %s, %s::jsonb
                     )
                     RETURNING {RESUME_SELECT}
                     """,
@@ -377,6 +471,10 @@ async def create_resume(
                         json.dumps(source["selectedSkillKeys"], ensure_ascii=False),
                         json.dumps(source["generatedSkills"], ensure_ascii=False),
                         json.dumps(source["questionnaireAnswers"], ensure_ascii=False),
+                        source.get("sourceText") or "",
+                        json.dumps(source.get("selectedBadgeIds") or [], ensure_ascii=False),
+                        source.get("githubUsername") or "",
+                        json.dumps(source.get("githubProjects") or [], ensure_ascii=False),
                     ),
                 )
             else:
@@ -398,6 +496,21 @@ async def create_resume(
 @router.get("/questionnaire")
 async def questionnaire_schema() -> dict[str, Any]:
     return get_questionnaire()
+
+
+@router.get("/badges")
+async def list_badges(
+    authorization: Optional[str] = Header(None),
+) -> dict[str, Any]:
+    user = await require_user(authorization)
+    user_id = int(user["user_id"])
+    completed = await _fetch_completed_slugs(user_id)
+    quiz_attempts = await _fetch_quiz_attempts(user_id)
+    badges = compute_badges(completed_slugs=completed, quiz_attempts=quiz_attempts)
+    return {
+        "badges": badges,
+        "earnedCount": sum(1 for b in badges if b.get("earned")),
+    }
 
 
 @router.get("/admin/settings")
@@ -484,7 +597,7 @@ async def download_export_file(
     return Response(
         content=data,
         media_type=media,
-        headers={"Content-Disposition": f'attachment; filename="{file_name}"'},
+        headers={"Content-Disposition": content_disposition_attachment(file_name)},
     )
 
 
@@ -545,6 +658,34 @@ async def put_resume(
         else cur["selectedSkillKeys"]
     )
 
+    if body.selected_badge_ids is not None:
+        completed = await _fetch_completed_slugs(user_id)
+        quiz_attempts = await _fetch_quiz_attempts(user_id)
+        catalog = compute_badges(completed_slugs=completed, quiz_attempts=quiz_attempts)
+        earned_ids = {str(b["id"]) for b in catalog if b.get("earned")}
+        selected_badge_ids = filter_selected_badge_ids(
+            body.selected_badge_ids, earned_ids=earned_ids
+        )
+    else:
+        selected_badge_ids = cur.get("selectedBadgeIds") or []
+
+    if body.github_username is not None:
+        raw_user = body.github_username.strip()
+        if raw_user:
+            try:
+                github_username = normalize_github_username(raw_user)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+        else:
+            github_username = ""
+    else:
+        github_username = cur.get("githubUsername") or ""
+
+    if body.github_projects is not None:
+        github_projects = filter_selected_projects(body.github_projects)
+    else:
+        github_projects = cur.get("githubProjects") or []
+
     conn = await get_db_connection()
     try:
         async with conn.cursor() as cur_db:
@@ -560,6 +701,9 @@ async def put_resume(
                     work_formats = %s::jsonb,
                     about = %s,
                     selected_skill_keys = %s::jsonb,
+                    selected_badge_ids = %s::jsonb,
+                    github_username = %s,
+                    github_projects = %s::jsonb,
                     updated_at = CURRENT_TIMESTAMP
                 WHERE id = %s AND user_id = %s
                 RETURNING {RESUME_SELECT}
@@ -574,6 +718,9 @@ async def put_resume(
                     json.dumps(work_formats, ensure_ascii=False),
                     about,
                     json.dumps(selected_skill_keys, ensure_ascii=False),
+                    json.dumps(selected_badge_ids, ensure_ascii=False),
+                    github_username[:39],
+                    json.dumps(github_projects, ensure_ascii=False),
                     str(rid),
                     user_id,
                 ),
@@ -677,10 +824,15 @@ async def generate_resume(
     user_id = int(user["user_id"])
     enforce_rate_limit(user_id, "generate")
     rid = _parse_resume_id(resume_id)
-    await _require_resume(rid, user_id)
+    resume = await _require_resume(rid, user_id)
     completed = await _fetch_completed_slugs(user_id)
     selected = body.selected_skill_keys
-    skills = generate_skills_from_progress(completed, selected_keys=selected)
+    from_progress = generate_skills_from_progress(completed)
+    text_keys = detect_skill_keys_in_text(resume.get("sourceText") or "")
+    skills = merge_evidenced_skills(from_progress=from_progress, from_text_keys=text_keys)
+    if selected is not None:
+        allow = {k.strip() for k in selected if k and str(k).strip()}
+        skills = [s for s in skills if s.get("key") in allow]
     hints = branch_completion_hints(completed)
     suggested = suggest_specialization(completed)
 
@@ -711,6 +863,184 @@ async def generate_resume(
         "skills": skills,
         "branchHints": hints,
         "suggestedSpecialization": suggested,
+        "completedCount": len(completed),
+    }
+
+
+async def _persist_source_text(resume_id: UUID, user_id: int, source_text: str) -> dict[str, Any]:
+    conn = await get_db_connection()
+    try:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                f"""
+                UPDATE site_resumes SET
+                    source_text = %s,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = %s AND user_id = %s
+                RETURNING {RESUME_SELECT}
+                """,
+                (source_text, str(resume_id), user_id),
+            )
+            row = await cur.fetchone()
+    finally:
+        await release_db_connection(conn)
+    if not row:
+        raise HTTPException(status_code=404, detail="Resume not found")
+    return _row_resume(row)
+
+
+@router.post("/{resume_id}/source")
+async def upload_resume_source(
+    resume_id: str,
+    authorization: Optional[str] = Header(None),
+    file: Optional[UploadFile] = File(default=None),
+    text: Optional[str] = Form(default=None),
+) -> dict[str, Any]:
+    """Save resume source from uploaded PDF/DOCX and/or pasted text (multipart)."""
+    user = await require_user(authorization)
+    user_id = int(user["user_id"])
+    enforce_rate_limit(user_id, "generate")
+    rid = _parse_resume_id(resume_id)
+    await _require_resume(rid, user_id)
+
+    chunks: list[str] = []
+    file_name: Optional[str] = None
+    if file is not None and (file.filename or "").strip():
+        data = await file.read()
+        try:
+            extracted = extract_text_from_upload(
+                filename=file.filename or "",
+                data=data,
+                content_type=file.content_type or "",
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        chunks.append(extracted)
+        file_name = file.filename
+
+    pasted = (text or "").strip()
+    if pasted:
+        try:
+            chunks.append(normalize_source_text(pasted))
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if not chunks:
+        raise HTTPException(
+            status_code=400,
+            detail="Передайте файл (PDF/DOCX) и/или текст резюме",
+        )
+
+    combined = "\n\n".join(chunks)
+    try:
+        source_text = normalize_source_text(combined)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    resume = await _persist_source_text(rid, user_id, source_text)
+    detected = sorted(detect_skill_keys_in_text(source_text))
+    return {
+        "resume": resume,
+        "sourceText": source_text,
+        "chars": len(source_text),
+        "fileName": file_name,
+        "detectedSkillKeys": detected,
+    }
+
+
+@router.post("/{resume_id}/source/text")
+async def upload_resume_source_json(
+    resume_id: str,
+    body: ResumeSourceJsonIn,
+    authorization: Optional[str] = Header(None),
+) -> dict[str, Any]:
+    """Save pasted resume text (JSON)."""
+    user = await require_user(authorization)
+    user_id = int(user["user_id"])
+    enforce_rate_limit(user_id, "generate")
+    rid = _parse_resume_id(resume_id)
+    await _require_resume(rid, user_id)
+    try:
+        source_text = normalize_source_text(body.text)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    resume = await _persist_source_text(rid, user_id, source_text)
+    return {
+        "resume": resume,
+        "sourceText": source_text,
+        "chars": len(source_text),
+        "fileName": None,
+        "detectedSkillKeys": sorted(detect_skill_keys_in_text(source_text)),
+    }
+
+
+@router.post("/{resume_id}/path/prepare")
+async def path_prepare(
+    resume_id: str,
+    body: PathPrepareIn,
+    authorization: Optional[str] = Header(None),
+) -> dict[str, Any]:
+    """Build recommendations + evidenced skills after source + questionnaire."""
+    user = await require_user(authorization)
+    user_id = int(user["user_id"])
+    enforce_rate_limit(user_id, "generate")
+    rid = _parse_resume_id(resume_id)
+    resume = await _require_resume(rid, user_id)
+    source_text = (resume.get("sourceText") or "").strip()
+    if not source_text:
+        raise HTTPException(
+            status_code=400,
+            detail="Сначала загрузите или вставьте текст резюме",
+        )
+    answers = resume.get("questionnaireAnswers") or {}
+    role_raw = answers.get("role_track")
+    if isinstance(role_raw, list):
+        role_track = str(role_raw[0] or "").strip() if role_raw else ""
+    else:
+        role_track = str(role_raw or "").strip()
+    if not role_track:
+        raise HTTPException(
+            status_code=400,
+            detail="Сначала заполните опросник (роль / специальность)",
+        )
+
+    completed = await _fetch_completed_slugs(user_id)
+    path = build_path(source_text, role_track, completed)
+    skills = path["skills"]
+
+    if body.persist:
+        keys = [s["key"] for s in skills]
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    f"""
+                    UPDATE site_resumes SET
+                        generated_skills = %s::jsonb,
+                        selected_skill_keys = %s::jsonb,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = %s AND user_id = %s
+                    RETURNING {RESUME_SELECT}
+                    """,
+                    (
+                        json.dumps(skills, ensure_ascii=False),
+                        json.dumps(keys, ensure_ascii=False),
+                        str(rid),
+                        user_id,
+                    ),
+                )
+                row = await cur.fetchone()
+        finally:
+            await release_db_connection(conn)
+        if row:
+            resume = _row_resume(row)
+
+    return {
+        "resume": resume,
+        "skills": skills,
+        "recommendations": path["recommendations"],
+        "detectedSkillKeys": path["detectedSkillKeys"],
+        "roleTrack": path["roleTrack"],
         "completedCount": len(completed),
     }
 
@@ -850,6 +1180,97 @@ async def ai_cover_letter(
     return {"letter": letter}
 
 
+@router.post("/{resume_id}/ai/match-score")
+async def ai_match_score(
+    resume_id: str,
+    body: MatchScoreIn,
+    authorization: Optional[str] = Header(None),
+) -> dict[str, Any]:
+    user = await require_user(authorization)
+    user_id = int(user["user_id"])
+    enforce_rate_limit(user_id, "ai")
+    _require_feature("aiMatchScore")
+    resume = await _require_resume(_parse_resume_id(resume_id), user_id)
+    completed = await _fetch_completed_slugs(user_id)
+    skills = _skills_for_resume(resume, completed)
+    base = compute_match_score(
+        vacancy_text=body.vacancy_text,
+        selected_keys=resume["selectedSkillKeys"] or [s.get("key") for s in skills],
+        generated_skills=skills,
+        about=resume.get("about") or "",
+        source_text=resume.get("sourceText") or "",
+    )
+    result = await enrich_match_summary(
+        base,
+        vacancy_text=body.vacancy_text,
+        specialization=resume.get("specialization") or resume.get("title") or "",
+    )
+    return result
+
+
+@router.post("/{resume_id}/github/fetch")
+async def github_fetch_repos(
+    resume_id: str,
+    body: GithubFetchIn,
+    authorization: Optional[str] = Header(None),
+) -> dict[str, Any]:
+    user = await require_user(authorization)
+    user_id = int(user["user_id"])
+    enforce_rate_limit(user_id, "generate")
+    rid = _parse_resume_id(resume_id)
+    resume = await _require_resume(rid, user_id)
+    try:
+        username = normalize_github_username(body.username)
+        projects = await fetch_public_repos(username)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    # Preserve previously selected flags by URL
+    prev_selected = {
+        str(p.get("url") or "").lower()
+        for p in (resume.get("githubProjects") or [])
+        if isinstance(p, dict) and p.get("selected")
+    }
+    for item in projects:
+        if item["url"].lower() in prev_selected:
+            item["selected"] = True
+    projects = filter_selected_projects(projects)
+
+    conn = await get_db_connection()
+    try:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                f"""
+                UPDATE site_resumes SET
+                    github_username = %s,
+                    github_projects = %s::jsonb,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = %s AND user_id = %s
+                RETURNING {RESUME_SELECT}
+                """,
+                (
+                    username,
+                    json.dumps(projects, ensure_ascii=False),
+                    str(rid),
+                    user_id,
+                ),
+            )
+            row = await cur.fetchone()
+    finally:
+        await release_db_connection(conn)
+    if not row:
+        raise HTTPException(status_code=404, detail="Resume not found")
+    return {
+        "username": username,
+        "projects": projects,
+        "resume": _row_resume(row),
+    }
+
+
 @router.post("/{resume_id}/ai/mock-interview")
 async def ai_mock_interview_start(
     resume_id: str,
@@ -895,6 +1316,87 @@ async def ai_mock_interview_evaluate(
     except Exception as exc:
         raise _ai_http_error(exc) from exc
     return result
+
+
+@router.post("/{resume_id}/ai/mock-interview/chat/start")
+async def ai_mock_chat_start(
+    resume_id: str,
+    body: MockChatStartIn,
+    authorization: Optional[str] = Header(None),
+) -> dict[str, Any]:
+    user = await require_user(authorization)
+    user_id = int(user["user_id"])
+    enforce_rate_limit(user_id, "ai")
+    _require_feature("aiMockInterview")
+    rid = _parse_resume_id(resume_id)
+    resume = await _require_resume(rid, user_id)
+    completed = await _fetch_completed_slugs(user_id)
+    skills = _skills_for_resume(resume, completed)
+    if not skills:
+        raise HTTPException(
+            status_code=400,
+            detail="Сначала обогатите резюме навыками из Learn",
+        )
+    specialization = resume["specialization"] or resume["title"] or ""
+    try:
+        opener = await resume_ai.generate_mock_chat_opener(
+            specialization=specialization,
+            skills=skills,
+        )
+    except Exception:
+        opener = None
+    sess = resume_mock_chat.create_session(
+        user_id=user_id,
+        resume_id=str(rid),
+        specialization=specialization,
+        skills=skills,
+        first_question=opener,
+        max_turns=body.max_turns,
+    )
+    return resume_mock_chat.session_public(sess)
+
+
+@router.post("/{resume_id}/ai/mock-interview/chat/message")
+async def ai_mock_chat_message(
+    resume_id: str,
+    body: MockChatMessageIn,
+    authorization: Optional[str] = Header(None),
+) -> dict[str, Any]:
+    user = await require_user(authorization)
+    user_id = int(user["user_id"])
+    enforce_rate_limit(user_id, "ai")
+    _require_feature("aiMockInterview")
+    rid = _parse_resume_id(resume_id)
+    await _require_resume(rid, user_id)
+    sess = resume_mock_chat.get_session(body.session_id.strip(), user_id)
+    if sess is None or sess.resume_id != str(rid):
+        raise HTTPException(status_code=404, detail="Сессия не найдена или истекла")
+
+    async def _evaluate(*, question: str, answer: str, skill_key: str) -> dict[str, Any]:
+        return await resume_ai.evaluate_mock_answer(
+            question=question,
+            answer=answer,
+            skill_key=skill_key,
+        )
+
+    async def _reply(*, sess: Any, last_score: int, feedback: str) -> str:
+        return await resume_ai.generate_mock_chat_followup(
+            specialization=sess.specialization,
+            skills=sess.skills,
+            messages=sess.messages,
+            last_score=last_score,
+            turn=sess.turn,
+        )
+
+    try:
+        return await resume_mock_chat.append_user_message(
+            sess,
+            body.content,
+            evaluate_fn=_evaluate,
+            reply_fn=_reply,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post("/{resume_id}/questionnaire/apply")
@@ -994,6 +1496,18 @@ async def export_resume(
     profile = _row_profile(profile_row, email=email) if profile_row else _empty_profile(email=email)
     skills = _skills_for_resume(resume, completed)
     username = str(user.get("username") or "")
+
+    quiz_attempts = await _fetch_quiz_attempts(user_id)
+    badge_catalog = compute_badges(completed_slugs=completed, quiz_attempts=quiz_attempts)
+    title_by_id = {str(b["id"]): str(b.get("title") or b["id"]) for b in badge_catalog}
+    resume = {
+        **resume,
+        "badgeTitles": [
+            title_by_id.get(bid, bid)
+            for bid in (resume.get("selectedBadgeIds") or [])
+            if bid
+        ],
+    }
 
     fmt = body.format
     if fmt == "pdf":

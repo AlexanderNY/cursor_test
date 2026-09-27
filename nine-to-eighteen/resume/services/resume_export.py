@@ -11,6 +11,31 @@ from services.text_sanitize import sanitize_plain_text
 TEMPLATES_DIR = Path(__file__).resolve().parents[1] / "templates"
 
 
+def _selected_projects(projects: Any, *, max_count: int = 6) -> list[dict[str, Any]]:
+    if not isinstance(projects, list):
+        return []
+    out: list[dict[str, Any]] = []
+    for raw in projects:
+        if not isinstance(raw, dict) or not raw.get("selected"):
+            continue
+        name = str(raw.get("name") or "").strip()
+        url = str(raw.get("url") or "").strip()
+        if not name or not url:
+            continue
+        out.append(
+            {
+                "name": name,
+                "url": url,
+                "description": str(raw.get("description") or "").strip(),
+                "language": str(raw.get("language") or "").strip(),
+                "stars": int(raw.get("stars") or 0),
+            }
+        )
+        if len(out) >= max_count:
+            break
+    return out
+
+
 def _full_name(profile: dict[str, Any], username: str) -> str:
     parts = [
         str(profile.get("lastName") or ""),
@@ -45,6 +70,18 @@ def render_resume_html(
         if str(s.get("display") or s.get("name") or "").strip()
     ]
 
+    badge_labels: list[str] = []
+    for raw in resume.get("selectedBadgeIds") or []:
+        label = str(raw or "").strip()
+        if label:
+            badge_labels.append(label)
+    # Prefer human titles if caller passed badgeTitles
+    titles = resume.get("badgeTitles")
+    if isinstance(titles, list) and titles:
+        badge_labels = [str(t).strip() for t in titles if str(t).strip()]
+
+    projects = _selected_projects(resume.get("githubProjects") or [])
+
     env = Environment(
         loader=FileSystemLoader(str(TEMPLATES_DIR)),
         autoescape=select_autoescape(["html", "xml"]),
@@ -63,6 +100,8 @@ def render_resume_html(
         salary=salary_text,
         about=about_html,
         skills=skill_labels,
+        badges=badge_labels,
+        projects=projects,
     )
 
 
@@ -148,6 +187,35 @@ def build_docx_bytes(
             )
     else:
         doc.add_paragraph("—")
+
+    badge_titles = resume.get("badgeTitles")
+    if isinstance(badge_titles, list) and badge_titles:
+        labels = [str(t).strip() for t in badge_titles if str(t).strip()]
+    else:
+        labels = [str(x).strip() for x in (resume.get("selectedBadgeIds") or []) if str(x).strip()]
+    if labels:
+        doc.add_heading("Достижения", level=2)
+        for label in labels:
+            doc.add_paragraph(label, style="List Bullet")
+
+    projects = _selected_projects(resume.get("githubProjects") or [])
+    if projects:
+        doc.add_heading("Проекты", level=2)
+        for project in projects:
+            line = str(project.get("name") or "")
+            lang = str(project.get("language") or "").strip()
+            if lang:
+                line += f" · {lang}"
+            stars = int(project.get("stars") or 0)
+            if stars:
+                line += f" · ★{stars}"
+            doc.add_paragraph(line, style="List Bullet")
+            desc = str(project.get("description") or "").strip()
+            if desc:
+                doc.add_paragraph(desc)
+            url = str(project.get("url") or "").strip()
+            if url:
+                doc.add_paragraph(url)
 
     footer = doc.add_paragraph("Собрано на 9to18.ru")
     for run in footer.runs:

@@ -41,6 +41,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
         "aiImproveAbout": True,
         "aiSkillGap": True,
         "aiCoverLetter": True,
+        "aiMatchScore": True,
         "aiMockInterview": True,
     },
 }

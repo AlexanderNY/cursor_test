@@ -1,4 +1,7 @@
-import { getSiteAccessToken } from '@/data/site/site-auth'
+import {
+  clearSiteAuthSessionOnAuthFailure,
+  getSiteAccessToken,
+} from '@/data/site/site-auth'
 
 const API_BASE = '/api'
 
@@ -86,6 +89,7 @@ async function request<T>(
     } catch {
       /* ignore */
     }
+    clearSiteAuthSessionOnAuthFailure(response.status, detail)
     throw new SiteApiError(detail || `HTTP ${response.status}`, response.status)
   }
   if (response.status === 204) {

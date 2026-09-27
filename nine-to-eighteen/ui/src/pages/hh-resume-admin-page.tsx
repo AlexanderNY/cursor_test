@@ -7,7 +7,7 @@ import {
   resumeAdminPutSettings,
   type ResumeAdminSettings,
 } from '@/data/site/resume-api'
-import { getSiteAuthSession, isSuperAdmin } from '@/data/site/site-auth'
+import { isSuperAdmin, useSiteAuthSession } from '@/data/site/site-auth'
 
 function emptySettings(): ResumeAdminSettings {
   return {
@@ -30,6 +30,7 @@ function emptySettings(): ResumeAdminSettings {
       aiImproveAbout: true,
       aiSkillGap: true,
       aiCoverLetter: true,
+      aiMatchScore: true,
       aiMockInterview: true,
     },
   }
@@ -37,7 +38,7 @@ function emptySettings(): ResumeAdminSettings {
 
 /** Админка настроек resume-api (только site_admin). */
 export function HhResumeAdminPage() {
-  const session = getSiteAuthSession()
+  const session = useSiteAuthSession()
   const [settings, setSettings] = useState<ResumeAdminSettings>(emptySettings)
   const [envOnly, setEnvOnly] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
@@ -62,7 +63,7 @@ export function HhResumeAdminPage() {
   useEffect(() => {
     if (!session || !isSuperAdmin()) return
     void load()
-  }, [session, load])
+  }, [session?.accessToken, load])
 
   if (!session) {
     return <Navigate to="/login" replace />
@@ -278,6 +279,7 @@ export function HhResumeAdminPage() {
                   ['aiImproveAbout', 'AI «О себе»'],
                   ['aiSkillGap', 'Skill gap'],
                   ['aiCoverLetter', 'Cover letter'],
+                  ['aiMatchScore', 'Match Score'],
                   ['aiMockInterview', 'Mock interview'],
                 ] as const
               ).map(([key, label]) => (

@@ -8,11 +8,13 @@ import {
   resumeExport,
   resumeGenerate,
   resumeGetPreview,
+  resumeListBadges,
   resumeSkillGap,
+  type ResumeBadge,
   type SiteResumePreview,
   type SkillGapResult,
 } from '@/data/site/resume-api'
-import { getSiteAuthSession } from '@/data/site/site-auth'
+import { useSiteAuthSession } from '@/data/site/site-auth'
 
 async function triggerDownload(resumeId: string, format: 'pdf' | 'docx') {
   const result = await resumeExport(resumeId, format)
@@ -27,7 +29,7 @@ async function triggerDownload(resumeId: string, format: 'pdf' | 'docx') {
 /** Полноэкранное превью + экспорт (редактирование — split на /edit). */
 export function HhResumePreviewPage() {
   const { resumeId = '' } = useParams()
-  const session = getSiteAuthSession()
+  const session = useSiteAuthSession()
   const [preview, setPreview] = useState<SiteResumePreview | null>(null)
   const [photoUrl, setPhotoUrl] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -36,6 +38,7 @@ export function HhResumePreviewPage() {
   const [ok, setOk] = useState('')
   const [gapResult, setGapResult] = useState<SkillGapResult | null>(null)
   const [strengthOpen, setStrengthOpen] = useState(false)
+  const [badges, setBadges] = useState<ResumeBadge[]>([])
 
   const load = useCallback(async () => {
     if (!resumeId) return
@@ -44,6 +47,12 @@ export function HhResumePreviewPage() {
     try {
       const data = await resumeGetPreview(resumeId)
       setPreview(data)
+      try {
+        const badgeData = await resumeListBadges()
+        setBadges(badgeData.badges)
+      } catch {
+        setBadges([])
+      }
       if (data.profile.hasPhoto) {
         const blobUrl = await siteFetchPhotoBlob()
         setPhotoUrl((prev) => {
@@ -70,9 +79,20 @@ export function HhResumePreviewPage() {
         return null
       })
     }
-  }, [session, resumeId, load])
+  }, [session?.accessToken, resumeId, load])
 
   const skills = useMemo(() => preview?.skills || [], [preview])
+
+  const badgeLabels = useMemo(() => {
+    if (!preview) return []
+    const byId = new Map(badges.map((b) => [b.id, b.title]))
+    return (preview.resume.selectedBadgeIds || []).map((id) => byId.get(id) || id)
+  }, [preview, badges])
+
+  const selectedProjects = useMemo(
+    () => (preview?.resume.githubProjects || []).filter((p) => p.selected).slice(0, 6),
+    [preview],
+  )
 
   async function onEnrich() {
     if (!resumeId) return
@@ -260,7 +280,13 @@ export function HhResumePreviewPage() {
           ) : null}
 
           {preview ? (
-            <HhResumeArticle preview={preview} skills={skills} photoUrl={photoUrl} />
+            <HhResumeArticle
+              preview={preview}
+              skills={skills}
+              photoUrl={photoUrl}
+              badgeLabels={badgeLabels}
+              projects={selectedProjects}
+            />
           ) : null}
         </>
       )}
