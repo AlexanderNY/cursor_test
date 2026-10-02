@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Express Test</title>
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      max-width: 40rem;
+      margin: 2rem auto;
+      padding: 0 1rem;
+      line-height: 1.5;
+    }
+    #error {
+      color: #b00020;
+    }
+  </style>
+</head>
+<body>
+  <h1>Express Test</h1>
+  <p id="greeting">Loading greeting…</p>
+  <p id="version">Loading version…</p>
+  <p id="error" hidden></p>
+
+  <script>
+    async function loadStatus() {
+      const greetingEl = document.getElementById("greeting");
+      const versionEl = document.getElementById("version");
+      const errorEl = document.getElementById("error");
+
+      try {
+        const [helloRes, statusRes] = await Promise.all([
+          fetch("/api/hello"),
+          fetch("/api/status"),
+        ]);
+
+        if (!helloRes.ok || !statusRes.ok) {
+          throw new Error(
+            `Request failed: hello=${helloRes.status}, status=${statusRes.status}`
+          );
+        }
+
+        const hello = await helloRes.json();
+        const status = await statusRes.json();
+
+        greetingEl.textContent = hello.message;
+        versionEl.textContent = `Version: ${status.version}`;
+      } catch (err) {
+        greetingEl.textContent = "—";
+        versionEl.textContent = "—";
+        errorEl.hidden = false;
+        errorEl.textContent = err.message || String(err);
+      }
+    }
+
+    loadStatus();
+  </script>
+</body>
+</html>
