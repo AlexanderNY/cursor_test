@@ -209,7 +209,7 @@ async def default_admin_group_id(user_id: int) -> Optional[int]:
     return None
 
 
-async def brand_credential_user_id(brand: dict[str, Any]) -> int:
+def brand_credential_user_id(brand: dict[str, Any]) -> int:
     """Platform tokens always belong to the brand owner."""
     return int(brand["user_id"])
 

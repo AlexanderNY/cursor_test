@@ -606,29 +606,36 @@ async def update_channel(
     x_user_id: Optional[str] = Header(None),
 ):
     user_id = get_user_id(x_user_id)
-    ch = await smm_service.update_channel(
-        user_id,
-        brand_id,
-        channel_id,
-        title=body.title,
-        kind=body.kind,
-        role=body.role,
-        color_override=body.color_override,
-        external_id=body.external_id,
-        publish_enabled=body.publish_enabled,
-        collect_enabled=body.collect_enabled,
-        discussion_external_id=body.discussion_external_id,
-        discussion_title=body.discussion_title,
-        comments_collect_enabled=body.comments_collect_enabled,
-        alert_enabled=body.alert_enabled,
-        save_conditions=body.save_conditions,
-        conditions_mode=body.conditions_mode,
-        processing=body.processing,
-        publish_targets=body.publish_targets,
-        alert_delivery=body.alert_delivery,
-        alert_rules=body.alert_rules,
-        url_config=body.url_config,
-    )
+    try:
+        ch = await smm_service.update_channel(
+            user_id,
+            brand_id,
+            channel_id,
+            title=body.title,
+            kind=body.kind,
+            role=body.role,
+            color_override=body.color_override,
+            external_id=body.external_id,
+            publish_enabled=body.publish_enabled,
+            collect_enabled=body.collect_enabled,
+            discussion_external_id=body.discussion_external_id,
+            discussion_title=body.discussion_title,
+            comments_collect_enabled=body.comments_collect_enabled,
+            alert_enabled=body.alert_enabled,
+            save_conditions=body.save_conditions,
+            conditions_mode=body.conditions_mode,
+            processing=body.processing,
+            publish_targets=body.publish_targets,
+            alert_delivery=body.alert_delivery,
+            alert_rules=body.alert_rules,
+            url_config=body.url_config,
+        )
+    except QuotaExceededError as exc:
+        raise _http_quota(exc)
+    except PlatformAuthError as exc:
+        raise _http_platform_auth(exc)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
     if not ch:
         raise HTTPException(status_code=404, detail="Channel not found")
     return ch
