@@ -1,14 +1,14 @@
 ---
 slug: qa-infra-linux-containers
 title: Инфраструктура QA: VM, контейнеры, shell, SSH
-shortTitle: Infra Linux containers
+shortTitle: Инфраструктура QA: VM,
 episode: QA17
 rubric: tools
 order: 417
 publishedAt: 2026-12-25T10:00:00+03:00
 profiles: [tester]
 level: middle
-tags: [linux, docker, containers, ssh, iaas, собеседование]
+tags: [qa, linux, docker, containers, ssh, iaas, собеседование]
 onKnowledgeMap: true
 durationMin: 45
 excerpt: VM vs simulator vs emulator, контейнеры, IaaS/PaaS, provisioning, shell для логов, SSH и скрипты в автоматизации.
@@ -22,6 +22,8 @@ canonicalUrl: https://9to18.ru/game/learn/qa-infra-linux-containers
 ## Введение
 
 M43–52: middle QA часто сам поднимает стенды, читает логи на Linux, ходит по SSH и отличает «упал контейнер» от «упала ВМ». Ниже — рабочие ответы для собеса: виртуализация vs эмуляция, контейнеры, облачные модели, config management и бытовой shell.
+
+Термины и определения согласованы с **ISTQB CTFL v4** и [глоссарием ISTQB](https://glossary.istqb.org/); номера J/M/S — опциональный индекс типовых вопросов собеса.
 
 ## Раздел: VM, simulator, emulator и контейнеры
 
@@ -66,6 +68,28 @@ docker logs --tail 200 my-api
 **SSH.** Удалённый shell по ключу/паролю: `ssh user@host`, туннели `-L`/`-R`, копирование `scp`/`rsync`. Для автотестов: ключ в CI secrets, jump-host, не хранить пароли в репо. `StrictHostKeyChecking` и known_hosts — частая боль пайплайнов.
 
 **Bash vs batch.** Bash (Linux/macOS CI): пайпы, `set -euo pipefail`, функции. Batch/PowerShell (Windows агенты): установка драйверов, пути с пробелами. В кроссплатформенной AQA предпочитайте Python/`make`/Docker, а shell — тонкая обёртка.
+
+## Раздел: Частые вопросы с собеседования
+
+**Вопрос.** Чем уровень тестирования отличается от типа (вида) тестирования?
+
+**Ответ.** Уровень отвечает на «где режем систему»: модуль, стык, продукт целиком, приёмка. Тип — «с какой целью гоняем»: smoke, regression, exploratory, security и т.д. На собесе покажите пример: один checkout можно проверить на integration (API+БД) и оформить прогон как regression после фикса — оси независимы.
+
+**Вопрос.** Когда на собеседовании уместен smoke, а когда полный regression?
+
+**Ответ.** Smoke — узкий «жив ли билд»: логин, критичный платёж, главная. Падает smoke — глубже не идём. Regression — шире: уже работавшее после изменений. Sanity — точечно после маленького патча. Ошибка junior: называть любой повторный прогон regression.
+
+**Вопрос.** Зачем на собесе спрашивают equivalence partitioning и граничные значения?
+
+**Ответ.** EP сжимает бесконечные входы в классы «ведут себя одинаково»; BVA бьёт по стыкам классов — там чаще ломается сравнение и валидация. Для поля 18–99 достаточно классов «ниже», «внутри», «выше» и точек 17–18–19, 98–99–100; не нужно 82 случайных числа.
+
+**Вопрос.** Severity и priority в баг-репорте — одно и то же?
+
+**Ответ.** Нет. Severity — ущерб для продукта и пользователя (crash vs опечатка). Priority — когда чинить в очереди команды. Критичный по severity баг может ждать, если воспроизводится только на стенде без пользователей; наоборот, мелкий UI-bug в checkout может быть P1 перед релизом.
+
+**Вопрос.** Что имеют в виду под «пирамидой тестирования» на собеседовании?
+
+**Ответ.** Много быстрых дешёвых проверок внизу (unit, контракт API), меньше медленных UI/e2e наверху. Цель — быстрая обратная связь в CI, а не «всё через Selenium». Пирамида не запрет на e2e: сквозные сценарии оставляют на критичные деньги-потоки.
 
 ## Лаба
 
@@ -121,6 +145,20 @@ flowchart TB
 
 **Пояснение:** на собесе ждут конкретные команды и понимание, куда сервис пишет stdout vs файлы.
 
+### docker compose vs docker run для QA?
+
+**Ответ:** compose поднимает связку сервисов из файла
+
+**Пояснение:** воспроизводимый стенд для команды; run — разовый контейнер.
+
+### Зачем QA знать exit code процесса?
+
+**Ответ:** CI и скрипты падают по коду, не только по stdout
+
+**Пояснение:** тест-раннер должен возвращать ненулевой код при падениях.
+
+
+
 ## Шпаргалка
 
 <h3>Виртуализация</h3>
@@ -155,6 +193,20 @@ Back: IaaS — контроль ОС и сети; PaaS — быстрый деп
 
 Back: grep -R ERROR /var/log; journalctl -u svc; docker logs
 
+### Front: Volume vs bind mount
+
+Back: volume — управляемое Docker хранилище; bind — папка хоста в контейнер
+
+### Front: ssh -L — зачем тестировщику
+
+Back: туннель к БД/API на внутреннем стенде через bastion
+
+### Front: Infrastructure as Code для QA
+
+Back: одинаковые стенды из репозитория; меньше «у меня работает»
+
+
+
 ## Итоги
 
 - VM, эмулятор, симулятор и контейнер решают разные классы рисков — не взаимозаменяемы
@@ -164,6 +216,9 @@ Back: grep -R ERROR /var/log; journalctl -u svc; docker logs
 
 ## Ссылки
 
-- [QA-interview-250](https://github.com/Konstantine23/QA-interview-250)
-- [Docker docs](https://docs.docker.com/)
+- [ISTQB Glossary](https://glossary.istqb.org/)
+- [CTFL v4 — Certified Tester Foundation Level](https://istqb.org/certifications/certified-tester-foundation-level-ctfl-v4-0/)
+- [Docker documentation](https://docs.docker.com/)
+- Опционально: [QA-interview-250](https://github.com/Konstantine23/QA-interview-250) — полный список формулировок вопросов
 - Learn | /game/learn
+- Далее: [Middle web mobile SQL](/game/learn/qa-middle-web-mobile-sql)

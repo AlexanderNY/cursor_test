@@ -30,6 +30,7 @@ from .brand_channel_flow import (
     channel_alert_rules_as_profile_rules,
     resolve_publish_targets,
     publish_targets_to_profile_fields,
+    load_digest_source_channel_ids,
 )
 
 
@@ -73,6 +74,7 @@ class TelegramBotService:
         self._discussion_refresh_task = None
         self._discussion_map: Dict[str, List[dict]] = {}
         self._brand_channels: List[dict] = []
+        self._digest_source_ids: Set[int] = set()
 
     async def start(self) -> None:
         if self._running:
@@ -120,7 +122,12 @@ class TelegramBotService:
     async def _refresh_flow_maps(self) -> None:
         await self._refresh_discussion_map()
         self._brand_channels = await list_tg_flow_channels()
-        _log_action("Brand flow channels: %d", len(self._brand_channels))
+        self._digest_source_ids = await load_digest_source_channel_ids()
+        _log_action(
+            "Brand flow channels: %d, digest sources: %d",
+            len(self._brand_channels),
+            len(self._digest_source_ids),
+        )
 
     async def _refresh_discussion_map(self) -> None:
         bindings = await list_discussion_bindings()
@@ -212,7 +219,7 @@ class TelegramBotService:
     async def _digest_loop(self) -> None:
         while self._running:
             try:
-                await asyncio.sleep(1800)
+                await asyncio.sleep(60)
                 if not self._running:
                     break
                 sent = await self.summary_aggregator.run_digest_cycle(self.client_manager)
@@ -299,8 +306,20 @@ class TelegramBotService:
                         processing = brand_ch.get("processing") or {}
                         if isinstance(processing, dict) and processing:
                             collect_profile.update(processing)
+                        is_digest_source = False
+                        try:
+                            is_digest_source = int(brand_ch.get("id")) in self._digest_source_ids
+                        except (TypeError, ValueError):
+                            is_digest_source = False
                         target_ids = brand_ch.get("publish_targets") or []
-                        if target_ids and brand_ch.get("brand_id"):
+                        if is_digest_source:
+                            # Digest sources accumulate in digest_hold; do not publish each message.
+                            collect_profile["target_channels"] = []
+                            collect_profile["process_services"] = []
+                            collect_profile["channel_to_post"] = None
+                            collect_profile["channels_to_post"] = []
+                            collect_profile["publish_enabled"] = False
+                        elif target_ids and brand_ch.get("brand_id"):
                             resolved = await resolve_publish_targets(
                                 int(brand_ch["brand_id"]),
                                 [int(x) for x in target_ids],

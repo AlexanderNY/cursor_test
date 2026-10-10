@@ -40,6 +40,15 @@ def emit_post(item: dict) -> str:
         lines.append(f"        href: {ts_string(str(link.get('href') or '#'))},")
         lines.append("      },")
     lines.append("    ],")
+    profiles = item.get("profiles") if isinstance(item.get("profiles"), list) else []
+    tags = item.get("tags") if isinstance(item.get("tags"), list) else []
+    prerequisites = item.get("prerequisites") if isinstance(item.get("prerequisites"), list) else []
+    lines.append(f"    profiles: {json.dumps(profiles, ensure_ascii=False)},")
+    lines.append(f"    level: {ts_string(str(item.get('level') or ''))},")
+    lines.append(f"    tags: {json.dumps(tags, ensure_ascii=False)},")
+    lines.append(f"    excerpt: {ts_string(str(item.get('excerpt') or ''))},")
+    lines.append(f"    durationMin: {int(item.get('durationMin') or item.get('duration_min') or 0)},")
+    lines.append(f"    prerequisites: {json.dumps(prerequisites, ensure_ascii=False)},")
     structured = item.get("structured")
     if isinstance(structured, dict) and structured.get("version"):
         dumped = json.dumps(structured, ensure_ascii=False)

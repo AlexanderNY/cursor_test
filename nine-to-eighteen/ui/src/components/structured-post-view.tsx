@@ -61,9 +61,13 @@ export function StructuredPostView({
     return quizItems.reduce((sum, item, index) => {
       const given = (currentAnswers[index] || '').trim().toLowerCase()
       const expected = item.answer.trim().toLowerCase()
+      // Short canonical answer: exact match, or user wrote a longer phrase that
+      // contains the expected key. Do not accept a short guess that is merely a
+      // substring of a long expected string (expected.includes(given)).
       const isMatch =
         Boolean(given) &&
-        (given === expected || expected.includes(given) || given.includes(expected))
+        Boolean(expected) &&
+        (given === expected || given.includes(expected))
       return sum + (isMatch ? 1 : 0)
     }, 0)
   }

@@ -1,0 +1,157 @@
+import type { TopicDeck } from '@/data/learning-map/decks/types'
+
+export const deckRedis: TopicDeck = {
+  branchTitle: 'Redis',
+  cards: [
+    {
+      id: 'pool:redis:kv',
+      front: `Что такое Redis как KV?`,
+      back: `In-memory store ключ→значение с богатыми типами и опциональной персистенцией. Супербыстрый кэш/координация, не замена любой БД.`,
+      learnSlug: 'rd-kv-model',
+    },
+    {
+      id: 'pool:redis:types',
+      front: `Основные типы данных Redis?`,
+      back: `string, hash, list, set, zset, stream… Выбор типа = выбор операций (score, pop, pub/sub).`,
+      learnSlug: 'rd-data-types',
+    },
+    {
+      id: 'pool:redis:ttl',
+      front: `Зачем TTL?`,
+      back: `Автоистечение ключей для кэша/сессий. Помните: не гарантия строгой синхронизации с источником; проверьте политику expire.`,
+      learnSlug: 'rd-ttl-persistence',
+    },
+    {
+      id: 'pool:redis:rdb-aof',
+      front: `RDB vs AOF?`,
+      back: `RDB — снимки; AOF — журнал операций. Компромисс производительности и durable. Часто комбинируют.`,
+      learnSlug: 'rd-ttl-persistence',
+    },
+    {
+      id: 'pool:redis:cache-aside',
+      front: `Паттерн cache-aside?`,
+      back: `Приложение читает кэш; при miss — БД, затем пишет кэш. Инвалидация/TTL на записи. Просто и явно.`,
+      learnSlug: 'rd-cache-aside',
+    },
+    {
+      id: 'pool:redis:stampede',
+      front: `Cache stampede?`,
+      back: `Много запросов одновременно missируют и бьют БД. Лечат locking, early refresh, probabilistic early expiration, singleflight.`,
+      learnSlug: 'rd-stampede-locks',
+    },
+    {
+      id: 'pool:redis:pubsub',
+      front: `Pub/Sub Redis vs очередь?`,
+      back: `Pub/Sub — fire-and-forget, без гарантий хранения. Для надёжной обработки — Streams/брокер с ack.`,
+      learnSlug: 'rd-pubsub-vs-queue',
+    },
+    {
+      id: 'pool:redis:eviction',
+      front: `Политики eviction?`,
+      back: `volatile-lru, allkeys-lru, volatile-ttl… Что вытеснять при maxmemory. Неверный выбор = сюрпризы в проде.`,
+      learnSlug: 'rd-eviction-cluster',
+    },
+    {
+      id: 'pool:redis:sentinel',
+      front: `Redis Sentinel?`,
+      back: `HA: мониторинг, failover master, уведомления. Клиенты должны уметь следовать новому master.`,
+      learnSlug: 'rd-eviction-cluster',
+    },
+    {
+      id: 'pool:redis:cluster',
+      front: `Redis Cluster?`,
+      back: `Шардирование слотов 0..16383, масштабирование. Multi-key операции ограничены одним слотом/hash-tag.`,
+      learnSlug: 'rd-eviction-cluster',
+    },
+    {
+      id: 'pool:redis:hot-key',
+      front: `Проблема hot key?`,
+      back: `Один ключ принимает непропорциональный трафик. Лечат репликацией чтения, шардированием логического ключа, локальным кэшем.`,
+      learnSlug: 'rd-stampede-locks',
+    },
+    {
+      id: 'pool:redis:atomic',
+      front: `Атомарность команд Redis?`,
+      back: `Одна команда атомарна; несколько — через MULTI/EXEC или Lua. Гонки read-modify-write без этого.`,
+      learnSlug: 'rd-data-types',
+    },
+    {
+      id: 'pool:redis:session',
+      front: `Сессии в Redis?`,
+      back: `Ключ session:id → данные + TTL. Инвалидация logout, ротация id при privilege change.`,
+      learnSlug: 'rd-kv-model',
+    },
+    {
+      id: 'pool:redis:aside-write',
+      front: `Что делать с кэшем при записи?`,
+      back: `Invalidate или write-through. Устаревшие данные vs сложность double-write. Явно выберите политику.`,
+      learnSlug: 'rd-cache-aside',
+    },
+    {
+      id: 'pool:redis:memory',
+      front: `Почему следить за памятью Redis?`,
+      back: `Всё в RAM (обычно). Рост без TTL/eviction → OOM/eviction storm. Метрики used_memory обязательны.`,
+      learnSlug: 'rd-eviction-cluster',
+    },
+    {
+      id: 'pool:redis:streams',
+      front: `Redis Streams кратко?`,
+      back: `Лог с consumer groups, ack, претензия на pending. Ближе к очереди, чем pub/sub.`,
+      learnSlug: 'rd-pubsub-vs-queue',
+    },
+    {
+      id: 'pool:redis:lua',
+      front: `Зачем Lua-скрипты?`,
+      back: `Серверная атомарная логика нескольких ключей. Держите короткими — блокируют single-thread loop.`,
+      learnSlug: 'rd-stampede-locks',
+    },
+    {
+      id: 'pool:redis:consistency',
+      front: `Redis и строгая консистентность с БД?`,
+      back: `Кэш может отставать. Для денег/остатков — source of truth БД, кэш как ускорение с допустимым лагом.`,
+      learnSlug: 'rd-cache-aside',
+    },
+    {
+      id: 'pool:redis:pipelining',
+      front: `Что такое pipelining?`,
+      back: `Пакет команд без ожидания ответа на каждую — режет RTT. Не путать с транзакцией MULTI.`,
+      learnSlug: 'rd-data-types',
+    },
+    {
+      id: 'pool:redis:capstone-rd',
+      front: `Чеклист Redis на собесе?`,
+      back: `Типы, TTL/persistence, cache-aside, stampede, pub/sub vs stream, eviction/HA — и когда Redis не нужен.`,
+      learnSlug: 'rd-capstone',
+    },
+    {
+      id: 'pool:redis:locks',
+      front: `Распределённый lock на Redis?`,
+      back: `SET NX PX + токен владельца; освобождение осторожно (Lua). Redlock спорен — знайте риски.`,
+      learnSlug: 'rd-stampede-locks',
+    },
+    {
+      id: 'pool:redis:thundering',
+      front: `Связь stampede и thundering herd?`,
+      back: `Оба — лавина запросов к backend. Одинаковые приёмы: коалесcing, jitter TTL, soft/hard expire.`,
+      learnSlug: 'rd-stampede-locks',
+    },
+    {
+      id: 'pool:redis:replica',
+      front: `Репликация Redis?`,
+      back: `Async replica для чтения/HA. Лаг возможен — stale reads. Sentinel/Cluster оркестрируют роли.`,
+      learnSlug: 'rd-eviction-cluster',
+    },
+    {
+      id: 'pool:redis:json-vs-hash',
+      front: `JSON-blob vs hash?`,
+      back: `Hash — частичные поля/HINCRBY; blob — проще, но перезапись целиком. Зависит от паттерна доступа.`,
+      learnSlug: 'rd-data-types',
+    },
+    {
+      id: 'pool:redis:rate-limit',
+      front: `Rate limit на Redis?`,
+      back: `INCR+TTL, token bucket в Lua, sliding window на zset. Атомарность и ключ по client id важны.`,
+      learnSlug: 'rd-kv-model',
+    },
+  ],
+}

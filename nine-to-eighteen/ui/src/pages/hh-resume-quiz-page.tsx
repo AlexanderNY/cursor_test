@@ -1,9 +1,9 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+import { HhResumePickPanel } from '@/components/hh-resume-pick-panel'
 import { PageShell } from '@/components/page-shell'
 import {
   resumeApplyQuestionnaire,
-  resumeCreate,
   resumeGetQuestionnaire,
   type ResumeQuestion,
   type ResumeQuestionnaire,
@@ -48,16 +48,16 @@ export function HhResumeQuizPage() {
       setLoading(false)
       return
     }
+    if (!resumeIdParam) {
+      setResumeId('')
+      setLoading(false)
+      return
+    }
     let cancelled = false
+    setLoading(true)
     void (async () => {
       try {
-        let id = resumeIdParam || ''
-        if (!id) {
-          const created = await resumeCreate({ version_name: 'Основное' })
-          id = created.id
-          if (!cancelled) setResumeId(id)
-          navigate(`/game/hh-resume/${id}/quiz`, { replace: true })
-        }
+        setResumeId(resumeIdParam)
         const data = await resumeGetQuestionnaire()
         if (cancelled) return
         setSchema(data)
@@ -73,7 +73,7 @@ export function HhResumeQuizPage() {
     return () => {
       cancelled = true
     }
-  }, [session?.accessToken, resumeIdParam, navigate])
+  }, [session?.accessToken, resumeIdParam])
 
   const questions = schema?.questions || []
   const current = questions[step]
@@ -143,8 +143,28 @@ export function HhResumeQuizPage() {
           ← К списку
         </Link>
         <p className="learn-section-note">
-          <Link to="/login">Войти</Link>
+          <Link to="/login" state={{ from: '/game/hh-resume/quiz' }}>
+            Войти
+          </Link>
         </p>
+      </PageShell>
+    )
+  }
+
+  if (!resumeIdParam) {
+    return (
+      <PageShell>
+        <Link to="/game/hh-resume" className="back-link">
+          ← К списку
+        </Link>
+        <header className="learn-header">
+          <p className="learn-eyebrow">HH-резюме · опросник</p>
+          <h1 className="learn-title">Опросник</h1>
+        </header>
+        <HhResumePickPanel
+          mode="quiz"
+          onPicked={(id) => navigate(`/game/hh-resume/${id}/quiz`, { replace: true })}
+        />
       </PageShell>
     )
   }

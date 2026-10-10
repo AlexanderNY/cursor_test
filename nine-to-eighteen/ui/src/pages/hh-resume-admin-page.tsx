@@ -66,7 +66,7 @@ export function HhResumeAdminPage() {
   }, [session?.accessToken, load])
 
   if (!session) {
-    return <Navigate to="/login" replace />
+    return <Navigate to="/login" replace state={{ from: '/game/hh-resume/admin' }} />
   }
   if (!isSuperAdmin()) {
     return (

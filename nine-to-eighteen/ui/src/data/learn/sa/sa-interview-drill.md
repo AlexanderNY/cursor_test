@@ -1,14 +1,14 @@
 ---
 slug: sa-interview-drill
 title: Interview drill — кросс-опрос T1–T7 и 10 быстрых ответов
-shortTitle: Interview drill
+shortTitle: Drill аналитика
 episode: SA23
 rubric: tools
 order: 523
 publishedAt: 2027-03-17T10:00:00+03:00
 profiles: [analyst]
 level: senior
-tags: [собеседование, drill, практика, T1, T7, подготовка]
+tags: [sa, собеседование, drill, практика, T1, T7, подготовка]
 onKnowledgeMap: true
 durationMin: 45
 excerpt: Кросс-тематический drill по T1–T7: квиз-секции и лаба из 10 быстрых ответов в формате собеседования СА.
@@ -22,6 +22,8 @@ canonicalUrl: https://9to18.ru/game/learn/sa-interview-drill
 ## Введение
 
 Финальная тренировка перед capstone: не новая теория, а **скорость и связность** ответов по всем семи темам Хабра-списка. Ниже — квиз-блоки T1–T7 и лаба «10 быстрых ответов». Говорите вслух; Ideal — 60–90 секунд на пункт без воды.
+
+Drill по семи темам серии с опорой на BABOK KA как оглавление: T1 Requirements, T2 Modeling (BPMN/UML), T3 Data, T4 Integrations (OpenAPI, Kafka/Rabbit), T5 Architecture (C4, ADR), T6 Delivery, T7 Security. Habr — только индекс формулировок.
 
 ## Раздел: Drill T1–T3 — требования, нотации, данные
 
@@ -62,6 +64,17 @@ canonicalUrl: https://9to18.ru/game/learn/sa-interview-drill
 **T7 · Безопасность-база.** Протокол; HTTP vs HTTPS (TLS); authN vs authZ; цепочка URL (DNS→TCP/TLS→HTTP→ответ); шифрование vs хеш. Ловушка: 401/403 перепутаны; «HTTPS шифрует БД».
 
 Режим drill: партнер/таймер задаёт номер темы — вы отвечаете структурой **определение → пример → типичная ошибка**. Так звучит senior, а не шпаргалка.
+
+## Раздел: Частые вопросы с собеседования
+
+**Вопрос.** «Ответ API за 200 мс» — FR или NFR?
+**Ответ.** NFR, производительность. FR описывает, что система делает, NFR — насколько хорошо.
+
+**Вопрос.** Когда очередь лучше синхронного REST?
+**Ответ.** Когда вызывающий не должен ждать долгую работу и допустима отложенная согласованность. Цена — идемпотентность и сложнее разбор сбоев.
+
+**Вопрос.** Что такое идемпотентный метод?
+**Ответ.** Повтор того же запроса не меняет результат сверх первого применения. PUT обычно идемпотентен, голый POST — нет.
 
 ## Лаба
 
@@ -148,6 +161,18 @@ mindmap
 
 **Пояснение:** «не знаю, вот как выясню» на senior ценится выше выдуманной formal-точности.
 
+### Одним предложением: REST level 2 Richardson?
+
+**Ответ:** ресурсы и правильные HTTP-методы
+
+**Пояснение:** частый warm-up вопрос перед OpenAPI и идempotency.
+
+### BPMN exclusive gateway vs parallel?
+
+**Ответ:** XOR — один путь; AND — все пути параллельно
+
+**Пояснение:** базовая ловушка на T2 вместе с message vs sequence flow.
+
 ## Шпаргалка
 
 <h3>Суть</h3>
@@ -176,6 +201,18 @@ Back: T1 требования → T2/T3 модели → T4 интеграция
 
 Back: нужен ли sync-ответ; ретраи/идемпотентность; контракт/версия/security
 
+### Front: Ссылка на OpenAPI spec?
+
+Back: https://spec.openapis.org/oas/latest.html
+
+### Front: Ссылка на ADR статью Nygard?
+
+Back: cognitect.com/blog/2011/11/15/documenting-architecture-decisions
+
+### Front: Семь тем T1–T7 — что покрывает T4?
+
+Back: интegrations: sync/async, REST/SOAP, очереди, ESB-паттерны
+
 ## Итоги
 
 - Drill тренирует скорость и связность, не новые определения
@@ -185,6 +222,13 @@ Back: нужен ли sync-ответ; ретраи/идемпотентност
 
 ## Ссылки
 
-- [Топ-150 вопросов СА (Хабр)](https://habr.com/ru/articles/963708/)
+- [BABOK Guide — Knowledge Areas (IIBA)](https://www.iiba.org/knowledgehub/business-analysis-body-of-knowledge-babok-guide/)
+- [BPMN 2.0 — OMG](https://www.omg.org/spec/BPMN/2.0/)
+- [OpenAPI Specification](https://spec.openapis.org/oas/latest.html)
+- [Richardson Maturity Model](https://martinfowler.com/articles/richardsonMaturityModel.html)
+- [C4 Model](https://c4model.com/)
+- [Documenting Architecture Decisions](https://cognitect.com/blog/2011/11/15/documenting-architecture-decisions)
+- [Apache Kafka Documentation](https://kafka.apache.org/documentation/)
+- [RabbitMQ Documentation](https://www.rabbitmq.com/docs)
+- [Топ-150 вопросов СА (Хабр) — индекс формулировок](https://habr.com/ru/articles/963708/)
 - Learn | /game/learn
-- Далее: [Capstone чеклист](/game/learn/sa-capstone-checklist)

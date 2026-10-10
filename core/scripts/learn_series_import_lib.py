@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Shared merge of Learn series .md into learn_seed.json."""
+"""Shared merge of Learn series .md into learn_seed.json (core + site-api)."""
 from __future__ import annotations
 
 import importlib.util
@@ -7,8 +7,17 @@ import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-HELPER = ROOT / "core" / "services" / "learn_article_md.py"
-SEED = ROOT / "core" / "data" / "learn_seed.json"
+# Prefer site-api parser (mnemonics + current template); fall back to core copy.
+HELPER_CANDIDATES = (
+    ROOT / "nine-to-eighteen" / "api" / "services" / "learn_article_md.py",
+    ROOT / "core" / "services" / "learn_article_md.py",
+)
+HELPER = next((path for path in HELPER_CANDIDATES if path.is_file()), HELPER_CANDIDATES[-1])
+SEED_PATHS = (
+    ROOT / "core" / "data" / "learn_seed.json",
+    ROOT / "nine-to-eighteen" / "api" / "data" / "learn_seed.json",
+)
+LEARN_ROOT = ROOT / "nine-to-eighteen" / "ui" / "src" / "data" / "learn"
 
 _SPEC = importlib.util.spec_from_file_location("learn_article_md", HELPER)
 assert _SPEC and _SPEC.loader
@@ -17,13 +26,20 @@ _SPEC.loader.exec_module(_mod)
 parse_learn_article_md = _mod.parse_learn_article_md
 
 
+def series_dir(name: str) -> Path:
+    return LEARN_ROOT / name
+
+
 def import_series(
     *,
     series_dir: Path,
     glob_pattern: str,
     required_profiles: tuple[str, ...] = (),
+    min_quiz: int = 5,
+    min_anki: int = 6,
 ) -> None:
-    seed = json.loads(SEED.read_text(encoding="utf-8"))
+    primary = SEED_PATHS[0]
+    seed = json.loads(primary.read_text(encoding="utf-8"))
     if not isinstance(seed, list):
         raise SystemExit("learn_seed.json must be a list")
     by_slug = {
@@ -39,13 +55,17 @@ def import_series(
         payload, warnings = parse_learn_article_md(text)
         slug = payload["slug"]
         for warning in warnings:
-            print(f"WARN {slug}: {warning}")
+            try:
+                print(f"WARN {slug}: {warning}")
+            except UnicodeEncodeError:
+                print(f"WARN {slug}: {warning.encode('ascii', 'replace').decode('ascii')}")
         structured = payload.get("structured") or {}
         quiz_count = len(structured.get("quiz") or [])
         anki_count = len(structured.get("anki") or [])
-        if quiz_count < 3 or anki_count < 3:
+        if quiz_count < min_quiz or anki_count < min_anki:
             raise SystemExit(
-                f"{slug}: need >=3 quiz and anki, got {quiz_count}/{anki_count}"
+                f"{slug}: need >={min_quiz} quiz and >={min_anki} anki, "
+                f"got {quiz_count}/{anki_count}"
             )
         if not structured.get("lab"):
             raise SystemExit(f"{slug}: missing lab")
@@ -69,7 +89,9 @@ def import_series(
                 f"appended {slug} order={payload.get('order')} "
                 f"quiz={quiz_count} anki={anki_count}"
             )
-    SEED.write_text(
-        json.dumps(seed, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
-    )
+    dumped = json.dumps(seed, ensure_ascii=False, indent=2) + "\n"
+    for seed_path in SEED_PATHS:
+        seed_path.parent.mkdir(parents=True, exist_ok=True)
+        seed_path.write_text(dumped, encoding="utf-8")
+        print(f"wrote {seed_path.relative_to(ROOT)}")
     print(f"seed count={len(seed)} files={len(files)}")

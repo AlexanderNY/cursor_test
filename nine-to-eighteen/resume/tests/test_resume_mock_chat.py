@@ -1,6 +1,7 @@
 """Unit tests for mock-interview chat sessions."""
 from __future__ import annotations
 
+import asyncio
 import importlib.util
 import sys
 from pathlib import Path
@@ -28,6 +29,7 @@ get_session = _mod.get_session
 append_user_message = _mod.append_user_message
 session_public = _mod.session_public
 clear_sessions_for_tests = _mod.clear_sessions_for_tests
+drop_sessions_for_resume = _mod.drop_sessions_for_resume
 
 
 @pytest.fixture(autouse=True)
@@ -126,3 +128,59 @@ async def test_empty_message_raises():
 
     with pytest.raises(ValueError):
         await append_user_message(sess, "  ", evaluate_fn=evaluate_fn, reply_fn=reply_fn)
+
+
+@pytest.mark.asyncio
+async def test_concurrent_messages_serialize():
+    skills = [{"key": "python", "name": "Python"}, {"key": "sql", "name": "SQL"}]
+    sess = create_session(
+        user_id=3,
+        resume_id="rid-concurrent",
+        specialization="Backend",
+        skills=skills,
+        max_turns=3,
+    )
+
+    async def evaluate_fn(*, question: str, answer: str, skill_key: str):
+        await asyncio.sleep(0.03)
+        return {"score": 4, "feedback": "ok", "passed": True}
+
+    async def reply_fn(*, sess, last_score: int, feedback: str):
+        await asyncio.sleep(0.01)
+        return "Следующий вопрос?"
+
+    await asyncio.gather(
+        append_user_message(
+            sess, "Ответ A", evaluate_fn=evaluate_fn, reply_fn=reply_fn
+        ),
+        append_user_message(
+            get_session(sess.session_id, 3),
+            "Ответ B",
+            evaluate_fn=evaluate_fn,
+            reply_fn=reply_fn,
+        ),
+    )
+    final = get_session(sess.session_id, 3)
+    assert final is not None
+    user_msgs = [m for m in final.messages if m["role"] == "user"]
+    assert len(user_msgs) == 2
+    assert len(final.scores) == 2
+    assert final.turn == 3
+
+
+def test_drop_sessions_for_resume():
+    create_session(
+        user_id=1,
+        resume_id="keep-me",
+        specialization="",
+        skills=[{"key": "git", "name": "Git"}],
+    )
+    drop = create_session(
+        user_id=1,
+        resume_id="drop-me",
+        specialization="",
+        skills=[{"key": "git", "name": "Git"}],
+    )
+    assert drop_sessions_for_resume("drop-me") == 1
+    assert get_session(drop.session_id, 1) is None
+    assert _mod._sessions  # keep-me still present

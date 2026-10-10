@@ -1,7 +1,7 @@
 ---
 slug: sql-cte-window
 title: CTE и оконные функции — must-have modern SQL
-shortTitle: CTE & windows
+shortTitle: CTE и оконные функции
 episode: SQL13
 rubric: data
 order: 613
@@ -108,6 +108,23 @@ WHERE status = 'paid';
 
 Связь с подзапросами (SQL10): многие коррелированные скаляры переписываются в окна — часто яснее и быстрее.
 
+## Раздел: Частые вопросы с собеседования
+**Вопрос.** Оконная функция vs GROUP BY — когда что?
+
+**Ответ.** GROUP BY схлопывает строки в группы; окно сохраняет детализацию строк и добавляет вычисление «рядом» (running sum, rank). «Топ-1 на группу без потери колонок заказа» — window, не только GROUP BY.
+
+**Вопрос.** `ROW_NUMBER` vs `RANK` при ничьих?
+
+**Ответ.** ROW_NUMBER уникален (нужен tie-breaker в ORDER BY); RANK пропускает номера после ничьих. DENSE_RANK без дырок. На собесе называют tie-breaker (`id DESC`).
+
+**Вопрос.** CTE materialized vs not in PostgreSQL?
+
+**Ответ.** `MATERIALIZED` заставляет сохранить результат CTE один раз — помогает, если CTE используется многократно; без hint оптимизатор может inline. Злоупотребление materialized скрывает дублирование work.
+
+**Вопрос.** Можно ли фильтровать по алиасу window в том же SELECT?
+
+**Ответ.** В стандарте нельзя в WHERE — нужен подзапрос/CTE. В PostgreSQL иногда `QUALIFY` нет — паттерн `WITH ranked AS (...) SELECT * FROM ranked WHERE rn = 1`.
+
 ## Лаба
 
 **Цель.** На схеме SQL12 написать CTE-отчёт и выборку «топ-1 заказ на клиента» через `ROW_NUMBER`.
@@ -162,9 +179,21 @@ flowchart TB
 
 ### Чем оконный SUM отличается от SUM + GROUP BY?
 
-**Ответ:** окно возвращает значение на каждой исходной строке; GROUP BY схлопывает строки группы в одну
+**Ответ:** окно сохраняет строки
 
-**Пояснение:** поэтому running total и «доля от группы» делают через OVER, а не только GROUP BY.
+**Пояснение:** GROUP BY схлопывает группу; running total — через OVER.
+
+### RANK vs DENSE_RANK?
+
+**Ответ:** RANK с пропусками
+
+**Пояснение:** при ничьих RANK оставляет дырки в нумерации; DENSE_RANK — нет.
+
+### WITH RECURSIVE — для чего?
+
+**Ответ:** иерархии и обход графа
+
+**Пояснение:** якорный SELECT + UNION ALL рекурсивная часть до фиксированной точки.
 
 ## Шпаргалка
 
@@ -197,6 +226,18 @@ Back: ROW_NUMBER() OVER (PARTITION BY ключ ORDER BY время DESC) → WHE
 
 Back: PARTITION сохраняет строки и считает окно; GROUP BY агрегирует и схлопывает
 
+### Front: LAG/LEAD — зачем?
+
+Back: Доступ к предыдущей/следующей строке в окне по ORDER BY
+
+### Front: FRAME ROWS UNBOUNDED PRECEDING?
+
+Back: Running aggregate от начала раздела до текущей строки
+
+### Front: MATERIALIZED CTE в PG12+?
+
+Back: Подсказка планировщику материализовать CTE или наоборот inline
+
 ## Итоги
 
 - CTE делают сложный SQL сопровождаемым; рекурсия — для иерархий
@@ -205,7 +246,8 @@ Back: PARTITION сохраняет строки и считает окно; GROU
 
 ## Ссылки
 
-- [OTUS / Хабр — топ SQL, часть I](https://habr.com/ru/companies/otus/articles/461067/)
 - [PostgreSQL: WITH Queries (CTEs)](https://www.postgresql.org/docs/current/queries-with.html)
 - [PostgreSQL: Window Functions](https://www.postgresql.org/docs/current/tutorial-window.html)
-- Learn | /game/learn/sql-practice-lab
+- [Select Star SQL](https://selectstarsql.com/) — оконные примеры в поздних главах
+- Индекс Q1–Q30: [OTUS / Хабр — часть I](https://habr.com/ru/companies/otus/articles/461067/)
+- Далее: [EXPLAIN и perf](/game/learn/sql-performance-explain)

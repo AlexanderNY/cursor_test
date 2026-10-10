@@ -48,11 +48,17 @@ psql -U postgres -d db_9to18 -f sql/migrate_learn_from_db_bot.sql
 
 Только супер-админ сайта (`site_users.site_role = site_admin`), вход через `/login` 9to18.
 
+## Auth / seed notes
+
+- `POST /site/auth/forgot-password` не возвращает `resetToken` по умолчанию. Для локальной отладки без SMTP: `DEV_EXPOSE_RESET_TOKEN=true`.
+- Сид плиток витрины (`ensure_site_seeded`) выполняется только при старте `site-api`; существующие `about`-посты и `is_visible` не перезаписываются.
+- Лимиты (in-memory, ключ IP): login/register/forgot/reset (`auth`), `/site/contact` и `/learn/contact` (`contact`).
+
 ## HH-резюме
 
 Несколько версий на пользователя (`site_resumes.id` UUID + `version_name`).
 
-- Анкета и фото: `site-api` (`/site/me/profile`, `/site/me/photo`)
+- Анкета и фото: `site-api` (`/site/me/profile`, `/site/me/photo`); при `S3_*` — MinIO, иначе локальный диск
 - Формирование: `resume-api`
   - список / CRUD: `GET|POST /resume`, `GET|PUT|DELETE /resume/{id}`
   - опросник: `GET /resume/questionnaire`, `POST /resume/{id}/questionnaire/apply`
@@ -73,11 +79,13 @@ psql -U postgres -d db_9to18 -f sql/migrate_learn_from_db_bot.sql
 - «О себе»: санитизация HTML/control chars при записи и перед PDF/DOCX
 - Админка настроек (site_admin): `/game/hh-resume/admin` → `GET|PUT /resume/admin/settings`
   (rate limits, AI URL/model, баллы силы, флаги фич; JWT/DB/S3 — только env)
+- **Single-instance:** rate limits и mock-interview chat хранятся в памяти процесса; `resume-api` рассчитан на один реплик (или sticky + общий стор). Локальные экспорты без S3 тоже не шарятся между контейнерами.
+- `DELETE /resume/{id}` удаляет строки `site_resume_exports` и файлы в storage, плюс in-memory chat-сессии.
 - UI:
   - `/game/hh-resume` — список версий
   - `/game/hh-resume/:resumeId` — полноэкранное превью + PDF/DOCX + сила
   - `/game/hh-resume/:resumeId/edit` — split (редактор | live-превью) + AI + mock-interview
-  - `/game/hh-resume/:resumeId/quiz` — опросник (или `/game/hh-resume/quiz` создаёт новую версию)
+  - `/game/hh-resume/:resumeId/quiz` — опросник; `/game/hh-resume/quiz` и `/path` без id — выбор или явное создание версии
 
 ## Edge
 

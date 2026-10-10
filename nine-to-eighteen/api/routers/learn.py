@@ -4,11 +4,12 @@ from __future__ import annotations
 import json
 from typing import Any, List, Optional
 
-from fastapi import APIRouter, Header, HTTPException, Query
+from fastapi import APIRouter, Header, HTTPException, Query, Request
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, EmailStr, Field
 
 from database import get_db_connection, release_db_connection
+from rate_limit import enforce_rate_limit
 from services.learn_article_md import load_article_template, parse_learn_article_md
 from services.learn_service import VALID_RUBRICS, learn_service
 
@@ -336,8 +337,9 @@ async def admin_schedule(
 
 
 @router.post("/contact")
-async def submit_contact(body: LearnContactIn) -> dict[str, Any]:
+async def submit_contact(request: Request, body: LearnContactIn) -> dict[str, Any]:
     """Публичная обратная связь → site_contacts."""
+    enforce_rate_limit(request, "contact")
     name = body.name.strip()
     message = body.message.strip()
     if not message:

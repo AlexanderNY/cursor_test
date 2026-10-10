@@ -1,7 +1,7 @@
 ---
 slug: py-concurrency-io-patterns
 title: Concurrency и I/O в проде — утечки, сигналы, диагностика
-shortTitle: Prod concurrency
+shortTitle: Concurrency и I/O в проде
 episode: PY21
 rubric: architecture
 order: 321
@@ -35,6 +35,23 @@ canonicalUrl: https://9to18.ru/game/learn/py-concurrency-io-patterns
 
 На Linux: `ps`/`top`/`pidstat` для PID и CPU/RSS; доступ к файлам на сервере — SFTP/SSH + pathlib, либо agent. Не путать «память Python» и page cache ОС.
 
+## Раздел: Частые вопросы с собеседования
+**Вопрос.** Блокирующий драйвер БД в async FastAPI — что делать?
+
+**Ответ.** Вынести в thread pool (`asyncio.to_thread`) или взять async-native драйвер. Блокировка event loop деградирует latency для всех запросов на worker.
+
+**Вопрос.** asyncio vs threads для legacy sync кода?
+
+**Ответ.** Threads проще обернуть старые sync библиотеки без переписывания. Asyncio выигрывает при большом числе одновременных I/O и едином async stack; миграция дорогая — hybrid с пулом threads частый компромисс.
+
+**Вопрос.** Зачем bounded queue в проде?
+
+**Ответ.** Backpressure: producer не заваливает память, если consumer медленный. Unbounded queue маскирует перегрузку до OOM.
+
+**Вопрос.** GIL и signal handlers — нюанс?
+
+**Ответ.** В CPython signal handler выполняется в main thread; в worker threads сигналы не обрабатываются так же. Graceful shutdown планируют через main thread или asyncio loop.add_signal_handler.
+
 ## Лаба
 
 **Цель.** Имитация утечки кэша и снятие tracemalloc.
@@ -67,23 +84,35 @@ sequenceDiagram
 
 ## Тест
 
-### Почему sync HTTP в async worker вреден?
+### sync HTTP в async worker?
 
 **Ответ:** блокирует event loop
 
-**Пояснение:** другие соединения ждут, latency растёт у всех.
+**Пояснение:** latency растёт у всех клиентов.
 
-### С чего начать при утечке памяти?
+### С чего утечка памяти?
 
-**Ответ:** воспроизвести и измерить, затем tracemalloc/профилировщик
+**Ответ:** воспроизвести и tracemalloc
 
 **Пояснение:** без воспроизведения — слепой поиск.
 
-### Где обрабатываются сигналы в CPython?
+### Сигналы в CPython где?
 
-**Ответ:** в главном потоке
+**Ответ:** главный поток
 
-**Пояснение:** ограничение интерпретатора; в workers нужна аккуратная схема.
+**Пояснение:** workers — аккуратная схема shutdown.
+
+### Graceful shutdown первый шаг?
+
+**Ответ:** перестать принимать новые запросы
+
+**Пояснение:** drain inflight, закрыть пулы.
+
+### backpressure — что?
+
+**Ответ:** ограничение входящей нагрузки
+
+**Пояснение:** когда система не успевает обрабатывать.
 
 ## Шпаргалка
 
@@ -107,11 +136,23 @@ Back: ограничение входящей нагрузки, когда си�
 
 ### Front: Чем полезен pidstat?
 
-Back: смотреть CPU/память процесса по PID на Linux
+Back: CPU/память процесса по PID на Linux
 
 ### Front: Graceful shutdown шаги?
 
-Back: перестать принимать → дождаться inflight → закрыть пулы → выйти
+Back: stop accept → drain inflight → close pools → exit
+
+### Front: asyncio + blocking DB driver?
+
+Back: run_in_executor / sync pool или async driver
+
+### Front: SIGTERM vs SIGKILL?
+
+Back: TERM — попросить завершиться; KILL — немедленно без cleanup
+
+### Front: Remote file по SSH для диагностики?
+
+Back: читать логи/метрики без интерактива — часть prod runbook
 
 ## Итоги
 
@@ -123,6 +164,6 @@ Back: перестать принимать → дождаться inflight → 
 
 - [signal](https://docs.python.org/3/library/signal.html)
 - [tracemalloc](https://docs.python.org/3/library/tracemalloc.html)
-- [DEBAGanov — утечки / сигналы / I/O](https://github.com/DEBAGanov/interview_questions/blob/main/400%20вопросов%20с%20ответами%2C%20которые%20должен%20знать%20Python-разработчик.md)
+- [DEBAGanov — индекс вопросов серии](https://github.com/DEBAGanov/interview_questions/blob/main/400%20вопросов%20с%20ответами%2C%20которые%20должен%20знать%20Python-разработчик.md)
 - Learn | /game/learn
 - Далее: [DRY и границы](/game/learn/py-design-dry-architecture)

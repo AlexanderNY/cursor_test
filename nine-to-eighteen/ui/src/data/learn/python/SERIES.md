@@ -4,7 +4,7 @@
 
 **Все 24 выпуска** имеют полный текст (`py01-….md` … `py24-….md`) и залиты в `learn_seed.json` / `episodes.ts`.
 
-Источник тем и номеров вопросов: [DEBAGanov — 400 вопросов Python](https://github.com/DEBAGanov/interview_questions/blob/main/400%20вопросов%20с%20ответами%2C%20которые%20должен%20знать%20Python-разработчик.md). В постах — **оригинальные** разборы, не копипаст ответов из источника.
+**Источник фактов и API:** [Python 3 Documentation](https://docs.python.org/3/), релевантные [PEP](https://peps.python.org/) и [Python Packaging User Guide](https://packaging.python.org/) (venv, pip, wheels). [DEBAGanov — 400 вопросов Python](https://github.com/DEBAGanov/interview_questions/blob/main/400%20вопросов%20с%20ответами%2C%20которые%20должен%20знать%20Python-разработчик.md) — **только индекс** номеров вопросов (блоки «Вопросы источника» ниже); тексты разборов, тестов и Anki в постах **оригинальные**, не копипаст ответов из репозитория.
 
 ## Конвенции
 

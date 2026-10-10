@@ -212,10 +212,33 @@ export function LearningMindmap({ root, branchCount, nodeCount }: LearningMindma
     () => findL1Ancestor(root, selectedId),
     [root, selectedId],
   )
-  const learnLink = useMemo(
-    () => (l1Branch ? getMapLearnLink(l1Branch.title) : undefined),
-    [l1Branch],
-  )
+  const learnLink = useMemo(() => {
+    if (!l1Branch) {
+      return undefined
+    }
+    const linked = getMapLearnLink(l1Branch.title)
+    if (linked) {
+      return linked
+    }
+    const episodeSlugs: string[] = []
+    const walk = (node: MindNode) => {
+      if (node.learnSlug) {
+        episodeSlugs.push(node.learnSlug)
+      }
+      node.children.forEach(walk)
+    }
+    walk(l1Branch)
+    if (episodeSlugs.length === 0) {
+      return undefined
+    }
+    return {
+      mapTitle: l1Branch.title,
+      description: l1Branch.description || 'Статьи этой ветки карты.',
+      rubricIds: [],
+      episodeSlugs,
+      tags: l1Branch.tags || [],
+    }
+  }, [l1Branch])
 
   const persistHidden = useCallback((ids: string[]) => {
     setHiddenBranchIds(ids)

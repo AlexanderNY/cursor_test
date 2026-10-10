@@ -1,14 +1,14 @@
 ---
 slug: qa-strategy-metrics
 title: Стратегия тестирования, риски и метрики
-shortTitle: Strategy metrics
+shortTitle: Стратегия тестирования,
 episode: QA19
 rubric: architecture
 order: 419
 publishedAt: 2026-12-24T10:00:00+03:00
 profiles: [tester]
 level: senior
-tags: [strategy, metrics, risk, estimate, coverage, собеседование]
+tags: [qa, strategy, metrics, risk, estimate, coverage, собеседование]
 onKnowledgeMap: true
 durationMin: 40
 excerpt: Старт QA без документов, критерии «достаточно», review кейсов, риски, нагрузка команды, метрики и оценка трудозатрат.
@@ -22,6 +22,8 @@ canonicalUrl: https://9to18.ru/game/learn/qa-strategy-metrics
 ## Введение
 
 S1–2, S5–13, S15–18: senior-вопросы про «как выстроить работу», а не «что такое boundary». Здесь — подход без ТЗ, критерии готовности, риски, метрики и оценка; формулировки, которые звучат как опыт, а не учебник.
+
+Термины и определения согласованы с **ISTQB CTFL v4** и [глоссарием ISTQB](https://glossary.istqb.org/); номера J/M/S — опциональный индекс типовых вопросов собеса.
 
 ## Раздел: Старт без документов, «когда достаточно», review и риски
 
@@ -71,6 +73,17 @@ S1–2, S5–13, S15–18: senior-вопросы про «как выстрои�
 **Покрытие.** Требований, рисков, кода (unit), сценариев. 100% code coverage ≠ качество. Senior говорит: «покрыли риск платежей и authZ; UI-регресс — критический путь».
 
 **Оптимальное число шагов в сценарии.** Достаточно для воспроизводимости, без романа: обычно 5–12 атомарных шагов; длинные E2E дробить. Один кейс — одна цель проверки; иначе падения нечитаемы.
+
+## Раздел: Частые вопросы с собеседования
+
+**Вопрос.** Чем метрика качества отличается от метрики процесса?
+**Ответ.** Качество — про продукт (дефекты на проде, escape rate). Процесс — про работу команды (время прогона, доля автоматизации). На собесе их не смешивают.
+
+**Вопрос.** Зачем пирамида тестов, если e2e ближе к пользователю?
+**Ответ.** E2E дорогие и хрупкие. Уверенность дают быстрые unit и контрактные проверки, e2e оставляют на критичные сквозные пути.
+
+**Вопрос.** Что ответить про ROI автоматизации?
+**Ответ.** Сравните стоимость ручного прогона с поддержкой автотестов. Автоматизируйте стабильное и частое, не одноразовый сценарий.
 
 ## Лаба
 
@@ -142,6 +155,20 @@ flowchart LR
 
 **Пояснение:** растущий flaky убивает сигнал CI; escaped defects направляют, куда сдвигать усилия (shift-left, контракты, мониторинг).
 
+### Когда test strategy ≠ test plan?
+
+**Ответ:** strategy — долгосрочный подход организации/продукта; plan — конкретный релиз
+
+**Пояснение:** на senior собесе различайте уровни документов.
+
+### Mean time to detect (MTTD) — зачем?
+
+**Ответ:** скорость обнаружения дефектов в проде/мониторинге
+
+**Пояснение:** связано с observability и качеством тестов на lower levels.
+
+
+
 ## Шпаргалка
 
 <h3>Старт без ТЗ</h3>
@@ -173,6 +200,20 @@ Back: стимулирует раздувание документации бе�
 
 Back: столько, сколько нужно для одной цели и воспроизводимости; длинные сценарии дробить
 
+### Front: Test approach vs test technique
+
+Back: approach — black-box/exploratory; technique — EP, BVA, pairwise
+
+### Front: Residual risk
+
+Back: риск, осознанно принятый после тестирования к релизу
+
+### Front: DORA metrics — связь с QA
+
+Back: deployment frequency и change failure rate отражают зрелость quality gates
+
+
+
 ## Итоги
 
 - Senior начинает с ценности и рисков, даже без документов
@@ -182,6 +223,9 @@ Back: столько, сколько нужно для одной цели и в
 
 ## Ссылки
 
-- [QA-interview-250](https://github.com/Konstantine23/QA-interview-250)
-- [ISTQB Foundation — testing principles](https://www.istqb.org/)
+- [ISTQB Glossary](https://glossary.istqb.org/)
+- [CTFL v4 — Certified Tester Foundation Level](https://istqb.org/certifications/certified-tester-foundation-level-ctfl-v4-0/)
+- [Test pyramid — Martin Fowler](https://martinfowler.com/bliki/TestPyramid.html)
+- Опционально: [QA-interview-250](https://github.com/Konstantine23/QA-interview-250) — полный список формулировок вопросов
 - Learn | /game/learn
+- Далее: [Shift-left ROI](/game/learn/qa-shift-left-automation-roi)

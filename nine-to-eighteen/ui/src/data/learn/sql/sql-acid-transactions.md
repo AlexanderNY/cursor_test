@@ -104,6 +104,23 @@ COMMIT;
 
 `SAVEPOINT` — частичный откат внутри большой транзакции; `SET CONSTRAINTS DEFERRED` в PG — отложенная проверка FK до конца транзакции (осторожный инструмент).
 
+## Раздел: Частые вопросы с собеседования
+**Вопрос.** Lost update — как связать с isolation?
+
+**Ответ.** Два TX читают одно значение, оба пишут — последний перетирает без учёта первого. Лечится optimistic locking (version column), `SELECT FOR UPDATE`, или уровень Serializable/Repeatable Read с пониманием аномалий.
+
+**Вопрос.** Read Committed в PostgreSQL — что гарантирует?
+
+**Ответ.** Видите только закоммиченные данные; каждый statement видит snapshot на начало statement (в PG RC — statement-level). Non-repeatable read между двумя SELECT в одной TX возможен.
+
+**Вопрос.** Durability — это только fsync?
+
+**Ответ.** COMMIT переживает сбой процесса при корректной настройке WAL/replication; полная потеря дата-центра — про реплики и backup, не магию одного диска. Ответ зависит от RPO/RTO продукта.
+
+**Вопрос.** ACID Consistency vs CAP consistency?
+
+**Ответ.** ACID — инварианты одной БД после commit (FK, CHECK). CAP — согласованность реплик в распределённой системе. На собесе разводят явно, чтобы не смешивать термины.
+
 ## Лаба
 
 **Цель.** Воспроизвести гонку двух транзакций на балансе/остатке и сравнить поведение с `FOR UPDATE` и без.
@@ -152,9 +169,21 @@ stateDiagram-v2
 
 ### Чем Consistency в ACID отличается от consistency в CAP?
 
-**Ответ:** ACID Consistency — соблюдение ограничений и инвариантов БД; CAP — про одинаковое видение данных узлами распределённой системы
+**Ответ:** разные контексты термина
 
-**Пояснение:** разные контексты; путать на собесе — частая ловушка.
+**Пояснение:** ACID — инварианты БД после COMMIT; CAP — согласованность узлов распределённой системы.
+
+### Что гарантирует Durability?
+
+**Ответ:** COMMIT переживает сбой
+
+**Пояснение:** в PostgreSQL — WAL и fsync; откат после сбоя до COMMIT.
+
+### Dirty read — когда возможен?
+
+**Ответ:** при слабой изоляции
+
+**Пояснение:** в PostgreSQL Read Committed dirty read не допускается; на собесе называйте уровень.
 
 ## Шпаргалка
 
@@ -195,6 +224,18 @@ Back: Заблокировать строку до конца транзакци
 
 Back: Чтение незакоммиченных изменений чужой транзакции; при её ROLLBACK вы опирались на «призрак»
 
+### Front: SAVEPOINT — зачем?
+
+Back: Частичный откат внутри транзакции без полного ROLLBACK
+
+### Front: Isolation — про что в ACID?
+
+Back: Какие аномалии параллельных транзакций допустимы на выбранном уровне
+
+### Front: Q23 на собесе?
+
+Back: Расшифровка ACID и пример транзакции с COMMIT/ROLLBACK
+
 ## Мнемоника
 
 ### acronym: ACID
@@ -215,7 +256,7 @@ Back: Чтение незакоммиченных изменений чужой 
 
 ## Ссылки
 
-- [OTUS / Хабр — топ вопросов по SQL, часть I](https://habr.com/ru/companies/otus/articles/461067/)
 - [PostgreSQL: Transaction Isolation](https://www.postgresql.org/docs/current/transaction-iso.html)
-- Learn | /game/learn
-- Далее по серии: SQL09 — триггеры и операторы (см. SERIES.md)
+- [PostgreSQL: BEGIN / COMMIT](https://www.postgresql.org/docs/current/sql-begin.html)
+- Индекс Q23: [OTUS / Хабр — часть I](https://habr.com/ru/companies/otus/articles/461067/)
+- Далее: [Триггеры и операторы](/game/learn/sql-triggers-operators)

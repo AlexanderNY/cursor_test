@@ -1,7 +1,7 @@
 ---
 slug: jv-jdbc-basics
 title: JDBC основы — Driver, Connection, PreparedStatement
-shortTitle: JDBC basics
+shortTitle: JDBC основы
 episode: JV04
 rubric: data
 order: 804
@@ -11,105 +11,186 @@ level: junior
 tags: [java, jdbc, sql, собеседование]
 onKnowledgeMap: true
 durationMin: 30
-excerpt: Подключение к БД из Java без ORM.
+excerpt: Стандартный доступ к БД из Java до ORM: драйвер, соединение, prepared statements.
 prerequisites: [jv-shell-process]
 seoTitle: JDBC basics — junior
-seoDescription: Подключение к БД из Java без ORM.
+seoDescription: Driver, Connection, PreparedStatement и ResultSet для собеседования.
 seoKeywords: [java, jdbc, sql, собеседование]
 canonicalUrl: https://9to18.ru/game/learn/jv-jdbc-basics
 ---
 
 ## Введение
 
-JDBC — стандартный API доступа к реляционным БД из Java.
+На собесе «как Java ходит в Postgres?» ждут не название Hibernate, а стек JDBC: драйвер, `Connection`, `PreparedStatement`, `ResultSet`. ORM позже; сначала — контракт со стандартной библиотекой и [Oracle JDBC Tutorial](https://docs.oracle.com/javase/tutorial/jdbc/). Текст оригинальный.
 
-## Раздел: Основы
+## Раздел: Драйвер и Connection
 
-Driver регистрирует протокол. Connection — сессия с БД. Statement vs PreparedStatement: второй с плейсхолдерами защищает от SQL injection.
+JDBC — API в `java.sql` / `javax.sql`. Конкретный **драйвер** (например PostgreSQL) реализует протокол СУБД. Современный путь: JDBC 4+ ServiceLoader подхватывает драйвер с classpath; `Class.forName("…Driver")` — легаси-ритуал.
 
-## Раздел: Практика
+```java
+try (Connection conn = DriverManager.getConnection(url, user, pass);
+     PreparedStatement ps = conn.prepareStatement(
+         "SELECT id, email FROM users WHERE id = ?")) {
+  ps.setLong(1, userId);
+  try (ResultSet rs = ps.executeQuery()) {
+    while (rs.next()) {
+      long id = rs.getLong("id");
+      String email = rs.getString("email");
+    }
+  }
+}
+```
 
-Типичный поток: getConnection → prepareStatement → setXxx → executeQuery/Update → close (try-with-resources).
+URL вида `jdbc:postgresql://host:5432/db`. Ошибка: держать `Connection` открытым «на всякий» без try-with-resources — утечки на проде.
 
-## Раздел: На собесе
+## Раздел: Statement vs PreparedStatement
 
-На собесе напишите псевдокод SELECT по id с `?`.
+`Statement` склеивает SQL строкой — риск SQL injection и лишняя компиляция плана. **`PreparedStatement`** параметризует (`?`): драйвер/сервер безопасно подставляет значения. Для batch — `addBatch`/`executeBatch`.
+
+`executeQuery` — SELECT (ResultSet); `executeUpdate` — DML (число строк); `execute` — когда тип заранее неизвестен. Путать и игнорировать коды обновления — частая junior-ошибка.
+
+Связь с SQL-треком: синтаксис и планы — в [sql-joins](/game/learn/sql-joins) / [sql-performance-explain](/game/learn/sql-performance-explain); здесь — *как* вызвать SQL из Java.
+
+## Раздел: ResultSet, типы и закрытие ресурсов
+
+`ResultSet` курсором идёт по строкам; колонки — по имени или индексу (индекс с 1). SQL `NULL` → проверяйте `wasNull()` для примитивов. Иерархия закрытия: ResultSet → Statement → Connection (try-with-resources закрывает в обратном порядке объявления).
+
+Ошибка: читать ResultSet после закрытия Statement/Connection. Вторая: тащить гигантский SELECT в память без лимита/`fetchSize` — приложение становится «складом строк».
+
+## Раздел: Частые вопросы с собеседования
+
+**Вопрос.** Зачем connection pool, если JDBC уже даёт Connection?
+
+**Ответ.** Открытие TCP+auth к БД дорого; на каждый HTTP-запрос — антипattern. Пул держит прогретые соединения; `close()` возвращает в пул, а не рвёт сокет. На собесе после JDBC basics ждут слова DataSource и HikariCP. Подробности — в выпуске про pool и транзакции.
+
+**Вопрос.** Autocommit и граница транзакции в JDBC?
+
+**Ответ.** По умолчанию autocommit=true: каждый statement — отдельная транзакция. Для атомарности нескольких DML: `setAutoCommit(false)`, work, `commit` или `rollback`. Забытый rollback при ошибке портит соединение, возвращаемое в пул. ACID-гарантии даёт СУБД; JDBC лишь выставляет границы.
+
+**Вопрос.** Почему SQLException — checked?
+
+**Ответ.** Доступ к БД — внешний ресурс; язык заставляет явно решить: catch, wrap или throws. Это напоминает, что сбой сети/БД — ожидаемый сценарий, не только баг. В Spring часто оборачивают в `DataAccessException` (unchecked), но JDBC-слой остаётся checked.
+
+**Вопрос.** ORM vs «голый» JDBC — когда что на собесе?
+
+**Ответ.** JDBC — полный контроль SQL и маппинга; ORM — меньше бойлерплейта, больше скрытого SQL. ORM не отменяет знание JDBC: в проде читают логи запросов. Отчёты, bulk, тонкий plan — часто JDBC; CRUD домена — часто JPA. Честный ответ: инструмент под задачу, не религия.
 
 ## Лаба
 
-**Цель.** Псевдокод безопасного SELECT.
+**Цель.** Написать минимальный JDBC-select с PreparedStatement и закрытием ресурсов.
 
 **Шаги.**
-1. Откройте Connection (псевдокод).
-2. PreparedStatement с WHERE id=?.
-3. Почему не Statement + конкатенация?
-4. Закрытие ресурсов.
-5. Связь с SQL01.
+1. Поднимите локальную БД или используйте H2 in-memory для демо.
+2. Выполните SELECT с одним параметром `?`.
+3. Намеренно сконкатенируйте ввод в Statement и объясните, почему это плохо.
+4. Замените на PreparedStatement и сравните код.
+5. Добавьте try-with-resources на Connection/PS/RS.
 
-**В группу:** один пишет уязвимый SQL, второй чинит PreparedStatement.
+**В группу:** один ищет SQL injection в сниппете, второй предлагает фикс.
 
 **Готово, если…**
-- [ ] Driver/Connection
-- [ ] PreparedStatement
-- [ ] try-with-resources
+- [ ] Можете объяснить роль драйвера
+- [ ] Используете PreparedStatement без конкатенации
+- [ ] Закрываете ресурсы через try-with-resources
 
-## Схема: JDBC поток
+## Схема: JDBC вызов
 
 ```mermaid
 sequenceDiagram
-  App->>Driver: connect
-  App->>DB: PreparedStatement
-  DB-->>App: ResultSet
+  participant App as Java_app
+  participant Drv as JDBC_driver
+  participant Db as database
+  App->>Drv: getConnection
+  App->>Drv: prepareStatement
+  Drv->>Db: protocol execute
+  Db-->>Drv: rows
+  Drv-->>App: ResultSet
 ```
 
 ## Тест
 
-### Зачем PreparedStatement?
+### Что такое JDBC?
 
-**Ответ:** плейсхолдеры и план/безопасность
+**Ответ:** стандартный API доступа к БД
 
-**Пояснение:** Защита от injection.
+**Пояснение:** Java-код говорит с `java.sql`; драйвер реализует протокол конкретной СУБД.
 
-### Connection это?
+### Зачем PreparedStatement вместо склейки строк?
 
-**Ответ:** сессия с СУБД
+**Ответ:** защита от SQL injection
 
-**Пояснение:** Держать пул на middle — JV05.
+**Пояснение:** параметры отделены от текста SQL; плюс часто лучше переиспользование плана.
 
-### SQL injection как лечить?
+### Чем executeQuery отличается от executeUpdate?
 
-**Ответ:** параметры, не конкатенация
+**Ответ:** SELECT vs DML-счётчик
 
-**Пояснение:** Аналог placeholders в Python.
+**Пояснение:** query возвращает ResultSet; update — число затронутых строк.
+
+### Как безопасно закрывать Connection?
+
+**Ответ:** try-with-resources
+
+**Пояснение:** AutoCloseable гарантирует close даже при исключении.
+
+### Нужен ли всегда Class.forName для драйвера?
+
+**Ответ:** нет, JDBC 4+ ServiceLoader
+
+**Пояснение:** драйвер на classpath регистрируется сам; forName — устаревший обычай.
 
 ## Шпаргалка
 
-<h3>Каркас</h3><pre><code>try (Connection c = ...;
+<h3>Суть</h3>
+<ul>
+<li>Driver → Connection → PreparedStatement → ResultSet</li>
+<li>никогда не склеивать user input в SQL</li>
+<li>try-with-resources обязателен</li>
+<li>NULL и типы колонок проверяйте явно</li>
+</ul>
+<h3>Мини-шаблон</h3>
+<pre><code>try (Connection c = …;
      PreparedStatement ps = c.prepareStatement(sql)) {
-  ps.setLong(1, id);
-}</code></pre>
+  ps.set…(…);
+  try (ResultSet rs = ps.executeQuery()) { … }
+}
+</code></pre>
 
 ## Anki
 
-### Front: PreparedStatement
+### Front: Какой пакет JDBC использует приложение чаще всего?
 
-Back: SQL с ?
+Back: java.sql (Connection, PreparedStatement, ResultSet)
 
-### Front: ResultSet
+### Front: Кто реализует протокол Postgres в JDBC-стеке?
 
-Back: курсор результата
+Back: JDBC-драйвер СУБД на classpath
 
-### Front: injection
+### Front: Почему конкатенация SQL с вводом пользователя опасна?
 
-Back: лечить параметрами
+Back: SQL injection — злоумышленник меняет смысл запроса
+
+### Front: С какого индекса нумеруются параметры `?` в PreparedStatement?
+
+Back: с единицы (1-based)
+
+### Front: Что вернёт getInt при SQL NULL без проверки?
+
+Back: 0; нужно смотреть wasNull()
+
+### Front: В каком порядке try-with-resources закроет Connection и ResultSet?
+
+Back: в обратном порядке объявления — сначала ResultSet/Statement, потом Connection
 
 ## Итоги
 
-- JDBC = фундамент ORM
-- Параметры обязательны
-- Ресурсы закрывать
+- JDBC — фундамент до любого ORM
+- PreparedStatement и закрытие ресурсов — must-have на собесе
+- Дальше — пулы соединений и транзакции
 
 ## Ссылки
 
-- Learn | [SQL01](/game/learn/sql-ddl-dml-dcl)
-- Далее: [Пул и транзакции](/game/learn/jv-jdbc-pool-tx)
+- [Oracle JDBC Database Access Tutorial](https://docs.oracle.com/javase/tutorial/jdbc/)
+- [PostgreSQL JDBC Driver docs](https://jdbc.postgresql.org/documentation/)
+- Learn | [SQL joins](/game/learn/sql-joins)
+- Далее: [JDBC pool и транзакции](/game/learn/jv-jdbc-pool-tx)

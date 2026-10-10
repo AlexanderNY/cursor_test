@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from config import settings
 from database import get_db_connection, release_db_connection
@@ -23,18 +24,55 @@ from shared.db.posts_repo import PostsRepository, PublishResult
 logger = logging.getLogger(__name__)
 
 
+def _parse_json_dict(value: Any) -> Dict[str, Any]:
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str) and value.strip():
+        try:
+            parsed = json.loads(value)
+            return parsed if isinstance(parsed, dict) else {}
+        except (json.JSONDecodeError, TypeError):
+            return {}
+    return {}
+
+
+def _page_target_from_sources(
+    *,
+    extras: Dict[str, Any],
+    channel_processing: Optional[Dict[str, Any]],
+) -> Tuple[Optional[int], Optional[str]]:
+    """Resolve page id/slug: post extras override channel processing."""
+    proc = channel_processing if isinstance(channel_processing, dict) else {}
+    page_id: Optional[int] = None
+    for raw in (extras.get("wp_page_id"), proc.get("wp_page_id")):
+        if raw is None or raw == "":
+            continue
+        try:
+            page_id = int(raw)
+            break
+        except (TypeError, ValueError):
+            continue
+    slug: Optional[str] = None
+    for raw in (extras.get("wp_page_slug"), proc.get("wp_page_slug")):
+        s = str(raw or "").strip()
+        if s:
+            slug = s
+            break
+    return page_id, slug
+
+
 class PublishService:
-    """Публикация постов из wp_posts в WordPress по brand channel / target_channels."""
+    """Публикация постов из очереди в WordPress по brand channel / target_channels."""
 
     async def publish_pending_posts(self, user_id: Optional[int] = None) -> Dict[str, Any]:
         claimed = await self._claim_unified_posts(user_id)
         if not claimed:
             claimed = await claim_ready_posts(
-            settings.CORE_SERVICE_URL or "",
-            platform="wp",
-            limit=settings.PUBLISH_POSTS_LIMIT,
-            user_id=user_id,
-        )
+                settings.CORE_SERVICE_URL or "",
+                platform="wp",
+                limit=settings.PUBLISH_POSTS_LIMIT,
+                user_id=user_id,
+            )
         if not claimed:
             return {"published": 0, "failed": 0, "errors": []}
 
@@ -70,10 +108,13 @@ class PublishService:
                     last_link = ""
                     ok_any = False
                     site_errors: list[str] = []
+                    extras = _parse_json_dict(post.get("extras"))
+                    update_page = bool(extras.get("wp_update_page"))
 
                     for site_info in sites:
                         site_url = site_info["site_url"]
                         channel_id = site_info.get("channel_id")
+                        channel = site_info.get("channel") or {}
                         creds = await resolve_credentials_for_site(uid, site_url)
                         if not creds:
                             site_errors.append(f"No credentials for site {site_url}")
@@ -90,21 +131,59 @@ class PublishService:
                             username=creds["username"],
                             app_password=creds["app_password"],
                         )
-                        wp_post = await wp_client.create_post(
-                            title=title,
-                            content=content,
-                            status="publish",
-                        )
-                        last_link = wp_post.get("link", "") or last_link
-                        ok_any = True
-                        logger.info(
-                            "Published post %s to WordPress site=%s "
-                            "(wp_post_id=%s, user_id=%s)",
-                            post["id"],
-                            site_url,
-                            wp_post.get("id"),
-                            uid,
-                        )
+
+                        if update_page:
+                            page_id, page_slug = _page_target_from_sources(
+                                extras=extras,
+                                channel_processing=_parse_json_dict(channel.get("processing")),
+                            )
+                            resolved_id = page_id
+                            if resolved_id is None and page_slug:
+                                page = await wp_client.get_page_by_slug(page_slug)
+                                if not page:
+                                    site_errors.append(
+                                        f"WordPress page slug not found: {page_slug}"
+                                    )
+                                    continue
+                                resolved_id = int(page["id"])
+                            if resolved_id is None:
+                                site_errors.append(
+                                    "wp_update_page set but no wp_page_id/wp_page_slug "
+                                    "on post extras or channel processing"
+                                )
+                                continue
+                            wp_page = await wp_client.update_page(
+                                resolved_id,
+                                title=title,
+                                content=content,
+                            )
+                            last_link = wp_page.get("link", "") or last_link
+                            ok_any = True
+                            logger.info(
+                                "Updated WordPress page %s on site=%s "
+                                "(post=%s, user_id=%s)",
+                                resolved_id,
+                                site_url,
+                                post["id"],
+                                uid,
+                            )
+                        else:
+                            wp_post = await wp_client.create_post(
+                                title=title,
+                                content=content,
+                                status="publish",
+                            )
+                            last_link = wp_post.get("link", "") or last_link
+                            ok_any = True
+                            logger.info(
+                                "Published post %s to WordPress site=%s "
+                                "(wp_post_id=%s, user_id=%s)",
+                                post["id"],
+                                site_url,
+                                wp_post.get("id"),
+                                uid,
+                            )
+
                         await bump_channel_counter(
                             uid,
                             channel_id=channel_id,
@@ -114,7 +193,10 @@ class PublishService:
                             direction="published",
                             platform="wp",
                             post_id=int(post["id"]),
-                            metadata={"url": last_link},
+                            metadata={
+                                "url": last_link,
+                                "wp_update_page": update_page,
+                            },
                         )
 
                     if ok_any:
@@ -236,11 +318,12 @@ class PublishService:
                         {
                             "site_url": str(matched.get("external_id") or site),
                             "channel_id": matched.get("id"),
+                            "channel": matched,
                         }
                     )
                     continue
                 if site.lower().startswith(("http://", "https://")) or "." in site:
-                    result.append({"site_url": site, "channel_id": None})
+                    result.append({"site_url": site, "channel_id": None, "channel": {}})
             if result:
                 return result
 
@@ -248,7 +331,13 @@ class PublishService:
             ext = str(ch.get("external_id") or "").strip()
             if not ext:
                 continue
-            result.append({"site_url": ext, "channel_id": ch.get("id")})
+            result.append(
+                {
+                    "site_url": ext,
+                    "channel_id": ch.get("id"),
+                    "channel": ch,
+                }
+            )
         if result:
             return result
 
@@ -258,6 +347,7 @@ class PublishService:
                 {
                     "site_url": str(profile["site_url"]),
                     "channel_id": None,
+                    "channel": {},
                 }
             ]
         return []

@@ -29,6 +29,8 @@ def test_content_statuses_have_no_distributed():
         "processing",
         "ready",
         "review",
+        "digest_hold",
+        "digested",
         "deleted",
     )
     assert "to_tg" not in POST_BASE_COLUMNS

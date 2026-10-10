@@ -22,6 +22,7 @@ import {
   networkLabel,
   networkSetupUrl,
 } from '@/lib/smm-networks'
+import { BrandDigestCard } from '@/pages/channels/brand-digest-card'
 
 type ChannelRow = BrandChannel & { brand_name?: string; brand_color?: string }
 
@@ -764,6 +765,10 @@ export function ChannelsPage() {
             </CardContent>
           </Card>
 
+          {selectedBrandId != null && (
+            <BrandDigestCard brandId={selectedBrandId} channels={channels} />
+          )}
+
           <div className="flex flex-wrap gap-x-3 gap-y-1 mb-4 text-sm text-[var(--text-secondary)]">
             <span>
               Own: {ownCount}
@@ -781,6 +786,9 @@ export function ChannelsPage() {
             </Link>
             <Link to={networkSetupUrl('instagram')} className="text-primary-400 hover:underline">
               IG auth →
+            </Link>
+            <Link to={networkSetupUrl('wp')} className="text-primary-400 hover:underline">
+              WordPress auth →
             </Link>
             <Link to="/custom-url" className="text-primary-400 hover:underline">
               Custom URL / posts →

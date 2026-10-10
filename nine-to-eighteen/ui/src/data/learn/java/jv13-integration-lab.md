@@ -1,7 +1,7 @@
 ---
 slug: jv-integration-lab
-title: Лаба: JDBC + JMS учебный контур
-shortTitle: Integration lab
+title: Лаба: JDBC + JMS надёжный контур
+shortTitle: Лаба: JDBC + JMS надёжный
 episode: JV13
 rubric: architecture
 order: 813
@@ -11,104 +11,188 @@ level: senior
 tags: [java, jdbc, jms, lab, собеседование]
 onKnowledgeMap: true
 durationMin: 40
-excerpt: Сквозная учебная интеграция записи в БД и сообщения.
+excerpt: Спроектировать надёжную интеграцию записи в БД и публикации в очередь.
 prerequisites: [jv-jvm-hosting]
 seoTitle: Integration lab — senior
-seoDescription: Сквозная учебная интеграция записи в БД и сообщения.
+seoDescription: Senior-лаба: согласовать JDBC-транзакцию и JMS-публикацию.
 seoKeywords: [java, jdbc, jms, lab, собеседование]
 canonicalUrl: https://9to18.ru/game/learn/jv-integration-lab
 ---
 
 ## Введение
 
-Senior-лаба без продакшен-кода: связать JDBC и JMS.
+Senior-фильтр: не «умею аннотации», а умею **согласовать побочные эффекты**. Классика: записали заказ в БД и должны уведомить шину/очередь. Два ресурса — две точки отказа. Этот выпуск — лаба-дизайн на базе [JV04](/game/learn/jv-jdbc-basics)–[JV08](/game/learn/jv-jms); выбор шины vs брокер — в [JV14](/game/learn/jv-adr-bus-vs-broker).
 
-## Раздел: Основы
+## Раздел: Проблема двойной записи
 
-Сценарий: приняли команду → записали статус в БД → опубликовали событие в очередь.
+Наивный поток:
 
-## Раздел: Практика
+```text
+BEGIN; INSERT order; COMMIT;
+jms.send(OrderCreated);  // сеть упала → событие потеряно
+```
 
-Идемпотентность consumer: повтор сообщения не создаёт дубль строки (unique key / upsert).
+Или наоборот: send → потом INSERT не прошёл → «событие-сирота». На собесе ждут название проблемы (dual write) и хотя бы один паттерн лечения.
 
-## Раздел: На собесе
+Ошибка: «обернём в XA и забудем» без понимания operational cost. XA бывает уместна, но outbox часто проще сопровождать.
 
-Документируйте failure modes: БД ок / брокер упал и наоборот.
+## Раздел: Transactional outbox
+
+Идея: в **той же** JDBC-транзакции пишем бизнес-строку и строку `outbox(event_id, payload, status)`. Отдельный publisher читает outbox и шлёт в JMS; после успеха — помечает sent. Consumer на другой стороне — идемпотентен (JV08).
+
+```text
+App tx: order + outbox_row
+Relay: outbox → JMS
+Consumer: dedupe by event_id → apply
+```
+
+Плюсы: атомарность на одной БД. Минусы: задержка relay, нужен polling/CDC, мониторинг «застрявших» outbox.
+
+Альтернативы для обсуждения: inbox на приёме, CDC из WAL, иногда dual write с компенсациями — честно проговорите риски.
+
+## Раздел: Критерии готовности лабы
+
+Senior-чеклист ответа:
+- идемпотентность consumer и уникальный `event_id`;
+- at-least-once на брокере + дедуп;
+- метрики: lag outbox, fail send, DLQ depth;
+- что делаем при яде payload (DLQ, алерт);
+- как тестируем: unit mapper + IT с Testcontainers/брокером;
+- связь с адаптером [JV09](/game/learn/jv-esb-adapter) и аналитическим контуром [SA19](/game/learn/sa-integration-design).
+
+Ошибка: лаба «только happy path» без ретраев. Вторая: гигантский payload в outbox без версии схемы.
+
+## Раздел: Частые вопросы с собеседования
+
+**Вопрос.** Dual write vs transactional outbox?
+
+**Ответ.** Dual write — commit БД и send в брокер нез атомарны; возможна потеря или сирота-событие. Outbox пишет событие в таблицу в той же JDBC-транзакции; relay публикует асинхронно. Consumer идемпотентен по event_id; at-least-once на брокере.
+
+**Вопрос.** Уровень изоляции outbox relay?
+
+**Ответ.** Relay читает unsent строки; конкурентные relay нужны skip locked / lease, чтобы не дублировать send. Идempotency на consumer важнее SERIALIZABLE на всю систему. Lag outbox — метрика, не только «работает».
+
+**Вопрос.** JMS queue vs topic в этом контуре?
+
+**Ответ.** OrderCreated в topic — несколько подписчиков; queue — один воркер обрабатывает задачу. Outbox relay шлёт в destination по контракту; DLQ ловит poison после N попыток.
 
 ## Лаба
 
-**Цель.** Спроектировать happy-path и 2 failure.
+**Цель.** Спроектировать (на бумаге/ADR-черновике) контур OrderCreated: БД + очередь.
 
 **Шаги.**
-1. Таблица outbox или sync publish — выбор.
-2. Ключ идемпотентности.
-3. Порядок commit vs send.
-4. DLQ политика.
-5. Критерии Done лабы.
+1. Нарисуйте dual-write failure в две стороны (lost event / phantom event).
+2. Опишите схему таблицы outbox (ключ, payload, status, created_at).
+3. Задайте контракт сообщения и ключ идемпотентности consumer.
+4. Перечислите 3 метрики и 1 алерт.
+5. Напишите тест-план: что мокаете, что поднимаете реально.
+6. Свяжите с [SA10](/game/learn/sa-sync-async-queues): sync API vs async уведомление.
 
-**В группу:** разберите dual-write проблему.
+**В группу:** один защищает XA, второй — outbox; таблица плюс/минус на 5 минут.
 
 **Готово, если…**
-- [ ] Есть схема контура
-- [ ] Идемпотентность
-- [ ] Failure modes
+- [ ] Можете объяснить dual write
+- [ ] Рисуете outbox end-to-end
+- [ ] Задаёте идемпотентность и DLQ
 
-## Схема: Контур
+## Схема: Outbox relay
 
 ```mermaid
 sequenceDiagram
-  API->>DB: INSERT
-  API->>Q: publish
-  Q->>Worker: consume
-  Worker->>DB: update
+  participant Api as order_api
+  participant Db as postgres
+  participant Rel as outbox_relay
+  participant Q as jms_queue
+  participant C as consumer
+  Api->>Db: tx insert order+outbox
+  Rel->>Db: claim pending
+  Rel->>Q: send
+  Rel->>Db: mark sent
+  Q->>C: deliver
+  C->>C: idempotent apply
 ```
 
 ## Тест
 
-### Dual-write риск?
+### Что такое dual write problem?
 
-**Ответ:** БД и брокер расходятся
+**Ответ:** два ресурса без общей атомарности
 
-**Пояснение:** Outbox/паттерны согласованности.
+**Пояснение:** БД и брокер могут разойтись при сбое между операциями.
 
-### Идемпотентность?
+### Суть transactional outbox?
 
-**Ответ:** повтор без дубля эффекта
+**Ответ:** событие в той же DB-транзакции
 
-**Пояснение:** Ключ операции.
+**Пояснение:** публикация в брокер вынесена в relay после успешного commit бизнес-данных.
 
-### Зачем лаба?
+### Зачем event_id consumer?
 
-**Ответ:** собрать JDBC+JMS в одну историю
+**Ответ:** дедуп при at-least-once
 
-**Пояснение:** Senior синтез.
+**Пояснение:** повторная доставка не должна применять эффект дважды.
+
+### Чем опасен send до commit БД?
+
+**Ответ:** событие без зафиксированного заказа
+
+**Пояснение:** потребитель увидит то, чего нет в источнике правды.
+
+### Что мониторить у outbox?
+
+**Ответ:** lag и ошибки relay
+
+**Пояснение:** рост pending/failed — сигнал, что события не уходят в шину.
 
 ## Шпаргалка
 
-<h3>Лаба</h3><ul><li>write</li><li>publish</li><li>consume idempotent</li></ul>
+<h3>Суть</h3>
+<ul>
+<li>dual write = главная ловушка интеграции</li>
+<li>outbox = бизнес + событие в одной tx</li>
+<li>relay + idempotent consumer + DLQ</li>
+<li>метрики lag важнее «классно нарисовали»</li>
+</ul>
+<h3>Связи</h3>
+<pre><code>JV05 tx · JV08 JMS · JV09 adapter
+SA19 integration design · JV14 ADR
+</code></pre>
 
 ## Anki
 
-### Front: outbox
+### Front: Почему нельзя «просто» сделать INSERT и затем JMS.send?
 
-Back: событие из БД
+Back: между шагами возможен сбой — потеряется событие или останется рассинхрон
 
-### Front: idempotent
+### Front: Что пишет приложение в outbox-таблицу?
 
-Back: безопасный повтор
+Back: намерение опубликовать событие (id, тип, payload, статус) в одной tx с бизнесом
 
-### Front: DLQ
+### Front: Кто физически вызывает JMS.send в outbox-паттерне?
 
-Back: ядовитые
+Back: отдельный relay/publisher после commit, не обязательно тот же request-thread
+
+### Front: Что такое phantom/event-before-state в dual write?
+
+Back: сообщение ушло, а бизнес-строка не закоммитилась
+
+### Front: Какой минимальный ключ идемпотентности на consumer?
+
+Back: стабильный event_id / business operation id
+
+### Front: Когда XA может быть альтернативой outbox?
+
+Back: когда оба ресурса поддерживают 2PC и команда готова жить с его сложностью
 
 ## Итоги
 
-- Сначала схема
-- Потом код
-- Думайте о повторах
+- Senior-интеграция начинается с failure modes, не с выбора библиотеки
+- Outbox — рабочий дефолт для JDBC + JMS в многих командах
+- Дальше — зафиксировать выбор шины vs брокера в ADR
 
 ## Ссылки
 
-- Learn | [JMS](/game/learn/jv-jms)
-- Learn | [JDBC](/game/learn/jv-jdbc-basics)
+- Learn | [JV08 JMS](/game/learn/jv-jms)
+- Learn | [SA19 Integration design](/game/learn/sa-integration-design)
+- Learn | [SA10 Sync/async queues](/game/learn/sa-sync-async-queues)
 - Далее: [ADR bus vs broker](/game/learn/jv-adr-bus-vs-broker)

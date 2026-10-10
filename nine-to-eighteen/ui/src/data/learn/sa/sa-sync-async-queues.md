@@ -1,14 +1,14 @@
 ---
 slug: sa-sync-async-queues
 title: Sync/Async и очереди — Kafka, RabbitMQ, гарантии
-shortTitle: Sync Async Queues
+shortTitle: Sync/Async и очереди
 episode: SA10
 rubric: api
 order: 510
 publishedAt: 2027-02-19T10:00:00+03:00
 profiles: [analyst]
 level: middle
-tags: [sync, async, очереди, Kafka, RabbitMQ, интеграции, собеседование]
+tags: [sa, sync, async, очереди, Kafka, RabbitMQ, интеграции, собеседование]
 onKnowledgeMap: true
 durationMin: 35
 excerpt: Синхрон vs асинхрон, нужен ли ответ, зачем очереди, вызов БД, Kafka vs RabbitMQ, гарантии доставки, offset и queue vs topic.
@@ -22,6 +22,8 @@ canonicalUrl: https://9to18.ru/game/learn/sa-sync-async-queues
 ## Введение
 
 Интеграции на собеседовании почти всегда сводят к вопросу: «синхронно или через очередь?». Middle СА должен объяснить разницу sync/async, когда ответ обязателен, зачем брокер, чем Kafka отличается от RabbitMQ, и что значат гарантии доставки и offset. Ниже — ответы на T4.1.1–4.1.5 и T4.4.1–4.4.5.
+
+Sync/async и брокеры — проектирование интеграций (BABOK *Requirements Analysis*). **T4.1; T4.4.1–4.4.5** — индекс; первично — документация **Apache Kafka** и **RabbitMQ**, семантика доставки.
 
 ## Раздел: Синхронное и асинхронное взаимодействие
 
@@ -72,6 +74,30 @@ canonicalUrl: https://9to18.ru/game/learn/sa-sync-async-queues
 **Очередь vs топик:**
 - **Очередь (queue)** — точка-точка: конкурирующие consumer'ы делят сообщения (одно сообщение — одному обработчику из группы).
 - **Топик (pub/sub)** — публикация многим подписчикам; каждый подписчик (или каждая group в Kafka) видит свой поток. В Kafka «топик» — именованный лог; семантика competing consumers достигается consumer group.
+
+В постановке ссылайтесь на официальные модели: Kafka — **log + consumer group + offset** ([документация](https://kafka.apache.org/documentation/)); RabbitMQ — **exchange, queue, binding, ACK** ([docs](https://www.rabbitmq.com/docs)). Гарантии at-least-once почти всегда требуют идемпотентного consumer.
+
+## Раздел: Частые вопросы с собеседования
+
+**Вопрос.** Как на собесе отличить функциональное требование от нефункционального?
+
+**Ответ.** FR — конкретное поведение: «можно оплатить картой». NFR — качество и ограничения: «p95 ответа API ≤ 300 мс при 500 RPS», «данные карты не в логах». NFR должны быть измеримы; «быстро и безопасно» без цифр — wish, не требование.
+
+**Вопрос.** User story или use case — что выбрать на проекте?
+
+**Ответ.** Story — короткий инкремент ценности для backlog и спринта. Use case — полный сценарий с актёром, основным и альтернативными потоками, когда важны ветки и исключения. На собесе: story для приоритизации, UC/sequence — когда согласуете интеграции и QA-покрытие.
+
+**Вопрос.** BPMN и UML — конкуренты или разные задачи?
+
+**Ответ.** Разные вопросы. BPMN — бизнес-процесс, шлюзы, роли людей. UML Use Case — граница системы и цели; Sequence — вызовы сервисов во времени. Ошибка: рисовать микросервисы на BPMN вместо бизнес-шагов.
+
+**Вопрос.** ACID и CAP — про одно и то же?
+
+**Ответ.** Нет. ACID — свойства транзакции в одной БД (атомарность, согласованность, изоляция, долговечность). CAP — компромисс распределённой системы при сбое сети: согласованность vs доступность. На собесе связывают с контекстом: баланс — строже ACID; лента лайков — чаще eventual consistency.
+
+**Вопрос.** Зачем системному аналитику OpenAPI, если есть текст требований?
+
+**Ответ.** OpenAPI — исполнимый контракт для Dev/QA/партнёров: методы, схемы, коды ошибок, версии. Меньше «договорились устно». Аналитик не обязан писать YAML руками, но обязан согласовать поля, обязательность, breaking vs optional изменения и примеры ошибок.
 
 ## Лаба
 
@@ -130,6 +156,18 @@ sequenceDiagram
 
 **Пояснение:** в Kafka топик + consumer group даёт и log, и конкурирующее потребление внутри группы.
 
+### Когда клиенту достаточно 202 Accepted?
+
+**Ответ:** когда бизнес-результат придёт асинхронно, а сейчас нужен только приём работы
+
+**Пояснение:** 202 не означает успех операции — нужен correlation id и канал статуса/события.
+
+### Почему at least once почти всегда ведёт к дублям?
+
+**Ответ:** ACK после обработки может потеряться и сообщение доставят снова
+
+**Пояснение:** consumer должен быть идемпотентен по business key (order_id, payment_id).
+
 ## Шпаргалка
 
 <h3>Суть</h3>
@@ -161,6 +199,18 @@ Back: Kafka — распределённый лог с offset и replay; RabbitM
 
 Back: не больше одного (можно потерять) / хотя бы раз (возможны дубли) / ровно раз (сложнее и дороже)
 
+### Front: Consumer group в Kafka — зачем?
+
+Back: параллельное чтение партиций; одна группа — competing consumers на топик
+
+### Front: Exchange в RabbitMQ — роль?
+
+Back: маршрутизирует сообщения в очереди по типу exchange и binding key
+
+### Front: Где читать семантику offset в Kafka?
+
+Back: официальная документация Apache Kafka (consumer configs, offset commit)
+
 ## Итоги
 
 - Sync и async — про ожидание результата, не только про «есть ли HTTP»
@@ -169,6 +219,9 @@ Back: не больше одного (можно потерять) / хотя б
 
 ## Ссылки
 
-- [Топ-150 вопросов СА (Хабр)](https://habr.com/ru/articles/963708/)
+- [Apache Kafka Documentation](https://kafka.apache.org/documentation/)
+- [RabbitMQ Documentation](https://www.rabbitmq.com/docs)
+- [BABOK Guide — интеграции (IIBA)](https://www.iiba.org/knowledgehub/business-analysis-body-of-knowledge-babok-guide/)
+- [Топ-150 вопросов СА (Хабр) — индекс формулировок](https://habr.com/ru/articles/963708/)
 - Learn | /game/learn
-- Далее: [REST advanced: кэш, идемпотентность, версии](/game/learn/sa-rest-advanced)
+- Далее: [REST advanced](/game/learn/sa-rest-advanced)

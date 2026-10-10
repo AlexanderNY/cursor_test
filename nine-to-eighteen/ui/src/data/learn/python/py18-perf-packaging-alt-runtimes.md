@@ -37,6 +37,23 @@ Senior-блок про скорость и доставку: профилиро�
 
 Выбор: совместимость расширений часто держит на CPython; perf-критичные куски — Cython/Rust extension/NumPy; иногда отдельный сервис на другом языке.
 
+## Раздел: Частые вопросы с собеседования
+**Вопрос.** Первый шаг при «Python тормозит»?
+
+**Ответ.** Измерить профилем (`cProfile`, py-spy), найти hot path, улучшить алгоритм/структуры данных. Микрооптимизации и `-O` — последними; смена языка — после доказанного узкого места.
+
+**Вопрос.** PyPy vs CPython — когда упомянуть?
+
+**Ответ.** PyPy с JIT может ускорить долгоживущий pure Python; совместимость C-расширений ограничена. Многие прод-сервисы остаются на CPython + нативные libs (NumPy) или выносят hot path.
+
+**Вопрос.** Зачем wheel manylinux?
+
+**Ответ.** Бинарный wheel собран под ABI Linux, pip ставит без компилятора на сервере. Без wheel на exotic platform сборка из sdist может падать на отсутствии gcc/headers.
+
+**Вопрос.** venv в Docker — нужен ли?
+
+**Ответ.** В образе часто один app — зависимости ставят в system site или отдельный prefix; venv внутри контейнера опционален, но изоляция версий в multi-stage build всё равно фиксируется requirements.lock.
+
 ## Лаба
 
 **Цель.** Профиль медленной функции и сравнение list vs NumPy.
@@ -69,21 +86,33 @@ flowchart TD
 
 ### С чего начинать ускорение?
 
-**Ответ:** с измерения профиля hot path
+**Ответ:** профиль hot path
 
 **Пояснение:** без цифр оптимизация — гадание.
 
-### Чем wheel удобнее sdist?
+### wheel vs sdist?
 
-**Ответ:** ставится быстрее, часто уже собран под платформу
+**Ответ:** wheel быстрее ставится, часто prebuilt
 
-**Пояснение:** не требует компиляции на машине пользователя (для бинарных пакетов).
+**Пояснение:** sdist требует build на машине пользователя.
 
-### Когда PyPy может помочь?
+### Когда PyPy помогает?
 
-**Ответ:** долгий pure-Python CPU-bound код
+**Ответ:** долгий pure-Python CPU-bound
 
-**Пояснение:** JIT прогревается; совместимость с C-extensions бывает хуже.
+**Пояснение:** JIT; C-extensions совместимость хуже.
+
+### __pycache__ зачем?
+
+**Ответ:** кеш bytecode между запусками
+
+**Пояснение:** ускоряет import; не source of truth.
+
+### Cython vs ctypes?
+
+**Ответ:** Cython компилирует Python-like; ctypes — вызов C API
+
+**Пояснение:** разные trade-offs скорости разработки.
 
 ## Шпаргалка
 
@@ -102,7 +131,7 @@ python -m build
 
 ### Front: NumPy быстрее list когда?
 
-Back: массовые числовые операции (векторизация), не всегда на мелких данных
+Back: массовые числовые операции (векторизация)
 
 ### Front: Что такое ctypes?
 
@@ -110,7 +139,19 @@ Back: вызов функций из динамических C-библиоте
 
 ### Front: PYTHONOPTIMIZE что делает?
 
-Back: включает -O: убирает assert и __debug__ ветки
+Back: -O: убирает assert и __debug__ ветки
+
+### Front: pyproject.toml зачем?
+
+Back: стандарт метаданных и сборки (PEP 517/518)
+
+### Front: profiling: cumtime vs tottime?
+
+Back: cumtime с учётом вызовов; tottime только в самой функции
+
+### Front: IronPython / Jython — когда вспомнить?
+
+Back: interop с .NET/JVM; нишевые рантаймы, не default CPython
 
 ## Итоги
 
@@ -122,6 +163,6 @@ Back: включает -O: убирает assert и __debug__ ветки
 
 - [Performance tips](https://docs.python.org/3/howto/perf_profiling.html)
 - [Packaging Python Projects](https://packaging.python.org/en/latest/tutorials/packaging-projects/)
-- [DEBAGanov — perf / wheels / PyPy](https://github.com/DEBAGanov/interview_questions/blob/main/400%20вопросов%20с%20ответами%2C%20которые%20должен%20знать%20Python-разработчик.md)
+- [DEBAGanov — индекс вопросов серии](https://github.com/DEBAGanov/interview_questions/blob/main/400%20вопросов%20с%20ответами%2C%20которые%20должен%20знать%20Python-разработчик.md)
 - Learn | /game/learn
 - Далее: [Flask / Django](/game/learn/py-web-flask-django)

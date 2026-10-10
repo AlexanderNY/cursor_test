@@ -26,13 +26,15 @@ MAX_TITLE = 255
 MAX_BODY = 20000
 MAX_CAPTION = 2000
 MAX_OBJECT_KEYS = 20
+MAX_TAGS = 20
+MAX_TAG_LEN = 64
 MAX_UTM_PARAMS = 20
 
 TEMPLATE_SELECT = (
     "id, user_id, brand_id, kind, title, body, metadata, created_at, updated_at"
 )
 MEDIA_PACK_SELECT = (
-    "id, user_id, brand_id, title, object_keys, caption, created_at, updated_at"
+    "id, user_id, brand_id, title, object_keys, caption, tags, created_at, updated_at"
 )
 
 
@@ -112,6 +114,23 @@ def _sanitize_object_keys(raw: Any) -> list[str]:
     return out
 
 
+def _sanitize_tags(raw: Any) -> list[str]:
+    data = _parse_json_field(raw, [])
+    if isinstance(raw, str) and not isinstance(data, list):
+        data = [part.strip() for part in raw.split(",")]
+    if not isinstance(data, list):
+        return []
+    out: list[str] = []
+    seen: set[str] = set()
+    for item in data[:MAX_TAGS]:
+        tag = str(item or "").strip().lower()[:MAX_TAG_LEN]
+        if not tag or tag in seen:
+            continue
+        seen.add(tag)
+        out.append(tag)
+    return out
+
+
 def _row_template(r: tuple) -> dict[str, Any]:
     return {
         "id": r[0],
@@ -134,8 +153,9 @@ def _row_media_pack(r: tuple) -> dict[str, Any]:
         "title": r[3],
         "object_keys": _sanitize_object_keys(r[4]),
         "caption": r[5],
-        "created_at": _iso_dt(r[6]),
-        "updated_at": _iso_dt(r[7]),
+        "tags": _sanitize_tags(r[6]),
+        "created_at": _iso_dt(r[7]),
+        "updated_at": _iso_dt(r[8]),
     }
 
 
@@ -479,6 +499,7 @@ class ContentLibraryService:
         title: str,
         object_keys: Optional[list[str]] = None,
         caption: Optional[str] = None,
+        tags: Optional[list[str]] = None,
     ) -> dict:
         await self._require_brand(user_id, brand_id)
         used = await self.count_media_packs(user_id)
@@ -488,14 +509,15 @@ class ContentLibraryService:
             raise ValueError("Title is required")
         keys = _sanitize_object_keys(object_keys)
         cap = (caption or "").strip()[:MAX_CAPTION] or None
+        pack_tags = _sanitize_tags(tags)
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
                 await cur.execute(
                     f"""
                     INSERT INTO smm_media_packs
-                        (user_id, brand_id, title, object_keys, caption)
-                    VALUES (%s, %s, %s, %s::jsonb, %s)
+                        (user_id, brand_id, title, object_keys, caption, tags)
+                    VALUES (%s, %s, %s, %s::jsonb, %s, %s::jsonb)
                     RETURNING {MEDIA_PACK_SELECT}
                     """,
                     (
@@ -504,6 +526,7 @@ class ContentLibraryService:
                         title_clean,
                         json.dumps(keys, ensure_ascii=False),
                         cap,
+                        json.dumps(pack_tags, ensure_ascii=False),
                     ),
                 )
                 row = await cur.fetchone()
@@ -519,6 +542,7 @@ class ContentLibraryService:
         title: Optional[str] = None,
         object_keys: Optional[list[str]] = None,
         caption: Optional[str] = None,
+        tags: Optional[list[str]] = None,
         clear_caption: bool = False,
     ) -> Optional[dict]:
         pack = await self.get_media_pack(user_id, pack_id)
@@ -538,6 +562,7 @@ class ContentLibraryService:
             new_cap = caption.strip()[:MAX_CAPTION] or None
         else:
             new_cap = pack.get("caption")
+        new_tags = _sanitize_tags(tags) if tags is not None else list(pack.get("tags") or [])
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
@@ -545,6 +570,7 @@ class ContentLibraryService:
                     f"""
                     UPDATE smm_media_packs
                     SET title = %s, object_keys = %s::jsonb, caption = %s,
+                        tags = %s::jsonb,
                         updated_at = CURRENT_TIMESTAMP
                     WHERE id = %s AND user_id = %s
                     RETURNING {MEDIA_PACK_SELECT}
@@ -553,6 +579,7 @@ class ContentLibraryService:
                         new_title,
                         json.dumps(new_keys, ensure_ascii=False),
                         new_cap,
+                        json.dumps(new_tags, ensure_ascii=False),
                         pack_id,
                         user_id,
                     ),

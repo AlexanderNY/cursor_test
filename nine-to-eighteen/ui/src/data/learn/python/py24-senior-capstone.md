@@ -1,7 +1,7 @@
 ---
 slug: py-senior-capstone
 title: Карта собеса Python — чеклист Junior→Senior
-shortTitle: Capstone
+shortTitle: Карта собеса Python
 episode: PY24
 rubric: architecture
 order: 324
@@ -39,6 +39,23 @@ canonicalUrl: https://9to18.ru/game/learn/py-senior-capstone
 
 Связка с работой: перенесите примеры на ваш стек (FastAPI/Postgres/Redis вместо абстрактного Flask/Memcached), но сохраняйте канонические формулировки механизмов (GIL, MRO, descriptors).
 
+## Раздел: Частые вопросы с собеседования
+**Вопрос.** Как готовиться к Python-собесу по этой серии?
+
+**Ответ.** Пройти выпуски по слабым темам из чеклиста, устно объяснить механизм (GIL, MRO, descriptors) без чтения слайдов, прогнать PY23 tricky. Индекс Q→slug в SERIES — карта, не заучивание 400 ответов.
+
+**Вопрос.** Junior vs middle vs senior — один вопрос про concurrency?
+
+**Ответ.** Junior: поток vs процесс и GIL в двух фразах. Middle: asyncio vs threads, когда `to_thread`. Senior: dogpile, backpressure, выбор runtime и observability под SLA.
+
+**Вопрос.** Зачем typing на senior-собесе?
+
+**Ответ.** Показывает зрелость API design и CI; senior проектирует контракты модулей и Protocol для extension points, не только ставит `Any`.
+
+**Вопрос.** Что перенести из учебных примеров в резюме?
+
+**Ответ.** Назовите реальный стек (FastAPI, Postgres, pytest), но формулировки механизмов оставьте точными — интервьюер проверяет глубину, не названия pet-проектов из курса.
+
 ## Лаба
 
 **Цель.** Личный план на 7 дней до собеса.
@@ -67,23 +84,35 @@ flowchart LR
 
 ## Тест
 
-### Что закрывает junior-блок серии?
+### Junior-блок серии закрывает?
 
-**Ответ:** язык-база: типы, функции, модули, ООП, исключения, stdlib tools
+**Ответ:** язык-база PY01–PY08
 
-**Пояснение:** PY01–PY08 без GIL/метаклассов вглубь.
+**Пояснение:** типы, функции, модули, ООП, исключения, stdlib.
 
-### Зачем capstone, если есть 400 вопросов?
+### Зачем capstone при 400 вопросах?
 
-**Ответ:** карта и приоритеты вместо хаотичного чтения дублей
+**Ответ:** карта и приоритеты
 
-**Пояснение:** серия схлопывает повторы и выстраивает уровень.
+**Пояснение:** серия схлопывает дубли по уровню.
 
-### Что делать с темами вне SERIES?
+### Темы вне SERIES appendix?
 
-**Ответ:** appendix one-off по вакансии
+**Ответ:** one-off по вакансии
 
-**Пояснение:** Tk/Spark и т.п. не нужны всем Python-разработчикам.
+**Пояснение:** Tk/Spark не всем нужны.
+
+### Middle must-have из трека?
+
+**Ответ:** generators, decorators, MRO, typing, asyncio, GIL, pytest
+
+**Пояснение:** PY09–PY16.
+
+### Как готовиться по серии?
+
+**Ответ:** Anki + лабы + mock
+
+**Пояснение:** теория без кода на собесе слаба.
 
 ## Шпаргалка
 
@@ -105,11 +134,23 @@ Back: generators, decorators, MRO, typing, asyncio, GIL/GC, pytest
 
 ### Front: Senior must-have темы трека?
 
-Back: descriptors/metaclasses, perf/packaging, web frameworks, DB/cache, prod diagnostics, design trade-offs
+Back: descriptors/metaclasses, perf/packaging, web, DB/cache, prod diagnostics, design
 
 ### Front: Где индекс вопрос→выпуск?
 
 Back: SERIES.md в каталоге python Learn
+
+### Front: Первичный источник фактов Python?
+
+Back: docs.python.org, PEPs, packaging.python.org
+
+### Front: DEBAGanov в серии — роль?
+
+Back: индекс номеров вопросов, не канон ответов
+
+### Front: Три якоря повторения перед собесом?
+
+Back: PY02 коллекции, PY10 декораторы, PY15 GIL, PY23 drill (любые три из шпаргалки)
 
 ## Итоги
 
@@ -119,8 +160,9 @@ Back: SERIES.md в каталоге python Learn
 
 ## Ссылки
 
-- [SERIES.md — оглавление и индекс](/game/learn)
-- [DEBAGanov — полный список вопросов](https://github.com/DEBAGanov/interview_questions/blob/main/400%20вопросов%20с%20ответами%2C%20которые%20должен%20знать%20Python-разработчик.md)
-- [docs.python.org](https://docs.python.org/3/)
+- [Python 3 Documentation](https://docs.python.org/3/)
+- [PEP Index](https://peps.python.org/)
+- [Python Packaging User Guide](https://packaging.python.org/)
+- [DEBAGanov — индекс вопросов серии (полный список 1–407)](https://github.com/DEBAGanov/interview_questions/blob/main/400%20вопросов%20с%20ответами%2C%20которые%20должен%20знать%20Python-разработчик.md)
 - Learn | /game/learn
 - Назад: [Tricky drill](/game/learn/py-interview-tricky)

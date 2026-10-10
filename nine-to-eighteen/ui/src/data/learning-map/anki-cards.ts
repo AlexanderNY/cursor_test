@@ -1,7 +1,10 @@
 import type { LearnPost } from '@/data/learn/learn-store'
+import { TOPIC_DECKS } from '@/data/learning-map/decks'
+import type { TopicDeck } from '@/data/learning-map/decks/types'
 import type { LeafNote } from '@/data/learning-map/leaf-notes'
 import type { MindNode } from '@/data/learning-map/parse-outline'
 import { downloadTextFile } from '@/data/learning-map/export-markdown'
+import { normalizeMapTitle } from '@/data/learning-map/map-learn-links'
 import { normalizeTag } from '@/data/learning-map/tag-style'
 import { learnAnkiCards } from '@/data/site/structured-post'
 
@@ -154,7 +157,95 @@ function walk(
   }
 }
 
-/** Колода Anki: карточки из Learn-статей, привязанных к листьям карты. */
+/** Нормализация вопроса для дедупа пула с карточками статей. */
+export function normalizeAnkiFront(front: string): string {
+  return front
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function appendTopicPoolCards(
+  root: MindNode,
+  postsBySlug: Map<string, LearnPost>,
+  notes: Record<string, LeafNote>,
+  existingFronts: Set<string>,
+  out: AnkiCard[],
+  branchFilterId: string | null | undefined,
+  decks: TopicDeck[] = TOPIC_DECKS,
+): void {
+  const branchesByTitle = new Map(
+    root.children.map((branch) => [normalizeMapTitle(branch.title), branch]),
+  )
+
+  for (const deck of decks) {
+    const branch = branchesByTitle.get(normalizeMapTitle(deck.branchTitle))
+    if (!branch) {
+      continue
+    }
+    if (branchFilterId && branch.id !== branchFilterId) {
+      continue
+    }
+
+    for (const card of deck.cards) {
+      const frontKey = normalizeAnkiFront(card.front)
+      if (!frontKey || existingFronts.has(frontKey)) {
+        continue
+      }
+      existingFronts.add(frontKey)
+
+      const post = postsBySlug.get(card.learnSlug)
+      const leaf = findLeafBySlug(branch, card.learnSlug)
+      const pathLabel = leaf
+        ? [branch.title, leaf.title].join(' → ')
+        : [branch.title, deck.branchTitle].join(' → ')
+      const note = leaf ? notes[leaf.id] : undefined
+
+      out.push({
+        id: card.id,
+        front: card.front.trim(),
+        back: card.back.trim(),
+        tags: [
+          ...new Set([
+            ...(card.tags || []),
+            ...(note?.tags || []),
+            ...(leaf?.tags || []),
+            normalizeTag(branch.title),
+            'pool',
+            card.learnSlug,
+            ...(deck.sourceNote ? ['src'] : []),
+          ]),
+        ]
+          .map((tag) => normalizeTag(tag))
+          .filter(Boolean)
+          .slice(0, 12),
+        branch: branch.title,
+        branchId: branch.id,
+        path: pathLabel,
+        learn: post ? learnSourceFromPost(post) : null,
+      })
+    }
+  }
+}
+
+function findLeafBySlug(branch: MindNode, learnSlug: string): MindNode | null {
+  const target = learnSlug.toLowerCase()
+  const stack = [...branch.children]
+  while (stack.length > 0) {
+    const node = stack.pop()
+    if (!node) {
+      continue
+    }
+    if (node.learnSlug?.toLowerCase() === target) {
+      return node
+    }
+    stack.push(...node.children)
+  }
+  return null
+}
+
+/** Колода Anki: карточки из Learn-статей + тематические пулы по веткам. */
 export function collectAnkiCards(root: MindNode, options: CollectAnkiOptions = {}): AnkiCard[] {
   const notes = options.notes || {}
   const onlyLeaves = options.onlyLeaves !== false
@@ -172,6 +263,13 @@ export function collectAnkiCards(root: MindNode, options: CollectAnkiOptions = {
   }
 
   walk(start, [], notes, onlyLeaves, nodeId, postsBySlug, out)
+
+  // Пул не смешиваем с фильтром «одна вершина»: там только статья листа.
+  if (!nodeId) {
+    const existingFronts = new Set(out.map((card) => normalizeAnkiFront(card.front)))
+    appendTopicPoolCards(root, postsBySlug, notes, existingFronts, out, options.branchId)
+  }
+
   return out
 }
 

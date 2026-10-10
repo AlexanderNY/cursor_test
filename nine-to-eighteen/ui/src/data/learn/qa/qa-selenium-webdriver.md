@@ -1,14 +1,14 @@
 ---
 slug: qa-selenium-webdriver
 title: Selenium WebDriver на Python
-shortTitle: Selenium
+shortTitle: Selenium WebDriver на Python
 episode: QA10
 rubric: tools
 order: 410
 publishedAt: 2026-12-11T10:00:00+03:00
 profiles: [tester]
 level: junior
-tags: [selenium, webdriver, waits, grid, собеседование]
+tags: [qa, selenium, webdriver, waits, grid, собеседование]
 onKnowledgeMap: true
 durationMin: 45
 excerpt: Драйверы, локаторы, waits, исключения, Actions, фреймы, cookies и Grid — с примерами на Python Selenium.
@@ -22,6 +22,8 @@ canonicalUrl: https://9to18.ru/game/learn/qa-selenium-webdriver
 ## Введение
 
 Selenium WebDriver — классика UI-автоматизации и блок J46–62 / M35–38, M41–42. На собесе ждут: чем драйвер отличается от IDE, какие локаторы стабильнее, почему `time.sleep` — запах, что такое Grid и как кликнуть в iframe. Ниже — ответы и код на **Python Selenium 4**.
+
+Термины и определения согласованы с **ISTQB CTFL v4** и [глоссарием ISTQB](https://glossary.istqb.org/); номера J/M/S — опциональный индекс типовых вопросов собеса.
 
 ## Раздел: Драйверы, локаторы, waits, исключения
 
@@ -92,6 +94,28 @@ driver = webdriver.Remote(
 
 **Когда UI-автоматизация уместна (M):** критичные user journeys, регрессия после релиза, кроссбраузер smoke. Не автоматизировать всё подряд: нестабильный UI, одноразовые проверки, чисто визуальные мелочи без контракта.
 
+## Раздел: Частые вопросы с собеседования
+
+**Вопрос.** Чем уровень тестирования отличается от типа (вида) тестирования?
+
+**Ответ.** Уровень отвечает на «где режем систему»: модуль, стык, продукт целиком, приёмка. Тип — «с какой целью гоняем»: smoke, regression, exploratory, security и т.д. На собесе покажите пример: один checkout можно проверить на integration (API+БД) и оформить прогон как regression после фикса — оси независимы.
+
+**Вопрос.** Зачем на собесе спрашивают equivalence partitioning и граничные значения?
+
+**Ответ.** EP сжимает бесконечные входы в классы «ведут себя одинаково»; BVA бьёт по стыкам классов — там чаще ломается сравнение и валидация. Для поля 18–99 достаточно классов «ниже», «внутри», «выше» и точек 17–18–19, 98–99–100; не нужно 82 случайных числа.
+
+**Вопрос.** Severity и priority в баг-репорте — одно и то же?
+
+**Ответ.** Нет. Severity — ущерб для продукта и пользователя (crash vs опечатка). Priority — когда чинить в очереди команды. Критичный по severity баг может ждать, если воспроизводится только на стенде без пользователей; наоборот, мелкий UI-bug в checkout может быть P1 перед релизом.
+
+**Вопрос.** Что имеют в виду под «пирамидой тестирования» на собеседовании?
+
+**Ответ.** Много быстрых дешёвых проверок внизу (unit, контракт API), меньше медленных UI/e2e наверху. Цель — быстрая обратная связь в CI, а не «всё через Selenium». Пирамида не запрет на e2e: сквозные сценарии оставляют на критичные деньги-потоки.
+
+**Вопрос.** Почему flaky e2e — отдельная тема на middle/senior QA?
+
+**Ответ.** Flaky — тест то зелёный, то красный без изменения кода: тайминги, данные, сеть, параллельность. Команда перестаёт верить CI. Лечат изоляцией данных, явными ожиданиями, стабильными селекторами, отсечением внешних сервисов; иногда понижают уровень — проверяют API вместо хрупкого UI.
+
 ## Лаба
 
 **Цель.** Стабильный сценарий: логин → таблица заказов → фильтр → assert строки; плюс работа с iframe и cookie.
@@ -147,6 +171,20 @@ sequenceDiagram
 
 **Пояснение:** экономит время CI и ловит кроссбраузерные дефекты; локальный Chrome не заменяет матрицу.
 
+### Почему XPath //div[last()] хрупкий?
+
+**Ответ:** зависит от порядка DOM и соседей
+
+**Пояснение:** предпочитайте data-testid, role, стабильный текст или контракт с фронтом.
+
+### Headless vs headed в CI?
+
+**Ответ:** headless быстрее; headed помогает отладке флаки
+
+**Пояснение:** в CI обычно headless; локально смотрят headed при падениях.
+
+
+
 ## Шпаргалка
 
 <h3>Локаторы</h3>
@@ -183,6 +221,20 @@ Back: switch_to.frame(...), затем switch_to.default_content()
 
 Back: driver.execute_script("...", element) — JSExecutor
 
+### Front: WebDriver vs WebDriver W3C protocol
+
+Back: стандартизированный протокол команд браузеру; Selenium 4 — W3C by default
+
+### Front: StaleElementReferenceException — причина
+
+Back: элемент перерисован в DOM после find; нужен повторный поиск
+
+### Front: Когда Page Object не нужен?
+
+Back: один-два smoke-теста; PO окупается при росте suite
+
+
+
 ## Итоги
 
 - Стабильность UI-тестов = правильные локаторы + explicit waits, не sleep
@@ -192,6 +244,9 @@ Back: driver.execute_script("...", element) — JSExecutor
 
 ## Ссылки
 
-- [QA-interview-250](https://github.com/Konstantine23/QA-interview-250)
-- [Selenium Python documentation](https://www.selenium.dev/documentation/webdriver/)
-- Learn | /game/learn/qa-aqa-principles
+- [ISTQB Glossary](https://glossary.istqb.org/)
+- [CTFL v4 — Certified Tester Foundation Level](https://istqb.org/certifications/certified-tester-foundation-level-ctfl-v4-0/)
+- [Playwright Python](https://playwright.dev/python/)
+- Опционально: [QA-interview-250](https://github.com/Konstantine23/QA-interview-250) — полный список формулировок вопросов
+- Learn | /game/learn
+- Далее: [pytest, CI, Git](/game/learn/qa-pytest-ci-git)

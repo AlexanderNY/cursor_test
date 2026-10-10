@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { gameBridge } from './game-bridge'
 import { GameOverScreen } from './game-over-screen'
-import { drawGameFrame, drawHudBars } from './game-renderer'
+import { drawBossIntro, drawGameFrame, drawHudBars } from './game-renderer'
 import { inputManager } from './input-manager'
 import { PerkSelectScreen } from './perk-select-screen'
 import { writeSave } from './save-storage'
@@ -124,6 +124,7 @@ export function GameScreen({ onBackToMenu }: GameScreenProps) {
             drawGameFrame(gameCtx, frameState, canvas.width, canvas.height)
             hudCtx.clearRect(0, 0, hudCanvas.width, hudCanvas.height)
             drawHudBars(hudCtx, frameState, hudCanvas.width)
+            drawBossIntro(hudCtx, frameState, hudCanvas.width, hudCanvas.height)
           }
 
           if (frameState.game_over || frameState.victory) {

@@ -35,6 +35,23 @@ Middle-собес любит `map`/`filter`/`reduce`, `collections.Counter` и �
 
 `itertools`: `chain`, `islice`, `groupby`, `product`, `combinations`, `count`/`cycle`/`repeat` — строительные блоки ленивых пайплайнов без лишней памяти.
 
+## Раздел: Частые вопросы с собеседования
+**Вопрос.** `map`/`filter` или comprehension — что предпочесть?
+
+**Ответ.** Comprehension обычно читаемее для простых преобразований и фильтров. `map`/`filter` уместны, когда функция уже именована или нужна ленивая цепочка без промежуточного list. `reduce` — для свёрток, но часто явный цикл яснее.
+
+**Вопрос.** Зачем `Counter` на собесе?
+
+**Ответ.** Подсчёт частот элементов за один проход, `most_common(n)` для топ-N. Альтернатива — dict с ручным инкрементом; Counter документирует намерение и даёт удобные операции (сложение счётчиков).
+
+**Вопрос.** Чем `deque` лучше list для очереди?
+
+**Ответ.** `append`/`popleft` у deque O(1); у list `pop(0)` O(n). Для FIFO, BFS и скользящих окон — deque; для индексирования и срезов — list.
+
+**Вопрос.** `itertools.groupby` — частая ошибка?
+
+**Ответ.** Требует предварительной сортировки по тому же ключу, иначе группы разорваны. На собесе говорят: «сначала sort, потом groupby» — не путать с SQL GROUP BY, который агрегирует.
+
 ## Лаба
 
 **Цель.** Пайплайн частот слов без лишних списков.
@@ -68,19 +85,31 @@ flowchart LR
 
 **Ответ:** итератор (лениво)
 
-**Пояснение:** чтобы получить список — list(map(...)) или comprehension.
+**Пояснение:** list(map(...)) или comprehension для материализации.
 
 ### Зачем Counter?
 
 **Ответ:** подсчёт частоты элементов
 
-**Пояснение:** словарь с удобными методами most_common и арифметикой счётчиков.
+**Пояснение:** most_common и арифметика счётчиков.
 
 ### reduce где лежит?
 
 **Ответ:** functools.reduce
 
 **Пояснение:** не builtin в Python 3.
+
+### defaultdict(list) типичный кейс?
+
+**Ответ:** группировка без if key in dict
+
+**Пояснение:** d[key].append(x) без KeyError.
+
+### map/filter vs comprehension?
+
+**Ответ:** comprehension читаемее для простых случаев
+
+**Пояснение:** map/filter — композиция функций; HOF-стиль.
 
 ## Шпаргалка
 
@@ -110,6 +139,18 @@ Back: нужно append в словарь без проверки ключа
 
 Back: склеить несколько итерируемых в один поток
 
+### Front: deque vs list для очереди?
+
+Back: deque O(1) pop/append с обоих концов; list pop(0) медленный
+
+### Front: Counter + и Counter -?
+
+Back: арифметика частот с отсечением нулей/отрицательных по правилам Counter
+
+### Front: zip(*matrix) что делает?
+
+Back: транспонирует строки в столбцы (распаковка аргументов)
+
 ## Итоги
 
 - FP-инструменты — про композицию преобразований данных
@@ -118,8 +159,9 @@ Back: склеить несколько итерируемых в один по�
 
 ## Ссылки
 
+- [functools.reduce](https://docs.python.org/3/library/functools.html#functools.reduce)
 - [collections](https://docs.python.org/3/library/collections.html)
 - [itertools](https://docs.python.org/3/library/itertools.html)
-- [DEBAGanov — FP / collections](https://github.com/DEBAGanov/interview_questions/blob/main/400%20вопросов%20с%20ответами%2C%20которые%20должен%20знать%20Python-разработчик.md)
+- [DEBAGanov — индекс вопросов серии](https://github.com/DEBAGanov/interview_questions/blob/main/400%20вопросов%20с%20ответами%2C%20которые%20должен%20знать%20Python-разработчик.md)
 - Learn | /game/learn
 - Далее: [MRO и dunder](/game/learn/py-oop-advanced-mro)

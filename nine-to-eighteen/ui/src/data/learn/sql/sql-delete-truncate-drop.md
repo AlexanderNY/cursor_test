@@ -1,7 +1,7 @@
 ---
 slug: sql-delete-truncate-drop
 title: DELETE, TRUNCATE и DROP — что удаляет что
-shortTitle: DELETE TRUNCATE DROP
+shortTitle: DELETE, TRUNCATE и DROP
 episode: SQL03
 rubric: data
 order: 603
@@ -82,6 +82,23 @@ DROP TABLE IF EXISTS orders CASCADE;  -- PG: зависимые объекты �
 2. очистить таблицу, сохранив схему → `TRUNCATE`;
 3. убрать таблицу из модели → `DROP TABLE`.
 
+## Раздел: Частые вопросы с собеседования
+**Вопрос.** Нужно удалить 10% строк — DELETE или TRUNCATE?
+
+**Ответ.** DELETE с WHERE — единственный выбор; TRUNCATE не фильтрует. TRUNCATE — полная очистка таблицы быстро, без построчного WHERE.
+
+**Вопрос.** TRUNCATE и триггеры?
+
+**Ответ.** В PostgreSQL TRUNCATE не вызывает обычные FOR EACH ROW DELETE triggers; есть отдельные truncate triggers. На собесе уточняют СУБД — поведение различается.
+
+**Вопрос.** DROP vs DELETE для GDPR «забыть пользователя»?
+
+**Ответ.** Обычно DELETE строк или anonymize в рамках модели; DROP TABLE уничтожает объект для всех. FK CASCADE при DELETE vs сохранение таблицы — проектное решение.
+
+**Вопрос.** RESTART IDENTITY после TRUNCATE в PG?
+
+**Ответ.** Сбрасывает serial/identity counters — полезно в тестовых схемах после полного wipe. В prod на живых id осторожно: внешние системы могли запомнить старые id.
+
 ## Лаба
 
 **Цель.** На учебной таблице сравнить DELETE, TRUNCATE и DROP и проверить откат в вашей СУБД.
@@ -126,9 +143,21 @@ flowchart LR
 
 ### Чем DROP TABLE отличается от TRUNCATE TABLE?
 
-**Ответ:** DROP удаляет объект схемы; TRUNCATE только данные, определение таблицы сохраняется
+**Ответ:** DROP убирает объект
 
-**Пояснение:** после DROP нужны CREATE и восстановление зависимостей/прав.
+**Пояснение:** TRUNCATE очищает строки, определение таблицы остаётся; после DROP нужны CREATE и права.
+
+### DELETE с WHERE — это DML?
+
+**Ответ:** да, DML
+
+**Пояснение:** построчное изменение данных; можно откатить в транзакции и задействовать ROW-триггеры.
+
+### Когда DELETE предпочтительнее TRUNCATE?
+
+**Ответ:** нужен фильтр WHERE
+
+**Пояснение:** частичное удаление, аудит через триггеры, мягкое удаление по статусу.
 
 ## Шпаргалка
 
@@ -163,6 +192,18 @@ Back: Удаляет определение таблицы и всё её сод
 
 Back: Можно выполнить в транзакции и откатить ROLLBACK до COMMIT
 
+### Front: TRUNCATE RESTART IDENTITY в PG?
+
+Back: Сбрасывает счётчики SERIAL/identity после очистки таблицы
+
+### Front: CASCADE в TRUNCATE — зачем?
+
+Back: Очистить связанные таблицы по FK-зависимости одной командой
+
+### Front: Q1 на собесе — про что?
+
+Back: Сравнение DELETE, TRUNCATE и DROP по объекту, скорости и откату
+
 ## Итоги
 
 - DELETE — точечная работа со строками; TRUNCATE — полная очистка; DROP — конец объекта
@@ -171,7 +212,7 @@ Back: Можно выполнить в транзакции и откатить 
 
 ## Ссылки
 
-- [OTUS / Хабр — топ вопросов по SQL, часть I](https://habr.com/ru/companies/otus/articles/461067/)
 - [PostgreSQL: TRUNCATE](https://www.postgresql.org/docs/current/sql-truncate.html)
-- Learn | /game/learn
+- [PostgreSQL: DELETE](https://www.postgresql.org/docs/current/sql-delete.html)
+- Индекс Q1, Q21: [OTUS / Хабр — часть I](https://habr.com/ru/companies/otus/articles/461067/)
 - Далее: [JOIN в SQL](/game/learn/sql-joins)

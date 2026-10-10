@@ -62,6 +62,8 @@ LEGACY_DESTINATION_FLAG_COLUMNS: tuple[str, ...] = tuple(LEGACY_FLAG_TO_PLATFORM
 CLAIM_PROCESS_COLUMNS: tuple[str, ...] = (
     "id",
     "user_id",
+    "brand_id",
+    "channel_id",
     "source_platform",
     "source_native_id",
     "post_text",
@@ -623,7 +625,7 @@ class PostsRepository:
         return records
 
     async def complete_processing(self, post_ids: Sequence[int], status: str) -> None:
-        if status not in ("ready", "review", "deleted"):
+        if status not in ("ready", "review", "digest_hold", "deleted"):
             raise ValueError(f"complete_processing cannot set {status!r}")
         if not post_ids:
             return

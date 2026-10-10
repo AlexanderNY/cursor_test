@@ -3,10 +3,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import re
 import uuid
 from typing import Any, Optional
 from uuid import UUID
+
+logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, File, Form, Header, HTTPException, UploadFile
 from fastapi.responses import Response
@@ -739,20 +742,57 @@ async def delete_resume(
     authorization: Optional[str] = Header(None),
 ) -> dict[str, Any]:
     user = await require_user(authorization)
+    user_id = int(user["user_id"])
     rid = _parse_resume_id(resume_id)
+    storage_refs: list[str] = []
     conn = await get_db_connection()
     try:
         async with conn.cursor() as cur:
             await cur.execute(
+                "SELECT id FROM site_resumes WHERE id = %s AND user_id = %s",
+                (str(rid), user_id),
+            )
+            row = await cur.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="Resume not found")
+            await cur.execute(
+                """
+                SELECT storage_key FROM site_resume_exports
+                WHERE resume_id = %s AND user_id = %s
+                """,
+                (str(rid), user_id),
+            )
+            storage_refs = [str(r[0]) for r in await cur.fetchall() if r and r[0]]
+            await cur.execute(
+                """
+                DELETE FROM site_resume_exports
+                WHERE resume_id = %s AND user_id = %s
+                """,
+                (str(rid), user_id),
+            )
+            await cur.execute(
                 "DELETE FROM site_resumes WHERE id = %s AND user_id = %s RETURNING id",
-                (str(rid), user["user_id"]),
+                (str(rid), user_id),
             )
             row = await cur.fetchone()
     finally:
         await release_db_connection(conn)
     if not row:
         raise HTTPException(status_code=404, detail="Resume not found")
-    return {"ok": True, "id": str(row[0])}
+
+    storage = get_resume_storage()
+    for ref in storage_refs:
+        try:
+            await storage.delete_ref(ref)
+        except Exception:
+            logger.exception("export cleanup failed for %s", ref)
+
+    try:
+        resume_mock_chat.drop_sessions_for_resume(str(rid))
+    except Exception:
+        logger.exception("mock-chat session cleanup failed for %s", rid)
+
+    return {"ok": True, "id": str(row[0]), "exportsRemoved": len(storage_refs)}
 
 
 @router.get("/{resume_id}/preview")
@@ -762,8 +802,7 @@ async def resume_preview(
 ) -> dict[str, Any]:
     user = await require_user(authorization)
     user_id = int(user["user_id"])
-    enforce_rate_limit(user_id, "preview")
-    await load_settings()
+    await _enforce_bucket(user_id, "preview")
     email = str(user.get("email") or "")
     resume, profile_row, completed = await asyncio.gather(
         _require_resume(_parse_resume_id(resume_id), user_id),
@@ -822,7 +861,7 @@ async def generate_resume(
 ) -> dict[str, Any]:
     user = await require_user(authorization)
     user_id = int(user["user_id"])
-    enforce_rate_limit(user_id, "generate")
+    await _enforce_bucket(user_id, "generate")
     rid = _parse_resume_id(resume_id)
     resume = await _require_resume(rid, user_id)
     completed = await _fetch_completed_slugs(user_id)
@@ -899,7 +938,7 @@ async def upload_resume_source(
     """Save resume source from uploaded PDF/DOCX and/or pasted text (multipart)."""
     user = await require_user(authorization)
     user_id = int(user["user_id"])
-    enforce_rate_limit(user_id, "generate")
+    await _enforce_bucket(user_id, "generate")
     rid = _parse_resume_id(resume_id)
     await _require_resume(rid, user_id)
 
@@ -957,7 +996,7 @@ async def upload_resume_source_json(
     """Save pasted resume text (JSON)."""
     user = await require_user(authorization)
     user_id = int(user["user_id"])
-    enforce_rate_limit(user_id, "generate")
+    await _enforce_bucket(user_id, "generate")
     rid = _parse_resume_id(resume_id)
     await _require_resume(rid, user_id)
     try:
@@ -983,7 +1022,7 @@ async def path_prepare(
     """Build recommendations + evidenced skills after source + questionnaire."""
     user = await require_user(authorization)
     user_id = int(user["user_id"])
-    enforce_rate_limit(user_id, "generate")
+    await _enforce_bucket(user_id, "generate")
     rid = _parse_resume_id(resume_id)
     resume = await _require_resume(rid, user_id)
     source_text = (resume.get("sourceText") or "").strip()
@@ -1045,9 +1084,17 @@ async def path_prepare(
     }
 
 
-def _require_feature(name: str) -> None:
+async def _require_feature(name: str) -> None:
+    """Refresh runtime settings (TTL cache) then gate on feature flags."""
+    await load_settings()
     if not feature_enabled(name, True):
         raise HTTPException(status_code=403, detail=f"Feature disabled: {name}")
+
+
+async def _enforce_bucket(user_id: int, bucket: str) -> None:
+    """Refresh settings so admin rate-limit overrides apply, then enforce."""
+    await load_settings()
+    enforce_rate_limit(user_id, bucket)
 
 
 def _ai_http_error(exc: Exception) -> HTTPException:
@@ -1067,8 +1114,8 @@ async def ai_improve_about(
 ) -> dict[str, Any]:
     user = await require_user(authorization)
     user_id = int(user["user_id"])
-    enforce_rate_limit(user_id, "ai")
-    _require_feature("aiImproveAbout")
+    await _enforce_bucket(user_id, "ai")
+    await _require_feature("aiImproveAbout")
     rid = _parse_resume_id(resume_id)
     resume = await _require_resume(rid, user_id)
     completed = await _fetch_completed_slugs(user_id)
@@ -1114,8 +1161,8 @@ async def ai_skill_gap(
 ) -> dict[str, Any]:
     user = await require_user(authorization)
     user_id = int(user["user_id"])
-    enforce_rate_limit(user_id, "ai")
-    _require_feature("aiSkillGap")
+    await _enforce_bucket(user_id, "ai")
+    await _require_feature("aiSkillGap")
     resume = await _require_resume(_parse_resume_id(resume_id), user_id)
     completed = await _fetch_completed_slugs(user_id)
     skills = _skills_for_resume(resume, completed)
@@ -1142,8 +1189,8 @@ async def ai_cover_letter(
 ) -> dict[str, Any]:
     user = await require_user(authorization)
     user_id = int(user["user_id"])
-    enforce_rate_limit(user_id, "ai")
-    _require_feature("aiCoverLetter")
+    await _enforce_bucket(user_id, "ai")
+    await _require_feature("aiCoverLetter")
     email = str(user.get("email") or "")
     resume = await _require_resume(_parse_resume_id(resume_id), user_id)
     profile_row = await _fetch_profile_row(user_id)
@@ -1188,8 +1235,8 @@ async def ai_match_score(
 ) -> dict[str, Any]:
     user = await require_user(authorization)
     user_id = int(user["user_id"])
-    enforce_rate_limit(user_id, "ai")
-    _require_feature("aiMatchScore")
+    await _enforce_bucket(user_id, "ai")
+    await _require_feature("aiMatchScore")
     resume = await _require_resume(_parse_resume_id(resume_id), user_id)
     completed = await _fetch_completed_slugs(user_id)
     skills = _skills_for_resume(resume, completed)
@@ -1216,7 +1263,7 @@ async def github_fetch_repos(
 ) -> dict[str, Any]:
     user = await require_user(authorization)
     user_id = int(user["user_id"])
-    enforce_rate_limit(user_id, "generate")
+    await _enforce_bucket(user_id, "generate")
     rid = _parse_resume_id(resume_id)
     resume = await _require_resume(rid, user_id)
     try:
@@ -1279,8 +1326,8 @@ async def ai_mock_interview_start(
 ) -> dict[str, Any]:
     user = await require_user(authorization)
     user_id = int(user["user_id"])
-    enforce_rate_limit(user_id, "ai")
-    _require_feature("aiMockInterview")
+    await _enforce_bucket(user_id, "ai")
+    await _require_feature("aiMockInterview")
     resume = await _require_resume(_parse_resume_id(resume_id), user_id)
     completed = await _fetch_completed_slugs(user_id)
     skills = _skills_for_resume(resume, completed)
@@ -1304,8 +1351,8 @@ async def ai_mock_interview_evaluate(
 ) -> dict[str, Any]:
     user = await require_user(authorization)
     user_id = int(user["user_id"])
-    enforce_rate_limit(user_id, "ai")
-    _require_feature("aiMockInterview")
+    await _enforce_bucket(user_id, "ai")
+    await _require_feature("aiMockInterview")
     await _require_resume(_parse_resume_id(resume_id), user_id)
     try:
         result = await resume_ai.evaluate_mock_answer(
@@ -1326,8 +1373,8 @@ async def ai_mock_chat_start(
 ) -> dict[str, Any]:
     user = await require_user(authorization)
     user_id = int(user["user_id"])
-    enforce_rate_limit(user_id, "ai")
-    _require_feature("aiMockInterview")
+    await _enforce_bucket(user_id, "ai")
+    await _require_feature("aiMockInterview")
     rid = _parse_resume_id(resume_id)
     resume = await _require_resume(rid, user_id)
     completed = await _fetch_completed_slugs(user_id)
@@ -1364,8 +1411,8 @@ async def ai_mock_chat_message(
 ) -> dict[str, Any]:
     user = await require_user(authorization)
     user_id = int(user["user_id"])
-    enforce_rate_limit(user_id, "ai")
-    _require_feature("aiMockInterview")
+    await _enforce_bucket(user_id, "ai")
+    await _require_feature("aiMockInterview")
     rid = _parse_resume_id(resume_id)
     await _require_resume(rid, user_id)
     sess = resume_mock_chat.get_session(body.session_id.strip(), user_id)
@@ -1486,8 +1533,8 @@ async def export_resume(
 ) -> dict[str, Any]:
     user = await require_user(authorization)
     user_id = int(user["user_id"])
-    enforce_rate_limit(user_id, "export")
-    _require_feature("exportEnabled")
+    await _enforce_bucket(user_id, "export")
+    await _require_feature("exportEnabled")
     rid = _parse_resume_id(resume_id)
     resume = await _require_resume(rid, user_id)
     email = str(user.get("email") or "")

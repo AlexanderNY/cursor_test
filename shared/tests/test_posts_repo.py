@@ -223,7 +223,24 @@ async def test_repository_claim_process_then_complete():
     cur = RecordingCursor()
     cur.description = [_Col(name) for name in CLAIM_PROCESS_COLUMNS]
     cur.fetchall_queue = [
-        [(5, 1, "vk", None, "text", "[]", None, "{}", "{}", "collected") + (False,) * 7]
+        [
+            (
+                5,
+                1,
+                None,
+                None,
+                "vk",
+                None,
+                "text",
+                "[]",
+                None,
+                "{}",
+                "{}",
+                "[]",
+                "[]",
+                "collected",
+            )
+        ]
     ]
     repo = PostsRepository(cur)
     claimed = await repo.claim_process(limit=2)

@@ -1,14 +1,14 @@
 ---
 slug: qa-api-contract-perf
 title: API-автоматизация, контракты и производительность
-shortTitle: API contract perf
+shortTitle: API-автоматизация, контракты
 episode: QA15
 rubric: api
 order: 415
 publishedAt: 2026-12-21T10:00:00+03:00
 profiles: [tester]
 level: middle
-tags: [api, contract, mock, performance, load, собеседование]
+tags: [qa, api, contract, mock, performance, load, собеседование]
 onKnowledgeMap: true
 durationMin: 45
 excerpt: Моки и стабы, инструменты API, contract testing, load/stress и стратегия нагрузки для middle QA.
@@ -22,6 +22,8 @@ canonicalUrl: https://9to18.ru/game/learn/qa-api-contract-perf
 ## Введение
 
 Блок M10, M26–29, M96–97 и senior-отголоски S9, S29: как тестировать API системно, чем mock отличается от stub, зачем контракты, что смотреть в автотестах и когда load/stress. Клиентские примеры — **Python `requests`**; нагрузка — концепты JMeter/k6/Locust.
+
+Термины и определения согласованы с **ISTQB CTFL v4** и [глоссарием ISTQB](https://glossary.istqb.org/); номера J/M/S — опциональный индекс типовых вопросов собеса.
 
 ## Раздел: Моки, стабы, инструменты, контракты
 
@@ -79,6 +81,28 @@ def test_create_order_unauthorized(base_url: str) -> None:
 
 **Когда stress:** понять предел и поведение деградации (таймауты, очередь, circuit breaker), не «уронить прод». Soak/endurance — утечки памяти; spike — Black Friday. S29-уровень: согласовать с SRE blast radius и never на прод без явного разрешения.
 
+## Раздел: Частые вопросы с собеседования
+
+**Вопрос.** Чем уровень тестирования отличается от типа (вида) тестирования?
+
+**Ответ.** Уровень отвечает на «где режем систему»: модуль, стык, продукт целиком, приёмка. Тип — «с какой целью гоняем»: smoke, regression, exploratory, security и т.д. На собесе покажите пример: один checkout можно проверить на integration (API+БД) и оформить прогон как regression после фикса — оси независимы.
+
+**Вопрос.** Когда на собеседовании уместен smoke, а когда полный regression?
+
+**Ответ.** Smoke — узкий «жив ли билд»: логин, критичный платёж, главная. Падает smoke — глубже не идём. Regression — шире: уже работавшее после изменений. Sanity — точечно после маленького патча. Ошибка junior: называть любой повторный прогон regression.
+
+**Вопрос.** Зачем на собесе спрашивают equivalence partitioning и граничные значения?
+
+**Ответ.** EP сжимает бесконечные входы в классы «ведут себя одинаково»; BVA бьёт по стыкам классов — там чаще ломается сравнение и валидация. Для поля 18–99 достаточно классов «ниже», «внутри», «выше» и точек 17–18–19, 98–99–100; не нужно 82 случайных числа.
+
+**Вопрос.** Severity и priority в баг-репорте — одно и то же?
+
+**Ответ.** Нет. Severity — ущерб для продукта и пользователя (crash vs опечатка). Priority — когда чинить в очереди команды. Критичный по severity баг может ждать, если воспроизводится только на стенде без пользователей; наоборот, мелкий UI-bug в checkout может быть P1 перед релизом.
+
+**Вопрос.** Что имеют в виду под «пирамидой тестирования» на собеседовании?
+
+**Ответ.** Много быстрых дешёвых проверок внизу (unit, контракт API), меньше медленных UI/e2e наверху. Цель — быстрая обратная связь в CI, а не «всё через Selenium». Пирамида не запрет на e2e: сквозные сценарии оставляют на критичные деньги-потоки.
+
 ## Лаба
 
 **Цель.** Набор API-тестов на публичном или учебном API + черновик нагрузочного плана.
@@ -130,6 +154,20 @@ sequenceDiagram
 
 **Пояснение:** load подтверждает SLA; stress исследует пределы и защитные механизмы — на изолированном контуре.
 
+### Что проверить в contract test кроме JSON schema?
+
+**Ответ:** обязательные поля, типы, enum, версии API
+
+**Пояснение:** breaking change часто в необязательном поле, ставшем required.
+
+### Load vs stress — различие?
+
+**Ответ:** load — ожидаемая нагрузка; stress — за пределами до отказа
+
+**Пояснение:** цели и pass criteria разные; не подменяйте одно другим.
+
+
+
 ## Шпаргалка
 
 <h3>API auto checklist</h3>
@@ -161,6 +199,20 @@ Back: RPS/throughput, latency percentiles (p95/p99), error rate, иногда CP
 
 Back: тело/схему, заголовки, бизнес-правила, права доступа, негативные коды
 
+### Front: Pact — идея consumer-driven
+
+Back: потребитель задаёт ожидания; провайдер верифицирует контракт в CI
+
+### Front: 429 Too Many Requests — тест
+
+Back: rate limit, Retry-After, backoff клиента, нет бесконечных retry storm
+
+### Front: Baseline response time в perf
+
+Back: эталон на стабильном стенде до сравнения с новой сборкой
+
+
+
 ## Итоги
 
 - Моки/стабы ускоряют и изолируют, но не заменяют проверку реальной интеграции там, где риск
@@ -170,6 +222,9 @@ Back: тело/схему, заголовки, бизнес-правила, пр
 
 ## Ссылки
 
-- [QA-interview-250](https://github.com/Konstantine23/QA-interview-250)
-- [jsonschema](https://python-jsonschema.readthedocs.io/)
-- Learn | /game/learn/qa-test-design-advanced
+- [ISTQB Glossary](https://glossary.istqb.org/)
+- [CTFL v4 — Certified Tester Foundation Level](https://istqb.org/certifications/certified-tester-foundation-level-ctfl-v4-0/)
+- [OWASP API Security Top 10](https://owasp.org/www-project-api-security/)
+- Опционально: [QA-interview-250](https://github.com/Konstantine23/QA-interview-250) — полный список формулировок вопросов
+- Learn | /game/learn
+- Далее: [Agile Scrum Kanban](/game/learn/qa-agile-scrum-kanban)

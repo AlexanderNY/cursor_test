@@ -4,7 +4,8 @@ Slice 0 freezes names, statuses, extras JSON, and NOTIFY channels.
 Collectors and publishers use this hub + ``post_targets`` only.
 
 Content row (``posts.status``):
-    collected → processing → ready | review | deleted
+    collected → processing → ready | review | digest_hold | deleted
+    digest_hold → digested (hourly channel summary job)
     ``created`` is an inbound alias of ``collected`` (legacy inserts).
 
 Target row (``post_targets.status``):
@@ -52,6 +53,8 @@ POST_CONTENT_STATUS_VALUES: tuple[str, ...] = (
     "processing",
     "ready",
     "review",
+    "digest_hold",
+    "digested",
     "deleted",
 )
 

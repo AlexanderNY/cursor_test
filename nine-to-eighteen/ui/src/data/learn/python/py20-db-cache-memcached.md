@@ -46,6 +46,23 @@ Memcached — распределённый in-memory key-value кеш. Поле�
 
 Минимизация downtime: несколько нод, health checks, таймауты, graceful degradation (идти в БД при недоступности кеша).
 
+## Раздел: Частые вопросы с собеседования
+**Вопрос.** ORM или сырой SQL — что сказать senior-ожиданию?
+
+**Ответ.** ORM ускоряет CRUD и миграции; senior читает SQL, индексы и планы. Сырой SQL — hot paths, отчёты, bulk. Компромисс: ORM + `text()`/raw там, где profiler показал проблему.
+
+**Вопрос.** Что такое N+1 в контексте Python ORM?
+
+**Ответ.** Один запрос за список родителей и N запросов за детей в цикле. Лечится eager loading (`selectinload`, `prefetch`), JOIN или одним запросом с агрегатом — тема пересекается с SQL EXPLAIN.
+
+**Вопрос.** Memcached vs Redis на собесе?
+
+**Ответ.** Memcached — простой RAM cache без персистентности и богатых структур. Redis — структуры данных, persistence опционально, pub/sub. Cache stampede (dogpile) актуален для обоих.
+
+**Вопрос.** Транзакция в Python с psycopg2/asyncpg?
+
+**Ответ.** `with conn:` или явный begin/commit/rollback; при исключении rollback. Не держите транзакцию открытой во время HTTP-вызова — блокируете строки и connection pool.
+
 ## Лаба
 
 **Цель.** Смоделировать stampede и простой singleflight-лок в процессе.
@@ -77,23 +94,35 @@ flowchart TD
 
 ## Тест
 
-### Как безопасно подставить id в SQL?
+### Безопасный id в SQL?
 
-**Ответ:** через параметр драйвера, не конкатенацией
+**Ответ:** параметр драйвера, не конкатенация
 
 **Пояснение:** иначе SQL injection.
 
-### Что такое cache dogpile?
+### cache dogpile?
 
-**Ответ:** лавина запросов в БД при промахе одного популярного ключа
+**Ответ:** лавина в БД при промахе hot key
 
-**Пояснение:** лечится блокировкой/ранним обновлением/stale-while-revalidate.
+**Пояснение:** lock / early refresh / stale-while-revalidate.
 
-### Данные на упавшей ноде Memcached?
+### Данные на упавшей Memcached-ноде?
 
 **Ответ:** считайте потерянными
 
-**Пояснение:** кеш эфемерен; источник правды — БД.
+**Пояснение:** кеш эфемерен; источник — БД.
+
+### PEP 249 — что это?
+
+**Ответ:** DB-API 2.0 для Python
+
+**Пояснение:** единый контракт cursor/connection.
+
+### ORM N+1 query problem?
+
+**Ответ:** лишние запросы в цикле
+
+**Пояснение:** prefetch/select_related в ORM.
 
 ## Шпаргалка
 
@@ -120,7 +149,19 @@ Back: нужны персистентность, сложные запросы, 
 
 ### Front: Singleflight в кеше зачем?
 
-Back: один загрузчик на ключ при промахе, остальные ждут результат
+Back: один загрузчик на ключ при промахе
+
+### Front: connection pool зачем?
+
+Back: переиспользование TCP-сессий к БД
+
+### Front: cache-aside pattern шаги?
+
+Back: read cache → miss → read DB → fill cache
+
+### Front: Memcached vs Redis на собесе?
+
+Back: Memcached проще KV cache; Redis — структуры и persistence опции
 
 ## Итоги
 
@@ -131,7 +172,8 @@ Back: один загрузчик на ключ при промахе, оста�
 ## Ссылки
 
 - [DB-API 2.0](https://peps.python.org/pep-0249/)
-- [DEBAGanov — SQL / Memcached](https://github.com/DEBAGanov/interview_questions/blob/main/400%20вопросов%20с%20ответами%2C%20которые%20должен%20знать%20Python-разработчик.md)
+- [sqlite3 — DB пример stdlib](https://docs.python.org/3/library/sqlite3.html)(https://peps.python.org/pep-0249/)
+- [DEBAGanov — индекс вопросов серии](https://github.com/DEBAGanov/interview_questions/blob/main/400%20вопросов%20с%20ответами%2C%20которые%20должен%20знать%20Python-разработчик.md)
 - Learn | /game/learn
 - См. также: [Redis KV модель](/game/learn/rd-kv-model), [cache-aside](/game/learn/rd-cache-aside)
 - Далее: [Prod concurrency](/game/learn/py-concurrency-io-patterns)

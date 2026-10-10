@@ -1,7 +1,7 @@
 ---
 slug: sql-triggers-operators
 title: Триггеры и операторы SQL — Q24, Q25
-shortTitle: Triggers & operators
+shortTitle: Триггеры и операторы SQL
 episode: SQL09
 rubric: data
 order: 609
@@ -75,6 +75,23 @@ EXECUTE FUNCTION audit_order_status();
 
 Ловушка NULL: `WHERE col = NULL` никогда не отберёт строки; нужно `IS NULL`. Выражение `NULL OR true` → `true`, `NULL AND true` → `NULL` (в фильтре WHERE это «ложь»). На собесе коротко: «трёхзначная логика».
 
+## Раздел: Частые вопросы с собеседования
+**Вопрос.** Trigger vs application logic?
+
+**Ответ.** Trigger — инвариант и audit на уровне БД, независимо от клиента; сложнее тестировать и версионировать. Бизнес-flow часто в app; audit/compliance — trigger или event outbox.
+
+**Вопрос.** `BEFORE` vs `AFTER` trigger?
+
+**Ответ.** BEFORE может изменить NEW row или отменить операцию; AFTER — side effects после факта (лог, каскад в другую таблицу). ON CONFLICT и FK timing — знать порядок.
+
+**Вопрос.** OR с NULL в WHERE?
+
+**Ответ.** `FALSE OR UNKNOWN` → UNKNOWN — строка отсеивается. Явно обрабатывайте NULL в OR-ветках или используйте `IS DISTINCT FROM` в PostgreSQL для сравнений с NULL.
+
+**Вопрос.** Оператор `||` в SQL?
+
+**Ответ.** В PostgreSQL — конкатенация строк; в стандарте также OR в некоторых контекстах — знать диалект. На собесе MySQL vs PG: CONCAT vs ||.
+
 ## Лаба
 
 **Цель.** Создать AFTER UPDATE триггер аудита и набор запросов с операторами сравнения/логики/арифметики.
@@ -129,9 +146,21 @@ sequenceDiagram
 
 ### Что вернёт `5 / 2` в PostgreSQL для типа integer?
 
-**Ответ:** `2` (целочисленное деление)
+**Ответ:** 2
 
-**Пояснение:** для 2.5 приводят операнды к `numeric`/`float`; это частая ловушка в отчётах и тестах.
+**Пояснение:** целочисленное деление; для дроби приводят к numeric/float.
+
+### BEFORE ROW trigger — когда?
+
+**Ответ:** до записи строки
+
+**Пояснение:** можно изменить NEW или отменить операцию (RETURN NULL в PG для некоторых случаев).
+
+### Приоритет NOT, AND, OR?
+
+**Ответ:** NOT, затем AND, OR
+
+**Пояснение:** при сомнении — скобки; иначе условие читают неверно.
 
 ## Шпаргалка
 
@@ -163,6 +192,18 @@ Back: Арифметические, логические (AND/OR/NOT), срав�
 
 Back: IS DISTINCT FROM / IS NOT DISTINCT FROM вместо = / &lt;&gt;
 
+### Front: FOR EACH ROW vs FOR EACH STATEMENT?
+
+Back: ROW — на каждую строку; STATEMENT — один раз на команду
+
+### Front: LIKE vs ILIKE в PG?
+
+Back: ILIKE — регистронезависимое сравнение шаблона (расширение PostgreSQL)
+
+### Front: Зачем WHEN на триггере?
+
+Back: Условие, при котором функция триггера вообще вызывается
+
 ## Итоги
 
 - Триггер — реакция СУБД на событие; называйте момент, уровень и NEW/OLD
@@ -171,6 +212,7 @@ Back: IS DISTINCT FROM / IS NOT DISTINCT FROM вместо = / &lt;&gt;
 
 ## Ссылки
 
-- [OTUS / Хабр — топ SQL, часть I (Q24–Q25)](https://habr.com/ru/companies/otus/articles/461067/)
 - [PostgreSQL: CREATE TRIGGER](https://www.postgresql.org/docs/current/sql-createtrigger.html)
-- Learn | /game/learn/sql-acid-transactions
+- [PostgreSQL: Operators](https://www.postgresql.org/docs/current/functions-comparison.html)
+- Индекс Q24–Q25: [OTUS / Хабр — часть I](https://habr.com/ru/companies/otus/articles/461067/)
+- Далее: [Подзапросы](/game/learn/sql-subqueries)

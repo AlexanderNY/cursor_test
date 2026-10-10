@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Set, Tuple
@@ -14,11 +13,21 @@ from shared.db.posts_repo import InboundPostCreate, PostsRepository
 from shared.queue_wakeup import wake_process_http
 from services.brand_channel_flow import (
     list_wp_collect_channels,
+    normalize_site_url,
     publish_targets_to_destination_fields,
-    resolve_credentials_for_site,
+    resolve_collect_access_for_site,
     resolve_publish_targets,
 )
 from services.channel_counter import bump_channel_counter
+from services.collect_cursor import (
+    CollectCursor,
+    CollectQueryPlan,
+    merge_cursor_advance,
+    plan_collect_query,
+    plan_next_page,
+    query_params_from_plan,
+    should_skip_seen_post,
+)
 from services.wordpress_client import WordPressClient
 from shared.text_conditions import should_save_text
 
@@ -26,7 +35,7 @@ logger = logging.getLogger(__name__)
 
 
 class CollectService:
-    """Сбор постов из WordPress в wp_posts через brand channels (+ legacy)."""
+    """Сбор постов из WordPress в posts через brand channels (+ legacy)."""
 
     async def collect_posts(self, user_id: Optional[int] = None) -> Dict[str, Any]:
         collected_count = 0
@@ -47,13 +56,13 @@ class CollectService:
             if key in polled:
                 continue
 
-            creds = await resolve_credentials_for_site(uid, site_url)
-            if not creds:
+            access = await resolve_collect_access_for_site(uid, site_url)
+            if not access:
                 errors.append(
                     {
                         "user_id": uid,
                         "channel_id": channel.get("id"),
-                        "error": "Incomplete WordPress credentials for brand channel site",
+                        "error": "Missing WordPress site URL for brand channel",
                     }
                 )
                 failed_count += 1
@@ -63,9 +72,9 @@ class CollectService:
             try:
                 n = await self._collect_from_site(
                     user_id=uid,
-                    site_url=creds["site_url"],
-                    username=creds["username"],
-                    app_password=creds["app_password"],
+                    site_url=access["site_url"],
+                    username=access.get("username") or "",
+                    app_password=access.get("app_password") or "",
                     remaining=limit_per_pass - collected_count,
                     dest=dest,
                     save_conditions=channel.get("save_conditions") or [],
@@ -113,6 +122,76 @@ class CollectService:
         resolved = await resolve_publish_targets(int(brand_id), target_ids)
         return publish_targets_to_destination_fields(resolved)
 
+    async def _load_cursor(self, user_id: int, site_url: str) -> Optional[CollectCursor]:
+        key = normalize_site_url(site_url)
+        if not key:
+            return None
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT after_gmt, last_wp_id, bootstrapped
+                    FROM wp_collect_cursor
+                    WHERE user_id = %s AND site_url = %s
+                    """,
+                    (user_id, key),
+                )
+                row = await cur.fetchone()
+                if not row:
+                    return None
+                return CollectCursor(
+                    after_gmt=row[0],
+                    last_wp_id=int(row[1]) if row[1] is not None else None,
+                    bootstrapped=bool(row[2]),
+                )
+        except Exception as exc:
+            logger.debug("load wp_collect_cursor failed: %s", exc)
+            return None
+        finally:
+            await release_db_connection(conn)
+
+    async def _save_cursor(
+        self,
+        user_id: int,
+        site_url: str,
+        cursor: CollectCursor,
+    ) -> None:
+        key = normalize_site_url(site_url)
+        if not key:
+            return
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    INSERT INTO wp_collect_cursor (
+                        user_id, site_url, after_gmt, last_wp_id, bootstrapped, updated_at
+                    ) VALUES (%s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+                    ON CONFLICT (user_id, site_url) DO UPDATE SET
+                        after_gmt = EXCLUDED.after_gmt,
+                        last_wp_id = EXCLUDED.last_wp_id,
+                        bootstrapped = EXCLUDED.bootstrapped,
+                        updated_at = CURRENT_TIMESTAMP
+                    """,
+                    (
+                        user_id,
+                        key,
+                        cursor.after_gmt,
+                        cursor.last_wp_id,
+                        bool(cursor.bootstrapped),
+                    ),
+                )
+                await conn.commit()
+        except Exception as exc:
+            logger.warning("save wp_collect_cursor failed: %s", exc)
+            try:
+                await conn.rollback()
+            except Exception:
+                pass
+        finally:
+            await release_db_connection(conn)
+
     async def _collect_from_site(
         self,
         *,
@@ -131,30 +210,46 @@ class CollectService:
 
         wp_client = WordPressClient(
             site_url=site_url,
-            username=username,
-            app_password=app_password,
+            username=username or None,
+            app_password=app_password or None,
         )
         dest = dest or {}
         collected = 0
-        page = 1
-        per_page = 20
+        cursor = await self._load_cursor(user_id, site_url)
+        plan: Optional[CollectQueryPlan] = plan_collect_query(
+            cursor,
+            remaining=remaining,
+        )
+        is_bootstrap = plan is not None and not plan.allow_next_page
+        seen_posts: List[Dict[str, Any]] = []
 
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
-                while collected < remaining:
+                while plan is not None and collected < remaining:
+                    params = query_params_from_plan(plan)
                     result = await wp_client.get_posts(
-                        per_page=per_page,
-                        page=page,
-                        status="publish",
+                        per_page=int(params["per_page"]),
+                        page=int(params["page"]),
+                        status=params.get("status"),
+                        after=params.get("after"),
+                        orderby=str(params.get("orderby") or "date"),
+                        order=str(params.get("order") or "desc"),
+                        fields=params.get("_fields"),
                     )
-                    posts = result.get("posts", [])
+                    posts = result.get("posts") or []
+                    if not isinstance(posts, list):
+                        posts = []
                     if not posts:
                         break
 
+                    seen_posts.extend(posts)
+                    page_saved = 0
                     for wp_post in posts:
                         if collected >= remaining:
                             break
+                        if should_skip_seen_post(wp_post, cursor):
+                            continue
 
                         wp_post_link = wp_post.get("link", "")
                         title = (
@@ -186,10 +281,11 @@ class CollectService:
                             continue
 
                         post_date = None
-                        if wp_post.get("date"):
+                        date_raw = wp_post.get("date_gmt") or wp_post.get("date")
+                        if date_raw:
                             try:
                                 post_date = datetime.fromisoformat(
-                                    wp_post["date"].replace("Z", "+00:00")
+                                    str(date_raw).replace("Z", "+00:00")
                                 )
                             except ValueError:
                                 post_date = None
@@ -209,7 +305,7 @@ class CollectService:
                                 domain=site_url,
                                 url=wp_post_link,
                                 post_date=post_date,
-                                source_native_id=wp_post_link,
+                                source_native_id=str(wp_post.get("id") or wp_post_link),
                                 target_channels=dest.get("target_channels") or [],
                                 target_groups=dest.get("target_groups") or [],
                                 target_platforms=platforms,
@@ -218,6 +314,7 @@ class CollectService:
                         )
                         post_row_id = int(created["id"])
                         collected += 1
+                        page_saved += 1
                         await bump_channel_counter(
                             user_id,
                             channel_id=channel_id,
@@ -230,14 +327,26 @@ class CollectService:
                             metadata={"text_preview": (title or "")[:120]},
                         )
 
-                    total_pages = result.get("total_pages", 0)
-                    if page >= total_pages:
+                    if is_bootstrap:
                         break
-                    page += 1
+                    plan = plan_next_page(
+                        plan,
+                        posts_on_page=len(posts),
+                        remaining_after_page=remaining - collected,
+                    )
+                    _ = page_saved  # silence unused in some paths
 
                 await conn.commit()
         finally:
             await release_db_connection(conn)
+
+        advanced = merge_cursor_advance(
+            cursor,
+            seen_posts,
+            force_bootstrap=is_bootstrap,
+        )
+        if advanced is not None:
+            await self._save_cursor(user_id, site_url, advanced)
 
         if collected > 0:
             logger.info(
@@ -297,13 +406,13 @@ class CollectService:
             record = dict(zip(columns, row))
             uid = int(record["user_id"])
             site_url = (record.get("site_url") or "").strip()
-            username = record.get("username")
-            app_password = record.get("app_password")
-            if not site_url or not username or not app_password:
+            username = record.get("username") or ""
+            app_password = record.get("app_password") or ""
+            if not site_url:
                 errors.append(
                     {
                         "user_id": uid,
-                        "error": "Incomplete WordPress collect credentials or site_url",
+                        "error": "Incomplete WordPress collect site_url",
                     }
                 )
                 failed_count += 1

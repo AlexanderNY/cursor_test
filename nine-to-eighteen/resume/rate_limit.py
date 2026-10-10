@@ -1,4 +1,7 @@
-"""In-memory fixed-window rate limit for resume-api (keyed by user_id|bucket)."""
+"""In-memory fixed-window rate limit for resume-api (keyed by user_id|bucket).
+
+Single-process only — quotas do not share across replicas.
+"""
 from __future__ import annotations
 
 import os

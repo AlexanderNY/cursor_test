@@ -320,6 +320,28 @@ async def resolve_credentials_for_site(
     }
 
 
+async def resolve_collect_access_for_site(
+    user_id: int,
+    site_url: str,
+) -> Optional[Dict[str, str]]:
+    """
+    Site URL for collect; credentials optional (public published posts).
+
+    Returns dict with site_url and optional username/app_password.
+    """
+    site = str(site_url or "").strip()
+    if not site:
+        profile = await load_wp_publish_profile(user_id)
+        if profile:
+            site = str(profile.get("site_url") or "").strip()
+    if not site:
+        return None
+    creds = await resolve_credentials_for_site(user_id, site)
+    if creds:
+        return creds
+    return {"site_url": site, "username": "", "app_password": ""}
+
+
 def post_target_sites(post: Dict[str, Any]) -> List[str]:
     """Extract WP site URLs from post.target_channels."""
     return _parse_str_list(post.get("target_channels"))

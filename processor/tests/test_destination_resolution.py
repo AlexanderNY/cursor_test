@@ -1,5 +1,6 @@
 from services.processing_service import (
     _match_url_config,
+    resolve_final_status,
     resolve_process_destinations,
 )
 
@@ -44,3 +45,22 @@ def test_resolve_destinations_from_existing_targets():
     assert platforms == ["tg"]
     assert channels == ["-1001"]
     assert groups == []
+
+
+def test_resolve_final_status_digest_hold():
+    assert (
+        resolve_final_status(is_digest_source=True, is_review=False, has_any_target=True)
+        == "digest_hold"
+    )
+    assert (
+        resolve_final_status(is_digest_source=False, is_review=True, has_any_target=True)
+        == "review"
+    )
+    assert (
+        resolve_final_status(is_digest_source=False, is_review=False, has_any_target=False)
+        == "review"
+    )
+    assert (
+        resolve_final_status(is_digest_source=False, is_review=False, has_any_target=True)
+        == "ready"
+    )

@@ -2,7 +2,7 @@
 
 Карта **24 выпуска** для трека системного аналитика. Полные тексты: `sa-*.md` по slug (например `sa-requirements-basics.md`).
 
-Источник тем: [Топ-150 вопросов СА на Хабре](https://habr.com/ru/articles/963708/). В статьях — **оригинальные** ответы (в источнике ответов нет). Нумерация: **T1**…**T7** (тема.вопрос).
+**Оглавление компетенций:** [BABOK Guide](https://www.iiba.org/knowledgehub/business-analysis-body-of-knowledge-babok-guide/) (Knowledge Areas — TOC серии, без дословного копирования). **Стандарты и первичные источники:** [BPMN 2.0 OMG](https://www.omg.org/spec/BPMN/2.0/), UML (OMG), [OpenAPI 3.x](https://spec.openapis.org/oas/latest.html), [Richardson Maturity Model](https://martinfowler.com/articles/richardsonMaturityModel.html), [C4 model](https://c4model.com/), [ADR (Michael Nygard)](https://cognitect.com/blog/2011/11/15/documenting-architecture-decisions), [Apache Kafka](https://kafka.apache.org/documentation/) / [RabbitMQ](https://www.rabbitmq.com/docs) для выпусков про очереди. В статьях — **оригинальные** разборы на русском. Нумерация **T1**…**T7** — индекс эпизодов и карта вопросов. Опциональный индекс формулировок: [Топ-150 вопросов СА на Хабре](https://habr.com/ru/articles/963708/) (в источнике ответов нет).
 
 ## Конвенции
 

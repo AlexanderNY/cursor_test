@@ -54,6 +54,23 @@ Non-blocking I/O — операции, которые не держат пото
 
 Для CPU-bound куска из async-кода — `asyncio.to_thread` или отдельный процесс.
 
+## Раздел: Частые вопросы с собеседования
+**Вопрос.** Asyncio или threads для HTTP-клиента к 100 API?
+
+**Ответ.** Asyncio в одном потоке держит много ожидающих I/O без стека на поток — меньше overhead, если драйверы truly async. Threads проще с блокирующими библиотеками; смешивать блокирующий код в loop без `to_thread` нельзя.
+
+**Вопрос.** Обходит ли asyncio GIL?
+
+**Ответ.** Нет: один поток, один интерпретатор, GIL как у обычного кода. Выигрыш — не параллельный CPU, а конкурентное ожидание I/O без тысяч потоков. CPU-bound — processes или `to_thread` с ограниченным пулом.
+
+**Вопрос.** Что такое event loop одной фразой?
+
+**Ответ.** Цикл, который планирует coroutine: на `await` снимает задачу с CPU и будит, когда I/O готов. `asyncio.run` создаёт loop, выполняет main coroutine и закрывает ресурсы.
+
+**Вопрос.** Почему `time.sleep` в async-функции плох?
+
+**Ответ.** Блокирует весь event loop — все coroutine стоят. В async-коде `await asyncio.sleep`; для реального блокирующего вызова — `asyncio.to_thread` или отдельный worker pool.
+
 ## Лаба
 
 **Цель.** Сравнить sync и async на «имитации» I/O.
@@ -89,9 +106,9 @@ sequenceDiagram
 
 ### Чем async def отличается от def?
 
-**Ответ:** возвращает coroutine; нужна await/scheduler
+**Ответ:** возвращает coroutine; нужен await
 
-**Пояснение:** вызов async def не выполняет тело сразу — создаёт coroutine object.
+**Пояснение:** вызов async def не выполняет тело сразу.
 
 ### Когда asyncio выгоден?
 
@@ -99,11 +116,23 @@ sequenceDiagram
 
 **Пояснение:** не ускоряет чистый CPU в одном процессе.
 
-### Что будет, если в coroutine вызвать time.sleep?
+### time.sleep в coroutine?
 
-**Ответ:** заблокируется весь event loop
+**Ответ:** блокирует весь event loop
 
-**Пояснение:** sleep синхронный; другие task не получат CPU до конца sleep.
+**Пояснение:** нужен await asyncio.sleep.
+
+### asyncio.gather vs create_task?
+
+**Ответ:** gather ждёт группу; create_task планирует фоново
+
+**Пояснение:** gather — удобный fan-in результатов.
+
+### async vs threading для HTTP-клиента?
+
+**Ответ:** async при тысячах соединений; threads проще при малом числе
+
+**Пояснение:** оба не обходят GIL для CPU; async экономит потоки на I/O wait.
 
 ## Шпаргалка
 
@@ -133,6 +162,18 @@ Back: concurrently запускает awaitables и собирает резул�
 
 Back: не держать поток в ожидании данных — продолжить другую работу
 
+### Front: await что делает?
+
+Back: приостанавливает coroutine до готовности awaitable
+
+### Front: asyncio.to_thread зачем?
+
+Back: вынести blocking CPU/IO в thread pool без блокировки loop
+
+### Front: Coroutine vs Task?
+
+Back: Task — coroutine, запланированная на event loop
+
 ## Итоги
 
 - Async — про конкурентность I/O, не про магический параллелизм CPU
@@ -141,7 +182,8 @@ Back: не держать поток в ожидании данных — про
 
 ## Ссылки
 
+- [PEP 492 — async/await](https://peps.python.org/pep-0492/)
 - [asyncio](https://docs.python.org/3/library/asyncio.html)
-- [DEBAGanov — sync/async](https://github.com/DEBAGanov/interview_questions/blob/main/400%20вопросов%20с%20ответами%2C%20которые%20должен%20знать%20Python-разработчик.md)
+- [DEBAGanov — индекс вопросов серии](https://github.com/DEBAGanov/interview_questions/blob/main/400%20вопросов%20с%20ответами%2C%20которые%20должен%20знать%20Python-разработчик.md)
 - Learn | /game/learn
 - Далее: [GIL и GC](/game/learn/py-threading-gil-gc)

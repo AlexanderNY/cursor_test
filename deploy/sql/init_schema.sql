@@ -325,7 +325,7 @@ CREATE TABLE IF NOT EXISTS posts (
     likes INTEGER DEFAULT 0,
     views INTEGER DEFAULT 0,
     is_ad BOOLEAN DEFAULT FALSE,
-    status VARCHAR(50) DEFAULT 'collected' CHECK (status IN ('collected', 'created', 'processing', 'ready', 'review', 'deleted')),
+    status VARCHAR(50) DEFAULT 'collected' CHECK (status IN ('collected', 'created', 'processing', 'ready', 'review', 'digest_hold', 'digested', 'deleted')),
     post_type VARCHAR(50),
     target_channels JSONB DEFAULT '[]',
     target_groups JSONB DEFAULT '[]',
@@ -430,7 +430,7 @@ CREATE INDEX IF NOT EXISTS idx_post_targets_post_id ON post_targets(post_id);
 UPDATE posts SET status = 'ready'
  WHERE status IN ('distributed', 'published', 'publishing');
 UPDATE posts SET status = 'review'
- WHERE status IS NULL OR status NOT IN ('collected', 'created', 'processing', 'ready', 'review', 'deleted');
+ WHERE status IS NULL OR status NOT IN ('collected', 'created', 'processing', 'ready', 'review', 'digest_hold', 'digested', 'deleted');
 
 DELETE FROM post_targets WHERE platform IN ('url', 'cpost');
 
@@ -468,7 +468,7 @@ END $$;
 ALTER TABLE posts DROP CONSTRAINT IF EXISTS posts_status_check;
 DO $$ BEGIN
   ALTER TABLE posts ADD CONSTRAINT posts_status_check
-    CHECK (status IN ('collected', 'created', 'processing', 'ready', 'review', 'deleted'));
+    CHECK (status IN ('collected', 'created', 'processing', 'ready', 'review', 'digest_hold', 'digested', 'deleted'));
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
@@ -579,6 +579,28 @@ CREATE TABLE IF NOT EXISTS feedback (
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_feedback_created_at ON feedback(created_at DESC);
+
+CREATE TABLE IF NOT EXISTS roadmap_items (
+    id SERIAL PRIMARY KEY,
+    title VARCHAR(255) NOT NULL,
+    description TEXT,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_by INTEGER,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_roadmap_items_active_created
+    ON roadmap_items (is_active, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS roadmap_votes (
+    id SERIAL PRIMARY KEY,
+    item_id INTEGER NOT NULL REFERENCES roadmap_items(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (item_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_roadmap_votes_item_id ON roadmap_votes(item_id);
+CREATE INDEX IF NOT EXISTS idx_roadmap_votes_user_id ON roadmap_votes(user_id);
 
 CREATE TABLE IF NOT EXISTS system_settings (
     key VARCHAR(100) PRIMARY KEY,
@@ -774,6 +796,38 @@ CREATE TABLE IF NOT EXISTS smm_automations (
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS smm_digest_jobs (
+    id SERIAL PRIMARY KEY,
+    brand_id INTEGER NOT NULL REFERENCES smm_brands(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL,
+    enabled BOOLEAN DEFAULT FALSE,
+    source_channel_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+    publish_channel_id INTEGER REFERENCES smm_brand_channels(id) ON DELETE SET NULL,
+    interval_min INTEGER NOT NULL DEFAULT 60
+        CHECK (interval_min >= 5 AND interval_min <= 1440),
+    process_prompt TEXT,
+    summary_prompt TEXT,
+    attach_cover_image BOOLEAN DEFAULT TRUE,
+    last_cover_miss_theme TEXT,
+    last_cover_miss_at TIMESTAMPTZ,
+    last_run_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (brand_id)
+);
+CREATE INDEX IF NOT EXISTS idx_smm_digest_jobs_user ON smm_digest_jobs(user_id);
+CREATE INDEX IF NOT EXISTS idx_smm_digest_jobs_enabled
+    ON smm_digest_jobs(enabled) WHERE enabled = TRUE;
+DO $$ BEGIN
+  ALTER TABLE smm_digest_jobs ADD COLUMN attach_cover_image BOOLEAN DEFAULT TRUE;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE smm_digest_jobs ADD COLUMN last_cover_miss_theme TEXT;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE smm_digest_jobs ADD COLUMN last_cover_miss_at TIMESTAMPTZ;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
 CREATE TABLE IF NOT EXISTS smm_competitor_snapshots (
     id SERIAL PRIMARY KEY,
     channel_id INTEGER NOT NULL REFERENCES smm_brand_channels(id) ON DELETE CASCADE,
@@ -862,6 +916,16 @@ CREATE TABLE IF NOT EXISTS smm_post_metric_snapshots (
 );
 CREATE INDEX IF NOT EXISTS idx_smm_post_metric_snapshots_post
     ON smm_post_metric_snapshots(platform, post_id, captured_at);
+-- Legacy writers stored post_targets.id; remap to hub posts.id when unambiguous.
+UPDATE smm_post_metric_snapshots s
+SET post_id = t.post_id
+FROM post_targets t
+WHERE s.post_id = t.id
+  AND s.platform = t.platform
+  AND s.user_id = t.user_id
+  AND NOT EXISTS (
+    SELECT 1 FROM posts p WHERE p.id = s.post_id AND p.user_id = s.user_id
+  );
 CREATE TABLE IF NOT EXISTS smm_channel_metric_snapshots (
     id SERIAL PRIMARY KEY,
     channel_id INTEGER NOT NULL REFERENCES smm_brand_channels(id) ON DELETE CASCADE,
@@ -959,6 +1023,7 @@ CREATE TABLE IF NOT EXISTS smm_media_packs (
     title VARCHAR(255) NOT NULL,
     object_keys JSONB NOT NULL DEFAULT '[]'::jsonb,
     caption TEXT,
+    tags JSONB NOT NULL DEFAULT '[]'::jsonb,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
@@ -966,6 +1031,9 @@ CREATE INDEX IF NOT EXISTS idx_smm_media_packs_brand
     ON smm_media_packs(brand_id);
 CREATE INDEX IF NOT EXISTS idx_smm_media_packs_user
     ON smm_media_packs(user_id);
+DO $$ BEGIN
+  ALTER TABLE smm_media_packs ADD COLUMN tags JSONB NOT NULL DEFAULT '[]'::jsonb;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
 
 CREATE TABLE IF NOT EXISTS learn_posts (
     id SERIAL PRIMARY KEY,
@@ -987,6 +1055,19 @@ CREATE TABLE IF NOT EXISTS learn_posts (
         CHECK (lab_format IN ('markdown', 'html')),
     cheatsheet_format VARCHAR(16) NOT NULL DEFAULT 'markdown'
         CHECK (cheatsheet_format IN ('markdown', 'html')),
+    profiles JSONB NOT NULL DEFAULT '[]'::jsonb,
+    level VARCHAR(16) NOT NULL DEFAULT '',
+    tags JSONB NOT NULL DEFAULT '[]'::jsonb,
+    excerpt TEXT NOT NULL DEFAULT '',
+    duration_min INTEGER NOT NULL DEFAULT 0,
+    prerequisites JSONB NOT NULL DEFAULT '[]'::jsonb,
+    author VARCHAR(128) NOT NULL DEFAULT '',
+    author_url VARCHAR(512) NOT NULL DEFAULT '',
+    cover_url VARCHAR(1024) NOT NULL DEFAULT '',
+    seo_title VARCHAR(200) NOT NULL DEFAULT '',
+    seo_description VARCHAR(400) NOT NULL DEFAULT '',
+    seo_keywords JSONB NOT NULL DEFAULT '[]'::jsonb,
+    canonical_url VARCHAR(512) NOT NULL DEFAULT '',
     published_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -1277,6 +1358,17 @@ CREATE TABLE IF NOT EXISTS wp_collect_sites (
 );
 CREATE INDEX IF NOT EXISTS idx_wp_collect_sites_user_id ON wp_collect_sites(user_id);
 CREATE INDEX IF NOT EXISTS idx_wp_collect_sites_profile_id ON wp_collect_sites(profile_id);
+
+CREATE TABLE IF NOT EXISTS wp_collect_cursor (
+    user_id INTEGER NOT NULL,
+    site_url TEXT NOT NULL,
+    after_gmt TIMESTAMPTZ,
+    last_wp_id INTEGER,
+    bootstrapped BOOLEAN NOT NULL DEFAULT FALSE,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id, site_url)
+);
+CREATE INDEX IF NOT EXISTS idx_wp_collect_cursor_user_id ON wp_collect_cursor(user_id);
 
 CREATE TABLE IF NOT EXISTS tw_profiles (
     id SERIAL PRIMARY KEY,

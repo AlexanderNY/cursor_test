@@ -45,6 +45,23 @@ CPython считает ссылки (`sys.getrefcount` / `id` объекта). �
 3. искать кэши без лимита, циклы с `__del__`, неосвобождённые ресурсы;
 4. отделить «утечку Python-объектов» от роста нативной памяти расширений.
 
+## Раздел: Частые вопросы с собеседования
+**Вопрос.** Почему NumPy на threads может ускоряться при GIL?
+
+**Ответ.** Тяжёлая работа в C-расширениях может отпускать GIL на время вычислений в нативном коде. Чистый Python bytecode в threads по CPU не масштабируется — это не «GIL не существует».
+
+**Вопрос.** Как передаются аргументы в функцию Python?
+
+**Ответ.** Call by object sharing: параметр — новая локальная ссылка на тот же объект. Переприсвоение параметра внутри не меняет внешнее имя; мутация mutable-объекта видна снаружи.
+
+**Вопрос.** Когда `multiprocessing` хуже threads?
+
+**Ответ.** Много мелких задач, большие объекты для сериализации между процессами, Windows spawn overhead. Для лёгкого I/O threads или asyncio часто дешевле; для CPU — processes или вынести hot path в C/Rust.
+
+**Вопрос.** Что делает generational GC?
+
+**Ответ.** Делит объекты на поколения; молодые собираются чаще. Ловит циклические ссылки, которые refcount alone не освобождает. Не заменяет дисциплину закрытия ресурсов и weakref для кэшей.
+
 ## Лаба
 
 **Цель.** Наблюдаемо сравнить threads vs processes на CPU-задаче и потрогать gc.
@@ -76,23 +93,35 @@ flowchart TD
 
 ## Тест
 
-### Почему threads плохо ускоряют чистый CPU-код в CPython?
+### Почему threads плохо ускоряют CPU в CPython?
 
-**Ответ:** из-за GIL один bytecode-поток за раз
+**Ответ:** GIL — один bytecode-поток
 
-**Пояснение:** потоки полезны при ожидании I/O; для CPU — процессы или нативные расширения.
+**Пояснение:** потоки полезны при I/O; CPU — processes/native.
 
 ### Как передаются аргументы в функцию?
 
-**Ответ:** по ссылке на объект (object sharing)
+**Ответ:** по ссылке на объект
 
-**Пояснение:** параметр — новое имя на тот же объект; мутации mutable видны вызывающему.
+**Пояснение:** параметр — новое имя на тот же объект; мутации mutable видны.
 
-### Зачем нужен модуль gc, если есть refcount?
+### Зачем gc при refcount?
 
-**Ответ:** собирать циклические ссылки
+**Ответ:** циклические ссылки
 
-**Пояснение:** refcount не разрывает циклы A↔B; генерационный GC — да.
+**Пояснение:** refcount не разрывает циклы A↔B.
+
+### multiprocessing vs threading для CPU?
+
+**Ответ:** multiprocessing — отдельные интерпретаторы
+
+**Пояснение:** обход GIL ценой IPC и памяти.
+
+### id(a) == id(b) всегда means a is b?
+
+**Ответ:** да для живых объектов
+
+**Пояснение:** id — адрес в CPython; после del id может переиспользоваться.
 
 ## Шпаргалка
 
@@ -122,6 +151,18 @@ Back: блокировка, из-за которой bytecode Python в проц
 
 Back: generational garbage collector (модуль gc)
 
+### Front: intern строк — зачем?
+
+Back: экономия памяти на повторяющихся str literals
+
+### Front: dict/set внутри — hash table?
+
+Back: да, open addressing; ключи hashable
+
+### Front: tracemalloc первый шаг при утечке?
+
+Back: снимок аллокаций и сравнение snapshots по traceback
+
 ## Итоги
 
 - GIL не отменяет многопоточность — меняет профиль ускорения
@@ -130,8 +171,9 @@ Back: generational garbage collector (модуль gc)
 
 ## Ссылки
 
+- [Glossary — global interpreter lock](https://docs.python.org/3/glossary.html#term-global-interpreter-lock)
 - [threading — docs](https://docs.python.org/3/library/threading.html)
 - [gc — docs](https://docs.python.org/3/library/gc.html)
-- [DEBAGanov — GIL / память / threads](https://github.com/DEBAGanov/interview_questions/blob/main/400%20вопросов%20с%20ответами%2C%20которые%20должен%20знать%20Python-разработчик.md)
+- [DEBAGanov — индекс вопросов серии](https://github.com/DEBAGanov/interview_questions/blob/main/400%20вопросов%20с%20ответами%2C%20которые%20должен%20знать%20Python-разработчик.md)
 - Learn | /game/learn
 - Ранее по смыслу: [Asyncio](/game/learn/py-async-io)

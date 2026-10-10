@@ -2,7 +2,9 @@
 
 Карта **16 выпусков** по SQL для собеседования. Файлы: `sql-*.md` по slug.
 
-Источник тем (Часть I, Q1–30): [OTUS / Хабр — топ-65 SQL, часть I](https://habr.com/ru/companies/otus/articles/461067/). Ответы в статьях — **оригинальные** (с учётом PostgreSQL 16 и оговорок по диалектам); не копипаст перевода OTUS. Часть II исходной серии на Хабре не найдена — SQL13–14 дополняют типовыми middle/senior темами (CTE, window, EXPLAIN).
+**Теория и справка:** [документация PostgreSQL (current)](https://www.postgresql.org/docs/current/). Индексы, JOIN и планы запросов — [Use The Index, Luke!](https://use-the-index-luke.com/). **Практика и лабы:** [Select Star SQL](https://selectstarsql.com/), [PG Exercises](https://pgexercises.com/).
+
+**Индекс формулировок Q1–Q30 (Часть I):** [OTUS / Хабр — топ-65 SQL, часть I](https://habr.com/ru/companies/otus/articles/461067/). Ответы в статьях — **оригинальные** (PostgreSQL 16 и оговорки по диалектам); не копипаст перевода OTUS. Часть II исходной серии на Хабре не найдена — SQL13–14 дополняют типовые middle/senior темы (CTE, window, EXPLAIN).
 
 ## Конвенции
 
@@ -13,9 +15,11 @@
 | `profiles` | `[developer, analyst, tester]` |
 | `rubric` | в основном `data` |
 | `onKnowledgeMap` | `true` (+ тег `собеседование`) |
+| `## Тест` | ровно **5** вопросов: **Ответ** (2–8 слов) + **Пояснение** |
+| `## Anki` | ровно **6** атомарных карточек |
 | Seed | `import_sql_learn_series.py` → `learn_seed.json` → `episodes.ts` |
 
-Нумерация вопросов: **Q1**…**Q30** = номера из Части I.
+Нумерация вопросов: **Q1**…**Q30** = номера из Части I (индекс на Хабре).
 
 ---
 

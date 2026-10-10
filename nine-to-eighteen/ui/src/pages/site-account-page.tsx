@@ -27,9 +27,9 @@ import {
   describeSiteRole,
   canManageApp,
   getManagedAppSlugs,
-  getSiteAuthSession,
   isSuperAdmin,
   refreshSiteAuthSession,
+  useSiteAuthSession,
   type SiteAuthSession,
 } from '@/data/site/site-auth'
 import {
@@ -81,8 +81,8 @@ function roleFunctions(session: SiteAuthSession): string[] {
 }
 
 export function SiteAccountPage() {
-  const [session, setSession] = useState<SiteAuthSession | null>(() => getSiteAuthSession())
-  const [loading, setLoading] = useState(Boolean(getSiteAuthSession()))
+  const session = useSiteAuthSession()
+  const [loading, setLoading] = useState(Boolean(session))
   const [error, setError] = useState('')
   const [ok, setOk] = useState('')
   const [currentPassword, setCurrentPassword] = useState('')
@@ -106,23 +106,22 @@ export function SiteAccountPage() {
   const [readyForTrips, setReadyForTrips] = useState(false)
   const published = getPublishedPosts(posts)
   const seasons = getSeasonTracks(posts)
+  const accessToken = session?.accessToken ?? ''
 
   useEffect(() => {
-    if (!getSiteAuthSession()?.accessToken) {
+    if (!accessToken) {
       setLoading(false)
       return
     }
     let cancelled = false
     void refreshSiteAuthSession()
-      .then((next) => {
+      .then(() => {
         if (cancelled) return
-        setSession(next)
         setError('')
       })
       .catch((err) => {
         if (cancelled) return
         setError(err instanceof Error ? err.message : 'Не удалось обновить профиль')
-        setSession(getSiteAuthSession())
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
@@ -130,10 +129,10 @@ export function SiteAccountPage() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [accessToken])
 
   useEffect(() => {
-    if (!getSiteAuthSession()?.accessToken) {
+    if (!accessToken) {
       setStudy(null)
       setStudyReady(true)
       return
@@ -152,10 +151,10 @@ export function SiteAccountPage() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [accessToken])
 
   useEffect(() => {
-    if (!getSiteAuthSession()?.accessToken) {
+    if (!accessToken) {
       setProfile(null)
       setProfileReady(true)
       return
@@ -196,7 +195,7 @@ export function SiteAccountPage() {
         return null
       })
     }
-  }, [])
+  }, [accessToken])
 
   const managed = session ? getManagedAppSlugs(session) : []
   const doneCount = published.filter((p) => completedSlugs.has(p.slug)).length

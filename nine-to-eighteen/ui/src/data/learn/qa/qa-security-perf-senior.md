@@ -1,14 +1,14 @@
 ---
 slug: qa-security-perf-senior
 title: Senior security и performance: OWASP, сокеты, stress
-shortTitle: Security perf senior
+shortTitle: Senior security и
 episode: QA21
 rubric: tools
 order: 421
 publishedAt: 2026-12-28T10:00:00+03:00
 profiles: [tester]
 level: senior
-tags: [owasp, security, sockets, stress, performance, собеседование]
+tags: [qa, owasp, security, sockets, stress, performance, собеседование]
 onKnowledgeMap: true
 durationMin: 45
 excerpt: OWASP Top и защиты, ручное и авто-тестирование сокетов, когда нужен stress и как проектировать сценарии нагрузки.
@@ -22,6 +22,8 @@ canonicalUrl: https://9to18.ru/game/learn/qa-security-perf-senior
 ## Введение
 
 S26, S28–29: senior-уровень безопасности и перформанса. Не «слышали про XSS», а как защищаться и как доказывать устойчивость под нагрузкой и на сокетах — руками и в автоматизации.
+
+Термины и определения согласованы с **ISTQB CTFL v4** и [глоссарием ISTQB](https://glossary.istqb.org/); номера J/M/S — опциональный индекс типовых вопросов собеса.
 
 ## Раздел: OWASP Top и линии защиты
 
@@ -98,6 +100,28 @@ async def test_ws_echo_auth(token: str, url: str) -> None:
 5. Наблюдаемость: RPS, error %, latency, CPU/RAM, DB locks, queue depth.
 6. Abort criteria (error storm, диск full).
 7. Отчёт: узкое место и рекомендация, не только график.
+
+## Раздел: Частые вопросы с собеседования
+
+**Вопрос.** Чем уровень тестирования отличается от типа (вида) тестирования?
+
+**Ответ.** Уровень отвечает на «где режем систему»: модуль, стык, продукт целиком, приёмка. Тип — «с какой целью гоняем»: smoke, regression, exploratory, security и т.д. На собесе покажите пример: один checkout можно проверить на integration (API+БД) и оформить прогон как regression после фикса — оси независимы.
+
+**Вопрос.** Когда на собеседовании уместен smoke, а когда полный regression?
+
+**Ответ.** Smoke — узкий «жив ли билд»: логин, критичный платёж, главная. Падает smoke — глубже не идём. Regression — шире: уже работавшее после изменений. Sanity — точечно после маленького патча. Ошибка junior: называть любой повторный прогон regression.
+
+**Вопрос.** Зачем на собесе спрашивают equivalence partitioning и граничные значения?
+
+**Ответ.** EP сжимает бесконечные входы в классы «ведут себя одинаково»; BVA бьёт по стыкам классов — там чаще ломается сравнение и валидация. Для поля 18–99 достаточно классов «ниже», «внутри», «выше» и точек 17–18–19, 98–99–100; не нужно 82 случайных числа.
+
+**Вопрос.** Severity и priority в баг-репорте — одно и то же?
+
+**Ответ.** Нет. Severity — ущерб для продукта и пользователя (crash vs опечатка). Priority — когда чинить в очереди команды. Критичный по severity баг может ждать, если воспроизводится только на стенде без пользователей; наоборот, мелкий UI-bug в checkout может быть P1 перед релизом.
+
+**Вопрос.** Что имеют в виду под «пирамидой тестирования» на собеседовании?
+
+**Ответ.** Много быстрых дешёвых проверок внизу (unit, контракт API), меньше медленных UI/e2e наверху. Цель — быстрая обратная связь в CI, а не «всё через Selenium». Пирамида не запрет на e2e: сквозные сценарии оставляют на критичные деньги-потоки.
 
 ## Лаба
 
@@ -177,6 +201,20 @@ flowchart LR
 
 **Пояснение:** сокеты живут долго — ошибки состояния и авторизации комнат критичнее одноразового echo.
 
+### Content Security Policy — роль против XSS?
+
+**Ответ:** ограничивает источники скриптов и inline
+
+**Пояснение:** defense in depth вместе с encoding и sanitization.
+
+### Soak/endurance test — когда?
+
+**Ответ:** утечки памяти, деградация за часы под умеренной нагрузкой
+
+**Пояснение:** stress ищет предел; soak — стабильность во времени.
+
+
+
 ## Шпаргалка
 
 <h3>OWASP</h3>
@@ -209,6 +247,20 @@ Back: остановить прогон до разрушения стенда �
 
 Back: что сервер не ходит по произвольным URL на internal/metadata по вводу пользователя
 
+### Front: STRIDE — зачем QA обзорно
+
+Back: модель угроз: spoofing, tampering, repudiation, info disclosure, DoS, elevation
+
+### Front: OWASP A03 Injection — не только SQL
+
+Back: command, LDAP, template injection — смотреть все точки ввода
+
+### Front: Percentile latency p95
+
+Back: 95% запросов быстрее порога — важнее среднего для UX
+
+
+
 ## Итоги
 
 - OWASP Top — карта рисков с тестами и контролями, не заучивание названий
@@ -218,6 +270,9 @@ Back: что сервер не ходит по произвольным URL на
 
 ## Ссылки
 
-- [QA-interview-250](https://github.com/Konstantine23/QA-interview-250)
+- [ISTQB Glossary](https://glossary.istqb.org/)
+- [CTFL v4 — Certified Tester Foundation Level](https://istqb.org/certifications/certified-tester-foundation-level-ctfl-v4-0/)
 - [OWASP Top 10](https://owasp.org/www-project-top-ten/)
+- Опционально: [QA-interview-250](https://github.com/Konstantine23/QA-interview-250) — полный список формулировок вопросов
 - Learn | /game/learn
+- Далее: [Leadership conflicts](/game/learn/qa-leadership-conflicts)

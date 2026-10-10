@@ -18,6 +18,12 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     await init_db(SITE_ALL_TABLES + SITE_SCHEMA_PATCHES)
     try:
+        from routers.site import ensure_site_seeded
+
+        await ensure_site_seeded()
+    except Exception:
+        logger.exception("Site apps seed failed; continuing")
+    try:
         from services.learn_service import learn_service
 
         inserted = await learn_service.ensure_seeded()

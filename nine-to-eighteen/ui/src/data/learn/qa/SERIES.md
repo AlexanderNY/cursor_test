@@ -2,7 +2,9 @@
 
 Карта **24 выпуска** для трека тестировщика. Полные тексты: `qa-*.md` по slug (например `qa-intro-testing.md`).
 
-Источник тем: [QA-interview-250](https://github.com/Konstantine23/QA-interview-250). В статьях — **оригинальные** ответы по вопросам (не копипаст). Нумерация: **J**unior, **M**iddle, **S**enior.
+**Источник терминологии:** [ISTQB CTFL v4](https://istqb.org/certifications/certified-tester-foundation-level-ctfl-v4-0/) и [ISTQB Glossary](https://glossary.istqb.org/). **Практика и углубление:** test pyramid (Martin Fowler), [OWASP Top 10](https://owasp.org/www-project-top-ten/), [pytest](https://docs.pytest.org/), [Playwright Python](https://playwright.dev/python/), [Scrum Guide](https://scrumguides.org/scrum-guide.html), [Docker](https://docs.docker.com/) — по теме выпуска.
+
+В статьях — **оригинальные** русские разборы (не копипаст PDF ISTQB). Опциональный индекс формулировок вопросов: [QA-interview-250](https://github.com/Konstantine23/QA-interview-250) (номера **J**unior, **M**iddle, **S**enior).
 
 AQA-лабы и сниппеты — **Python** (pytest, requests/httpx, Selenium/Playwright Python). Java/TestNG — кратко, если вопрос явно про Java.
 
@@ -20,8 +22,8 @@ AQA-лабы и сниппеты — **Python** (pytest, requests/httpx, Seleniu
 
 ## Junior · QA01–QA08 · order 401–408
 
-| Ep | slug | Тема | Вопросы |
-|----|------|------|---------|
+| Ep | slug | Тема | Вопросы (опц.) |
+|----|------|------|----------------|
 | QA01 | `qa-intro-testing` | Тестирование, STLC, Entry/Exit | J1–3, J25, J30 |
 | QA02 | `qa-types-levels` | Типы и уровни, smoke/sanity, boxes | J4–5, J9–10, J12–13, J15–17, J19–23, J100 |
 | QA03 | `qa-test-design` | Эквивалентность, границы, pesticide | J6–8, J24, J123, J137–140 |
@@ -33,8 +35,8 @@ AQA-лабы и сниппеты — **Python** (pytest, requests/httpx, Seleniu
 
 ## AQA bridge · QA09–QA12 · order 409–412
 
-| Ep | slug | Тема | Вопросы |
-|----|------|------|---------|
+| Ep | slug | Тема | Вопросы (опц.) |
+|----|------|------|----------------|
 | QA09 | `qa-aqa-principles` | OOP/SOLID/PO; Java-блок кратко | J36–45 |
 | QA10 | `qa-selenium-webdriver` | Selenium на Python | J46–62; M35–38, M41–42 |
 | QA11 | `qa-pytest-ci-git` | pytest, Git, CI, отчёты | J63–75; M16 |
@@ -42,8 +44,8 @@ AQA-лабы и сниппеты — **Python** (pytest, requests/httpx, Seleniu
 
 ## Middle · QA13–QA18 · order 413–418
 
-| Ep | slug | Тема | Вопросы |
-|----|------|------|---------|
+| Ep | slug | Тема | Вопросы (опц.) |
+|----|------|------|----------------|
 | QA13 | `qa-middle-process` | Процесс, coverage, leakage | M1, M4, M14, M17–22 |
 | QA14 | `qa-test-design-advanced` | Decision table, pairwise, RBT | M3, M11, M23–25, M93, M101 |
 | QA15 | `qa-api-contract-perf` | API, contract, perf tools | M10, M26–29, M96–97; S9, S29 |
@@ -53,8 +55,8 @@ AQA-лабы и сниппеты — **Python** (pytest, requests/httpx, Seleniu
 
 ## Senior · QA19–QA24 · order 419–424
 
-| Ep | slug | Тема | Вопросы |
-|----|------|------|---------|
+| Ep | slug | Тема | Вопросы (опц.) |
+|----|------|------|----------------|
 | QA19 | `qa-strategy-metrics` | Стратегия, метрики, estimate | S1–2, S5–13, S15–18 |
 | QA20 | `qa-shift-left-automation-roi` | Shift-left, ROI, BDD, CI/CD | S19–25, S27; M34 |
 | QA21 | `qa-security-perf-senior` | OWASP, sockets, stress | S26, S28–29 |

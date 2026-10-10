@@ -1,7 +1,7 @@
 ---
 slug: sql-performance-explain
 title: EXPLAIN, индексы и N+1 — производительность SQL
-shortTitle: EXPLAIN & perf
+shortTitle: EXPLAIN, индексы и N+1
 episode: SQL14
 rubric: data
 order: 614
@@ -73,6 +73,23 @@ CREATE INDEX ON orders (customer_id) INCLUDE (status, total);
 
 Кратко по диалектам: в MSSQL — план в SSMS, `SET STATISTICS IO`; в MySQL — `EXPLAIN ANALYZE` (в новых версиях). Идея та же: смотреть доступ к данным и JOIN strategy.
 
+## Раздел: Частые вопросы с собеседования
+**Вопрос.** Seq Scan vs Index Scan — когда seq нормален?
+
+**Ответ.** Малая доля таблицы не всегда триггер — planner смотрит statistics: при ~30%+ строк или cold cache seq может выиграть. EXPLAIN ANALYZE показывает фактические rows vs estimate.
+
+**Вопрос.** N+1 на уровне приложения — SQL-лечение?
+
+**Ответ.** Один запрос с JOIN или IN (...), batch load, или aggregation в SQL вместо цикла ORM. EXPLAIN проверяет, что не nested loop на огромном outer.
+
+**Вопрос.** Index Only Scan — условие?
+
+**Ответ.** Все нужные столбцы в индексе и visibility map позволяет не ходить в heap (PostgreSQL). Covering index `(user_id) INCLUDE (email)` для узких SELECT.
+
+**Вопрос.** `EXPLAIN` без ANALYZE — чего не хватает?
+
+**Ответ.** План без фактического времени и rows — только оценка. ANALYZE выполняет запрос (осторожно на UPDATE!) и даёт loops, actual time — must для tuning.
+
 ## Лаба
 
 **Цель.** Снять планы до/после индекса и смоделировать N+1 vs один JOIN.
@@ -120,9 +137,21 @@ flowchart LR
 
 ### Что такое N+1?
 
-**Ответ:** один запрос за список + по запросу на каждую связанную сущность в цикле
+**Ответ:** один плюс N запросов
 
-**Пояснение:** лечится JOIN/IN/batch; часто приходит из наивного ORM.
+**Пояснение:** список + цикл; лечится JOIN/IN/batch/eager load.
+
+### Index Only Scan — когда?
+
+**Ответ:** все столбцы в индексе
+
+**Пояснение:** INCLUDE или covering index; heap не читается для покрытых полей.
+
+### После массового UPDATE что сделать?
+
+**Ответ:** ANALYZE таблицы
+
+**Пояснение:** обновить статистику для планировщика; иначе плохие оценки rows.
 
 ## Шпаргалка
 
@@ -154,6 +183,18 @@ Back: Низкая селективность / нужен почти full scan 
 
 Back: 1+N запросов в цикле приложения; чинить JOIN/IN/batch/ORM eager load
 
+### Front: Buffers в EXPLAIN ANALYZE?
+
+Back: Сколько блоков прочитано/shared hit — память vs диск
+
+### Front: Nested Loop vs Hash Join?
+
+Back: Nested Loop — малый внутренний набор; Hash Join — построение хеша на большом
+
+### Front: Селективность индекса?
+
+Back: Доля строк, отбираемых предикатом; низкая селективность — Seq Scan может выиграть
+
 ## Итоги
 
 - План — главный артефакт разговора о perf в SQL
@@ -162,7 +203,8 @@ Back: 1+N запросов в цикле приложения; чинить JOIN
 
 ## Ссылки
 
-- [OTUS / Хабр — топ SQL, часть I](https://habr.com/ru/companies/otus/articles/461067/)
 - [PostgreSQL: Using EXPLAIN](https://www.postgresql.org/docs/current/using-explain.html)
 - [PostgreSQL: CREATE INDEX](https://www.postgresql.org/docs/current/sql-createindex.html)
-- Learn | /game/learn/sql-cte-window
+- [Use The Index, Luke!](https://use-the-index-luke.com/)
+- Индекс Q1–Q30: [OTUS / Хабр — часть I](https://habr.com/ru/companies/otus/articles/461067/)
+- Далее: [Interview drill](/game/learn/sql-interview-drill)

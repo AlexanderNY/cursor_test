@@ -1,6 +1,8 @@
 # Серия Redis Learn: Junior → Senior
 
-Карта **8 выпусков** по Redis для собеседования. Файлы: `rd-*.md` по slug.
+Карта **8 выпусков** по Redis для собеседования. Файлы: `rd*.md` по slug.
+
+**Источник тем и терминологии:** официальная документация [redis.io/docs](https://redis.io/docs/) (типы данных, TTL, persistence RDB/AOF, cache-aside как практика, pub/sub, eviction, [Cluster spec](https://redis.io/docs/reference/cluster-spec/)). Ответы в статьях — **оригинальные** (сценарии собеса); не копипаст docs.
 
 ## Конвенции
 

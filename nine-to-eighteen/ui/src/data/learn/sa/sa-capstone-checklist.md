@@ -1,20 +1,20 @@
 ---
 slug: sa-capstone-checklist
 title: Capstone СА — чеклист Junior→Senior и индекс T→slug
-shortTitle: Capstone checklist
+shortTitle: Capstone СА
 episode: SA24
 rubric: architecture
 order: 524
 publishedAt: 2027-03-19T10:00:00+03:00
 profiles: [analyst]
 level: senior
-tags: [capstone, checklist, индекс, карьера, собеседование]
+tags: [sa, capstone, checklist, индекс, карьера, собеседование]
 onKnowledgeMap: true
 durationMin: 40
-excerpt: Итоговый чеклист роста системного аналитика Junior→Senior, обзор индекса тем T к выпускам Learn и ссылка на Хабр 963708.
+excerpt: Capstone Junior→Senior: чеклисты, индекс T→slug, первичные источники BABOK KA, BPMN OMG, OpenAPI, C4, ADR; Habr 963708 — опциональный индекс вопросов.
 prerequisites: [sa-interview-drill]
 seoTitle: Capstone чеклист системный аналитик Junior Senior
-seoDescription: SA24: чеклисты уровней СА, маршрут по серии Learn, индекс T→slug и ссылка на топ-150 вопросов на Хабре.
+seoDescription: SA24: чеклисты уровней СА, маршрут Learn, индекс T→slug, BABOK и стандарты (BPMN, OpenAPI, C4, ADR); Habr — индекс формулировок.
 seoKeywords: [системный аналитик, checklist, capstone, собеседование, Learn]
 canonicalUrl: https://9to18.ru/game/learn/sa-capstone-checklist
 ---
@@ -23,13 +23,15 @@ canonicalUrl: https://9to18.ru/game/learn/sa-capstone-checklist
 
 Финальный выпуск серии System Analyst Learn: собрать траекторию Junior → Middle → Senior, пройти self-check и понять, куда возвращаться по пробелам. Полный список формулировок вопросов — в статье на Хабре; здесь — **ориентиры компетенций**, индекс выпусков и честный план до собеса.
 
+Capstone собирает серию по **BABOK Knowledge Areas** как оглавлению компетенций: Planning, Elicitation, Requirements Life Cycle, Strategy, Analysis/Design, Solution Evaluation — плюс стандарты **BPMN OMG**, **OpenAPI**, **Richardson**, **C4**, **ADR Nygard**, **Kafka/Rabbit** для интegrations. Индекс **T→slug** сохранён; [Хабр 963708](https://habr.com/ru/articles/963708/) — опциональный индекс вопросов.
+
 ## Раздел: Чеклисты Junior → Middle → Senior
 
 **Как пользоваться серией.**
 
 1. Идите по `order` 501→524 или точечно по пробелам (таблица индекса ниже).
 2. Выпуск: теория → лаба → тест → Anki; лабу не пропускайте.
-3. Держите открытым [Топ-150 вопросов СА](https://habr.com/ru/articles/963708/) — статьи 9to18 дают оригинальные разборы, Хабр — полноту формулировок.
+3. Опционально: [Топ-150 вопросов СА](https://habr.com/ru/articles/963708/) как индекс формулировок; разборы и первичные источники (BABOK, BPMN OMG, OpenAPI, C4, ADR) — в выпусках Learn.
 4. После Middle (SA16) обязательно Senior craft → modeling → integrations → ADR (SA17–20) до drill (SA23).
 5. Повторяйте Anki и свой рабочий кейс (одна система end-to-end) — сильнее зубрёжки списков.
 
@@ -119,6 +121,17 @@ canonicalUrl: https://9to18.ru/game/learn/sa-capstone-checklist
 
 Артефакт «папка доказательств»: 1 постановка, 1 тройка моделей, 1 ADR, 1 матрица трассировки, 1 разбор интеграции — даже учебные.
 
+## Раздел: Частые вопросы с собеседования
+
+**Вопрос.** Что проверить в REST-контракте?
+**Ответ.** Ресурс, метод, коды ошибок, идемпотентность и схему тела. «Просто JSON» без ошибок — слабый ответ.
+
+**Вопрос.** Чем BPMN удобнее свободного рисунка?
+**Ответ.** У событий, задач и шлюзов фиксированный смысл, схему читают и аналитик, и разработчик.
+
+**Вопрос.** Как коротко объяснить CAP?
+**Ответ.** При разделении сети нельзя одновременно гарантировать свежую согласованность и доступность всех узлов.
+
 ## Лаба
 
 **Цель.** Личный gap-analysis и план на 4 недели.
@@ -169,6 +182,18 @@ flowchart LR
 
 **Пояснение:** попытка «прочитать всё подряд без практики» обычно не успевает и не закрепляется.
 
+### Первый шаг self-check перед собесом?
+
+**Ответ:** пройти чеклист своего уровня SA01–SA16 или SA17–24
+
+**Пояснение:** без gap analysis drill превращается в случайные вопросы.
+
+### Где первичная спецификация BPMN?
+
+**Ответ:** OMG BPMN 2.0 на omg.org
+
+**Пояснение:** не путать с инструментами Camunda/Draw.io — normative text у OMG.
+
 ## Шпаргалка
 
 <h3>Суть</h3>
@@ -196,6 +221,18 @@ Back: постановка+NFR+traceability, modeling workshop, выбор ин�
 
 Back: вернуться к slug из индекса: REST/async/SOAP/ESB и sa-integration-design; сделать лабу и Anki
 
+### Front: Шесть BABOK Knowledge Areas — перечислите коротко?
+
+Back: Planning; Elicitation; Req Life Cycle; Strategy; Analysis/Design; Solution Evaluation
+
+### Front: Richardson level 3 — что добавляет?
+
+Back: HATEOAS — hypermedia controls в ответах
+
+### Front: SA24 slug и order?
+
+Back: sa-capstone-checklist, order 524
+
 ## Итоги
 
 - Capstone — навигатор и честный self-check, не новый учебник
@@ -205,6 +242,13 @@ Back: вернуться к slug из индекса: REST/async/SOAP/ESB и sa-
 
 ## Ссылки
 
-- [Топ-150 вопросов СА (Хабр)](https://habr.com/ru/articles/963708/)
+- [BABOK Guide — Knowledge Areas (IIBA)](https://www.iiba.org/knowledgehub/business-analysis-body-of-knowledge-babok-guide/)
+- [BPMN 2.0 — OMG](https://www.omg.org/spec/BPMN/2.0/)
+- [OpenAPI Specification 3.x](https://spec.openapis.org/oas/latest.html)
+- [Richardson Maturity Model](https://martinfowler.com/articles/richardsonMaturityModel.html)
+- [C4 Model](https://c4model.com/)
+- [Documenting Architecture Decisions (Nygard)](https://cognitect.com/blog/2011/11/15/documenting-architecture-decisions)
+- [Apache Kafka Documentation](https://kafka.apache.org/documentation/)
+- [RabbitMQ Documentation](https://www.rabbitmq.com/docs)
+- [Топ-150 вопросов СА (Хабр) — индекс формулировок](https://habr.com/ru/articles/963708/)
 - Learn | /game/learn
-- Серия: [SERIES.md](/game/learn) · старт junior: [sa-requirements-basics](/game/learn/sa-requirements-basics)

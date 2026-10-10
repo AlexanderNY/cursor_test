@@ -1,10 +1,7 @@
-import { FormEvent, useEffect, useState } from 'react'
+import { FormEvent } from 'react'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { telegramService } from '@/services/telegram-service'
-import type { TgDigestItem } from '@/types/telegram'
-import { formatDateTime } from '@/utils/date'
 
 export interface ProcessingTabProps {
   isLoadingProfile: boolean
@@ -37,10 +34,6 @@ export interface ProcessingTabProps {
   onSummarizeEnabledChange: (v: boolean) => void
   summarizeMinLength: number
   onSummarizeMinLengthChange: (v: number) => void
-  digestIntervalMin: number
-  onDigestIntervalMinChange: (v: number) => void
-  digestChannel: string
-  onDigestChannelChange: (v: string) => void
   classificationEnabled: boolean
   onClassificationEnabledChange: (v: boolean) => void
   classificationCategories: string
@@ -82,10 +75,6 @@ export function ProcessingTab(props: ProcessingTabProps) {
     onSummarizeEnabledChange,
     summarizeMinLength,
     onSummarizeMinLengthChange,
-    digestIntervalMin,
-    onDigestIntervalMinChange,
-    digestChannel,
-    onDigestChannelChange,
     classificationEnabled,
     onClassificationEnabledChange,
     classificationCategories,
@@ -94,27 +83,6 @@ export function ProcessingTab(props: ProcessingTabProps) {
     onBatchEnrichmentEnabledChange,
     onSubmit,
   } = props
-
-  const [digests, setDigests] = useState<TgDigestItem[]>([])
-
-  useEffect(() => {
-    if (!summarizeEnabled) {
-      setDigests([])
-      return
-    }
-    let cancelled = false
-    void (async () => {
-      try {
-        const items = await telegramService.getDigests(3)
-        if (!cancelled) setDigests(items)
-      } catch {
-        if (!cancelled) setDigests([])
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [summarizeEnabled])
 
   return (
     <Card className="animate-slide-up">
@@ -231,26 +199,10 @@ export function ProcessingTab(props: ProcessingTabProps) {
               </label>
               {summarizeEnabled && (
                 <div className="space-y-3">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <Input label="Min length для суммаризации" type="number" value={summarizeMinLength} onChange={(e) => onSummarizeMinLengthChange(Number(e.target.value) || 500)} />
-                    <Input label="Digest interval (min)" type="number" value={digestIntervalMin} onChange={(e) => onDigestIntervalMinChange(Number(e.target.value) || 30)} />
-                    <Input label="Digest channel" value={digestChannel} onChange={(e) => onDigestChannelChange(e.target.value)} placeholder="-100..." />
-                  </div>
-                  <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)] p-3 space-y-2">
-                    <p className="text-xs font-semibold text-[var(--text-primary)]">Последние дайджесты</p>
-                    {digests.length === 0 ? (
-                      <p className="text-xs text-[var(--text-muted)]">Пока нет сохранённых дайджестов.</p>
-                    ) : (
-                      digests.map((d) => (
-                        <div key={d.id} className="text-xs space-y-1 border-t border-[var(--border-color)] pt-2 first:border-0 first:pt-0">
-                          <p className="text-[var(--text-muted)]">
-                            {formatDateTime(d.created_at)} · chat {d.chat_id} · {d.message_count} сообщ.
-                          </p>
-                          <p className="text-[var(--text-primary)] line-clamp-4 whitespace-pre-wrap">{d.digest_text}</p>
-                        </div>
-                      ))
-                    )}
-                  </div>
+                  <Input label="Min length для суммаризации" type="number" value={summarizeMinLength} onChange={(e) => onSummarizeMinLengthChange(Number(e.target.value) || 500)} />
+                  <p className="text-xs text-[var(--text-muted)]">
+                    Пакетная сводка по нескольким каналам настраивается в Channels → «Часовая сводка».
+                  </p>
                 </div>
               )}
               <label className="flex items-center gap-3 cursor-pointer group">

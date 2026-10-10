@@ -1,7 +1,7 @@
 ---
 slug: py-web-flask-django
 title: Веб-фреймворки — Flask, Django, Pyramid
-shortTitle: Flask / Django
+shortTitle: Веб-фреймворки
 episode: PY19
 rubric: api
 order: 319
@@ -39,6 +39,23 @@ Middleware — слой вокруг запроса/ответа (логиров
 
 Подключение БД: через ORM (Django/SQLAlchemy) или драйвер; в Flask часто SQLAlchemy/extension, конфиг URI, сессия на запрос. Современный ASGI-сосед: **FastAPI** (типы, OpenAPI, async) — уместно кратко сравнить на собесе, если вакансия API-heavy.
 
+## Раздел: Частые вопросы с собеседования
+**Вопрос.** Flask vs Django на собесе?
+
+**Ответ.** Django — batteries included (ORM, admin, auth), конвенции, быстрый CRUD. Flask — минимальное ядро, стек выбираете сами через extensions. Выбор: скорость старта vs полнота vs команда знакома с экосистемой.
+
+**Вопрос.** WSGI vs ASGI в двух словах?
+
+**Ответ.** WSGI — синхронный интерфейс app(environ, start_response); ASGI — async, WebSocket, long-lived. FastAPI/Starlette на ASGI; классический Flask — WSGI, async views ограничены моделью.
+
+**Вопрос.** Где жить SQL injection защите?
+
+**Ответ.** Параметризованные запросы / ORM bind parameters — никогда конкатенация user input в SQL. На собесе связывают с PY20 и placeholder `%s`.
+
+**Вопрос.** Middleware — что делает?
+
+**Ответ.** Оборачивает request/response: auth, logging, CORS, timing. В Django — классы middleware; во Flask — hooks или WSGI middleware. Порядок в цепочке важен для корректности.
+
 ## Лаба
 
 **Цель.** Минимальный Flask `/health` и middleware-логер времени.
@@ -71,23 +88,35 @@ sequenceDiagram
 
 ## Тест
 
-### Чем фреймворк отличается от библиотеки?
+### Фреймворк vs библиотека?
 
-**Ответ:** фреймворк управляет потоком и вызывает ваш код
+**Ответ:** фреймворк управляет потоком, вызывает ваш код
 
-**Пояснение:** IoC: вы пишете view/handlers под контракт фреймворка.
+**Пояснение:** IoC: view/handlers под контракт.
 
 ### Сильная сторона Django?
 
-**Ответ:** батареи: ORM, admin, auth «из коробки»
+**Ответ:** batteries: ORM, admin, auth
 
-**Пояснение:** быстрее старт монолита с админкой; цена — вес и конвенции.
+**Пояснение:** быстрый монолит; цена — вес.
 
 ### Что такое middleware?
 
-**Ответ:** перехватчики вокруг обработки HTTP-запроса/ответа
+**Ответ:** перехватчики запрос/ответ HTTP
 
-**Пояснение:** сквозная логика без дублирования во view.
+**Пояснение:** cross-cutting без дублирования во view.
+
+### Flask sessions где хранят?
+
+**Ответ:** client cookie + server secret signing
+
+**Пояснение:** не server-side session store по умолчанию.
+
+### FastAPI vs Flask на API?
+
+**Ответ:** FastAPI — типы, OpenAPI, async-first
+
+**Пояснение:** Flask — micro + extensions; выбор по команде.
 
 ## Шпаргалка
 
@@ -115,7 +144,19 @@ Back: добавляет переменные во все шаблоны авт�
 
 ### Front: WSGI vs ASGI коротко?
 
-Back: WSGI sync-модель; ASGI — async/websockets (Uvicorn/FastAPI)
+Back: WSGI sync; ASGI async/websockets
+
+### Front: Django ORM vs raw SQL?
+
+Back: ORM для CRUD и переносимости; raw для сложных запросов
+
+### Front: Pyramid позиционирование?
+
+Back: меньше «batteries», больше гибкости конфигурации
+
+### Front: MVC в Django — где view?
+
+Back: view часто = Python callable; шаблон — presentation
 
 ## Итоги
 
@@ -127,6 +168,6 @@ Back: WSGI sync-модель; ASGI — async/websockets (Uvicorn/FastAPI)
 
 - [Flask](https://flask.palletsprojects.com/)
 - [Django](https://docs.djangoproject.com/)
-- [DEBAGanov — Flask/Django](https://github.com/DEBAGanov/interview_questions/blob/main/400%20вопросов%20с%20ответами%2C%20которые%20должен%20знать%20Python-разработчик.md)
+- [DEBAGanov — индекс вопросов серии](https://github.com/DEBAGanov/interview_questions/blob/main/400%20вопросов%20с%20ответами%2C%20которые%20должен%20знать%20Python-разработчик.md)
 - Learn | /game/learn
 - Далее: [БД и Memcached](/game/learn/py-db-cache-memcached)

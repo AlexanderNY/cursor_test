@@ -394,6 +394,40 @@ CREATE TABLE IF NOT EXISTS smm_automations (
 );
 """
 
+SMM_DIGEST_JOBS_TABLE = """
+CREATE TABLE IF NOT EXISTS smm_digest_jobs (
+    id SERIAL PRIMARY KEY,
+    brand_id INTEGER NOT NULL REFERENCES smm_brands(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL,
+    enabled BOOLEAN DEFAULT FALSE,
+    source_channel_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+    publish_channel_id INTEGER REFERENCES smm_brand_channels(id) ON DELETE SET NULL,
+    interval_min INTEGER NOT NULL DEFAULT 60
+        CHECK (interval_min >= 5 AND interval_min <= 1440),
+    process_prompt TEXT,
+    summary_prompt TEXT,
+    attach_cover_image BOOLEAN DEFAULT TRUE,
+    last_cover_miss_theme TEXT,
+    last_cover_miss_at TIMESTAMPTZ,
+    last_run_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (brand_id)
+);
+CREATE INDEX IF NOT EXISTS idx_smm_digest_jobs_user ON smm_digest_jobs(user_id);
+CREATE INDEX IF NOT EXISTS idx_smm_digest_jobs_enabled
+    ON smm_digest_jobs(enabled) WHERE enabled = TRUE;
+DO $$ BEGIN
+  ALTER TABLE smm_digest_jobs ADD COLUMN attach_cover_image BOOLEAN DEFAULT TRUE;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE smm_digest_jobs ADD COLUMN last_cover_miss_theme TEXT;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE smm_digest_jobs ADD COLUMN last_cover_miss_at TIMESTAMPTZ;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+"""
+
 SMM_COMPETITOR_SNAPSHOTS_TABLE = """
 CREATE TABLE IF NOT EXISTS smm_competitor_snapshots (
     id SERIAL PRIMARY KEY,
@@ -606,6 +640,7 @@ CREATE TABLE IF NOT EXISTS smm_media_packs (
     title VARCHAR(255) NOT NULL,
     object_keys JSONB NOT NULL DEFAULT '[]'::jsonb,
     caption TEXT,
+    tags JSONB NOT NULL DEFAULT '[]'::jsonb,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
@@ -613,6 +648,9 @@ CREATE INDEX IF NOT EXISTS idx_smm_media_packs_brand
     ON smm_media_packs(brand_id);
 CREATE INDEX IF NOT EXISTS idx_smm_media_packs_user
     ON smm_media_packs(user_id);
+DO $$ BEGIN
+  ALTER TABLE smm_media_packs ADD COLUMN tags JSONB NOT NULL DEFAULT '[]'::jsonb;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
 """
 
 LEARN_POSTS_TABLE = """
@@ -721,6 +759,7 @@ ALL_TABLES: list[str] = [
     SMM_JOB_COMMENTS_TABLE,
     SMM_JOB_REVISIONS_TABLE,
     SMM_AUTOMATIONS_TABLE,
+    SMM_DIGEST_JOBS_TABLE,
     SMM_COMPETITOR_SNAPSHOTS_TABLE,
     SMM_INDEXES,
     SMM_CHANNEL_COUNTERS_TABLE,

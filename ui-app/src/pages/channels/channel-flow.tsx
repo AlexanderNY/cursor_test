@@ -349,6 +349,27 @@ export function ChannelFlowPage() {
         setPublishTargets(updated.publish_targets || [])
         setUrlConfig({ ...DEFAULT_URL_CONFIG, ...(updated.url_config || {}) })
         setSuccess('Целевые каналы публикации сохранены')
+      } else if (channel.network === 'wp') {
+        const rawId = processing.wp_page_id
+        const pageId =
+          rawId === null || rawId === undefined || Number.isNaN(Number(rawId))
+            ? null
+            : Number(rawId)
+        const pageSlug = (processing.wp_page_slug || '').trim() || null
+        const updated = await smmService.updateChannel(channel.brand_id, channel.id, {
+          publish_targets: publishTargets,
+          publish_enabled: publishEnabled && (channel.role === 'own' || publishTargets.length > 0),
+          processing: {
+            ...processing,
+            wp_page_id: pageId,
+            wp_page_slug: pageSlug,
+          },
+        })
+        setChannel(updated)
+        setPublishTargets(updated.publish_targets || [])
+        setPublishEnabled(Boolean(updated.publish_enabled))
+        setProcessing(updated.processing || {})
+        setSuccess('Настройки публикации WordPress сохранены')
       } else {
         const updated = await smmService.updateChannel(channel.brand_id, channel.id, {
           publish_targets: publishTargets,
@@ -514,6 +535,7 @@ export function ChannelFlowPage() {
   }
 
   const isTg = channel.network === 'tg'
+  const isWp = channel.network === 'wp'
   const isAlertNetwork = isTg || channel.network === 'vk'
   const canCollect = collectAllowed(channel, platformNet)
   const canAlert = alertAllowed(channel, platformNet)
@@ -522,7 +544,7 @@ export function ChannelFlowPage() {
   const authHintTg =
     'Нужна сессия Telegram: Telegram → Auth. Затем Recheck на вкладке Auth этого канала.'
   const authHintWp =
-    'Нужны site URL и Application Password: WordPress → Profile. Затем Recheck на вкладке Auth этого канала.'
+    'Сбор публичных записей идёт по Site URL канала. Для Publish нужны Application Password: WordPress → Profile → Recheck на вкладке Auth.'
   const collectAuthHint =
     channel.network === 'vk' ? authHintVk : channel.network === 'wp' ? authHintWp : authHintTg
   const alertAuthHint = collectAuthHint
@@ -530,7 +552,7 @@ export function ChannelFlowPage() {
   const setupHref = networkSetupUrl(channel.network)
 
   const flowTabs = (
-    isUrl
+    isUrl || isWp
       ? ([
           ['collect', 'Сбор'],
           ['processing', 'Обработка'],
@@ -990,7 +1012,9 @@ export function ChannelFlowPage() {
             <CardDescription>
               {isUrl
                 ? 'Собственные TG/VK каналы бренда, куда url-bot будет публиковать собранное по расписанию.'
-                : 'Целевые каналы публикации — own-каналы этого бренда, куда уйдут обработанные сообщения.'}
+                : isWp
+                  ? 'Для own-сайта включите Publish (нужен Application Password). Цели ниже — куда уйдут собранные записи; обновление page — по ID/slug.'
+                  : 'Целевые каналы публикации — own-каналы этого бренда, куда уйдут обработанные сообщения.'}
             </CardDescription>
           </CardHeader>
           <form onSubmit={savePublish}>
@@ -1050,6 +1074,42 @@ export function ChannelFlowPage() {
               )}
               {publishTargets.length > 0 && (
                 <p className="text-xs text-[var(--text-muted)]">Выбрано: {publishTargets.length}</p>
+              )}
+              {isWp && channel.role === 'own' && (
+                <div className="rounded-lg border border-[var(--border-color)] p-3 space-y-3">
+                  <div>
+                    <p className="text-sm font-medium">Обновление страницы WordPress</p>
+                    <p className="text-xs text-[var(--text-muted)] mt-1">
+                      Если у исходящего поста в extras стоит wp_update_page, wp-bot обновит эту
+                      страницу (page) вместо создания новой записи. Укажите ID или slug.
+                    </p>
+                  </div>
+                  <Input
+                    label="Page ID"
+                    type="number"
+                    value={
+                      processing.wp_page_id === null || processing.wp_page_id === undefined
+                        ? ''
+                        : String(processing.wp_page_id)
+                    }
+                    onChange={(e) => {
+                      const v = e.target.value.trim()
+                      setProcessing((p) => ({
+                        ...p,
+                        wp_page_id: v === '' ? null : Number(v),
+                      }))
+                    }}
+                    placeholder="например 42"
+                  />
+                  <Input
+                    label="Page slug"
+                    value={processing.wp_page_slug || ''}
+                    onChange={(e) =>
+                      setProcessing((p) => ({ ...p, wp_page_slug: e.target.value }))
+                    }
+                    placeholder="about"
+                  />
+                </div>
               )}
             </CardContent>
             <CardFooter>

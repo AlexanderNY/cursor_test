@@ -47,6 +47,7 @@ export function drawHeroComicFace(
   lookTarget: { x: number; y: number } | null = null,
   eyeScale = 1,
   beakOpen = 0,
+  eyeCount = 2,
 ): void {
   const layout = getHeroLobeLayout(radius, facing)
   drawComicFace(
@@ -61,6 +62,7 @@ export function drawHeroComicFace(
       beakScale: 1.05,
       browAngle: 0.28,
       beakOpen,
+      eyeCount,
     },
   )
 }
@@ -73,6 +75,8 @@ export function drawHeroPaws(
   facing: number,
   fill: string,
   wag: number,
+  count = 2,
+  reachScale = 1,
 ): void {
-  drawComicPaws(ctx, x, y, radius, facing, fill, wag)
+  drawComicPaws(ctx, x, y, radius, facing, fill, wag, count, reachScale)
 }

@@ -170,8 +170,6 @@ export function TelegramPage() {
   const [staticHtmlContent, setStaticHtmlContent] = useState('')
   const [summarizeEnabled, setSummarizeEnabled] = useState(false)
   const [summarizeMinLength, setSummarizeMinLength] = useState(500)
-  const [digestIntervalMin, setDigestIntervalMin] = useState(30)
-  const [digestChannel, setDigestChannel] = useState('')
   const [classificationEnabled, setClassificationEnabled] = useState(false)
   const [classificationCategories, setClassificationCategories] = useState('новости, реклама, технологии, финансы, другое')
   const [batchEnrichmentEnabled, setBatchEnrichmentEnabled] = useState(false)
@@ -363,8 +361,6 @@ export function TelegramPage() {
         setStaticHtmlContent((profile.static_html_content ?? '').slice(0, 1000))
         setSummarizeEnabled(profile.summarize_enabled ?? false)
         setSummarizeMinLength(profile.summarize_min_length ?? 500)
-        setDigestIntervalMin(profile.digest_interval_min ?? 30)
-        setDigestChannel(profile.digest_channel || '')
         setClassificationEnabled(profile.classification_enabled ?? false)
         setBatchEnrichmentEnabled(profile.batch_enrichment_enabled ?? false)
         if (profile.classification_categories?.length) {
@@ -426,8 +422,6 @@ export function TelegramPage() {
       processing_description: processEnabled ? processingDescription || undefined : undefined,
       summarize_enabled: summarizeEnabled,
       summarize_min_length: summarizeMinLength,
-      digest_interval_min: digestIntervalMin,
-      digest_channel: digestChannel || undefined,
       classification_enabled: classificationEnabled,
       classification_categories: classificationCategories.split(',').map((s) => s.trim()).filter(Boolean),
       batch_enrichment_enabled: batchEnrichmentEnabled,

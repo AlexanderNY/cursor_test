@@ -143,6 +143,37 @@ async def list_tg_publish_channels(user_id: Optional[int] = None) -> List[Dict[s
         await release_db_connection(conn)
 
 
+async def load_digest_source_channel_ids(user_id: Optional[int] = None) -> set[int]:
+    """Channel ids that belong to an enabled hourly digest job."""
+    conn = await get_db_connection()
+    try:
+        async with conn.cursor() as cur:
+            where = ["enabled = TRUE"]
+            params: list[Any] = []
+            if user_id is not None:
+                where.append("user_id = %s")
+                params.append(user_id)
+            await cur.execute(
+                f"""
+                SELECT source_channel_ids
+                FROM smm_digest_jobs
+                WHERE {' AND '.join(where)}
+                """,
+                params,
+            )
+            out: set[int] = set()
+            for (raw,) in await cur.fetchall():
+                from shared.digest import parse_channel_ids
+
+                out.update(parse_channel_ids(raw))
+            return out
+    except Exception as exc:
+        logger.debug("load_digest_source_channel_ids failed: %s", exc)
+        return set()
+    finally:
+        await release_db_connection(conn)
+
+
 async def resolve_publish_targets(
     brand_id: int,
     target_ids: List[int],

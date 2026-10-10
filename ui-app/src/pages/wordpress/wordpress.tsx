@@ -16,20 +16,8 @@ import {
 } from '@/components/target-social-networks'
 import type { WordPressPost, WordPressPostListItem, PostStatus, PublishScheduleType } from '@/types/wordpress'
 
-function generateId(): string {
-  return Math.random().toString(36).substring(2, 9)
-}
-
 const SCHEDULE_MINUTES = [0, 15, 30, 45] as const
 type ScheduleMinute = (typeof SCHEDULE_MINUTES)[number]
-
-type CollectSiteItem = {
-  id: string
-  siteUrl: string
-  scheduleType: PublishScheduleType
-  scheduleHour: number
-  scheduleMinute: ScheduleMinute
-}
 
 const PUBLISH_INTERVAL_MINUTES_OPTIONS = Array.from({ length: 97 }, (_, i) => 15 + i * 15) // 15 .. 1440, step 15
 
@@ -57,15 +45,9 @@ export function WordPressPage() {
   const [statusReviewAfterProcess, setStatusReviewAfterProcess] = useState(false)
   const [addStaticHtml, setAddStaticHtml] = useState(false)
   const [staticHtmlContent, setStaticHtmlContent] = useState('')
-  const [collectEnabled, setCollectEnabled] = useState(false)
-  const [collectAllAvailable, setCollectAllAvailable] = useState(true)
-  const [collectLimit, setCollectLimit] = useState('1')
   const [publishScheduleType, setPublishScheduleType] = useState<'on_new_messages' | 'by_intervals'>('on_new_messages')
   const [publishScheduleHour, setPublishScheduleHour] = useState(9)
   const [publishScheduleMinute, setPublishScheduleMinute] = useState<ScheduleMinute>(0)
-  const [collectSites, setCollectSites] = useState<CollectSiteItem[]>([
-    { id: generateId(), siteUrl: '', scheduleType: 'on_new_messages', scheduleHour: 9, scheduleMinute: 0 }
-  ])
   
   // Post state
   const [postTitle, setPostTitle] = useState('')
@@ -117,10 +99,7 @@ export function WordPressPage() {
     setIsLoadingProfile(true)
     setError('')
     try {
-      const [publishProfile, collectProfile] = await Promise.all([
-        wordpressService.getPublishProfile(),
-        wordpressService.getCollectProfile(),
-      ])
+      const publishProfile = await wordpressService.getPublishProfile()
       setSiteUrl(publishProfile.site_url || '')
       setUsername(publishProfile.username || '')
       setAppPassword(publishProfile.app_password || '')
@@ -147,10 +126,6 @@ export function WordPressPage() {
       setStatusReviewAfterProcess(publishProfile.status_review_after_process ?? false)
       setAddStaticHtml(publishProfile.add_static_html ?? false)
       setStaticHtmlContent((publishProfile.static_html_content ?? '').slice(0, 1000))
-      setCollectEnabled(collectProfile.collect_enabled ?? false)
-      setCollectAllAvailable(collectProfile.collect_all_available ?? true)
-      const cl = collectProfile.collect_limit
-      setCollectLimit(cl != null && cl >= 1 && cl <= 25 ? String(cl) : '1')
       setPublishScheduleType((publishProfile.schedule_type as PublishScheduleType) || 'on_new_messages')
       const ti = publishProfile.time_intervals
       if (typeof ti === 'string' && ti && ti.includes(':')) {
@@ -171,28 +146,6 @@ export function WordPressPage() {
         ) as ScheduleMinute
         setPublishScheduleHour(hour)
         setPublishScheduleMinute(minute)
-      }
-      if (collectProfile.collect_sites && collectProfile.collect_sites.length > 0) {
-        setCollectSites(collectProfile.collect_sites.map((s) => {
-          let scheduleHour = 9
-          let scheduleMinute: ScheduleMinute = 0
-          const ti = s.time_intervals
-          if (typeof ti === 'string' && ti && ti.includes(':')) {
-            const [h, m] = ti.split(':').map(Number)
-            scheduleHour = Number.isFinite(h) ? Math.max(0, Math.min(23, h)) : 9
-            const rawMin = Number.isFinite(m) ? m : 0
-            scheduleMinute = SCHEDULE_MINUTES.reduce((prev, curr) =>
-              Math.abs(curr - rawMin) < Math.abs(prev - rawMin) ? curr : prev
-            ) as ScheduleMinute
-          }
-          return {
-            id: generateId(),
-            siteUrl: s.site_url || '',
-            scheduleType: (s.schedule_type as PublishScheduleType) || 'on_new_messages',
-            scheduleHour,
-            scheduleMinute,
-          }
-        }))
       }
     } catch (err) {
       console.log('Profile not found, using defaults', err)
@@ -312,18 +265,6 @@ export function WordPressPage() {
       setIsSavingProfile(false)
       return
     }
-    const collect_sites = collectSites.map((s) => ({
-      site_url: s.siteUrl || undefined,
-      schedule_type: s.scheduleType,
-      time_intervals: `${String(s.scheduleHour).padStart(2, '0')}:${String(s.scheduleMinute).padStart(2, '0')}`,
-    }))
-    const limitVal = parseInt(collectLimit, 10) || 1
-    const collectLimitNum = collectAllAvailable ? undefined : Math.max(1, Math.min(25, limitVal))
-    if (!collectAllAvailable && (limitVal < 1 || limitVal > 25)) {
-      setError('Ограничение количества постов: от 1 до 25')
-      setIsSavingProfile(false)
-      return
-    }
     try {
       await Promise.all([
         wordpressService.savePublishProfile({
@@ -351,14 +292,15 @@ export function WordPressPage() {
           add_static_html: addStaticHtml,
           static_html_content: addStaticHtml ? (staticHtmlContent || undefined)?.slice(0, 1000) : undefined,
         }),
+        // Collect sites live in Channels (brand WP channels); disable legacy collect path.
         wordpressService.saveCollectProfile({
-          collect_enabled: collectEnabled,
-          collect_sites,
-          collect_all_available: collectAllAvailable,
-          collect_limit: collectLimitNum,
+          collect_enabled: false,
+          collect_sites: [],
+          collect_all_available: true,
+          collect_limit: undefined,
         }),
       ])
-      setSuccess('Profile settings saved successfully')
+      setSuccess('Profile settings saved. Collect / Process / Publish — в Channels.')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save profile settings')
     } finally {
@@ -442,41 +384,6 @@ export function WordPressPage() {
     }
   }
 
-
-  function addCollectSite() {
-    if (collectSites.length >= 5) return
-    setCollectSites(prev => [...prev, {
-      id: generateId(),
-      siteUrl: '',
-      scheduleType: 'on_new_messages',
-      scheduleHour: 9,
-      scheduleMinute: 0
-    }])
-  }
-
-  function removeCollectSite(siteId: string) {
-    if (collectSites.length <= 1) return
-    setCollectSites(prev => prev.filter(s => s.id !== siteId))
-  }
-
-  function updateCollectSiteUrl(siteId: string, value: string) {
-    setCollectSites(prev => prev.map(s => s.id === siteId ? { ...s, siteUrl: value } : s))
-  }
-
-  function updateCollectSiteScheduleType(siteId: string, value: PublishScheduleType) {
-    setCollectSites(prev => prev.map(s => s.id === siteId ? { ...s, scheduleType: value } : s))
-  }
-
-  function updateCollectSiteScheduleTime(siteId: string, hour?: number, minute?: ScheduleMinute) {
-    setCollectSites(prev => prev.map(s => {
-      if (s.id !== siteId) return s
-      return {
-        ...s,
-        ...(hour !== undefined && { scheduleHour: hour }),
-        ...(minute !== undefined && { scheduleMinute: minute })
-      }
-    }))
-  }
 
   function updateStringArray(setter: (arr: string[]) => void, index: number, value: string) {
     setter((prev) => {
@@ -1063,165 +970,24 @@ export function WordPressPage() {
 
                 </div>
 
-                {/* Collection (Parser) */}
-                <div className="space-y-4 pt-4 border-t border-[var(--border-color)]">
+                {/* Collection moved to brand Channels */}
+                <div className="space-y-3 pt-4 border-t border-[var(--border-color)]">
                   <h3 className="text-sm font-semibold text-[var(--text-primary)] flex items-center gap-2">
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
                     </svg>
                     Collection (Parser)
                   </h3>
-                  <label className="flex items-center gap-3 cursor-pointer group">
-                    <div className="relative">
-                      <input
-                        type="checkbox"
-                        checked={collectEnabled}
-                        onChange={(e) => setCollectEnabled(e.target.checked)}
-                        className="sr-only peer"
-                      />
-                      <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors"></div>
-                      <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></div>
-                    </div>
-                    <span className="text-[var(--text-primary)] group-hover:text-primary-400 transition-colors">
-                      Enable collection
-                    </span>
-                  </label>
-
-                  {collectEnabled && (
-                    <>
-                      <label className="flex items-center gap-3 cursor-pointer group">
-                        <div className="relative">
-                          <input
-                            type="checkbox"
-                            checked={collectAllAvailable}
-                            onChange={(e) => setCollectAllAvailable(e.target.checked)}
-                            className="sr-only peer"
-                          />
-                          <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors"></div>
-                          <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></div>
-                        </div>
-                        <span className="text-[var(--text-primary)] group-hover:text-primary-400 transition-colors">
-                          Собрать все доступное
-                        </span>
-                      </label>
-
-                      {!collectAllAvailable && (
-                        <div className="p-4 bg-[var(--bg-secondary)] rounded-xl space-y-2 animate-slide-down max-w-xs">
-                          <label className="text-sm font-medium text-[var(--text-secondary)] block">Ограничение количества постов</label>
-                          <Input
-                            type="number"
-                            min={1}
-                            max={25}
-                            value={collectLimit || '1'}
-                            onChange={(e) => {
-                              const v = e.target.value.replace(/\D/g, '').slice(0, 3)
-                              if (v === '' || (parseInt(v, 10) >= 1 && parseInt(v, 10) <= 25)) setCollectLimit(v)
-                            }}
-                            placeholder="1"
-                            className="w-full"
-                          />
-                          <p className="text-xs text-[var(--text-muted)]">От 1 до 25, по умолчанию 1</p>
-                        </div>
-                      )}
-                    </>
-                  )}
-
-                  {collectEnabled && (
-                    <div className="space-y-6 animate-slide-down">
-                      <h4 className="text-sm font-semibold text-[var(--text-primary)]">Collection sites</h4>
-                      {collectSites.map((site, index) => (
-                        <div key={site.id} className="p-4 bg-[var(--bg-secondary)] rounded-xl space-y-4 border border-[var(--border-color)]">
-                          <div className="flex items-center justify-between">
-                            <span className="text-sm font-medium text-[var(--text-secondary)]">Site {index + 1}</span>
-                            {collectSites.length > 1 && (
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => removeCollectSite(site.id)}
-                                className="text-red-400 hover:text-red-300"
-                              >
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                </svg>
-                                Remove
-                              </Button>
-                            )}
-                          </div>
-                          <Input
-                            label="Site URL"
-                            type="url"
-                            value={site.siteUrl}
-                            onChange={(e) => updateCollectSiteUrl(site.id, e.target.value)}
-                            placeholder="https://example.com"
-                          />
-                          <div className="space-y-4">
-                            <label className="text-sm font-medium text-[var(--text-secondary)] block">Publish Schedule</label>
-                            <div className="space-y-3">
-                              <label className="flex items-center gap-3 cursor-pointer">
-                                <input
-                                  type="radio"
-                                  name={`collectSchedule-${site.id}`}
-                                  value="on_new_messages"
-                                  checked={site.scheduleType === 'on_new_messages'}
-                                  onChange={() => updateCollectSiteScheduleType(site.id, 'on_new_messages')}
-                                  className="w-4 h-4 text-primary-500"
-                                />
-                                <span className="text-[var(--text-primary)]">When new messages are checked</span>
-                              </label>
-                              <label className="flex items-center gap-3 cursor-pointer">
-                                <input
-                                  type="radio"
-                                  name={`collectSchedule-${site.id}`}
-                                  value="by_intervals"
-                                  checked={site.scheduleType === 'by_intervals'}
-                                  onChange={() => updateCollectSiteScheduleType(site.id, 'by_intervals')}
-                                  className="w-4 h-4 text-primary-500"
-                                />
-                                <span className="text-[var(--text-primary)]">By time intervals</span>
-                              </label>
-                            </div>
-                            {site.scheduleType === 'by_intervals' && (
-                              <div className="space-y-3 mt-4 flex flex-wrap gap-4 items-end">
-                                <div className="space-y-2 min-w-[6rem]">
-                                  <label className="text-sm font-medium text-[var(--text-secondary)] block">Hour</label>
-                                  <select
-                                    value={site.scheduleHour}
-                                    onChange={(e) => updateCollectSiteScheduleTime(site.id, Number(e.target.value))}
-                                    className="w-full px-4 py-2.5 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-xl text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-primary-500/50"
-                                  >
-                                    {Array.from({ length: 24 }, (_, i) => (
-                                      <option key={i} value={i}>{String(i).padStart(2, '0')}</option>
-                                    ))}
-                                  </select>
-                                </div>
-                                <div className="space-y-2 min-w-[6rem]">
-                                  <label className="text-sm font-medium text-[var(--text-secondary)] block">Minutes</label>
-                                  <select
-                                    value={site.scheduleMinute}
-                                    onChange={(e) => updateCollectSiteScheduleTime(site.id, undefined, Number(e.target.value) as ScheduleMinute)}
-                                    className="w-full px-4 py-2.5 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-xl text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-primary-500/50"
-                                  >
-                                    {SCHEDULE_MINUTES.map((m) => (
-                                      <option key={m} value={m}>{String(m).padStart(2, '0')}</option>
-                                    ))}
-                                  </select>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                      {collectSites.length < 5 && (
-                        <Button type="button" variant="secondary" size="sm" onClick={addCollectSite}>
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                          </svg>
-                          Add collection site
-                        </Button>
-                      )}
-                    </div>
-                  )}
+                  <p className="text-sm text-[var(--text-muted)]">
+                    Сбор сайтов WordPress настраивается в Channels: добавьте канал сети WP (Site URL),
+                    включите Collect и цели публикации. Legacy collection sites здесь отключены.
+                  </p>
+                  <Link
+                    to="/channels"
+                    className="inline-flex text-sm text-primary-400 hover:underline font-medium"
+                  >
+                    Channels → поток WordPress
+                  </Link>
                 </div>
 
                 <CardFooter className="px-0">

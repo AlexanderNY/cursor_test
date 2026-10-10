@@ -1,10 +1,10 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+import { HhResumePickPanel } from '@/components/hh-resume-pick-panel'
 import { PageShell } from '@/components/page-shell'
 import { getEpisodeBySlug } from '@/data/learn'
 import {
   resumeApplyQuestionnaire,
-  resumeCreate,
   resumeGet,
   resumeGetQuestionnaire,
   resumeMockChatMessage,
@@ -91,17 +91,16 @@ export function HhResumePathPage() {
       setLoading(false)
       return
     }
+    if (!resumeIdParam) {
+      setResumeId('')
+      setLoading(false)
+      return
+    }
     let cancelled = false
+    setLoading(true)
     void (async () => {
       try {
-        let id = resumeIdParam || ''
-        if (!id) {
-          const created = await resumeCreate({ version_name: 'Основное' })
-          id = created.id
-          if (!cancelled) setResumeId(id)
-          navigate(`/game/hh-resume/${id}/path`, { replace: true })
-          return
-        }
+        const id = resumeIdParam
         const [resume, questionnaire] = await Promise.all([
           resumeGet(id),
           resumeGetQuestionnaire(),
@@ -111,7 +110,11 @@ export function HhResumePathPage() {
         setSchema(questionnaire)
         const savedAnswers = resume.questionnaireAnswers || {}
         const hasAnswers = Object.keys(savedAnswers).length > 0
-        setAnswers(hasAnswers ? { ...emptyAnswers(questionnaire.questions), ...savedAnswers } : emptyAnswers(questionnaire.questions))
+        setAnswers(
+          hasAnswers
+            ? { ...emptyAnswers(questionnaire.questions), ...savedAnswers }
+            : emptyAnswers(questionnaire.questions),
+        )
         const src = (resume.sourceText || '').trim()
         if (src) {
           setPasteText(src)
@@ -138,7 +141,7 @@ export function HhResumePathPage() {
     return () => {
       cancelled = true
     }
-  }, [session?.accessToken, resumeIdParam, navigate])
+  }, [session?.accessToken, resumeIdParam])
 
   const questions = schema?.questions || []
   const currentQ = questions[quizStep]
@@ -304,8 +307,28 @@ export function HhResumePathPage() {
           ← К списку
         </Link>
         <p className="learn-section-note">
-          <Link to="/login">Войти</Link>
+          <Link to="/login" state={{ from: '/game/hh-resume/path' }}>
+            Войти
+          </Link>
         </p>
+      </PageShell>
+    )
+  }
+
+  if (!resumeIdParam) {
+    return (
+      <PageShell>
+        <Link to="/game/hh-resume" className="back-link">
+          ← К списку
+        </Link>
+        <header className="learn-header">
+          <p className="learn-eyebrow">HH-резюме · путь</p>
+          <h1 className="learn-title">Путь к резюме</h1>
+        </header>
+        <HhResumePickPanel
+          mode="path"
+          onPicked={(id) => navigate(`/game/hh-resume/${id}/path`, { replace: true })}
+        />
       </PageShell>
     )
   }

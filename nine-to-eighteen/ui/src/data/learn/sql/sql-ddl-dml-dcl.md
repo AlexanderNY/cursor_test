@@ -1,7 +1,7 @@
 ---
 slug: sql-ddl-dml-dcl
 title: SQL на собесе — DDL, DML, DCL и виды СУБД
-shortTitle: DDL DML DCL
+shortTitle: SQL на собесе
 episode: SQL01
 rubric: data
 order: 601
@@ -92,6 +92,23 @@ REVOKE INSERT ON accounts FROM app_writer;
 
 Короткий ответ на Q9: «SQL — язык; MySQL — СУБД, которая понимает свой диалект SQL». Не путать также MySQL (СУБД) и «mysql» (клиентская утилита/протокол).
 
+## Раздел: Частые вопросы с собеседования
+**Вопрос.** DDL в транзакции PostgreSQL vs MySQL?
+
+**Ответ.** В PostgreSQL многие DDL транзакционны (rollback откатывает CREATE). В MySQL historically DDL делал implicit commit — на собесе называют диалект, не «всегда так».
+
+**Вопрос.** DCL — что включить в ответ?
+
+**Ответ.** Data Control Language: GRANT/REVOKE прав на объекты. Связать с least privilege: app role без DROP, миграции отдельным пользователем.
+
+**Вопрос.** SQL vs диалект MySQL?
+
+**Ответ.** SQL — стандарт языка; MySQL/PostgreSQL/SQL Server — продукты с extensions (`LIMIT` vs `TOP`, типы, функции). Переносимость: писать стандартное ядро, знать отличия там, где работаете.
+
+**Вопрос.** TCL — зачем `SAVEPOINT`?
+
+**Ответ.** Вложенный откат части транзакции без полного ROLLBACK — длинные бизнес-процессы с компенсирующими шагами. Не замена идempotent design, но инструмент в SQL.
+
 ## Лаба
 
 **Цель.** В учебной БД PostgreSQL (или SQLite) создать схему, данные, выдать права (если есть роли) и откатить транзакцию — чтобы наглядно разделить DDL/DML/DCL/TCL.
@@ -135,15 +152,27 @@ flowchart TB
 
 ### Чем RDBMS принципиально отличается от key-value хранилища?
 
-**Ответ:** таблицы, схема, связи и декларативный SQL против доступа преимущественно по ключу
+**Ответ:** таблицы, схема, SQL
 
 **Пояснение:** key-value отлично для кэша и простых lookup; сложные связи и отчёты обычно проще в RDBMS.
 
 ### SQL и MySQL — это одно и то же?
 
-**Ответ:** нет; SQL — язык, MySQL — СУБД со своим диалектом
+**Ответ:** нет, язык и продукт
 
 **Пояснение:** тот же язык в разных продуктах (PostgreSQL, SQL Server) реализуется с отличиями.
+
+### К какому семейству относится COMMIT?
+
+**Ответ:** TCL
+
+**Пояснение:** COMMIT фиксирует границу транзакции, а не меняет схему или права.
+
+### TRUNCATE TABLE в классификации DDL/DML чаще относят куда?
+
+**Ответ:** к DDL
+
+**Пояснение:** операция над таблицей как объектом; в PostgreSQL при этом возможен откат внутри транзакции.
 
 ## Шпаргалка
 
@@ -180,6 +209,18 @@ Back: TCL управляет границами транзакции (COMMIT/ROL
 
 Back: SQL — стандартизированный язык запросов; MySQL — конкретная СУБД, реализующая диалект SQL
 
+### Front: Назовите две команды DML.
+
+Back: SELECT, INSERT, UPDATE или DELETE — работа со строками данных
+
+### Front: Пример NoSQL-модели «ключ–значение»?
+
+Back: Redis — быстрый доступ по ключу; не замена RDBMS для сложных связей
+
+### Front: Зачем на собесе GRANT/REVOKE?
+
+Back: DCL — выдача и отзыв прав на объекты схемы без изменения данных
+
 ## Итоги
 
 - Четыре семейства команд — быстрый каркас ответа на junior-собесе
@@ -188,7 +229,8 @@ Back: SQL — стандартизированный язык запросов; 
 
 ## Ссылки
 
-- [OTUS / Хабр — топ вопросов по SQL, часть I](https://habr.com/ru/companies/otus/articles/461067/)
 - [PostgreSQL: SQL Commands](https://www.postgresql.org/docs/current/sql-commands.html)
-- Learn | /game/learn
+- [Select Star SQL](https://selectstarsql.com/) — интерактивные главы по SELECT/JOIN
+- [PG Exercises](https://pgexercises.com/) — лабы на PostgreSQL
+- Индекс Q1–Q30: [OTUS / Хабр — часть I](https://habr.com/ru/companies/otus/articles/461067/)
 - Далее: [Таблицы, ключи и ограничения](/game/learn/sql-tables-keys-constraints)

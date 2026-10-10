@@ -8,6 +8,8 @@ POST_STATUS_VALUES: tuple[str, ...] = (
     "processing",
     "ready",
     "review",
+    "digest_hold",
+    "digested",
     "deleted",
 )
 

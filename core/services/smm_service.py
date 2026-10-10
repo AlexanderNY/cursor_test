@@ -908,6 +908,12 @@ class SmmService:
             ext = str(external_id or "").strip()
             if not ext:
                 raise ValueError("Укажите ID канала")
+            if network == "wp":
+                from services.smm_networks import normalize_wp_site_url
+
+                ext = normalize_wp_site_url(ext)
+                if not ext:
+                    raise ValueError("Укажите URL сайта WordPress")
             if network == "vk":
                 from services.vk_helpers import parse_vk_group_id
 
@@ -943,6 +949,10 @@ class SmmService:
                 a = parse_vk_group_id(other)
                 b = parse_vk_group_id(ext)
                 same = a is not None and a == b
+            if not same and network == "wp":
+                from services.smm_networks import wp_site_urls_match
+
+                same = wp_site_urls_match(other, ext)
             if same:
                 raise ValueError(
                     f"Канал уже добавлен: «{ch.get('title') or other}» "
@@ -967,7 +977,7 @@ class SmmService:
                 owner_id, network, ext, role, strict=False
             )
             resolved = auth_probe.get("resolved_external_id")
-            if network == "vk" and resolved:
+            if network in ("vk", "wp") and resolved:
                 ext = str(resolved)
 
         is_owned = auth_probe.get("auth_status") == "connected"
@@ -977,6 +987,15 @@ class SmmService:
             collect_enabled = bool(
                 (auth_probe.get("auth_capabilities") or {}).get("can_collect")
             ) or is_owned
+        if network == "wp":
+            # Public REST: collect when site URL is present; publish only when owned.
+            caps = auth_probe.get("auth_capabilities") or {}
+            collect_enabled = bool(caps.get("can_collect")) and role in (
+                "source",
+                "own",
+                "competitor",
+            )
+            publish_enabled = role == "own" and bool(caps.get("can_publish_text"))
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
@@ -1837,14 +1856,19 @@ class SmmService:
                 )
 
             if ch.get("collect_enabled"):
-                if network in ("tg", "vk") and not caps.get("can_collect", False):
+                if network in ("tg", "vk", "wp") and not caps.get("can_collect", False):
+                    auth_hint = {
+                        "vk": "user OAuth",
+                        "tg": "сессия Telegram",
+                        "wp": "URL сайта WordPress",
+                    }.get(network, "авторизация")
                     _issue(
                         ch,
                         severity="error",
                         code="collect_without_auth",
                         message=(
                             "Collect включён, но нет права чтения "
-                            f"({'user OAuth' if network == 'vk' else 'сессия Telegram'})."
+                            f"({auth_hint})."
                         ),
                     )
             if ch.get("alert_enabled"):
@@ -2034,6 +2058,213 @@ class SmmService:
             await remove_curl_url_item(user_id, str(existing.get("external_id") or ""))
             await self._refresh_curl_collect_enabled(user_id)
         return deleted
+
+    def _row_digest_job(self, row: tuple, columns: list[str]) -> dict[str, Any]:
+        from shared.digest import (
+            DEFAULT_PROCESS_PROMPT,
+            DEFAULT_SUMMARY_PROMPT,
+            clamp_interval_min,
+            parse_channel_ids,
+        )
+
+        raw = dict(zip(columns, row))
+        return {
+            "id": int(raw["id"]),
+            "brand_id": int(raw["brand_id"]),
+            "user_id": int(raw["user_id"]),
+            "enabled": bool(raw.get("enabled")),
+            "source_channel_ids": parse_channel_ids(raw.get("source_channel_ids")),
+            "publish_channel_id": (
+                int(raw["publish_channel_id"])
+                if raw.get("publish_channel_id") is not None
+                else None
+            ),
+            "interval_min": clamp_interval_min(raw.get("interval_min")),
+            "process_prompt": raw.get("process_prompt") or DEFAULT_PROCESS_PROMPT,
+            "summary_prompt": raw.get("summary_prompt") or DEFAULT_SUMMARY_PROMPT,
+            "attach_cover_image": bool(raw.get("attach_cover_image", True)),
+            "last_cover_miss_theme": raw.get("last_cover_miss_theme"),
+            "last_cover_miss_at": raw.get("last_cover_miss_at"),
+            "last_run_at": raw.get("last_run_at"),
+            "created_at": raw.get("created_at"),
+            "updated_at": raw.get("updated_at"),
+        }
+
+    async def get_digest_job(self, user_id: int, brand_id: int) -> Optional[dict]:
+        brand = await self.get_brand(user_id, brand_id)
+        if not brand:
+            return None
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT id, brand_id, user_id, enabled, source_channel_ids,
+                           publish_channel_id, interval_min, process_prompt,
+                           summary_prompt, attach_cover_image,
+                           last_cover_miss_theme, last_cover_miss_at,
+                           last_run_at, created_at, updated_at
+                    FROM smm_digest_jobs
+                    WHERE brand_id = %s
+                    """,
+                    (brand_id,),
+                )
+                row = await cur.fetchone()
+                if not row:
+                    return {
+                        "id": None,
+                        "brand_id": brand_id,
+                        "user_id": int(brand["user_id"]),
+                        "enabled": False,
+                        "source_channel_ids": [],
+                        "publish_channel_id": None,
+                        "interval_min": 60,
+                        "process_prompt": (
+                            "Вычитай текст: исправь ошибки, сохрани смысл и факты."
+                        ),
+                        "summary_prompt": (
+                            "Сделай краткую сводку: выдели главные темы и факты. "
+                            "Пиши связным текстом без нумерации источников."
+                        ),
+                        "attach_cover_image": True,
+                        "last_cover_miss_theme": None,
+                        "last_cover_miss_at": None,
+                        "last_run_at": None,
+                        "created_at": None,
+                        "updated_at": None,
+                    }
+                cols = [d[0] for d in cur.description]
+                return self._row_digest_job(row, cols)
+        finally:
+            await release_db_connection(conn)
+
+    async def upsert_digest_job(
+        self,
+        user_id: int,
+        brand_id: int,
+        *,
+        enabled: bool = False,
+        source_channel_ids: Optional[list[Any]] = None,
+        publish_channel_id: Optional[int] = None,
+        interval_min: int = 60,
+        process_prompt: Optional[str] = None,
+        summary_prompt: Optional[str] = None,
+        attach_cover_image: bool = True,
+    ) -> dict:
+        from shared.digest import (
+            DEFAULT_PROCESS_PROMPT,
+            DEFAULT_SUMMARY_PROMPT,
+            clamp_interval_min,
+            parse_channel_ids,
+        )
+
+        brand = await self.get_brand(user_id, brand_id)
+        if not brand:
+            raise ValueError("Brand not found")
+        owner_id = int(brand["user_id"])
+        channels = await self.list_channels(user_id, brand_id)
+        by_id = {int(c["id"]): c for c in channels}
+        sources = parse_channel_ids(source_channel_ids or [])
+        for sid in sources:
+            ch = by_id.get(sid)
+            if not ch:
+                raise ValueError(f"Source channel #{sid} not found in brand")
+            if not ch.get("collect_enabled"):
+                raise ValueError(f"Source channel #{sid} must have collect_enabled")
+        publish_id = int(publish_channel_id) if publish_channel_id is not None else None
+        if enabled and publish_id is None:
+            raise ValueError("publish_channel_id is required when digest is enabled")
+        if publish_id is not None:
+            pub = by_id.get(publish_id)
+            if not pub:
+                raise ValueError("Publish channel not found in brand")
+            if pub.get("role") != "own":
+                raise ValueError("Publish channel must be role=own")
+            if pub.get("network") not in ("tg", "vk"):
+                raise ValueError("Publish channel network must be tg or vk")
+            if publish_id in sources:
+                raise ValueError("Publish channel cannot be a source channel")
+
+        interval = clamp_interval_min(interval_min)
+        proc = (process_prompt or "").strip() or DEFAULT_PROCESS_PROMPT
+        summ = (summary_prompt or "").strip() or DEFAULT_SUMMARY_PROMPT
+
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    INSERT INTO smm_digest_jobs (
+                        brand_id, user_id, enabled, source_channel_ids,
+                        publish_channel_id, interval_min, process_prompt, summary_prompt,
+                        attach_cover_image
+                    ) VALUES (%s, %s, %s, %s::jsonb, %s, %s, %s, %s, %s)
+                    ON CONFLICT (brand_id) DO UPDATE SET
+                        enabled = EXCLUDED.enabled,
+                        source_channel_ids = EXCLUDED.source_channel_ids,
+                        publish_channel_id = EXCLUDED.publish_channel_id,
+                        interval_min = EXCLUDED.interval_min,
+                        process_prompt = EXCLUDED.process_prompt,
+                        summary_prompt = EXCLUDED.summary_prompt,
+                        attach_cover_image = EXCLUDED.attach_cover_image,
+                        updated_at = CURRENT_TIMESTAMP
+                    RETURNING id, brand_id, user_id, enabled, source_channel_ids,
+                              publish_channel_id, interval_min, process_prompt,
+                              summary_prompt, attach_cover_image,
+                              last_cover_miss_theme, last_cover_miss_at,
+                              last_run_at, created_at, updated_at
+                    """,
+                    (
+                        brand_id,
+                        owner_id,
+                        bool(enabled),
+                        json.dumps(sources),
+                        publish_id,
+                        interval,
+                        proc,
+                        summ,
+                        bool(attach_cover_image),
+                    ),
+                )
+                row = await cur.fetchone()
+                cols = [d[0] for d in cur.description]
+                return self._row_digest_job(row, cols)
+        finally:
+            await release_db_connection(conn)
+
+    async def list_digest_previews(
+        self, user_id: int, brand_id: int, *, limit: int = 5
+    ) -> list[dict]:
+        brand = await self.get_brand(user_id, brand_id)
+        if not brand:
+            return []
+        owner_id = int(brand["user_id"])
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT id, chat_id, digest_text, message_count, created_at
+                    FROM tg_digests
+                    WHERE user_id = %s
+                    ORDER BY created_at DESC
+                    LIMIT %s
+                    """,
+                    (owner_id, max(1, min(int(limit), 20))),
+                )
+                rows = await cur.fetchall()
+                return [
+                    {
+                        "id": int(r[0]),
+                        "chat_id": r[1],
+                        "digest_text": r[2],
+                        "message_count": int(r[3] or 0),
+                        "created_at": r[4],
+                    }
+                    for r in rows
+                ]
+        finally:
+            await release_db_connection(conn)
 
     async def _refresh_curl_collect_enabled(self, user_id: int) -> None:
         """Set curl_settings.collect_enabled from any URL channel with collect_enabled."""

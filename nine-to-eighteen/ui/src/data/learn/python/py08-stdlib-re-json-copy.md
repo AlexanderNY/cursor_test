@@ -1,7 +1,7 @@
 ---
 slug: py-stdlib-re-json-copy
 title: Stdlib на собесе — re, json, copy
-shortTitle: re / json / copy
+shortTitle: Stdlib на собесе
 episode: PY08
 rubric: tools
 order: 308
@@ -36,6 +36,23 @@ canonicalUrl: https://9to18.ru/game/learn/py-stdlib-re-json-copy
 `copy.copy` — поверхностная копия: вложенные объекты разделяются. `copy.deepcopy` — рекурсивная независимая копия. Для списка `l[:]` / `list(l)` — shallow.
 
 Рядом по собесу: `random.shuffle` (in-place), `os.remove` для удаления файла, чтение случайной строки из файла (прочитать все / reservoir sampling для больших).
+
+## Раздел: Частые вопросы с собеседования
+**Вопрос.** Когда `deepcopy`, а когда достаточно `copy.copy`?
+
+**Ответ.** Shallow копирует только верхний уровень; вложенные list/dict общие. Deepcopy рекурсивно дублирует граф объектов — нужен перед мутацией вложенности, если оригинал должен остаться нетронутым.
+
+**Вопрос.** Почему `pickle` опасен на недоверенных данных?
+
+**Ответ.** Unpickle может выполнить произвольный код через классы с `__reduce__`. Для API и файлов от пользователя — JSON или явные схемы; pickle только между доверенными процессами одной версии Python.
+
+**Вопрос.** `json.dumps` не сериализует `set` — что сказать?
+
+**Ответ.** JSON поддерживает ограниченный набор типов; set/datetime/custom классы требуют `default=` в encoder или промежуточного dict/list. Это осознанное ограничение обмена, не баг json-модуля.
+
+**Вопрос.** `re.match` vs `re.search` на собесе?
+
+**Ответ.** `match` проверяет с начала строки (или используйте `fullmatch` для всей строки); `search` ищет первое вхождение где угодно. Для валидации «вся строка — email» нужен `fullmatch`, не `search`.
 
 ## Лаба
 
@@ -74,15 +91,27 @@ flowchart LR
 
 ### Когда нужен deepcopy?
 
-**Ответ:** когда есть вложенные изменяемые объекты и нужна полная изоляция
+**Ответ:** вложенные mutable и полная изоляция
 
 **Пояснение:** shallow копирует только верхний уровень ссылок.
 
 ### Почему pickle нельзя на пользовательском вводе?
 
-**Ответ:** может выполнить произвольный код при загрузке
+**Ответ:** произвольный код при loads
 
-**Пояснение:** десериализация pickle небезопасна; для API берите JSON и схемы.
+**Пояснение:** десериализация pickle небезопасна; для API — JSON.
+
+### json.dumps ensure_ascii=False?
+
+**Ответ:** кириллица в UTF-8, не escape-последовательности
+
+**Пояснение:** по умолчанию ensure_ascii=True экранирует не-ASCII в JSON-строке.
+
+### copy.copy vs list[:] для списка?
+
+**Ответ:** оба shallow copy верхнего уровня
+
+**Пояснение:** вложенные объекты остаются общими.
 
 ## Шпаргалка
 
@@ -112,6 +141,18 @@ Back: вложенный dict — тот же объект в оригинале
 
 Back: возвращает кортеж (новая_строка, число_замен)
 
+### Front: re.compile зачем?
+
+Back: переиспользовать скомпилированный паттерн в цикле
+
+### Front: json.load vs json.loads?
+
+Back: load — из file-like; loads — из str/bytes
+
+### Front: random.shuffle меняет что?
+
+Back: список in-place; возвращает None
+
 ## Итоги
 
 - Stdlib-инструменты закрывают «бытовые» вопросы junior
@@ -123,6 +164,6 @@ Back: возвращает кортеж (новая_строка, число_з�
 - [re](https://docs.python.org/3/library/re.html)
 - [json](https://docs.python.org/3/library/json.html)
 - [copy](https://docs.python.org/3/library/copy.html)
-- [DEBAGanov — re/json/copy](https://github.com/DEBAGanov/interview_questions/blob/main/400%20вопросов%20с%20ответами%2C%20которые%20должен%20знать%20Python-разработчик.md)
+- [DEBAGanov — индекс вопросов серии](https://github.com/DEBAGanov/interview_questions/blob/main/400%20вопросов%20с%20ответами%2C%20которые%20должен%20знать%20Python-разработчик.md)
 - Learn | /game/learn
 - Далее: [Итераторы](/game/learn/py-iterators-generators)

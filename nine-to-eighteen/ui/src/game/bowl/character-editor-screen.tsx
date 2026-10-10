@@ -11,6 +11,8 @@ import {
   defaultPerkLevels,
   formatPerkLevels,
   getPerkLevel,
+  getPerkLimbCount,
+  isPerkStub,
   PERK_DEFINITIONS,
   PERK_IDS,
   type PerkId,
@@ -57,7 +59,12 @@ export function CharacterEditorScreen({ onStart, onBack }: CharacterEditorScreen
           <section className="bowl-guide-section">
             <h2 className="bowl-settings-group-title">Цвет героя</h2>
             <div className="bowl-editor-preview">
-              <HeroPreview color={color} />
+              <HeroPreview
+                color={color}
+                eyeCount={getPerkLevel(perkLevels, 'eye') > 0 ? getPerkLimbCount(perkLevels, 'eye') : 2}
+                legCount={Math.max(2, getPerkLimbCount(perkLevels, 'leg') || 2)}
+                legReach={isPerkStub(perkLevels, 'leg') ? 0.62 : 1}
+              />
               <span className="bowl-editor-preview-text">{summary}</span>
             </div>
             <div className="bowl-color-grid bowl-editor-colors">

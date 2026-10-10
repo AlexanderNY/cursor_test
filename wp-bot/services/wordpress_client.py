@@ -2,7 +2,7 @@
 
 from io import BytesIO
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Tuple
 
 import httpx
 
@@ -11,21 +11,41 @@ from shared import async_fs
 
 class WordPressClient:
     """Клиент для работы с WordPress REST API."""
-    
-    def __init__(self, site_url: str, username: str, app_password: str):
+
+    def __init__(
+        self,
+        site_url: str,
+        username: Optional[str] = None,
+        app_password: Optional[str] = None,
+    ):
         """
         Инициализация клиента.
-        
+
         Args:
             site_url: URL сайта WordPress
-            username: Имя пользователя
-            app_password: Application Password
+            username: Имя пользователя (optional for public reads)
+            app_password: Application Password (optional for public reads)
         """
-        self.site_url = site_url.rstrip('/')
-        self.username = username
-        self.app_password = app_password
+        self.site_url = site_url.rstrip("/")
+        self.username = (username or "").strip()
+        self.app_password = (app_password or "").strip()
         self.base_url = f"{self.site_url}/wp-json/wp/v2"
-    
+
+    @property
+    def has_auth(self) -> bool:
+        return bool(self.username and self.app_password)
+
+    def _auth(self) -> Optional[Tuple[str, str]]:
+        if not self.has_auth:
+            return None
+        return (self.username, self.app_password)
+
+    def _require_auth(self) -> Tuple[str, str]:
+        auth = self._auth()
+        if not auth:
+            raise ValueError("WordPress username and application password are required")
+        return auth
+
     async def create_post(
         self,
         title: str,
@@ -36,11 +56,11 @@ class WordPressClient:
         excerpt: Optional[str] = None,
         slug: Optional[str] = None,
         featured_media: Optional[int] = None,
-        meta: Optional[Dict[str, Any]] = None
+        meta: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
         Создает пост в WordPress.
-        
+
         Args:
             title: Заголовок поста (обязательно)
             content: Содержимое поста (обязательно)
@@ -51,10 +71,10 @@ class WordPressClient:
             slug: URL slug
             featured_media: ID медиа-файла
             meta: Дополнительные мета-поля
-            
+
         Returns:
             Данные созданного поста
-            
+
         Raises:
             ValueError: При отсутствии обязательных полей
             httpx.HTTPStatusError: При ошибке HTTP запроса
@@ -62,14 +82,14 @@ class WordPressClient:
         """
         if not title or not content:
             raise ValueError("Title and content are required")
-        
-        post_data = {
+        auth = self._require_auth()
+
+        post_data: Dict[str, Any] = {
             "title": title,
             "content": content,
             "status": status,
         }
-        
-        # Добавляем опциональные поля только если они указаны
+
         if excerpt:
             post_data["excerpt"] = excerpt
         if slug:
@@ -82,18 +102,18 @@ class WordPressClient:
             post_data["featured_media"] = featured_media
         if meta:
             post_data["meta"] = meta
-        
+
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.post(
                     f"{self.base_url}/posts",
                     json=post_data,
                     headers={"Content-Type": "application/json"},
-                    auth=(self.username, self.app_password),
+                    auth=auth,
                 )
                 response.raise_for_status()
                 return response.json()
-                
+
         except httpx.HTTPStatusError as e:
             error_detail = "Unknown error"
             if e.response.status_code == 401:
@@ -104,119 +124,226 @@ class WordPressClient:
                 try:
                     error_data = e.response.json()
                     error_detail = error_data.get("message", "Invalid request data")
-                except:
+                except Exception:
                     error_detail = "Invalid request data"
-            
+
             raise Exception(f"WordPress API error ({e.response.status_code}): {error_detail}")
         except httpx.RequestError as e:
             raise Exception(f"Request to WordPress failed: {str(e)}")
-    
+
     async def get_posts(
         self,
         per_page: int = 10,
         page: int = 1,
         status: Optional[str] = None,
-        after: Optional[str] = None
+        after: Optional[str] = None,
+        orderby: str = "date",
+        order: str = "desc",
+        fields: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Получает список постов из WordPress.
-        
+
         Args:
             per_page: Количество постов на странице
             page: Номер страницы
             status: Статус постов (publish, draft, etc.)
             after: Дата после которой получать посты (ISO 8601)
-            
+            orderby: Поле сортировки
+            order: asc | desc
+            fields: WP REST `_fields` comma-separated list
+
         Returns:
             Словарь с данными постов и пагинацией
         """
-        params = {
+        params: Dict[str, Any] = {
             "per_page": per_page,
             "page": page,
+            "orderby": orderby,
+            "order": order,
         }
-        
+
         if status:
             params["status"] = status
         if after:
             params["after"] = after
-        
+        if fields:
+            params["_fields"] = fields
+
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.get(
                     f"{self.base_url}/posts",
                     params=params,
-                    auth=(self.username, self.app_password),
+                    auth=self._auth(),
                 )
                 response.raise_for_status()
-                
-                # Получаем заголовки пагинации
+
                 total_posts = int(response.headers.get("X-WP-Total", 0))
                 total_pages = int(response.headers.get("X-WP-TotalPages", 0))
-                
+
                 return {
                     "posts": response.json(),
                     "total": total_posts,
                     "total_pages": total_pages,
                     "page": page,
-                    "per_page": per_page
+                    "per_page": per_page,
                 }
         except httpx.HTTPStatusError as e:
-            raise Exception(f"WordPress API error ({e.response.status_code}): Failed to get posts")
+            raise Exception(
+                f"WordPress API error ({e.response.status_code}): Failed to get posts"
+            )
         except httpx.RequestError as e:
             raise Exception(f"Request to WordPress failed: {str(e)}")
-    
+
+    async def get_page(self, page_id: int) -> Dict[str, Any]:
+        """GET /wp/v2/pages/{id}."""
+        auth = self._require_auth()
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.get(
+                    f"{self.base_url}/pages/{int(page_id)}",
+                    auth=auth,
+                )
+                response.raise_for_status()
+                return response.json()
+        except httpx.HTTPStatusError as e:
+            raise Exception(
+                f"WordPress API error ({e.response.status_code}): Failed to get page"
+            )
+        except httpx.RequestError as e:
+            raise Exception(f"Request to WordPress failed: {str(e)}")
+
+    async def get_page_by_slug(self, slug: str) -> Optional[Dict[str, Any]]:
+        """GET /wp/v2/pages?slug=… — first match or None."""
+        auth = self._require_auth()
+        cleaned = str(slug or "").strip()
+        if not cleaned:
+            return None
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.get(
+                    f"{self.base_url}/pages",
+                    params={"slug": cleaned, "per_page": 1},
+                    auth=auth,
+                )
+                response.raise_for_status()
+                pages = response.json()
+                if isinstance(pages, list) and pages:
+                    return pages[0]
+                return None
+        except httpx.HTTPStatusError as e:
+            raise Exception(
+                f"WordPress API error ({e.response.status_code}): Failed to get page by slug"
+            )
+        except httpx.RequestError as e:
+            raise Exception(f"Request to WordPress failed: {str(e)}")
+
+    async def update_page(
+        self,
+        page_id: int,
+        *,
+        title: Optional[str] = None,
+        content: Optional[str] = None,
+        status: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """POST /wp/v2/pages/{id} — update page fields (needs edit_pages)."""
+        auth = self._require_auth()
+        body: Dict[str, Any] = {}
+        if title is not None:
+            body["title"] = title
+        if content is not None:
+            body["content"] = content
+        if status is not None:
+            body["status"] = status
+        if not body:
+            raise ValueError("At least one of title, content, status is required")
+
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(
+                    f"{self.base_url}/pages/{int(page_id)}",
+                    json=body,
+                    headers={"Content-Type": "application/json"},
+                    auth=auth,
+                )
+                response.raise_for_status()
+                return response.json()
+        except httpx.HTTPStatusError as e:
+            error_detail = "Failed to update page"
+            if e.response.status_code == 401:
+                error_detail = "Authentication failed. Check username and application password."
+            elif e.response.status_code == 403:
+                error_detail = "Permission denied. User may not have edit_pages capability."
+            elif e.response.status_code == 404:
+                error_detail = f"Page {page_id} not found"
+            else:
+                try:
+                    error_data = e.response.json()
+                    error_detail = error_data.get("message", error_detail)
+                except Exception:
+                    pass
+            raise Exception(f"WordPress API error ({e.response.status_code}): {error_detail}")
+        except httpx.RequestError as e:
+            raise Exception(f"Request to WordPress failed: {str(e)}")
+
     async def get_categories(self) -> list[Dict[str, Any]]:
         """Получает список категорий."""
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.get(
                     f"{self.base_url}/categories",
-                    auth=(self.username, self.app_password),
+                    auth=self._auth(),
                 )
                 response.raise_for_status()
                 return response.json()
         except httpx.HTTPStatusError as e:
-            raise Exception(f"WordPress API error ({e.response.status_code}): Failed to get categories")
+            raise Exception(
+                f"WordPress API error ({e.response.status_code}): Failed to get categories"
+            )
         except httpx.RequestError as e:
             raise Exception(f"Request to WordPress failed: {str(e)}")
-    
+
     async def get_tags(self) -> list[Dict[str, Any]]:
         """Получает список тегов."""
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.get(
                     f"{self.base_url}/tags",
-                    auth=(self.username, self.app_password),
+                    auth=self._auth(),
                 )
                 response.raise_for_status()
                 return response.json()
         except httpx.HTTPStatusError as e:
-            raise Exception(f"WordPress API error ({e.response.status_code}): Failed to get tags")
+            raise Exception(
+                f"WordPress API error ({e.response.status_code}): Failed to get tags"
+            )
         except httpx.RequestError as e:
             raise Exception(f"Request to WordPress failed: {str(e)}")
-    
+
     async def upload_media(
         self,
         file_path: str,
         title: Optional[str] = None,
-        alt_text: Optional[str] = None
+        alt_text: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Загружает медиа-файл в WordPress.
-        
+
         Args:
             file_path: Путь к файлу
             title: Заголовок медиа-файла
             alt_text: Альтернативный текст
-            
+
         Returns:
             Данные загруженного медиа-файла
         """
+        auth = self._require_auth()
         try:
             content = await async_fs.read_bytes(file_path)
             filename = Path(file_path).name
             files = {"file": (filename, BytesIO(content))}
-            data = {}
+            data: Dict[str, Any] = {}
             if title:
                 data["title"] = title
             if alt_text:
@@ -227,12 +354,14 @@ class WordPressClient:
                     f"{self.base_url}/media",
                     files=files,
                     data=data,
-                    auth=(self.username, self.app_password),
+                    auth=auth,
                 )
                 response.raise_for_status()
                 return response.json()
         except httpx.HTTPStatusError as e:
-            raise Exception(f"WordPress API error ({e.response.status_code}): Failed to upload media")
+            raise Exception(
+                f"WordPress API error ({e.response.status_code}): Failed to upload media"
+            )
         except httpx.RequestError as e:
             raise Exception(f"Request to WordPress failed: {str(e)}")
         except FileNotFoundError:

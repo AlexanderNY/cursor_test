@@ -1,7 +1,7 @@
 ---
 slug: sql-interview-drill
 title: SQL interview drill — быстрые ответы Q1–Q30
-shortTitle: Interview drill
+shortTitle: Drill SQL
 episode: SQL15
 rubric: data
 order: 615
@@ -61,6 +61,23 @@ canonicalUrl: https://9to18.ru/game/learn/sql-interview-drill
 
 **Куда вернуться, если ответ плывёт:** SQL01–06 (junior база), SQL07–08 (нормализация/ACID), SQL09–11 (триггеры/подзапросы/COUNT), SQL12 (лаба), SQL13–14 (CTE/окна/EXPLAIN — сверх списка).
 
+## Раздел: Частые вопросы с собеседования
+**Вопрос.** Как пользоваться SQL16 drill, не зубря?
+
+**Ответ.** Отметьте слабые Qi, откройте slug из индекса, объясните вслух 90 секунд, напишите SQL руками. Drill — карта пробелов, не замена пониманию планов и NULL.
+
+**Вопрос.** «SQL не равен MySQL» — когда произнести?
+
+**Ответ.** Когда спрашивают переносимость, TRUNCATE rollback, FULL OUTER, типы. Назовите свой продукт (PostgreSQL) и оговорите отличия MySQL/SQL Server точечно.
+
+**Вопрос.** Три темы middle поверх Q1–Q30?
+
+**Ответ.** CTE/window (SQL13), EXPLAIN/N+1 (SQL14), correlated subqueries (SQL10). Drill junior — база; middle добавляет планы и переписывание запросов.
+
+**Вопрос.** COUNT(*) vs COUNT(col) в устном Q30?
+
+**Ответ.** * — все строки; col — без NULL в col. Связать с отчётом «сколько пользователей указали телефон» vs «сколько строк в таблице».
+
 ## Лаба
 
 **Цель.** Пройти устный прогон Q1–Q30 с таймером и отметить слабые номера.
@@ -115,9 +132,21 @@ mindmap
 
 ### Что добавить сверх Q1–Q30 на modern-собесе?
 
-**Ответ:** CTE, оконные функции, чтение EXPLAIN и N+1
+**Ответ:** CTE, окна, EXPLAIN
 
-**Пояснение:** это SQL13–14 — часть II исходного «топ-65» на Хабре не найдена, поэтому серия закрывает пробел сама.
+**Пояснение:** SQL13–14 закрывают пробел; часть II топ-65 на Хабре не найдена.
+
+### Сколько секунд на ответ в drill?
+
+**Ответ:** 45–90 секунд
+
+**Пояснение:** определение → пример PG → ловушка/диалект.
+
+### NOT IN и NULL — что сказать?
+
+**Ответ:** риск пустого результата
+
+**Пояснение:** предложите NOT EXISTS или IS NOT NULL в подзапросе.
 
 ## Шпаргалка
 
@@ -148,6 +177,18 @@ Back: Correlated ссылается на внешнюю строку; noncorrela
 
 Back: CTE, window functions, EXPLAIN/N+1
 
+### Front: Q18 clustered — безопасный ответ?
+
+Back: Термин SQL Server; в PG — heap, B-tree, CLUSTER одноразово
+
+### Front: SQL vs MySQL за 10 сек?
+
+Back: Язык vs продукт; диалекты различаются
+
+### Front: Куда смотреть карту Qi?
+
+Back: sql-capstone-checklist (SQL16) — индекс Q→slug
+
 ## Итоги
 
 - Drill закрепляет скорость, не заменяет лабы
@@ -156,6 +197,7 @@ Back: CTE, window functions, EXPLAIN/N+1
 
 ## Ссылки
 
-- [OTUS / Хабр — топ SQL, часть I (Q1–Q30)](https://habr.com/ru/companies/otus/articles/461067/)
-- Learn | /game/learn/sql-performance-explain
-- Learn | /game/learn/sql-capstone-checklist
+- [PostgreSQL: Documentation](https://www.postgresql.org/docs/current/)
+- [Use The Index, Luke!](https://use-the-index-luke.com/)
+- Индекс Q1–Q30: [OTUS / Хабр — часть I](https://habr.com/ru/companies/otus/articles/461067/)
+- Далее: [Capstone](/game/learn/sql-capstone-checklist)

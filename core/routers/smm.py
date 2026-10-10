@@ -136,6 +136,16 @@ class ChannelUpdate(BaseModel):
     url_config: Optional[dict[str, Any]] = None
 
 
+class DigestJobUpdate(BaseModel):
+    enabled: bool = False
+    source_channel_ids: List[int] = Field(default_factory=list)
+    publish_channel_id: Optional[int] = None
+    interval_min: int = Field(default=60, ge=5, le=1440)
+    process_prompt: Optional[str] = Field(None, max_length=4000)
+    summary_prompt: Optional[str] = Field(None, max_length=4000)
+    attach_cover_image: bool = True
+
+
 class InboxEdit(BaseModel):
     edited_text: str = Field(..., min_length=1)
 
@@ -338,12 +348,14 @@ class MediaPackCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=255)
     object_keys: List[str] = Field(default_factory=list)
     caption: Optional[str] = Field(None, max_length=2000)
+    tags: List[str] = Field(default_factory=list)
 
 
 class MediaPackUpdate(BaseModel):
     title: Optional[str] = Field(None, min_length=1, max_length=255)
     object_keys: Optional[List[str]] = None
     caption: Optional[str] = Field(None, max_length=2000)
+    tags: Optional[List[str]] = None
 
 
 class MediaPackApplyRequest(BaseModel):
@@ -650,6 +662,49 @@ async def delete_channel(
     if not ok:
         raise HTTPException(status_code=404, detail="Channel not found")
     return {"ok": True}
+
+
+@router.get("/brands/{brand_id}/digest")
+async def get_digest_job(brand_id: int, x_user_id: Optional[str] = Header(None)):
+    user_id = get_user_id(x_user_id)
+    job = await smm_service.get_digest_job(user_id, brand_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Brand not found")
+    return job
+
+
+@router.put("/brands/{brand_id}/digest")
+async def upsert_digest_job(
+    brand_id: int,
+    body: DigestJobUpdate,
+    x_user_id: Optional[str] = Header(None),
+):
+    user_id = get_user_id(x_user_id)
+    try:
+        return await smm_service.upsert_digest_job(
+            user_id,
+            brand_id,
+            enabled=body.enabled,
+            source_channel_ids=body.source_channel_ids,
+            publish_channel_id=body.publish_channel_id,
+            interval_min=body.interval_min,
+            process_prompt=body.process_prompt,
+            summary_prompt=body.summary_prompt,
+            attach_cover_image=body.attach_cover_image,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+
+@router.get("/brands/{brand_id}/digest/previews")
+async def list_digest_previews(
+    brand_id: int,
+    limit: int = Query(5, ge=1, le=20),
+    x_user_id: Optional[str] = Header(None),
+):
+    user_id = get_user_id(x_user_id)
+    items = await smm_service.list_digest_previews(user_id, brand_id, limit=limit)
+    return {"items": items}
 
 
 # ---------- Inbox ----------
@@ -1929,6 +1984,7 @@ async def create_media_pack(
             title=body.title,
             object_keys=body.object_keys,
             caption=body.caption,
+            tags=body.tags,
         )
     except QuotaExceededError as exc:
         raise _http_quota(exc)
@@ -1951,6 +2007,7 @@ async def update_media_pack(
             title=body.title,
             object_keys=body.object_keys,
             caption=body.caption,
+            tags=body.tags,
             clear_caption=clear_caption,
         )
     except ValueError as exc:

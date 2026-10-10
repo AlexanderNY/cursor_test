@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from 'react'
+import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { PageShell } from '@/components/page-shell'
 import {
@@ -19,11 +19,27 @@ function modeFromPath(pathname: string, wantReset: boolean): AuthMode {
   return pathname.startsWith('/register') ? 'register' : 'login'
 }
 
+/** Only same-origin relative paths (block //evil.com and external URLs). */
+function safeReturnPath(raw: string | null | undefined): string | null {
+  if (!raw) return null
+  const value = raw.trim()
+  if (!value.startsWith('/')) return null
+  if (value.startsWith('//')) return null
+  if (value.includes('://')) return null
+  return value
+}
+
 export function SiteLoginPage() {
   const navigate = useNavigate()
   const location = useLocation()
   const [searchParams] = useSearchParams()
-  const from = (location.state as { from?: string } | null)?.from || '/account'
+  const from = useMemo(() => {
+    const fromState = safeReturnPath(
+      (location.state as { from?: string } | null)?.from,
+    )
+    const fromQuery = safeReturnPath(searchParams.get('next'))
+    return fromState || fromQuery || '/account'
+  }, [location.state, searchParams])
   const [mode, setMode] = useState<AuthMode>(() =>
     modeFromPath(location.pathname, searchParams.get('reset') === '1'),
   )
@@ -68,9 +84,12 @@ export function SiteLoginPage() {
           const forgot = await siteForgotPassword(login.trim())
           if (forgot.resetToken) {
             setResetToken(forgot.resetToken)
-            setMessage('Токен сброса создан (SMTP пока нет — скопируйте токен ниже).')
+            setMessage('Токен сброса создан (режим разработки — скопируйте токен ниже).')
           } else {
-            setMessage(forgot.detail || 'Если аккаунт есть, токен будет выдан.')
+            setMessage(
+              forgot.detail ||
+                'Если аккаунт существует, инструкции по сбросу будут отправлены.',
+            )
           }
           return
         }
@@ -80,7 +99,7 @@ export function SiteLoginPage() {
         })
         setMessage('Пароль обновлён. Можно войти.')
         setMode('login')
-        navigate('/login', { replace: true })
+        navigate('/login', { replace: true, state: location.state })
         return
       }
       const result =
@@ -124,7 +143,7 @@ export function SiteLoginPage() {
           {mode === 'register'
             ? 'Регистрация создаёт аккаунт пользователя: чтение всех страниц и блогов сервисов, личный кабинет и связь с разработчиками.'
             : mode === 'reset'
-              ? 'Запросите токен по email/username, затем задайте новый пароль. Без SMTP токен показывается в ответе.'
+              ? 'Запросите сброс по email/username. Если SMTP недоступен, вставьте токен вручную (в dev он может появиться в ответе API).'
               : 'Вход в контур сайта 9to18 (отдельно от CopyParse).'}
         </p>
       </header>
@@ -208,7 +227,7 @@ export function SiteLoginPage() {
               <input
                 value={resetToken}
                 onChange={(e) => setResetToken(e.target.value)}
-                placeholder="После запроса появится здесь"
+                placeholder="Вставьте токен, если он у вас есть"
               />
             </label>
             {resetToken ? (
@@ -249,7 +268,7 @@ export function SiteLoginPage() {
                 ? 'Создать аккаунт'
                 : resetToken
                   ? 'Задать новый пароль'
-                  : 'Запросить токен'}
+                  : 'Запросить сброс'}
         </button>
       </form>
     </PageShell>

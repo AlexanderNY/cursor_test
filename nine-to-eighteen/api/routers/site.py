@@ -19,12 +19,13 @@ from typing import Any, Optional
 
 import bcrypt
 import jwt
-from fastapi import APIRouter, File, Header, HTTPException, UploadFile
+from fastapi import APIRouter, File, Header, HTTPException, Request, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, EmailStr, Field
 
 from config import settings
 from database import get_site_db_connection, release_site_db_connection
+from rate_limit import enforce_rate_limit
 from upload_limits import read_upload_limited
 import async_fs
 from services.photo_process import process_profile_photo
@@ -43,7 +44,7 @@ LEARNING_MAP_MAX_CHARS = 1_500_000
 ACCESS_MINUTES = 60 * 12
 ALGORITHM = "HS256"
 
-# Live home tiles only. Legacy stub slugs are hidden by _upsert_featured_apps.
+# Live home tiles only. Legacy stub slugs are hidden by _ensure_featured_apps.
 DEFAULT_APPS: list[dict[str, Any]] = [
     {
         "slug": "bowl",
@@ -485,6 +486,7 @@ def _row_post(row: tuple) -> dict[str, Any]:
 
 
 async def ensure_site_seeded() -> None:
+    """Idempotent bootstrap of featured apps. Call only from app lifespan."""
     conn = await get_site_db_connection()
     try:
         async with conn.cursor() as cur:
@@ -501,57 +503,53 @@ async def ensure_site_seeded() -> None:
                 return
             await cur.execute("SELECT COUNT(*) FROM site_apps")
             count_row = await cur.fetchone()
-            if count_row and int(count_row[0] or 0) > 0:
-                await _upsert_featured_apps(cur)
-                return
-            for app in DEFAULT_APPS:
-                await cur.execute(
-                    """
-                    INSERT INTO site_apps (
-                        slug, title, subtitle, description, accent, emoji,
-                        external_href, app_path, is_visible, sort_order
+            if not count_row or int(count_row[0] or 0) == 0:
+                for app in DEFAULT_APPS:
+                    await cur.execute(
+                        """
+                        INSERT INTO site_apps (
+                            slug, title, subtitle, description, accent, emoji,
+                            external_href, app_path, is_visible, sort_order
+                        )
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, TRUE, %s)
+                        ON CONFLICT (slug) DO NOTHING
+                        """,
+                        (
+                            app["slug"],
+                            app["title"],
+                            app.get("subtitle", ""),
+                            app.get("description", ""),
+                            app.get("accent", "#2dd4bf"),
+                            app.get("emoji", ""),
+                            app.get("external_href", ""),
+                            app.get("app_path", ""),
+                            int(app.get("sort_order") or 0),
+                        ),
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, TRUE, %s)
-                    ON CONFLICT (slug) DO NOTHING
-                    """,
-                    (
-                        app["slug"],
-                        app["title"],
-                        app.get("subtitle", ""),
-                        app.get("description", ""),
-                        app.get("accent", "#2dd4bf"),
-                        app.get("emoji", ""),
-                        app.get("external_href", ""),
-                        app.get("app_path", ""),
-                        int(app.get("sort_order") or 0),
-                    ),
-                )
-                stub_slug = "about"
-                stub_title = f"О приложении {app['title']}"
-                stub_body = (
-                    f"Это заглушка блога приложения **{app['title']}**.\n\n"
-                    f"{app.get('description', '')}\n\n"
-                    "Скоро здесь появятся новости о развитии сервиса. "
-                    "Пользователи 9to18 могут читать блоги приложений и "
-                    "писать разработчикам через форму обратной связи."
-                )
-                await cur.execute(
-                    """
-                    INSERT INTO site_posts (app_slug, slug, title, body, is_published)
-                    VALUES (%s, %s, %s, %s, TRUE)
-                    ON CONFLICT (app_slug, slug) DO NOTHING
-                    """,
-                    (app["slug"], stub_slug, stub_title, stub_body),
-                )
-            await _upsert_featured_apps(cur)
+                    stub_slug = "about"
+                    stub_title = f"О приложении {app['title']}"
+                    stub_body = (
+                        f"Это заглушка блога приложения **{app['title']}**.\n\n"
+                        f"{app.get('description', '')}\n\n"
+                        "Скоро здесь появятся новости о развитии сервиса. "
+                        "Пользователи 9to18 могут читать блоги приложений и "
+                        "писать разработчикам через форму обратной связи."
+                    )
+                    await cur.execute(
+                        """
+                        INSERT INTO site_posts (app_slug, slug, title, body, is_published)
+                        VALUES (%s, %s, %s, %s, TRUE)
+                        ON CONFLICT (app_slug, slug) DO NOTHING
+                        """,
+                        (app["slug"], stub_slug, stub_title, stub_body),
+                    )
+            await _ensure_featured_apps(cur)
     finally:
         await release_site_db_connection(conn)
 
 
-async def _upsert_featured_apps(cur: Any) -> None:
-    """Синхронизация «живых» сервисов на уже заполненной БД (без полного ресида)."""
-    featured_slugs = {app["slug"] for app in DEFAULT_APPS}
-    # Legacy / local-only tiles: keep rows but hide from the public home grid.
+async def _ensure_featured_apps(cur: Any) -> None:
+    """Insert missing featured tiles/about posts; never overwrite admin content."""
     stub_hide_slugs = {
         "e2e-tester",
         "menu",
@@ -565,8 +563,7 @@ async def _upsert_featured_apps(cur: Any) -> None:
         "map",
         "team",
     }
-    featured = [app for app in DEFAULT_APPS if app["slug"] in featured_slugs]
-    for app in featured:
+    for app in DEFAULT_APPS:
         await cur.execute(
             """
             INSERT INTO site_apps (
@@ -574,17 +571,7 @@ async def _upsert_featured_apps(cur: Any) -> None:
                 external_href, app_path, is_visible, sort_order
             )
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, TRUE, %s)
-            ON CONFLICT (slug) DO UPDATE SET
-                title = EXCLUDED.title,
-                subtitle = EXCLUDED.subtitle,
-                description = EXCLUDED.description,
-                accent = EXCLUDED.accent,
-                emoji = EXCLUDED.emoji,
-                external_href = EXCLUDED.external_href,
-                app_path = COALESCE(NULLIF(EXCLUDED.app_path, ''), site_apps.app_path),
-                is_visible = TRUE,
-                -- sort_order не трогаем: его задаёт супер-админ через /admin/apps/reorder
-                updated_at = CURRENT_TIMESTAMP
+            ON CONFLICT (slug) DO NOTHING
             """,
             (
                 app["slug"],
@@ -612,14 +599,11 @@ async def _upsert_featured_apps(cur: Any) -> None:
             """
             INSERT INTO site_posts (app_slug, slug, title, body, is_published)
             VALUES (%s, 'about', %s, %s, TRUE)
-            ON CONFLICT (app_slug, slug) DO UPDATE SET
-                title = EXCLUDED.title,
-                body = EXCLUDED.body,
-                updated_at = CURRENT_TIMESTAMP
+            ON CONFLICT (app_slug, slug) DO NOTHING
             """,
             (app["slug"], f"О приложении {app['title']}", stub_body),
         )
-    # Скрываем заглушки (не трогаем featured).
+    # Скрываем заглушки (не трогаем featured и ручные правки is_visible у них).
     if stub_hide_slugs:
         await cur.execute(
             """
@@ -631,18 +615,9 @@ async def _upsert_featured_apps(cur: Any) -> None:
         )
 
 
-@router.on_event("startup")
-async def _startup_seed() -> None:
-    try:
-        await ensure_site_seeded()
-    except Exception:
-        # Table may not exist until patch is applied.
-        pass
-
-
 @router.post("/auth/register")
-async def register(body: RegisterIn) -> dict[str, Any]:
-    await ensure_site_seeded()
+async def register(request: Request, body: RegisterIn) -> dict[str, Any]:
+    enforce_rate_limit(request, "auth")
     username = body.username.strip()
     email = str(body.email).strip().lower()
     cleaned = username.replace("_", "")
@@ -695,8 +670,8 @@ async def register(body: RegisterIn) -> dict[str, Any]:
 
 
 @router.post("/auth/login")
-async def login(body: LoginIn) -> dict[str, Any]:
-    await ensure_site_seeded()
+async def login(request: Request, body: LoginIn) -> dict[str, Any]:
+    enforce_rate_limit(request, "auth")
     login_value = body.login.strip()
     conn = await get_site_db_connection()
     try:
@@ -880,7 +855,6 @@ async def _fetch_profile_row(user_id: int) -> Optional[tuple]:
 
 @router.get("/apps")
 async def list_apps() -> dict[str, Any]:
-    await ensure_site_seeded()
     conn = await get_site_db_connection()
     try:
         async with conn.cursor() as cur:
@@ -904,11 +878,6 @@ async def admin_list_apps(authorization: Optional[str] = Header(None)) -> dict[s
     """Все плашки включая скрытые — только супер-админ."""
     user = await _require_user(authorization)
     _require_super_admin(user)
-    try:
-        await ensure_site_seeded()
-    except Exception:
-        # Не блокируем список, если сид/hide упал (например, нет колонок).
-        pass
     conn = await get_site_db_connection()
     try:
         async with conn.cursor() as cur:
@@ -1070,7 +1039,6 @@ async def get_app(
     slug: str,
     authorization: Optional[str] = Header(None),
 ) -> dict[str, Any]:
-    await ensure_site_seeded()
     allow_hidden = False
     token = _bearer_token(authorization)
     if token:
@@ -1164,7 +1132,6 @@ async def list_posts(
     slug: str,
     authorization: Optional[str] = Header(None),
 ) -> dict[str, Any]:
-    await ensure_site_seeded()
     include_drafts = False
     token = _bearer_token(authorization)
     if token:
@@ -1291,7 +1258,8 @@ async def delete_post(
 
 
 @router.post("/contact")
-async def submit_contact(body: ContactIn) -> dict[str, Any]:
+async def submit_contact(request: Request, body: ContactIn) -> dict[str, Any]:
+    enforce_rate_limit(request, "contact")
     name = body.name.strip()
     message = body.message.strip()
     app_slug = body.app_slug.strip()
@@ -1498,7 +1466,6 @@ def _normalize_curated_keys(raw: Any) -> list[str]:
 @router.get("/posts/latest")
 async def list_latest_posts(limit: int = 5) -> dict[str, Any]:
     """Пять самых свежих опубликованных статей из всех блогов витрины."""
-    await ensure_site_seeded()
     safe_limit = max(1, min(int(limit or 5), 20))
     items = await _spotlight_items(limit=safe_limit, curated_keys=None)
     return {"items": items}
@@ -1507,7 +1474,6 @@ async def list_latest_posts(limit: int = 5) -> dict[str, Any]:
 @router.get("/promo")
 async def get_promo() -> dict[str, Any]:
     """Спотлайт: настройки + до 5 карточек (ручной curatedKeys или авто по дате)."""
-    await ensure_site_seeded()
     raw = await _get_setting(SITE_PROMO_KEY, DEFAULT_PROMO)
     data = DEFAULT_PROMO.copy()
     if isinstance(raw, dict):
@@ -1572,7 +1538,6 @@ def _validate_learning_map_markdown(markdown: str) -> str:
 @router.get("/learning-map")
 async def get_learning_map() -> dict[str, Any]:
     """Публичная карта: custom markdown из настроек или source=default (бандл UI)."""
-    await ensure_site_seeded()
     raw = await _get_setting(SITE_LEARNING_MAP_KEY, None)
     if not isinstance(raw, dict):
         return {
@@ -2147,7 +2112,7 @@ async def upload_my_photo(
     key = f"{S3_SITE_RESUME_PREFIX}/{user_id}/{name}"
     storage = get_storage()
     if storage:
-        await storage.put(key, content)
+        await storage.put(key, content, content_type="image/jpeg")
         photo_key = key
     else:
         target_dir = UPLOADS_SITE_RESUME_DIR / str(user_id)
@@ -2212,8 +2177,9 @@ async def get_my_photo(authorization: Optional[str] = Header(None)) -> Response:
 
 
 @router.post("/auth/forgot-password")
-async def forgot_password(body: PasswordForgotIn) -> dict[str, Any]:
-    """Создаёт reset-токен. В dev возвращает token в ответе (без SMTP)."""
+async def forgot_password(request: Request, body: PasswordForgotIn) -> dict[str, Any]:
+    """Создаёт reset-токен. Токен в JSON только при DEV_EXPOSE_RESET_TOKEN=true."""
+    enforce_rate_limit(request, "auth")
     login = body.login.strip()
     conn = await get_site_db_connection()
     token: Optional[str] = None
@@ -2240,18 +2206,21 @@ async def forgot_password(body: PasswordForgotIn) -> dict[str, Any]:
                 )
     finally:
         await release_site_db_connection(conn)
-    # Всегда одинаковый ответ снаружи (кроме dev-токена когда пользователь найден)
     result: dict[str, Any] = {
         "ok": True,
-        "detail": "Если аккаунт существует, токен сброса выдан (SMTP пока не подключён).",
+        "detail": (
+            "Если аккаунт существует, инструкции по сбросу пароля будут отправлены "
+            "(SMTP пока не подключён)."
+        ),
     }
-    if token:
+    if token and bool(settings.DEV_EXPOSE_RESET_TOKEN):
         result["resetToken"] = token
     return result
 
 
 @router.post("/auth/reset-password")
-async def reset_password(body: PasswordResetIn) -> dict[str, Any]:
+async def reset_password(request: Request, body: PasswordResetIn) -> dict[str, Any]:
+    enforce_rate_limit(request, "auth")
     token_hash = hashlib.sha256(body.token.encode("utf-8")).hexdigest()
     conn = await get_site_db_connection()
     try:

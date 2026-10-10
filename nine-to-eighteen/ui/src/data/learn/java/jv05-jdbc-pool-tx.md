@@ -1,7 +1,7 @@
 ---
 slug: jv-jdbc-pool-tx
 title: Пул соединений и транзакции JDBC
-shortTitle: JDBC pool tx
+shortTitle: Пул соединений и транзакции
 episode: JV05
 rubric: data
 order: 805
@@ -11,105 +11,186 @@ level: junior
 tags: [java, jdbc, transactions, собеседование]
 onKnowledgeMap: true
 durationMin: 30
-excerpt: Connection pool и autocommit; связь с SQL ACID.
+excerpt: Connection pool, autocommit и границы транзакций; мост к SQL ACID.
 prerequisites: [jv-jdbc-basics]
 seoTitle: JDBC pool tx — junior
-seoDescription: Connection pool и autocommit; связь с SQL ACID.
+seoDescription: Connection pool и транзакции JDBC для собеседования.
 seoKeywords: [java, jdbc, transactions, собеседование]
 canonicalUrl: https://9to18.ru/game/learn/jv-jdbc-pool-tx
 ---
 
 ## Введение
 
-Открывать Connection на каждый запрос без пула — дорого. Транзакции связывают несколько DML.
+Открывать `DriverManager.getConnection` на каждый HTTP-запрос — антипаттерн: handshake с БД дорогой. На собесе ждут пул соединений, `autocommit`, `commit`/`rollback` и связь с ACID ([sql-acid-transactions](/game/learn/sql-acid-transactions)). Опора — JDBC Tutorial / DataSource; текст свой.
 
-## Раздел: Основы
+## Раздел: Зачем пул и что такое DataSource
 
-Пул (HikariCP и др.) держит готовые соединения. autocommit=true — каждый statement сам по себе; false — явный commit/rollback.
+**Пул** держит некоторое число уже открытых физических соединений и выдаёт логические «аренды» приложению. В API это обычно `javax.sql.DataSource` (HikariCP, Tomcat pool, пул контейнера). Приложение делает `getConnection()` → работает → `close()`: в пуле close **возвращает** соединение, а не рвёт TCP навсегда.
 
-## Раздел: Практика
+Параметры, которые спрашивают: `maximumPoolSize`, timeout ожидания, lifetime, validation query/`connectionTestQuery`. Ошибка: размер пула «как число пользователей сайта» — пул ограничивают по возможностям БД и latency, не по маркетингу.
 
-См. [sql-acid-transactions](/game/learn/sql-acid-transactions).
+```java
+DataSource ds = /* Hikari config */;
+try (Connection conn = ds.getConnection()) {
+  // работа; close вернёт в пул
+}
+```
 
-## Раздел: На собесе
+## Раздел: Autocommit и явная транзакция
 
-На собесе: «пул ограничивает число соединений к БД и снижает latency connect».
+По умолчанию у JDBC часто `autocommit=true`: каждый statement — своя транзакция. Для нескольких DML, которые должны пройти атомарно:
+
+```java
+conn.setAutoCommit(false);
+try {
+  // несколько update/insert
+  conn.commit();
+} catch (SQLException ex) {
+  conn.rollback();
+  throw ex;
+} finally {
+  conn.setAutoCommit(true); // если соединение уходит в пул
+}
+```
+
+Ошибка: забыть `rollback` при исключении — «грязное» состояние сессии в пуле. Вторая: длинная транзакция с HTTP-вызовом внутри — держит ряд/соединение и убивает throughput.
+
+## Раздел: Изоляция и границы ответственности
+
+Уровень изоляции задаётся на соединении (`setTransactionIsolation`) и должен совпадать с ожиданиями бизнеса (грязное чтение vs аномалии). Детали аномалий — SQL-трек; здесь фраза для собеса: «JDBC только выставляет уровень, гарантии даёт СУБД».
+
+Пул + транзакции: **нельзя** передавать Connection между потоками; один поток — одна аренда. После ошибки соединение часто нужно пометить invalid / откатить до возврата в пул (хорошие пулы помогают, но контракт приложения важен).
+
+## Раздел: Частые вопросы с собеседования
+
+**Вопрос.** Уровни изоляции JDBC — что назвать на собесе?
+
+**Ответ.** READ_UNCOMMITTED, READ_COMMITTED, REPEATABLE_READ, SERIALIZABLE — через `setTransactionIsolation`. JDBC не «создаёт» изоляцию — просит у СУБД режим; аномалии (dirty read, phantom) зависят от движка. По умолчанию у Postgres часто READ COMMITTED; для отчёта и для платежа требования разные. Длинная транзакция с высокой изоляцией + pool = риск блокировок.
+
+**Вопрос.** Что будет, если не закрыть Connection из пула?
+
+**Ответ.** Аренда «утекает»: пул исчерпывается, запросы ждут timeout. try-with-resources на Connection из DataSource обязателен. После SQLException нужен rollback перед return в пул — иначе следующий клиент видит грязную сессию.
+
+**Вопрос.** ORM vs JDBC в одном предложении?
+
+**Ответ.** JDBC — вы пишете SQL и маппите строки; ORM — объектная модель и unit of work с генерацией SQL. Пул и транзакции нужны в обоих случаях на границе с БД. N+1 — болезнь ORM-слоя, не JDBC API.
+
+**Вопрос.** PreparedStatement и транзакция — связаны?
+
+**Ответ.** PreparedStatement живёт в рамке Connection; все statements одной транзакции делят autocommit/commit. Batch update в одной транзакции — один commit в конце. Параметры `?` не заменяют транзакционную атомарность между разными таблицами.
 
 ## Лаба
 
-**Цель.** Описать границы транзакции перевода денег.
+**Цель.** Описать на схеме: два UPDATE в одной транзакции и откат при сбое второго.
 
 **Шаги.**
-1. Зачем пул?
-2. autocommit false — когда?
-3. ROLLBACK при ошибке.
-4. Риск утечки соединений.
-5. Ссылка SQL08.
+1. Включите `setAutoCommit(false)` и выполните два связанных UPDATE.
+2. Broсайте исключение между ними и сделайте rollback.
+3. Повторите с commit — проверьте итог в БД.
+4. Назовите 3 параметра пула, которые посмотрели бы в проде.
+5. Свяжите с ACID одной фразой (A — commit/rollback границ).
 
-**В группу:** разберите deadlock на двух обновлениях.
+**В группу:** один пишет «транзакция на весь request + вызов внешней оплаты», второй находит риск.
 
 **Готово, если…**
-- [ ] Пул понятен
-- [ ] commit/rollback
-- [ ] Связь с ACID
+- [ ] Объясняете, что делает close() у пула
+- [ ] Пишете commit/rollback без утечки autocommit
+- [ ] Не шарите Connection между потоками
 
-## Схема: Пул
+## Схема: Пул и транзакция
 
 ```mermaid
 flowchart LR
-  App --> Pool
-  Pool --> C1
-  Pool --> C2
-  Pool --> DB[(DB)]
+  App["app thread"] -->|"getConnection"| Pool["connection pool"]
+  Pool --> Conn["Connection"]
+  Conn -->|"begin DML"| Tx["transaction"]
+  Tx -->|commit| Db["database"]
+  Tx -->|rollback| Db
+  Conn -->|"close return"| Pool
 ```
 
 ## Тест
 
-### Зачем pool?
+### Зачем connection pool?
 
-**Ответ:** переиспользование соединений
+**Ответ:** переиспользовать дорогие соединения
 
-**Пояснение:** Меньше handshake/нагрузки.
+**Пояснение:** установка TCP/SSL/сессии СУБД дороже, чем взять готовое из пула.
 
-### autocommit false
+### Что делает close() у соединения из пула?
 
-**Ответ:** явные границы транзакции
+**Ответ:** возвращает соединение в пул
 
-**Пояснение:** Несколько DML атомарно.
+**Пояснение:** физический канал обычно живёт дальше; логическая аренда заканчивается.
 
-### Утечка Connection
+### Зачем setAutoCommit(false)?
 
-**Ответ:** не вернули в пул / не закрыли
+**Ответ:** объединить DML в одну транзакцию
 
-**Пояснение:** Исчерпание пула.
+**Пояснение:** иначе каждый statement коммитится отдельно.
+
+### Что делать при SQLException в середине tx?
+
+**Ответ:** rollback
+
+**Пояснение:** иначе частично применённые изменения и «грязное» соединение в пуле.
+
+### Можно ли шарить Connection между потоками?
+
+**Ответ:** нет
+
+**Пояснение:** JDBC Connection не потокобезопасен; у каждого потока своя аренда из пула.
 
 ## Шпаргалка
 
-<h3>Tx</h3><pre><code>c.setAutoCommit(false);
-// DML
-c.commit();</code></pre>
+<h3>Суть</h3>
+<ul>
+<li>DataSource + pool вместо DriverManager на каждый запрос</li>
+<li>autocommit=false → commit / rollback</li>
+<li>close = return to pool</li>
+<li>короткие транзакции; без внешнего I/O внутри</li>
+</ul>
+<h3>Чеклист пула</h3>
+<pre><code>max size, connection timeout,
+idle timeout, leak detection,
+validation before borrow
+</code></pre>
 
 ## Anki
 
-### Front: pool
+### Front: Чем DataSource удобнее прямого DriverManager в сервисе?
 
-Back: кэш соединений
+Back: стандартная точка получения соединений, обычно из пула с конфигом
 
-### Front: rollback
+### Front: Что означает maximumPoolSize?
 
-Back: откат tx
+Back: верхняя граница одновременно арендованных соединений к БД
 
-### Front: SQL08
+### Front: Что такое autocommit=true в JDBC?
 
-Back: ACID канон
+Back: каждый statement завершает свою транзакцию автоматически
+
+### Front: Какой метод фиксирует успешную транзакцию?
+
+Back: Connection.commit()
+
+### Front: Почему долгая транзакция вредна под нагрузкой?
+
+Back: держит соединение и блокировки, снижает throughput
+
+### Front: Куда смотреть теорию аномалий чтения рядом с JDBC?
+
+Back: SQL ACID / уровни изоляции (трек SQL)
 
 ## Итоги
 
-- Пул = must-have
-- Tx на уровне приложения
-- Читайте SQL08
+- Пул — обязательная прод-привычка, не «оптимизация потом»
+- Границы транзакции должны совпадать с бизнес-атомарностью
+- Следующий шаг — зачем поверх JDBC появляются ORM
 
 ## Ссылки
 
-- Learn | [SQL08 ACID](/game/learn/sql-acid-transactions)
+- [Oracle JDBC Tutorial — Connections](https://docs.oracle.com/javase/tutorial/jdbc/basics/connecting.html)
+- [Oracle JDBC Tutorial — Transactions](https://docs.oracle.com/javase/tutorial/jdbc/basics/transactions.html)
+- Learn | [SQL ACID](/game/learn/sql-acid-transactions)
 - Далее: [ORM concepts](/game/learn/jv-orm-concepts)

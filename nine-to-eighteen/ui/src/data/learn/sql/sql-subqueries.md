@@ -1,7 +1,7 @@
 ---
 slug: sql-subqueries
 title: Подзапросы — correlated и noncorrelated (Q28, Q29)
-shortTitle: Subqueries
+shortTitle: Подзапросы
 episode: SQL10
 rubric: data
 order: 610
@@ -98,6 +98,23 @@ WHERE NOT EXISTS (
 
 Кратко по диалектам: идея одна; синтаксис lateral в PostgreSQL (`JOIN LATERAL`) — явная форма корреляции в `FROM`, удобна, когда подзапрос возвращает несколько столбцов на строку.
 
+## Раздел: Частые вопросы с собеседования
+**Вопрос.** Коррелированный подзапрос всегда медленный?
+
+**Ответ.** Не обязательно: индекс на связке (customer_id) и `EXISTS` могут дать nested loop с одним lookup на строку. Плохо — скаляр в SELECT на миллион строк без нужды; переписать в JOIN или window.
+
+**Вопрос.** Scalar subquery в SELECT — риск?
+
+**Ответ.** Выполняется логически per row; без индекса и уникальности — N оценок. Если subquery не гарантирует одну строку — runtime error; лучше JOIN + aggregation или window.
+
+**Вопрос.** `IN` vs `EXISTS` для больших множеств?
+
+**Ответ.** Semantics близки для положительных проверок; оптимизатор часто переписывает. EXISTS не требует материализовать весь список IN; с NULL в IN предпочтите EXISTS.
+
+**Вопрос.** Подзапрос в FROM (derived table) — зачем?
+
+**Ответ.** Именованный промежуточный результат для второго прохода агрегации/фильтра. В PostgreSQL CTE (SQL13) часто читаемее; derived table — базовый SQL без WITH.
+
 ## Лаба
 
 **Цель.** Написать четыре подзапроса: скаляр, IN, EXISTS (correlated), anti-join NOT EXISTS.
@@ -142,9 +159,21 @@ flowchart TD
 
 ### Почему для «клиенты без заказов» часто предпочитают NOT EXISTS, а не NOT IN?
 
-**Ответ:** NOT IN ломается на NULL в списке; NOT EXISTS предсказуемее и хорошо индексируется
+**Ответ:** NOT IN и NULL
 
-**Пояснение:** если подзапрос вернёт NULL среди id, `NOT IN` может дать пустой результат — классическая ловушка собеса.
+**Пояснение:** NULL в списке ломает NOT IN; NOT EXISTS предсказуем и хорошо индексируется.
+
+### Скалярный подзапрос в WHERE — ограничение?
+
+**Ответ:** ровно одна строка
+
+**Пояснение:** иначе ошибка «more than one row»; для списка — IN.
+
+### Подзапрос в FROM — обязателен ли алиас в PG?
+
+**Ответ:** да, алиас
+
+**Пояснение:** derived table должна иметь имя для ссылок снаружи.
 
 ## Шпаргалка
 
@@ -176,6 +205,18 @@ Back: Внутренний запрос ссылается на столбцы �
 
 Back: NOT EXISTS (SELECT 1 FROM orders o WHERE o.customer_id = c.id) или anti-join
 
+### Front: EXISTS проверяет что?
+
+Back: Наличие хотя бы одной строки подзапроса; тело часто SELECT 1
+
+### Front: Noncorrelated subquery?
+
+Back: Внутренний запрос не ссылается на внешние таблицы
+
+### Front: Q28 vs Q29?
+
+Back: Q28 — что такое подзапрос; Q29 — correlated vs noncorrelated
+
 ## Итоги
 
 - Подзапрос — вложенный SELECT; важно уметь назвать форму результата
@@ -184,6 +225,7 @@ Back: NOT EXISTS (SELECT 1 FROM orders o WHERE o.customer_id = c.id) или anti
 
 ## Ссылки
 
-- [OTUS / Хабр — топ SQL, часть I (Q28–Q29)](https://habr.com/ru/companies/otus/articles/461067/)
 - [PostgreSQL: Subquery Expressions](https://www.postgresql.org/docs/current/functions-subquery.html)
-- Learn | /game/learn/sql-triggers-operators
+- [Select Star SQL](https://selectstarsql.com/) — подзапросы и JOIN
+- Индекс Q28–Q29: [OTUS / Хабр — часть I](https://habr.com/ru/companies/otus/articles/461067/)
+- Далее: [COUNT и даты](/game/learn/sql-agg-dates-count)

@@ -1,14 +1,14 @@
 ---
 slug: qa-senior-practice-drill
 title: Senior practice drill: баги, HTTP, регресс под давлением
-shortTitle: Senior practice drill
+shortTitle: Senior practice drill: баги,
 episode: QA23
 rubric: tools
 order: 423
 publishedAt: 2027-01-02T10:00:00+03:00
 profiles: [tester]
 level: senior
-tags: [practice, debugging, http, regression, interview-drill, собеседование]
+tags: [qa, practice, debugging, http, regression, interview-drill, собеседование]
 onKnowledgeMap: true
 durationMin: 45
 excerpt: Негативный POST, отладка 1+1=3, HTTP-ловушки, проверки без бэкенда, мёртвая кнопка логина, регресс за 2 дня и кроссбраузер.
@@ -22,6 +22,8 @@ canonicalUrl: https://9to18.ru/game/learn/qa-senior-practice-drill
 ## Введение
 
 S30, S34–38, M88–90, M98–100, M102–103: собес любит «разберите ситуацию». Ниже — оригинальные разборы с порядком действий, которые звучат как опыт lead/senior, а не список теорий.
+
+Термины и определения согласованы с **ISTQB CTFL v4** и [глоссарием ISTQB](https://glossary.istqb.org/); номера J/M/S — опциональный индекс типовых вопросов собеса.
 
 ## Раздел: Негативы API, отладка логики, HTTP-ловушки
 
@@ -85,6 +87,17 @@ S30, S34–38, M88–90, M98–100, M102–103: собес любит «разб
 **Мессенджер: сообщение не отправилось.** Слои: UI optimistic update → API/WS → очередь → доставка → статус «доставлено». Проверки: сеть, токен, размер вложения, rate limit, состояние сокета, серверные логи по message id, поведение при офлайне, дубликаты при retry. Сравнить отправителя и получателя (fan-out).
 
 **Кроссбраузер при нехватке времени.** Матрица по аналитике: топ браузеров/ОС клиентов. Обязательно: последний Chrome + Safari iOS (часто болевой) + один Firefox/Edge. Остальное — на критических визуальных страницах или canary. Используйте Playwright multi-project точечно; не обещайте «все версии IE».
+
+## Раздел: Частые вопросы с собеседования
+
+**Вопрос.** Как приоритизировать дефекты перед релизом?
+**Ответ.** Сначала блокеры критичного пути и безопасность, затем высокий ущерб при высокой вероятности. Severity — вред, priority — когда чинить.
+
+**Вопрос.** Что такое flaky-тест?
+**Ответ.** Тест, который то красный, то зелёный без смены кода. Его стабилизируют или убирают из блокирующего контура, а не игнорируют.
+
+**Вопрос.** Чем exploratory отличается от случайных кликов?
+**Ответ.** У сессии есть чартер, время и заметки. Это опытная техника, а не отсутствие дизайна.
 
 ## Лаба
 
@@ -157,6 +170,20 @@ flowchart TB
 
 **Пояснение:** дальше валидация, перекрытия, окружение; без Network легко лечить не ту причину.
 
+### Prod incident — первые 15 минут QA?
+
+**Ответ:** воспроизведение, scope, severity, коммуникация, сбор логов
+
+**Пояснение:** не «найти виновного», а сузить blast radius.
+
+### Feature flag off — что регрессить?
+
+**Ответ:** путь без флага и rollback-сценарий
+
+**Пояснение:** флаг меняет поведение; регресс на обе ветки конфигурации.
+
+
+
 ## Шпаргалка
 
 <h3>API негатив</h3>
@@ -188,6 +215,20 @@ Back: 401 — повторить аутентификацию; 500 — серв�
 
 Back: топ по аналитике + мобильный Safari + точечно остальное на критических экранах
 
+### Front: Bisect для flaky
+
+Back: сузить коммит/изменение env, после которого тест стал нестабилен
+
+### Front: Canary release — роль QA
+
+Back: мониторинг метрик/ошибок на доле трафика до full rollout
+
+### Front: Contract change без notice
+
+Back: consumer tests в CI должны поймать до прода; эскалация к API owner
+
+
+
 ## Итоги
 
 - Практические кейсы решаются методом слоёв и доказательств
@@ -197,5 +238,9 @@ Back: топ по аналитике + мобильный Safari + точечн�
 
 ## Ссылки
 
-- [QA-interview-250](https://github.com/Konstantine23/QA-interview-250)
+- [ISTQB Glossary](https://glossary.istqb.org/)
+- [CTFL v4 — Certified Tester Foundation Level](https://istqb.org/certifications/certified-tester-foundation-level-ctfl-v4-0/)
+- [OWASP Top 10](https://owasp.org/www-project-top-ten/)
+- Опционально: [QA-interview-250](https://github.com/Konstantine23/QA-interview-250) — полный список формулировок вопросов
 - Learn | /game/learn
+- Далее: [Capstone checklist](/game/learn/qa-capstone-checklist)

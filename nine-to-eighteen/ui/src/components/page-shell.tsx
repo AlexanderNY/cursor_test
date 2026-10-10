@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { ThemeToggle } from '@/components/theme-toggle'
-import { getSiteAuthSession } from '@/data/site/site-auth'
+import { useSiteAuthSession } from '@/data/site/site-auth'
 
 interface PageShellProps {
   children: ReactNode
@@ -19,7 +19,7 @@ export function PageShell({
   content = 'default',
 }: PageShellProps) {
   const location = useLocation()
-  const session = getSiteAuthSession()
+  const session = useSiteAuthSession()
   const [isNavOpen, setIsNavOpen] = useState(false)
 
   useEffect(() => {

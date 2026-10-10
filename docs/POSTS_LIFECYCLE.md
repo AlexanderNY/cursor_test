@@ -26,6 +26,8 @@ SMM «опубликовать сейчас» сразу создаёт хаб +
 | **processing** | Processor | **ready** или **review** |
 | **ready** | Processor (есть цели) | Боты читают `post_targets` |
 | **review** | Processor (модерация или нет целей) | Ручной перевод / повторная обработка |
+| **digest_hold** | Processor (канал в источниках сводки) | Часовой digest job → **digested** |
+| **digested** | Digest job | Конец (пост вошёл в опубликованную сводку) |
 | **deleted** | Core / UI | Конец |
 
 `distributed` больше не используется пайплайном.

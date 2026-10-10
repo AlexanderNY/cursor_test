@@ -118,6 +118,37 @@ export const smmService = {
     return data.channels ?? []
   },
 
+  async getDigestJob(brandId: number): Promise<import('@/types/smm').DigestJob> {
+    const { data } = await apiClient.get(`/smm/brands/${brandId}/digest`)
+    return data
+  },
+
+  async saveDigestJob(
+    brandId: number,
+    payload: {
+      enabled: boolean
+      source_channel_ids: number[]
+      publish_channel_id?: number | null
+      interval_min: number
+      process_prompt?: string
+      summary_prompt?: string
+      attach_cover_image?: boolean
+    },
+  ): Promise<import('@/types/smm').DigestJob> {
+    const { data } = await apiClient.put(`/smm/brands/${brandId}/digest`, payload)
+    return data
+  },
+
+  async listDigestPreviews(
+    brandId: number,
+    limit = 5,
+  ): Promise<import('@/types/smm').DigestPreviewItem[]> {
+    const { data } = await apiClient.get(`/smm/brands/${brandId}/digest/previews`, {
+      params: { limit },
+    })
+    return data.items ?? []
+  },
+
   async listAllChannels(brandId?: number): Promise<(BrandChannel & { brand_name?: string; brand_color?: string })[]> {
     const { data } = await apiClient.get('/smm/channels', {
       params: brandId ? { brand_id: brandId } : undefined,
@@ -897,7 +928,7 @@ export const smmService = {
 
   async createMediaPack(
     brandId: number,
-    payload: { title: string; object_keys?: string[]; caption?: string },
+    payload: { title: string; object_keys?: string[]; caption?: string; tags?: string[] },
   ): Promise<import('@/types/smm').MediaPack> {
     const { data } = await apiClient.post(`/smm/brands/${brandId}/media-packs`, payload)
     return data
@@ -905,7 +936,7 @@ export const smmService = {
 
   async updateMediaPack(
     id: number,
-    payload: Partial<{ title: string; object_keys: string[]; caption: string }>,
+    payload: Partial<{ title: string; object_keys: string[]; caption: string; tags: string[] }>,
   ): Promise<import('@/types/smm').MediaPack> {
     const { data } = await apiClient.patch(`/smm/media-packs/${id}`, payload)
     return data

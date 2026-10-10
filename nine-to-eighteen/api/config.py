@@ -16,6 +16,13 @@ class Settings(BaseSettings):
     S3_SECRET_KEY: str = ""
     S3_REGION: str = "us-east-1"
     S3_USE_SSL: bool = False
+    # Dev only: include password-reset token in forgot-password JSON (no SMTP).
+    DEV_EXPOSE_RESET_TOKEN: bool = False
+    # Auth / contact rate limits (keyed by client IP)
+    RATE_LIMIT_AUTH_REQUESTS: int = 20
+    RATE_LIMIT_AUTH_WINDOW_SEC: int = 60
+    RATE_LIMIT_CONTACT_REQUESTS: int = 10
+    RATE_LIMIT_CONTACT_WINDOW_SEC: int = 60
 
     class Config:
         env_file = ".env"

@@ -2,17 +2,12 @@
 """Merge Learn Redis series .md into learn_seed.json."""
 from __future__ import annotations
 
-from pathlib import Path
-
-from learn_series_import_lib import import_series
-
-ROOT = Path(__file__).resolve().parents[2]
-SERIES_DIR = ROOT / "deploy" / "ui-9to18" / "src" / "data" / "learn" / "redis"
+from learn_series_import_lib import import_series, series_dir
 
 
 def main() -> None:
     import_series(
-        series_dir=SERIES_DIR,
+        series_dir=series_dir("redis"),
         glob_pattern="rd*.md",
         required_profiles=("developer", "analyst"),
     )

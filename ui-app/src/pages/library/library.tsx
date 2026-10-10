@@ -40,6 +40,7 @@ export function LibraryPage() {
   const [packTitle, setPackTitle] = useState('')
   const [packKeys, setPackKeys] = useState('')
   const [packCaption, setPackCaption] = useState('')
+  const [packTags, setPackTags] = useState('')
 
   const brandId = selectedBrandId
 
@@ -142,14 +143,20 @@ export function LibraryPage() {
         .split(/[\n,]+/)
         .map((s) => s.trim())
         .filter(Boolean)
+      const tags = packTags
+        .split(/[,]+/)
+        .map((s) => s.trim())
+        .filter(Boolean)
       await smmService.createMediaPack(brandId, {
         title: packTitle.trim(),
         object_keys: keys,
         caption: packCaption.trim() || undefined,
+        tags,
       })
       setPackTitle('')
       setPackKeys('')
       setPackCaption('')
+      setPackTags('')
       setSuccess('Медиа-пакет сохранён')
       await load()
     } catch (err) {
@@ -380,6 +387,15 @@ export function LibraryPage() {
                       value={packCaption}
                       onChange={(e) => setPackCaption(e.target.value)}
                     />
+                    <Input
+                      label="Tags (через запятую)"
+                      value={packTags}
+                      onChange={(e) => setPackTags(e.target.value)}
+                      placeholder="экономика, нефть, новости"
+                    />
+                    <p className="text-xs text-[var(--text-muted)]">
+                      Теги нужны для часовой сводки: AI подберёт картинку по теме.
+                    </p>
                     <Button type="submit" disabled={busy || !packTitle.trim()}>
                       Сохранить
                     </Button>
@@ -404,6 +420,7 @@ export function LibraryPage() {
                         <p className="text-sm font-medium truncate">{p.title}</p>
                         <p className="text-xs text-[var(--text-muted)]">
                           {p.object_keys.length} файл(ов)
+                          {p.tags && p.tags.length > 0 ? ` · tags: ${p.tags.join(', ')}` : ''}
                           {p.caption ? ` · ${p.caption.slice(0, 60)}` : ''}
                         </p>
                       </div>

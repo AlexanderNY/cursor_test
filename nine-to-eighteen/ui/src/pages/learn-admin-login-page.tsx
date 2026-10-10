@@ -1,12 +1,12 @@
 import { Link, useLocation } from 'react-router-dom'
 import { PageShell } from '@/components/page-shell'
-import { getSiteAuthSession, isSuperAdmin } from '@/data/site/site-auth'
+import { isSuperAdmin, useSiteAuthSession } from '@/data/site/site-auth'
 
 export function LearnAdminLoginPage() {
   const location = useLocation()
   const from =
     (location.state as { from?: string } | null)?.from || '/game/learn/admin'
-  const session = getSiteAuthSession()
+  const session = useSiteAuthSession()
   const canEdit = isSuperAdmin(session)
 
   return (
@@ -29,7 +29,9 @@ export function LearnAdminLoginPage() {
         </p>
       ) : (
         <p className="learn-section-note">
-          <Link to={`/login?next=${encodeURIComponent(from)}`}>Войти на сайт</Link>
+          <Link to={`/login?next=${encodeURIComponent(from)}`} state={{ from }}>
+            Войти на сайт
+          </Link>
           {' · '}
           <Link to="/account">Личный кабинет</Link>
         </p>

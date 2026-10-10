@@ -1,14 +1,14 @@
 ---
 slug: qa-pytest-ci-git
 title: pytest, Git и CI для автотестов
-shortTitle: pytest CI Git
+shortTitle: pytest, Git и CI для
 episode: QA11
 rubric: tools
 order: 411
 publishedAt: 2026-12-13T10:00:00+03:00
 profiles: [tester]
 level: junior
-tags: [pytest, git, ci, allure, собеседование]
+tags: [qa, pytest, git, ci, allure, собеседование]
 onKnowledgeMap: true
 durationMin: 40
 excerpt: Зачем test runner, pytest vs JUnit/TestNG, параллель, Git-база, CI и содержимое Allure-отчёта.
@@ -22,6 +22,8 @@ canonicalUrl: https://9to18.ru/game/learn/qa-pytest-ci-git
 ## Введение
 
 Написать тест мало — его нужно запускать одинаково у всех и в пайплайне. J63–75 и M16: зачем runner, чем pytest отличается от TestNG/JUnit, как параллелить, что коммитить в Git и что должно быть в отчёте (Allure). Примеры — **pytest** + кратко про Java-раннеры.
+
+Термины и определения согласованы с **ISTQB CTFL v4** и [глоссарием ISTQB](https://glossary.istqb.org/); номера J/M/S — опциональный индекс типовых вопросов собеса.
 
 ## Раздел: Runners, pytest, assertions, parallel
 
@@ -88,6 +90,20 @@ test_smoke:
     paths: [allure-results, screenshots]
 ```
 
+## Раздел: Частые вопросы с собеседования
+
+**Вопрос.** Зачем на собесе спрашивают equivalence partitioning и граничные значения?
+
+**Ответ.** EP сжимает бесконечные входы в классы «ведут себя одинаково»; BVA бьёт по стыкам классов — там чаще ломается сравнение и валидация. Для поля 18–99 достаточно классов «ниже», «внутри», «выше» и точек 17–18–19, 98–99–100; не нужно 82 случайных числа.
+
+**Вопрос.** Severity и priority в баг-репорте — одно и то же?
+
+**Ответ.** Нет. Severity — ущерб для продукта и пользователя (crash vs опечатка). Priority — когда чинить в очереди команды. Критичный по severity баг может ждать, если воспроизводится только на стенде без пользователей; наоборот, мелкий UI-bug в checkout может быть P1 перед релизом.
+
+**Вопрос.** Что имеют в виду под «пирамидой тестирования» на собеседовании?
+
+**Ответ.** Много быстрых дешёвых проверок внизу (unit, контракт API), меньше медленных UI/e2e наверху. Цель — быстрая обратная связь в CI, а не «всё через Selenium». Пирамида не запрет на e2e: сквозные сценарии оставляют на критичные деньги-потоки.
+
 ## Лаба
 
 **Цель.** Репозиторий с pytest, маркерами smoke/regression, xdist на API-тестах и выгрузкой Allure-результатов.
@@ -139,6 +155,20 @@ flowchart LR
 
 **Пояснение:** без вложений отчёт — список красных имён, а не инструмент разбора.
 
+### Зачем pytest.mark.parametrize?
+
+**Ответ:** один тест — много наборов данных без копипаста
+
+**Пояснение:** удобно для EP/BVA таблиц в API-тестах.
+
+### Что коммитить в репозиторий автотестов?
+
+**Ответ:** код, фикстуры, конфиг CI, requirements — не секреты и не артефакты прогона
+
+**Пояснение:** `.env` и пароли — в secrets CI; отчёты — как pipeline artifacts.
+
+
+
 ## Шпаргалка
 
 <h3>pytest</h3>
@@ -171,6 +201,20 @@ Back: pytest — экосистема Python; TestNG — популярный ru
 
 Back: после сборки/unit, до или сразу после выкладки на staging — как quality gate
 
+### Front: conftest.py — роль
+
+Back: общие фикстуры и hooks pytest для каталога и подкаталогов
+
+### Front: pytest -x
+
+Back: остановить прогон на первом падении — быстрый feedback
+
+### Front: Зачем Allure/pytest-html?
+
+Back: история прогонов, шаги, скриншоты — доверие команды к автотестам
+
+
+
 ## Итоги
 
 - Runner = стандарт запуска и контракт с CI
@@ -180,7 +224,9 @@ Back: после сборки/unit, до или сразу после выкла
 
 ## Ссылки
 
-- [QA-interview-250](https://github.com/Konstantine23/QA-interview-250)
+- [ISTQB Glossary](https://glossary.istqb.org/)
+- [CTFL v4 — Certified Tester Foundation Level](https://istqb.org/certifications/certified-tester-foundation-level-ctfl-v4-0/)
 - [pytest documentation](https://docs.pytest.org/)
-- Learn | /game/learn/qa-selenium-webdriver
-- См. также: [Python unittest/pytest](/game/learn/py-testing-debug)
+- Опционально: [QA-interview-250](https://github.com/Konstantine23/QA-interview-250) — полный список формулировок вопросов
+- Learn | /game/learn
+- Далее: [Mobile basics](/game/learn/qa-mobile-basics)

@@ -53,8 +53,22 @@ CREATE INDEX IF NOT EXISTS idx_wp_collect_sites_user_id ON wp_collect_sites(user
 CREATE INDEX IF NOT EXISTS idx_wp_collect_sites_profile_id ON wp_collect_sites(profile_id);
 """
 
+WP_COLLECT_CURSOR_TABLE = """
+CREATE TABLE IF NOT EXISTS wp_collect_cursor (
+    user_id INTEGER NOT NULL,
+    site_url TEXT NOT NULL,
+    after_gmt TIMESTAMPTZ,
+    last_wp_id INTEGER,
+    bootstrapped BOOLEAN NOT NULL DEFAULT FALSE,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id, site_url)
+);
+CREATE INDEX IF NOT EXISTS idx_wp_collect_cursor_user_id ON wp_collect_cursor(user_id);
+"""
+
 ALL_TABLES: list[str] = [
     WP_PUBLISH_PROFILE_TABLE,
     WP_COLLECT_PROFILE_TABLE,
     WP_COLLECT_SITES_TABLE,
+    WP_COLLECT_CURSOR_TABLE,
 ]

@@ -4,9 +4,20 @@ import { drawHeroComicFace, drawHeroFigureEight, drawHeroPaws } from './hero-vis
 interface HeroPreviewProps {
   color: string
   size?: number
+  eyeCount?: number
+  legCount?: number
+  legReach?: number
+  beakOpen?: number
 }
 
-export function HeroPreview({ color, size = 72 }: HeroPreviewProps) {
+export function HeroPreview({
+  color,
+  size = 96,
+  eyeCount = 2,
+  legCount = 2,
+  legReach = 1,
+  beakOpen = 0.72,
+}: HeroPreviewProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {
@@ -15,12 +26,12 @@ export function HeroPreview({ color, size = 72 }: HeroPreviewProps) {
     const ctx = canvas.getContext('2d')
     if (!ctx) return
     const facing = -Math.PI / 2
-    const radius = size / 2 - 8
+    const radius = size / 2 - 10
     ctx.clearRect(0, 0, size, size)
-    drawHeroFigureEight(ctx, size / 2, size / 2, radius, facing, color)
-    drawHeroPaws(ctx, size / 2, size / 2, radius, facing, color, 0.35)
-    drawHeroComicFace(ctx, size / 2, size / 2, radius, facing, null, 1, 0.15)
-  }, [color, size])
+    drawHeroFigureEight(ctx, size / 2, size / 2 + 2, radius, facing, color)
+    drawHeroPaws(ctx, size / 2, size / 2 + 2, radius, facing, color, 0, legCount, legReach)
+    drawHeroComicFace(ctx, size / 2, size / 2 + 2, radius, facing, null, 1, beakOpen, eyeCount)
+  }, [beakOpen, color, eyeCount, legCount, legReach, size])
 
   return (
     <canvas

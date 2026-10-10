@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import FrozenSet
+from urllib.parse import urlparse
 
 from shared.post_adapt import (
     ADAPT_NETWORKS,
@@ -93,3 +94,25 @@ def network_text_limit(raw: str | None) -> int | None:
 
 def is_adapt_network(raw: str | None) -> bool:
     return normalize_network(raw) in ADAPT_NETWORKS
+
+
+def normalize_wp_site_url(value: str | None) -> str:
+    """Normalize WordPress site URL for external_id storage and matching."""
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    if not raw.lower().startswith(("http://", "https://")):
+        raw = f"https://{raw}"
+    parsed = urlparse(raw)
+    scheme = (parsed.scheme or "https").lower()
+    netloc = (parsed.netloc or "").lower()
+    path = (parsed.path or "").rstrip("/")
+    if not netloc:
+        return raw.rstrip("/").lower()
+    return f"{scheme}://{netloc}{path}".rstrip("/")
+
+
+def wp_site_urls_match(a: str | None, b: str | None) -> bool:
+    left = normalize_wp_site_url(a)
+    right = normalize_wp_site_url(b)
+    return bool(left) and left == right

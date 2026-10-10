@@ -1,14 +1,14 @@
 ---
 slug: qa-capstone-checklist
 title: Capstone QA: чеклист Junior→Senior+AQA и appendix
-shortTitle: Capstone checklist
+shortTitle: Capstone QA: чеклист
 episode: QA24
 rubric: tools
 order: 424
 publishedAt: 2027-01-05T10:00:00+03:00
 profiles: [tester]
 level: senior
-tags: [capstone, checklist, career, appendix, index, practice, собеседование]
+tags: [qa, capstone, checklist, career, appendix, index, practice, собеседование]
 onKnowledgeMap: true
 durationMin: 40
 excerpt: Итоговый чеклист роста QA, как пользоваться серией Learn, appendix NIC/RTP/SIP, Electron, SQL replication и индекс выпусков.
@@ -23,13 +23,15 @@ canonicalUrl: https://9to18.ru/game/learn/qa-capstone-checklist
 
 Финальный выпуск серии: собрать траекторию Junior → Middle → Senior (+AQA), понять как пользоваться материалами 9to18 Learn и закрыть appendix-темы вне основной цепочки. Это навигатор и честный self-check перед собесом, а не новый учебник с нуля.
 
+Термины и определения согласованы с **ISTQB CTFL v4** и [глоссарием ISTQB](https://glossary.istqb.org/); номера J/M/S — опциональный индекс типовых вопросов собеса.
+
 ## Раздел: Чеклисты уровней и как читать серию
 
 **Как пользоваться серией.**
 
 1. Идите по `order` 401→424 или по пробелам в своём опыте (карта в таблице ниже).
 2. Каждый выпуск: теория → лаба → тест → Anki; не пропускайте лабу — на собесе звучит практика.
-3. Держите открытым [QA-interview-250](https://github.com/Konstantine23/QA-interview-250): статьи дают *оригинальные* ответы, репозиторий — полноту формулировок вопросов.
+3. Опирайтесь на термины **ISTQB CTFL v4** и [глоссарий](https://glossary.istqb.org/); опционально — [QA-interview-250](https://github.com/Konstantine23/QA-interview-250) как индекс формулировок вопросов.
 4. После Middle (QA18) обязательно пройдите strategy/ROI/security (QA19–21) до drill (QA23).
 5. Повторяйте Anki и свой конспект багов/метрик с работы — сильнее любой зубрёжки.
 
@@ -78,7 +80,7 @@ canonicalUrl: https://9to18.ru/game/learn/qa-capstone-checklist
 
 **M69 · SQL replication.** Primary/replica: асинхронная репликация даёт lag — тест только что записанных данных чтением с replica может «не видеть» строку. Проверяйте read-your-writes, failover, consistency expectations продукта.
 
-**Полный список вопросов:** [github.com/Konstantine23/QA-interview-250](https://github.com/Konstantine23/QA-interview-250).
+**Опциональный индекс вопросов:** [QA-interview-250](https://github.com/Konstantine23/QA-interview-250).
 
 **Индекс серии QA Learn (обзор).**
 
@@ -108,6 +110,17 @@ canonicalUrl: https://9to18.ru/game/learn/qa-capstone-checklist
 | QA22 | qa-leadership-conflicts | Лидерство |
 | QA23 | qa-senior-practice-drill | Drill |
 | QA24 | qa-capstone-checklist | Capstone |
+
+## Раздел: Частые вопросы с собеседования
+
+**Вопрос.** Чем smoke отличается от регресса?
+**Ответ.** Smoke — узкий набор «сборка жива». Регресс проверяет, что изменения не сломали уже работавшее.
+
+**Вопрос.** Какие техники тест-дизайна назвать первыми?
+**Ответ.** Классы эквивалентности, границы, таблица решений и переходы состояний.
+
+**Вопрос.** Зачем чеклист, если темы уже читали?
+**Ответ.** Он показывает пробелы: термины, SQL, API и автоматизация должны звучать своими примерами.
 
 ## Лаба
 
@@ -161,23 +174,37 @@ flowchart LR
 
 ## Тест
 
-### Зачем series Learn, если есть список из 250 вопросов?
+### Чем smoke отличается от полного регресса перед релизом?
 
-**Ответ:** Learn даёт связные оригинальные ответы, лабы и карту роста; репозиторий — полноту формулировок вопросов
+**Ответ:** smoke — минимум критичных путей
 
-**Пояснение:** зубрёжка списка без практики и структуры уровней слабо держится на собесе.
+**Пояснение:** полный регресс шире; smoke решает «можно ли тестировать/выпускать дальше».
 
 ### Что из appendix важно помнить про read replica?
 
-**Ответ:** возможна задержка репликации — чтение сразу после записи может не увидеть данные
+**Ответ:** lag после записи
 
-**Пояснение:** это влияет на тест-дизайн и на требования consistency продукта.
+**Пояснение:** чтение сразу после write может не увидеть данные — тест-дизайн и consistency.
 
 ### Чем Electron-тестирование отличается от обычного web?
 
-**Ответ:** есть слой Node/ОС: установка, обновления, файловая система и риски XSS→RCE
+**Ответ:** слой Node и ОС
 
-**Пояснение:** кроме UI в Chromium нужно покрывать десктопный жизненный цикл приложения.
+**Пояснение:** установка, обновления, ФС и риски XSS→RCE поверх UI Chromium.
+
+### С чего начать карту CTFL при уже имеющемся manual-опыте?
+
+**Ответ:** термины и техники дизайна
+
+**Пояснение:** equivalence/BVA/decision table и уровни тестирования; потом AQA и процесс.
+
+### Зачем повторять Anki после capstone?
+
+**Ответ:** удержать термины CTFL
+
+**Пояснение:** без интервального повторения через месяц severity/priority и техники смешиваются.
+
+
 
 ## Шпаргалка
 
@@ -212,14 +239,30 @@ Back: SIP управляет сессией звонка; RTP несёт ауд�
 
 Back: сильные баг-репорты, пример тест-анализа и фрагмент осмысленной автоматизации
 
+### Front: ISTQB CTFL v4 — что даёт серии
+
+Back: единый словарь defect, test level, technique без привязки к одному repo вопросов
+
+### Front: AQA bridge — номера выпусков
+
+Back: QA09–QA12 между junior и middle
+
+### Front: Appendix VoIP — минимум для web QA
+
+Back: SIP сигнализация, RTP медиа; знать, что это не HTTP REST
+
+
+
 ## Итоги
 
 - Capstone сшивает Junior→Senior+AQA в проверяемые чеклисты
-- Серия + QA-interview-250 = карта и полнота вопросов
+- Серия + ISTQB glossary = единый словарь; QA-interview-250 — опциональный индекс
 - Appendix (VoIP, Electron, replication) — обзор для редких вопросов
 - Дальше — практика лаб и свой опыт, а не бесконечное чтение
 
 ## Ссылки
 
-- [QA-interview-250](https://github.com/Konstantine23/QA-interview-250)
+- [ISTQB Glossary](https://glossary.istqb.org/)
+- [CTFL v4 — Certified Tester Foundation Level](https://istqb.org/certifications/certified-tester-foundation-level-ctfl-v4-0/)
+- Опционально: [QA-interview-250](https://github.com/Konstantine23/QA-interview-250) — полный список формулировок вопросов
 - Learn | /game/learn

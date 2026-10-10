@@ -1,7 +1,7 @@
 ---
 slug: sql-agg-dates-count
 title: Текущая дата и способы посчитать строки (Q14, Q30)
-shortTitle: Dates & COUNT
+shortTitle: Текущая дата и способы
 episode: SQL11
 rubric: data
 order: 611
@@ -82,6 +82,23 @@ WHERE oid = 'orders'::regclass;
 
 Другие ответы, которые засчитывают: отдельная таблица счётчиков + триггер/приложение; `pg_stat_user_tables`; в некоторых СУБД — sample/`TABLESAMPLE`. Главное — различать **точный** и **приближённый** подсчёт и цену блокировок/I/O.
 
+## Раздел: Частые вопросы с собеседования
+**Вопрос.** `CURRENT_DATE` vs `now()` timezone?
+
+**Ответ.** `now()` timestamptz зависит от session timezone; «сегодня» для отчёта часто `(now() AT TIME ZONE 'Europe/Moscow')::date` или явный TZ. Собес ловит фильтр `created_at::date = CURRENT_DATE` без индекса.
+
+**Вопрос.** GROUP BY все неагрегированные столбцы?
+
+**Ответ.** В SQL каждый SELECT столбец либо в GROUP BY, либо внутри агрегата. PostgreSQL historically permissive с FUNCTIONALLY DEPENDENT — не полагайтесь без понимания ONLY_FULL_GROUP_BY в MySQL.
+
+**Вопрос.** HAVING vs WHERE?
+
+**Ответ.** WHERE фильтрует строки до группировки; HAVING — группы после агрегации (`HAVING count(*) > 5`). Предикаты на агрегаты только в HAVING.
+
+**Вопрос.** COUNT DISTINCT vs подзапрос?
+
+**Ответ.** `COUNT(DISTINCT user_id)` считает уникальных в группе; для сложных условий иногда подзапрос или COUNT FILTER (PostgreSQL). Выбор по читаемости и плану.
+
 ## Лаба
 
 **Цель.** Сравнить функции даты и три формы COUNT на учебных данных с NULL.
@@ -125,9 +142,21 @@ flowchart LR
 
 ### Когда на собесе уместно говорить про estimate вместо COUNT(*)?
 
-**Ответ:** когда нужна порядок-величины оценка на большой таблице, а точность не критична
+**Ответ:** большая таблица, порядок величины
 
-**Пояснение:** упомяните `pg_class.reltuples` / `EXPLAIN` и необходимость `ANALYZE`; для денег и аудита — только точный подсчёт.
+**Пояснение:** reltuples/EXPLAIN; для аудита и денег — только точный COUNT.
+
+### GROUP BY без агрегата в SELECT?
+
+**Ответ:** ошибка или лишние столбцы
+
+**Пояснение:** в SELECT только группируемые поля и агрегаты (или функциональная зависимость в PG).
+
+### HAVING vs WHERE?
+
+**Ответ:** HAVING после GROUP BY
+
+**Пояснение:** WHERE фильтрует строки до группировки; HAVING — группы после агрегации.
 
 ## Шпаргалка
 
@@ -160,6 +189,18 @@ Back: * — все строки; column — без NULL в этом столбц
 
 Back: reltuples в pg_class или оценка узлов в EXPLAIN; не для аудита
 
+### Front: COUNT(DISTINCT col)?
+
+Back: Число уникальных не-NULL значений col
+
+### Front: now() vs CURRENT_DATE?
+
+Back: now() — timestamptz с временем; CURRENT_DATE — только дата
+
+### Front: FILTER в агрегате PG?
+
+Back: Условный COUNT/SUM: count(*) FILTER (WHERE status = 'paid')
+
 ## Итоги
 
 - Дата/время — стандартные имена плюс диалект (`GETDATE` vs `now`)
@@ -168,7 +209,8 @@ Back: reltuples в pg_class или оценка узлов в EXPLAIN; не дл
 
 ## Ссылки
 
-- [OTUS / Хабр — топ SQL, часть I (Q14, Q30)](https://habr.com/ru/companies/otus/articles/461067/)
 - [PostgreSQL: Date/Time Functions](https://www.postgresql.org/docs/current/functions-datetime.html)
 - [PostgreSQL: Aggregate Functions](https://www.postgresql.org/docs/current/functions-aggregate.html)
-- Learn | /game/learn/sql-subqueries
+- [PG Exercises](https://pgexercises.com/) — агрегаты и GROUP BY
+- Индекс Q14, Q30: [OTUS / Хабр — часть I](https://habr.com/ru/companies/otus/articles/461067/)
+- Далее: [Сводная лаба](/game/learn/sql-practice-lab)

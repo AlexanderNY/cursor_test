@@ -1,14 +1,14 @@
 ---
 slug: qa-mobile-basics
 title: Мобильное тестирование и Appium-концепт
-shortTitle: Mobile basics
+shortTitle: Мобильное тестирование и
 episode: QA12
 rubric: tools
 order: 412
 publishedAt: 2026-12-15T10:00:00+03:00
 profiles: [tester]
 level: junior
-tags: [mobile, appium, adb, android, ios, собеседование]
+tags: [qa, mobile, appium, adb, android, ios, собеседование]
 onKnowledgeMap: true
 durationMin: 40
 excerpt: Платформы, типы приложений, apk/ipa, ADB, логи, биометрия, идея Appium и чеклист мобильной лабы.
@@ -22,6 +22,8 @@ canonicalUrl: https://9to18.ru/game/learn/qa-mobile-basics
 ## Введение
 
 Мобильный блок J109–118 и обзор M72–84: не «умею Appium на проде», а понимание платформ, сборок, логов, жестов и чем мобильный тест отличается от веба. Автоматизация — концепт Appium + пример Desired Capabilities; лаба — ручной чеклист + ADB.
+
+Термины и определения согласованы с **ISTQB CTFL v4** и [глоссарием ISTQB](https://glossary.istqb.org/); номера J/M/S — опциональный индекс типовых вопросов собеса.
 
 ## Раздел: Платформы, типы приложений, сборки
 
@@ -75,6 +77,28 @@ driver.quit()
 
 **Middle-обзор (M72–84 идеи):** жесты (swipe/pinch), background/foreground, install/upgrade/reinstall, interrupt calls, battery saver, локаль/timezone, soft keyboard, notifications, deep link cold/warm start. Автоматизировать — после стабилизации ручного чеклиста критичных сценариев.
 
+## Раздел: Частые вопросы с собеседования
+
+**Вопрос.** Чем уровень тестирования отличается от типа (вида) тестирования?
+
+**Ответ.** Уровень отвечает на «где режем систему»: модуль, стык, продукт целиком, приёмка. Тип — «с какой целью гоняем»: smoke, regression, exploratory, security и т.д. На собесе покажите пример: один checkout можно проверить на integration (API+БД) и оформить прогон как regression после фикса — оси независимы.
+
+**Вопрос.** Когда на собеседовании уместен smoke, а когда полный regression?
+
+**Ответ.** Smoke — узкий «жив ли билд»: логин, критичный платёж, главная. Падает smoke — глубже не идём. Regression — шире: уже работавшее после изменений. Sanity — точечно после маленького патча. Ошибка junior: называть любой повторный прогон regression.
+
+**Вопрос.** Зачем на собесе спрашивают equivalence partitioning и граничные значения?
+
+**Ответ.** EP сжимает бесконечные входы в классы «ведут себя одинаково»; BVA бьёт по стыкам классов — там чаще ломается сравнение и валидация. Для поля 18–99 достаточно классов «ниже», «внутри», «выше» и точек 17–18–19, 98–99–100; не нужно 82 случайных числа.
+
+**Вопрос.** Severity и priority в баг-репорте — одно и то же?
+
+**Ответ.** Нет. Severity — ущерб для продукта и пользователя (crash vs опечатка). Priority — когда чинить в очереди команды. Критичный по severity баг может ждать, если воспроизводится только на стенде без пользователей; наоборот, мелкий UI-bug в checkout может быть P1 перед релизом.
+
+**Вопрос.** Что имеют в виду под «пирамидой тестирования» на собеседовании?
+
+**Ответ.** Много быстрых дешёвых проверок внизу (unit, контракт API), меньше медленных UI/e2e наверху. Цель — быстрая обратная связь в CI, а не «всё через Selenium». Пирамида не запрет на e2e: сквозные сценарии оставляют на критичные деньги-потоки.
+
 ## Лаба
 
 **Цель.** Прогнать мобильный smoke-чеклист на эмуляторе или реальном Android и собрать артефакты для баг-репорта.
@@ -123,6 +147,20 @@ flowchart LR
 
 **Пояснение:** предпочтительнее хрупкого XPath; требует договорённости с разработкой о test id.
 
+### Emulator vs real device — trade-off?
+
+**Ответ:** эмулятор дешевле; девайс — реальные сенсоры, сеть, OEM-оболочки
+
+**Пояснение:** релизные проверки на матрице реальных устройств.
+
+### Что такое background/foreground для мессенджера?
+
+**Ответ:** push, сохранение состояния, reconnect при возврате
+
+**Пояснение:** типичные баги: потеря сообщений и дубли при смене состояния.
+
+
+
 ## Шпаргалка
 
 <h3>Типы</h3>
@@ -156,6 +194,20 @@ Back: NATIVE_APP и WEBVIEW_*; нужно переключаться для по
 
 Back: отказ/cancel, fallback PIN, повтор permissions, поведение при блокировке ОС
 
+### Front: Native vs hybrid vs mobile web
+
+Back: native — SDK платформы; hybrid — WebView + native; mobile web — браузер
+
+### Front: adb logcat — зачем QA
+
+Back: смотреть crash stack и сетевые ошибки на Android без IDE
+
+### Front: Ориентация экрана — что проверить
+
+Back: layout, сохранение ввода, не теряется навигация и состояние формы
+
+
+
 ## Итоги
 
 - Мобильный QA = платформа + тип приложения + прерывания и permissions, не только «те же кейсы что в вебе»
@@ -165,6 +217,9 @@ Back: отказ/cancel, fallback PIN, повтор permissions, поведен�
 
 ## Ссылки
 
-- [QA-interview-250](https://github.com/Konstantine23/QA-interview-250)
-- [Appium documentation](https://appium.io/docs/en/latest/)
-- Learn | /game/learn/qa-pytest-ci-git
+- [ISTQB Glossary](https://glossary.istqb.org/)
+- [CTFL v4 — Certified Tester Foundation Level](https://istqb.org/certifications/certified-tester-foundation-level-ctfl-v4-0/)
+- [Playwright Python — mobile emulation](https://playwright.dev/python/docs/emulation)
+- Опционально: [QA-interview-250](https://github.com/Konstantine23/QA-interview-250) — полный список формулировок вопросов
+- Learn | /game/learn
+- Далее: [Middle process](/game/learn/qa-middle-process)

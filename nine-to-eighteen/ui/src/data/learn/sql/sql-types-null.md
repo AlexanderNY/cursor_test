@@ -1,7 +1,7 @@
 ---
 slug: sql-types-null
 title: CHAR vs VARCHAR и семантика NULL
-shortTitle: CHAR VARCHAR NULL
+shortTitle: CHAR vs VARCHAR и семантика
 episode: SQL05
 rubric: data
 order: 605
@@ -84,6 +84,23 @@ SELECT * FROM users WHERE middle_name = '';
 
 На собесе полезно добавить: в уникальном индексе PostgreSQL несколько NULL допустимы; пустая строка — одна.
 
+## Раздел: Частые вопросы с собеседования
+**Вопрос.** Почему `NOT IN (subquery)` опасен с NULL?
+
+**Ответ.** Если подзапрос вернул NULL среди значений, результат NOT IN может стать UNKNOWN для всех строк — фильтр «ничего не прошло». Безопаснее `NOT EXISTS` или явная фильтрация NULL в подзапросе.
+
+**Вопрос.** `COUNT(*)` vs `COUNT(column)` на собесе?
+
+**Ответ.** `COUNT(*)` считает строки; `COUNT(col)` игнорирует NULL в col. Для «сколько заполненных email» — COUNT(email); для «сколько строк в таблице» — COUNT(*).
+
+**Вопрос.** NULL в UNIQUE constraint PostgreSQL?
+
+**Ответ.** Несколько строк с NULL в UNIQUE-столбце допустимы — NULL не равен NULL. Пустая строка — одно значение, дубликаты `''` нарушат UNIQUE.
+
+**Вопрос.** `WHERE col = NULL` — почему молчит?
+
+**Ответ.** Сравнение с NULL даёт UNKNOWN, не TRUE; строки не проходят WHERE. Нужен `IS NULL`. Трёхзначная логика — базовый ответ junior SQL.
+
 ## Лаба
 
 **Цель.** Наглядно увидеть padding/длину CHAR/VARCHAR и поведение NULL в фильтрах и агрегатах.
@@ -119,9 +136,9 @@ flowchart TB
 
 ### Чем VARCHAR(10) отличается от CHAR(10)?
 
-**Ответ:** VARCHAR хранит строку переменной длины до 10; CHAR — фиксированной длины 10 с дополнением пробелами по правилам типа
+**Ответ:** переменная vs фиксированная длина
 
-**Пояснение:** для большинства прикладных полей в PostgreSQL удобнее text/varchar, чем char.
+**Пояснение:** CHAR дополняет пробелами; в PostgreSQL для текста чаще text/varchar.
 
 ### Почему WHERE age = NULL не находит строки без возраста?
 
@@ -131,9 +148,21 @@ flowchart TB
 
 ### NULL и 0 — одно и то же?
 
-**Ответ:** нет; 0 — значение «ноль», NULL — «неизвестно/не задано»
+**Ответ:** нет, разная семантика
 
 **Пояснение:** SUM и бизнес-логика трактуют их по-разному; путать нельзя.
+
+### Результат `TRUE AND NULL` в SQL?
+
+**Ответ:** UNKNOWN (NULL)
+
+**Пояснение:** трёхзначная логика; WHERE оставляет только TRUE.
+
+### COUNT(*) учитывает строки с NULL?
+
+**Ответ:** да, все строки
+
+**Пояснение:** COUNT(column) пропускает NULL в этом столбце — типичная ловушка Q30.
 
 ## Шпаргалка
 
@@ -167,6 +196,18 @@ Back: Предикатом IS NULL, не через = NULL
 
 Back: '' — значение нулевой длины; NULL — отсутствие значения; сравнения и уникальность ведут себя иначе
 
+### Front: COALESCE — зачем?
+
+Back: Подставить первое не-NULL значение из списка аргументов
+
+### Front: Тип text в PostgreSQL?
+
+Back: Строка без лимита длины; частая замена varchar в приложениях
+
+### Front: NOT NULL на столбце?
+
+Back: Запрет NULL; каждая строка должна иметь значение (или DEFAULT)
+
 ## Итоги
 
 - CHAR фиксирует ширину, VARCHAR — переменная длина; в PostgreSQL text — рабочая лошадка
@@ -175,7 +216,7 @@ Back: '' — значение нулевой длины; NULL — отсутст
 
 ## Ссылки
 
-- [OTUS / Хабр — топ вопросов по SQL, часть I](https://habr.com/ru/companies/otus/articles/461067/)
 - [PostgreSQL: Character Types](https://www.postgresql.org/docs/current/datatype-character.html)
-- Learn | /game/learn
+- [PostgreSQL: NULL](https://www.postgresql.org/docs/current/functions-comparison.html)
+- Индекс Q6, Q26: [OTUS / Хабр — часть I](https://habr.com/ru/companies/otus/articles/461067/)
 - Далее: [Основы индексов](/game/learn/sql-indexes-basics)

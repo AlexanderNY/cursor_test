@@ -71,6 +71,10 @@ export interface ChannelProcessingConfig {
   classification_categories?: string[]
   /** Competitor sync cadence in minutes (default 60). */
   sync_interval_min?: number
+  /** WordPress page id for update-page publish mode (own WP channel). */
+  wp_page_id?: number | null
+  /** WordPress page slug if id is unknown (resolved via REST). */
+  wp_page_slug?: string | null
 }
 
 export interface ChannelAlertDelivery {
@@ -156,6 +160,32 @@ export interface BrandChannel {
   auth_checked_at?: string | null
   auth_error?: string | null
   auth_capabilities?: Record<string, boolean>
+}
+
+export interface DigestJob {
+  id?: number | null
+  brand_id: number
+  user_id?: number
+  enabled: boolean
+  source_channel_ids: number[]
+  publish_channel_id?: number | null
+  interval_min: number
+  process_prompt: string
+  summary_prompt: string
+  attach_cover_image?: boolean
+  last_cover_miss_theme?: string | null
+  last_cover_miss_at?: string | null
+  last_run_at?: string | null
+  created_at?: string | null
+  updated_at?: string | null
+}
+
+export interface DigestPreviewItem {
+  id: number
+  chat_id: number
+  digest_text: string
+  message_count: number
+  created_at?: string | null
 }
 
 export interface PlatformNetworkStatus {
@@ -501,6 +531,7 @@ export interface MediaPack {
   title: string
   object_keys: string[]
   caption?: string | null
+  tags?: string[]
   created_at?: string | null
   updated_at?: string | null
 }

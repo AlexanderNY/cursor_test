@@ -1,6 +1,11 @@
-"""S3/MinIO storage with local disk fallback for resume exports."""
+"""S3/MinIO storage with local disk fallback for resume exports.
+
+Local disk and in-process rate limits assume a single resume-api replica
+(or shared volume / Redis if you scale out).
+"""
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -48,7 +53,7 @@ class ResumeStorage:
 
     async def put_bytes(self, key: str, data: bytes, content_type: str) -> str:
         if self._s3 is not None:
-            await __import__("asyncio").to_thread(
+            await asyncio.to_thread(
                 self._s3.put_object,
                 Bucket=self._bucket,
                 Key=key,
@@ -59,8 +64,50 @@ class ResumeStorage:
 
         path = LOCAL_EXPORT_ROOT / key
         path.parent.mkdir(parents=True, exist_ok=True)
-        await __import__("asyncio").to_thread(path.write_bytes, data)
+        await asyncio.to_thread(path.write_bytes, data)
         return f"local:{key}"
+
+    async def delete_ref(self, storage_ref: str) -> bool:
+        """Delete object by storage_key (`s3:…` or `local:…`). Best-effort."""
+        ref = (storage_ref or "").strip()
+        if not ref:
+            return False
+        try:
+            if ref.startswith("local:"):
+                key = ref[len("local:") :]
+                if ".." in key or key.startswith("/") or "\\" in key:
+                    logger.warning("Refuse delete with unsafe local key: %s", key)
+                    return False
+                path = self.local_path(key)
+                if path.is_file():
+                    await asyncio.to_thread(path.unlink)
+                    return True
+                return False
+            if ref.startswith("s3:"):
+                key = ref[len("s3:") :]
+                if self._s3 is None:
+                    return False
+                await asyncio.to_thread(
+                    self._s3.delete_object,
+                    Bucket=self._bucket,
+                    Key=key,
+                )
+                return True
+            # Bare key: try S3 then local
+            if self._s3 is not None:
+                await asyncio.to_thread(
+                    self._s3.delete_object,
+                    Bucket=self._bucket,
+                    Key=ref,
+                )
+                return True
+            path = self.local_path(ref)
+            if path.is_file():
+                await asyncio.to_thread(path.unlink)
+                return True
+        except Exception:
+            logger.exception("Failed to delete storage ref %s", ref)
+        return False
 
     def presign_get(self, key: str, *, expires_seconds: int = 3600) -> Optional[str]:
         if self._s3 is None:

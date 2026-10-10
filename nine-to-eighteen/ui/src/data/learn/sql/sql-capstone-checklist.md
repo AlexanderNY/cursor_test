@@ -1,7 +1,7 @@
 ---
 slug: sql-capstone-checklist
 title: Capstone SQL — чеклист Junior→Senior и индекс Q→slug
-shortTitle: Capstone checklist
+shortTitle: Чеклист SQL
 episode: SQL16
 rubric: data
 order: 616
@@ -133,6 +133,23 @@ canonicalUrl: https://9to18.ru/game/learn/sql-capstone-checklist
 
 Артефакт «папка доказательств»: скрипт схемы магазина, 10 SQL-решений, 2 скрина/текста планов до/после индекса, список ловушек NULL/диалектов своими словами.
 
+## Раздел: Частые вопросы с собеседования
+**Вопрос.** План на 2 недели — приоритет?
+
+**Ответ.** Сначала пробелы ❌ из drill по индексу slug, каждый день 1 тема + 2 SQL руками + один EXPLAIN. Повтор ✅ через неделю устно, без подсказок.
+
+**Вопрос.** Senior SQL без ORM — что показать?
+
+**Ответ.** Транзакции, isolation choice, индексы под реальные запросы, миграции без downtime (expand/contract), observability slow query log. Чеклист SQL16 — self-assessment.
+
+**Вопрос.** Q1–Q30 индекс — как не перепутать с otus-статьёй?
+
+**Ответ.** Индекс — маршрут к вашим выпускам с оригинальными формулировками; не копируйте чужие ответы дословно. На собесе важны примеры из вашего опыта.
+
+**Вопрос.** Когда STOP учить новое SQL перед собесом?
+
+**Ответ.** За 2–3 дня — только повтор слабых и sleep. Новые window-функции в ночь перед — хуже, чем уверенный JOIN/NULL/ACID.
+
 ## Лаба
 
 **Цель.** Заполнить чеклисты и собрать персональный индекс пробелов Qi → действия.
@@ -165,23 +182,35 @@ flowchart LR
 
 ## Тест
 
-### Куда смотреть ответ на Q24 и Q29 в серии Learn?
+### Чем DELETE отличается от TRUNCATE по откату?
 
-**Ответ:** Q24 → `sql-triggers-operators`; Q29 → `sql-subqueries`
+**Ответ:** DELETE в транзакции откатывается
 
-**Пояснение:** индекс выше — основной навигатор перед собесом.
+**Пояснение:** TRUNCATE в PostgreSQL тоже транзакционен, но это DDL-подобная операция с другими блокировками и сбросом identity — на собесе уточняйте диалект.
 
-### Почему SQL13–14 входят в capstone, хотя их нет в Q1–Q30?
+### Зачем CTE и window на middle/senior SQL?
 
-**Ответ:** Часть II исходного топ-65 на Хабре не найдена; CTE/окна/EXPLAIN — стандарт modern-собеса
+**Ответ:** читаемые сложные выборки
 
-**Пояснение:** серия сознательно дополняет пробел, а не ограничивается копией Части I.
+**Пояснение:** WITH и OVER закрывают ранги, нарастающие итоги и многошаговую логику без временных таблиц.
 
 ### Что считать критерием «готов к middle SQL-собесу»?
 
-**Ответ:** чеклист Junior+Middle закрыт, лаба SQL12 сделана руками, drill ≥24/30 устойчивых ответов
+**Ответ:** JOIN ACID индексы подзапросы
 
-**Пояснение:** senior-планка дополнительно требует окна и чтение планов.
+**Пояснение:** плюс руки на лабе и устойчивые ответы на типовые ловушки NULL/COUNT.
+
+### Где безопасно тренировать JOIN и агрегаты?
+
+**Ответ:** PG Exercises, Select Star
+
+**Пояснение:** интерактивные задачи; документация PostgreSQL — эталон поведения.
+
+### Что показывает EXPLAIN про индекс?
+
+**Ответ:** Seq Scan или Index Scan
+
+**Пояснение:** смотрите узлы плана и оценки строк — индекс «есть» ≠ «используется».
 
 ## Шпаргалка
 
@@ -212,6 +241,18 @@ Back: Опираться на SQL13–14 (CTE/window/EXPLAIN) как на обя
 
 Back: SQL01–12 чеклист + руки на схеме customers/orders + drill слабых Qi
 
+### Front: SQL14 про что?
+
+Back: EXPLAIN, индексы на практике, N+1
+
+### Front: profiles серии SQL?
+
+Back: developer, analyst, tester — все 16 выпусков
+
+### Front: order SQL16?
+
+Back: 616 — capstone и индекс Q→slug
+
 ## Итоги
 
 - Capstone = чеклисты + индекс Q→slug + честный план повторения
@@ -220,7 +261,8 @@ Back: SQL01–12 чеклист + руки на схеме customers/orders + dr
 
 ## Ссылки
 
-- [OTUS / Хабр — топ SQL, часть I (Q1–Q30)](https://habr.com/ru/companies/otus/articles/461067/)
-- Learn | /game/learn/sql-interview-drill
-- Learn | /game/learn/sql-cte-window
-- Learn | /game/learn/sql-performance-explain
+- [PostgreSQL: Documentation](https://www.postgresql.org/docs/current/)
+- [Use The Index, Luke!](https://use-the-index-luke.com/)
+- [Select Star SQL](https://selectstarsql.com/) · [PG Exercises](https://pgexercises.com/)
+- Индекс Q1–Q30: [OTUS / Хабр — часть I](https://habr.com/ru/companies/otus/articles/461067/)
+- Начало серии: [DDL DML DCL](/game/learn/sql-ddl-dml-dcl)

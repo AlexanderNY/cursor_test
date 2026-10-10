@@ -1,14 +1,14 @@
 ---
 slug: qa-shift-left-automation-roi
 title: Shift-left, ROI автоматизации и CI/CD
-shortTitle: Shift-left ROI
+shortTitle: Shift-left и ROI
 episode: QA20
 rubric: architecture
 order: 420
 publishedAt: 2026-12-26T10:00:00+03:00
 profiles: [tester]
 level: senior
-tags: [shift-left, automation, roi, cicd, bdd, regression, собеседование]
+tags: [qa, shift-left, automation, roi, cicd, bdd, regression, собеседование]
 onKnowledgeMap: true
 durationMin: 40
 excerpt: Как снижать регресс, что такое shift-left, смысл unit-тестов, минусы тотальной автоматизации, ROI, CI/CD и BDD.
@@ -22,6 +22,8 @@ canonicalUrl: https://9to18.ru/game/learn/qa-shift-left-automation-roi
 ## Введение
 
 S19–25, S27 и M34: senior ждут стратегию автоматизации, а не список фреймворков. Как не копить регресс, что даёт shift-left, зачем unit-уровень, где ROI отрицательный, и когда BDD помогает или мешает.
+
+Термины и определения согласованы с **ISTQB CTFL v4** и [глоссарием ISTQB](https://glossary.istqb.org/); номера J/M/S — опциональный индекс типовых вопросов собеса.
 
 ## Раздел: Регресс, shift-left, unit и цена «всё автоматизировать»
 
@@ -76,6 +78,20 @@ S19–25, S27 и M34: senior ждут стратегию автоматизац�
 6. Среды и данные.
 7. Метрики: время пайплайна, flaky %, escaped defects на покрытых зонах.
 8. Roadmap 1–2 квартала, не «автоматизируем всё».
+
+## Раздел: Частые вопросы с собеседования
+
+**Вопрос.** Чем уровень тестирования отличается от типа (вида) тестирования?
+
+**Ответ.** Уровень отвечает на «где режем систему»: модуль, стык, продукт целиком, приёмка. Тип — «с какой целью гоняем»: smoke, regression, exploratory, security и т.д. На собесе покажите пример: один checkout можно проверить на integration (API+БД) и оформить прогон как regression после фикса — оси независимы.
+
+**Вопрос.** Зачем на собесе спрашивают equivalence partitioning и граничные значения?
+
+**Ответ.** EP сжимает бесконечные входы в классы «ведут себя одинаково»; BVA бьёт по стыкам классов — там чаще ломается сравнение и валидация. Для поля 18–99 достаточно классов «ниже», «внутри», «выше» и точек 17–18–19, 98–99–100; не нужно 82 случайных числа.
+
+**Вопрос.** Severity и priority в баг-репорте — одно и то же?
+
+**Ответ.** Нет. Severity — ущерб для продукта и пользователя (crash vs опечатка). Priority — когда чинить в очереди команды. Критичный по severity баг может ждать, если воспроизводится только на стенде без пользователей; наоборот, мелкий UI-bug в checkout может быть P1 перед релизом.
 
 ## Лаба
 
@@ -154,6 +170,20 @@ flowchart TB
 
 **Пояснение:** иначе Cucumber — лишний слой абстракции без выгоды коммуникации.
 
+### Пирамида тестов — что на вершине?
+
+**Ответ:** мало UI/E2E; основание — unit/component
+
+**Пояснение:** Fowler: UI медленные и хрупкие; bulk — ниже.
+
+### Когда автоматизация 100% регресса — ловушка?
+
+**Ответ:** когда UI меняется часто и ROI отрицательный
+
+**Пояснение:** risk-based manual + API/unit автотесты часто рациональнее.
+
+
+
 ## Шпаргалка
 
 <h3>Регресс и shift-left</h3>
@@ -186,6 +216,20 @@ Back: сэкономленные ручные прогоны и ранние б�
 
 Back: флаки и долгие пайплайны провоцируют обход гейтов и потерю доверия к сигналу
 
+### Front: Shift-left в требованиях
+
+Back: ревью user stories, AC, testability до кодирования
+
+### Front: Flaky test — первое действие
+
+Back: quarantine, root cause (wait/data/env), не «перезапусти пока зелёный»
+
+### Front: BDD Gherkin — антипаттерн
+
+Back: шаги привязаны к XPath и UI-деталям — ломаются как скрипты
+
+
+
 ## Итоги
 
 - Регресс бьют архитектурой сигнала, а не количеством UI-кейсов
@@ -195,6 +239,10 @@ Back: флаки и долгие пайплайны провоцируют об�
 
 ## Ссылки
 
-- [QA-interview-250](https://github.com/Konstantine23/QA-interview-250)
-- [Martin Fowler — Test Pyramid](https://martinfowler.com/articles/practical-test-pyramid.html)
+- [ISTQB Glossary](https://glossary.istqb.org/)
+- [CTFL v4 — Certified Tester Foundation Level](https://istqb.org/certifications/certified-tester-foundation-level-ctfl-v4-0/)
+- [Test pyramid — Martin Fowler](https://martinfowler.com/bliki/TestPyramid.html)
+- [Scrum Guide](https://scrumguides.org/scrum-guide.html)
+- Опционально: [QA-interview-250](https://github.com/Konstantine23/QA-interview-250) — полный список формулировок вопросов
 - Learn | /game/learn
+- Далее: [Security perf senior](/game/learn/qa-security-perf-senior)

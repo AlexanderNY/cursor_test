@@ -3,14 +3,13 @@ import {
   getPerkLevel,
   getPerkLimbCount,
   getSpikeDrawStats,
-  isPerkDotsOnly,
   isPerkStub,
   isPerkWaves,
 } from './perks'
-import { comicBodyStyleForEnemyKind, drawComicBody, drawComicFace } from './character-visual'
+import { comicBodyStyleForEnemyKind, drawComicBody, drawComicFace, drawComicPaws } from './character-visual'
 import { drawHeroComicFace, drawHeroFigureEight, drawHeroPaws, getHeroLobeLayout } from './hero-visual'
 import { heroStrokeColor } from './hero-colors'
-import type { RenderState } from './types'
+import type { BossKind, RenderState } from './types'
 
 export function drawGameFrame(
   ctx: CanvasRenderingContext2D,
@@ -695,9 +694,6 @@ function drawBoss(
   const fill = isDashing ? palette.dash : palette.fill
   const stroke = state === 'chase' || isDashing ? palette.chaseStroke : palette.stroke
 
-  if (bossKind === 'titan' || bossKind === 'swarm') {
-    drawLegs(ctx, x, y, radius, facing, 2)
-  }
   if (bossKind === 'stalker' || bossKind === 'vortex') {
     drawTentacles(ctx, x, y, radius, facing, 2, false)
   }
@@ -720,6 +716,8 @@ function drawBoss(
 
   drawComicBody(ctx, x, y, radius, facing, fill, stroke, 'boss')
   const bossSpeed = enemy.speed ?? 0
+  const bossWag = bossSpeed > 30 ? Math.sin(performance.now() / 140 + x * 0.01) : 0
+  drawComicPaws(ctx, x, y, radius, facing, fill, bossWag, 2, 1)
   drawComicFace(ctx, x, y, radius * 0.85, facing, {
     lookTarget: { x: playerX, y: playerY },
     eyeScale: 1.15,
@@ -843,6 +841,9 @@ function drawEnemy(
     drawComicBody(ctx, x, y, radius, facing, fill, stroke, bodyStyle)
   }
 
+  const enemySpeed = enemy.speed ?? 0
+  const enemyWag = enemySpeed > 20 ? Math.sin(performance.now() / 110 + x * 0.02) : 0
+  drawComicPaws(ctx, x, y, radius, facing, fill, enemyWag, 2, 1)
   drawComicFace(ctx, x, y, radius, facing, {
     lookTarget: { x: playerX, y: playerY },
     eyeScale: bodyStyle === 'hunter' ? 0.95 : 1,
@@ -901,7 +902,6 @@ function drawPlayer(
   const stroke = heroStrokeColor(fill)
   const direction = moveAngle ?? facing
 
-  const legLevel = getPerkLevel(perkLevels, 'leg')
   const eyeLevel = getPerkLevel(perkLevels, 'eye')
   const tentacleLevel = getPerkLevel(perkLevels, 'tentacle')
   const spikeStats = getSpikeDrawStats(perkLevels)
@@ -910,12 +910,6 @@ function drawPlayer(
     drawTentacleWaves(ctx, x, y, radius, facing)
   } else if (tentacleLevel > 0) {
     drawTentacles(ctx, x, y, radius, facing, getPerkLimbCount(perkLevels, 'tentacle'), grabKind !== 'none')
-  }
-
-  if (isPerkStub(perkLevels, 'leg')) {
-    drawLegStubs(ctx, x, y, radius, facing)
-  } else if (legLevel > 0) {
-    drawLegs(ctx, x, y, radius, facing, getPerkLimbCount(perkLevels, 'leg'))
   }
 
   if (spikeStats.forehead) {
@@ -927,23 +921,16 @@ function drawPlayer(
   drawHeroFigureEight(ctx, x, y, radius, facing, fill, stroke)
   const moving = speed > 40
   const wag = moving ? Math.sin(performance.now() / 70 + x * 0.01) : 0
-  drawHeroPaws(ctx, x, y, radius, facing, fill, wag)
+  const legCount = Math.max(2, getPerkLimbCount(perkLevels, 'leg') || 2)
+  const legReach = isPerkStub(perkLevels, 'leg') ? 0.62 : 1
+  drawHeroPaws(ctx, x, y, radius, facing, fill, wag, legCount, legReach)
 
   const lobes = getHeroLobeLayout(radius, facing)
   const eyeCenterX = x + lobes.frontOffsetX
   const eyeCenterY = y + lobes.frontOffsetY
   const lookTarget = nearestLookTarget(eyeCenterX, eyeCenterY, pickups)
-  const comicEyeScale = eyeLevel > 0 ? 1 + Math.min(eyeLevel, 3) * 0.08 : 1
-  drawHeroComicFace(ctx, x, y, radius, facing, lookTarget, comicEyeScale, beakOpenForSpeed(speed, radius))
-
-  if (isPerkDotsOnly(perkLevels, 'eye')) {
-    drawLookingDots(ctx, eyeCenterX, eyeCenterY - lobes.lobeRadius * 0.55, radius * 0.4, 2, lookTarget, '#ffffff', '#0f172a')
-  } else if (eyeLevel > 0) {
-    const extraEyes = Math.max(0, getPerkLimbCount(perkLevels, 'eye') - 2)
-    if (extraEyes > 0) {
-      drawEyes(ctx, eyeCenterX, eyeCenterY - lobes.lobeRadius * 0.7, facing, extraEyes, lookTarget)
-    }
-  }
+  const eyeCount = eyeLevel > 0 ? Math.max(2, getPerkLimbCount(perkLevels, 'eye') || 2) : 2
+  drawHeroComicFace(ctx, x, y, radius, facing, lookTarget, 1, beakOpenForSpeed(speed, radius), eyeCount)
 
   if (grabKind !== 'none' && grabTimeLeft > 0) {
     drawGrabLink(ctx, x, y, radius, facing)
@@ -977,44 +964,6 @@ function nearestLookTarget(
   return best
 }
 
-function drawLookingDots(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  radius: number,
-  count: number,
-  lookTarget: { x: number; y: number } | null,
-  fill: string,
-  stroke: string,
-): void {
-  const spacing = Math.min(radius * 0.55, 7)
-  const startX = x - ((count - 1) * spacing) / 2
-  const lookAngle = lookTarget ? Math.atan2(lookTarget.y - y, lookTarget.x - x) : -Math.PI / 2
-  for (let i = 0; i < count; i += 1) {
-    const dotX = startX + i * spacing
-    const dotY = y - radius * 0.08
-    const eyeR = Math.max(2.4, radius * 0.22)
-    ctx.beginPath()
-    ctx.arc(dotX, dotY, eyeR, 0, Math.PI * 2)
-    ctx.fillStyle = fill
-    ctx.fill()
-    ctx.strokeStyle = stroke
-    ctx.lineWidth = 1
-    ctx.stroke()
-    const pupilOffset = eyeR * 0.4
-    ctx.beginPath()
-    ctx.arc(
-      dotX + Math.cos(lookAngle) * pupilOffset,
-      dotY + Math.sin(lookAngle) * pupilOffset,
-      eyeR * 0.42,
-      0,
-      Math.PI * 2,
-    )
-    ctx.fillStyle = stroke
-    ctx.fill()
-  }
-}
-
 function drawGrabLink(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -1032,28 +981,6 @@ function drawGrabLink(
   ctx.moveTo(x + Math.cos(facing) * radius * 0.4, y + Math.sin(facing) * radius * 0.4)
   ctx.lineTo(endX, endY)
   ctx.stroke()
-  ctx.restore()
-}
-
-function drawLegStubs(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  radius: number,
-  facing: number,
-): void {
-  ctx.save()
-  ctx.translate(x, y)
-  ctx.rotate(facing)
-  ctx.strokeStyle = '#93c5fd'
-  ctx.lineWidth = 2.5
-  ctx.lineCap = 'round'
-  for (const side of [-1, 1]) {
-    ctx.beginPath()
-    ctx.moveTo(side * radius * 0.42, radius * 0.08)
-    ctx.lineTo(side * radius * 0.58, radius * 0.28)
-    ctx.stroke()
-  }
   ctx.restore()
 }
 
@@ -1111,83 +1038,6 @@ function drawForeheadSpike(
   ctx.strokeStyle = '#fde68a'
   ctx.lineWidth = 1
   ctx.stroke()
-}
-
-function drawLegs(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  radius: number,
-  facing: number,
-  count: number,
-): void {
-  ctx.save()
-  ctx.translate(x, y)
-  ctx.rotate(facing)
-  ctx.strokeStyle = '#93c5fd'
-  ctx.lineWidth = 3
-  ctx.lineCap = 'round'
-  const pairs = Math.ceil(count / 2)
-  for (let pair = 0; pair < pairs; pair += 1) {
-    for (const side of [-1, 1]) {
-      const index = pair * 2 + (side === 1 ? 1 : 0)
-      if (index >= count) continue
-      const along = -0.35 + (pair / Math.max(pairs - 1, 1)) * 0.55
-      const spread = 0.55 + pair * 0.08
-      ctx.beginPath()
-      ctx.moveTo(side * radius * (0.35 + pair * 0.06), radius * along)
-      ctx.lineTo(side * radius * spread, radius * (along + 0.55))
-      ctx.stroke()
-    }
-  }
-  ctx.restore()
-}
-
-function drawEyes(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  facing: number,
-  count: number,
-  lookTarget: { x: number; y: number } | null,
-): void {
-  ctx.save()
-  ctx.translate(x, y)
-  ctx.rotate(facing)
-  const lookWorldAngle = lookTarget ? Math.atan2(lookTarget.y - y, lookTarget.x - x) : facing
-  const lookLocal = lookWorldAngle - facing
-  const cols = Math.min(count, 3)
-  const rows = Math.ceil(count / cols)
-  const eyeRadius = 5.2
-  const pupilRadius = 2.2
-  const pupilTravel = eyeRadius * 0.42
-  let drawn = 0
-  for (let row = 0; row < rows; row += 1) {
-    for (let col = 0; col < cols; col += 1) {
-      if (drawn >= count) break
-      const offsetX = (col - (cols - 1) / 2) * 11
-      const offsetY = (row - (rows - 1) / 2) * 10 - 1
-      ctx.fillStyle = '#ffffff'
-      ctx.beginPath()
-      ctx.arc(offsetX, offsetY, eyeRadius, 0, Math.PI * 2)
-      ctx.fill()
-      ctx.strokeStyle = 'rgba(15, 23, 42, 0.35)'
-      ctx.lineWidth = 1.1
-      ctx.stroke()
-      ctx.fillStyle = '#0f172a'
-      ctx.beginPath()
-      ctx.arc(
-        offsetX + Math.cos(lookLocal) * pupilTravel,
-        offsetY + Math.sin(lookLocal) * pupilTravel,
-        pupilRadius,
-        0,
-        Math.PI * 2,
-      )
-      ctx.fill()
-      drawn += 1
-    }
-  }
-  ctx.restore()
 }
 
 function drawTentacles(
@@ -1471,6 +1321,231 @@ function drawMatchTimer(
       : `Убейте босса или проживите ${formatTimer(escapeLeft)} — откроется выход`
     ctx.fillText(bossHint, statusX, statusY)
   }
+}
+
+const BOSS_INTRO_MS = 4000
+
+const BOSS_DEFEAT_HINTS: Record<
+  BossKind,
+  { tip: string; accent: string }
+> = {
+  titan: {
+    accent: '#fca5a5',
+    tip: 'Он медленный, но огромный. Не касайтесь, пока ваш радиус меньше 56. Ешьте точки, станьте крупнее и проглотите его.',
+  },
+  swarm: {
+    accent: '#fdba74',
+    tip: 'Держится в стороне и зовёт мелких охотников. Съешьте миньонов, вырастите радиус больше 46 и только потом касайтесь босса.',
+  },
+  leech: {
+    accent: '#fda4af',
+    tip: 'Быстрая и меньше остальных. Не затягивайте контакт: от удара она растёт. Станьте крупнее 40 и съешьте одним касанием.',
+  },
+  vortex: {
+    accent: '#93c5fd',
+    tip: 'Сначала притягивает, потом делает рывок. Уходите Shift из круга тяги, ешьте точки и проглотите его, когда радиус станет больше 50.',
+  },
+  stalker: {
+    accent: '#d8b4fe',
+    tip: 'Кружит и внезапно бросается. Во время рывка уходите Shift. В паузе растите больше 44 и съешьте его.',
+  },
+}
+
+interface BossIntroClock {
+  key: string
+  kind: BossKind
+  title: string
+  startedAt: number
+}
+
+let bossIntroClock: BossIntroClock | null = null
+let bossIntroLastTick = 0
+
+function syncBossIntro(state: RenderState): { clock: BossIntroClock; elapsed: number } | null {
+  const now = performance.now()
+  const delta = bossIntroLastTick > 0 ? now - bossIntroLastTick : 0
+  bossIntroLastTick = now
+
+  const boss = state.phase === 'boss' ? state.active_boss : null
+  if (boss) {
+    const key = `${state.stage ?? 1}:${boss.kind}`
+    if (!bossIntroClock || bossIntroClock.key !== key) {
+      bossIntroClock = {
+        key,
+        kind: boss.kind,
+        title: boss.title,
+        startedAt: now,
+      }
+    }
+  }
+
+  if (!bossIntroClock) return null
+  if (state.pending_perk_select) {
+    bossIntroClock.startedAt += delta
+  }
+  const keepVisible = state.phase === 'boss' || state.phase === 'exit'
+  if (!keepVisible || state.game_over || state.victory) {
+    bossIntroClock = null
+    return null
+  }
+
+  const elapsed = now - bossIntroClock.startedAt
+  if (elapsed >= BOSS_INTRO_MS) return null
+  return { clock: bossIntroClock, elapsed }
+}
+
+/** Карточка «как победить» и стрелка на босса первые 4 секунды боя. */
+export function drawBossIntro(
+  ctx: CanvasRenderingContext2D,
+  state: RenderState,
+  viewportWidth: number,
+  viewportHeight: number,
+): void {
+  const intro = syncBossIntro(state)
+  if (!intro) return
+  const fadeIn = Math.min(1, intro.elapsed / 320)
+  const fadeOut = intro.elapsed > 3600 ? Math.max(0, (BOSS_INTRO_MS - intro.elapsed) / 400) : 1
+  const alpha = (1 - (1 - fadeIn) ** 3) * fadeOut
+  drawBossArrow(ctx, state, alpha)
+  drawBossHintCard(ctx, intro.clock, intro.elapsed, viewportWidth, viewportHeight, alpha)
+}
+
+function drawBossArrow(ctx: CanvasRenderingContext2D, state: RenderState, alpha: number): void {
+  const boss = state.enemies.find((enemy) => enemy.is_boss)
+  if (!boss) return
+
+  const playerX = state.player.x - state.camera.x
+  const playerY = state.player.y - state.camera.y
+  const bossX = boss.x - state.camera.x
+  const bossY = boss.y - state.camera.y
+  const angle = Math.atan2(bossY - playerY, bossX - playerX)
+  const start = state.player.radius + 28
+  const length = 72
+  const pulse = 0.78 + 0.22 * Math.sin(performance.now() / 110)
+
+  ctx.save()
+  ctx.translate(playerX, playerY)
+  ctx.rotate(angle)
+  ctx.globalAlpha = pulse * alpha
+  ctx.lineCap = 'round'
+  ctx.strokeStyle = 'rgba(15, 23, 42, 0.85)'
+  ctx.lineWidth = 9
+  ctx.beginPath()
+  ctx.moveTo(start, 0)
+  ctx.lineTo(start + length - 14, 0)
+  ctx.stroke()
+  ctx.strokeStyle = '#fbbf24'
+  ctx.lineWidth = 5
+  ctx.beginPath()
+  ctx.moveTo(start, 0)
+  ctx.lineTo(start + length - 14, 0)
+  ctx.stroke()
+
+  ctx.fillStyle = 'rgba(15, 23, 42, 0.85)'
+  ctx.beginPath()
+  ctx.moveTo(start + length + 2, 0)
+  ctx.lineTo(start + length - 20, -14)
+  ctx.lineTo(start + length - 20, 14)
+  ctx.closePath()
+  ctx.fill()
+  ctx.fillStyle = '#fde68a'
+  ctx.beginPath()
+  ctx.moveTo(start + length, 0)
+  ctx.lineTo(start + length - 18, -11)
+  ctx.lineTo(start + length - 18, 11)
+  ctx.closePath()
+  ctx.fill()
+  ctx.restore()
+}
+
+function drawBossHintCard(
+  ctx: CanvasRenderingContext2D,
+  clock: BossIntroClock,
+  elapsed: number,
+  viewportWidth: number,
+  viewportHeight: number,
+  alpha: number,
+): void {
+  const hint = BOSS_DEFEAT_HINTS[clock.kind]
+  const intro = Math.min(1, elapsed / 320)
+  const eased = 1 - (1 - intro) ** 3
+  const slide = (1 - eased) * 36
+
+  const cardWidth = Math.min(440, viewportWidth - 32)
+  const textWidth = cardWidth - 36
+  ctx.save()
+  ctx.globalAlpha = alpha
+  ctx.font = '14px Segoe UI, system-ui, sans-serif'
+  const lines = wrapCanvasLines(ctx, hint.tip, textWidth)
+  const cardHeight = 70 + lines.length * 18
+  const cardX = (viewportWidth - cardWidth) / 2
+  const cardY = Math.min(54 - slide, viewportHeight - cardHeight - 24)
+
+  ctx.fillStyle = 'rgba(15, 23, 42, 0.94)'
+  traceRoundRect(ctx, cardX, cardY, cardWidth, cardHeight, 14)
+  ctx.fill()
+  ctx.save()
+  traceRoundRect(ctx, cardX, cardY, cardWidth, cardHeight, 14)
+  ctx.clip()
+  ctx.fillStyle = hint.accent
+  ctx.fillRect(cardX, cardY, 6, cardHeight)
+  ctx.restore()
+
+  ctx.fillStyle = hint.accent
+  ctx.font = '700 12px Segoe UI, system-ui, sans-serif'
+  ctx.textAlign = 'left'
+  ctx.fillText('КАК ПОБЕДИТЬ', cardX + 18, cardY + 20)
+  ctx.fillStyle = '#f8fafc'
+  ctx.font = '700 16px Segoe UI, system-ui, sans-serif'
+  ctx.fillText(clock.title, cardX + 18, cardY + 40)
+
+  ctx.fillStyle = '#e2e8f0'
+  ctx.font = '14px Segoe UI, system-ui, sans-serif'
+  lines.forEach((line, index) => {
+    ctx.fillText(line, cardX + 18, cardY + 64 + index * 18)
+  })
+
+  const remain = 1 - elapsed / BOSS_INTRO_MS
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.16)'
+  ctx.fillRect(cardX + 18, cardY + cardHeight - 10, textWidth, 3)
+  ctx.fillStyle = hint.accent
+  ctx.fillRect(cardX + 18, cardY + cardHeight - 10, textWidth * remain, 3)
+  ctx.restore()
+}
+
+function wrapCanvasLines(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
+  const words = text.split(' ')
+  const lines: string[] = []
+  let line = ''
+  for (const word of words) {
+    const next = line ? `${line} ${word}` : word
+    if (line && ctx.measureText(next).width > maxWidth) {
+      lines.push(line)
+      line = word
+    } else {
+      line = next
+    }
+  }
+  if (line) lines.push(line)
+  return lines
+}
+
+function traceRoundRect(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  radius: number,
+): void {
+  const corner = Math.min(radius, width / 2, height / 2)
+  ctx.beginPath()
+  ctx.moveTo(x + corner, y)
+  ctx.arcTo(x + width, y, x + width, y + height, corner)
+  ctx.arcTo(x + width, y + height, x, y + height, corner)
+  ctx.arcTo(x, y + height, x, y, corner)
+  ctx.arcTo(x, y, x + width, y, corner)
+  ctx.closePath()
 }
 
 function drawBar(

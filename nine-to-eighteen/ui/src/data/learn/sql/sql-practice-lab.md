@@ -1,7 +1,7 @@
 ---
 slug: sql-practice-lab
 title: Сводная лаба SQL — практика по Q1–Q30
-shortTitle: Practice lab
+shortTitle: Сводная лаба SQL
 episode: SQL12
 rubric: data
 order: 612
@@ -73,6 +73,23 @@ CREATE INDEX ON order_items (order_id);
 
 Это покрывает практику вокруг Q1–Q30: подмножества SQL, ключи, JOIN, NULL/COUNT, удаление, подзапросы, операторы, дату.
 
+## Раздел: Частые вопросы с собеседования
+**Вопрос.** Anti-join словами на собесе?
+
+**Ответ.** Строки левой таблицы без совпадения справа: `LEFT JOIN ... WHERE right.id IS NULL` или `NOT EXISTS`. Эквивалентны при корректной логике; EXISTS часто яснее с NULL.
+
+**Вопрос.** Зачем в лабе сравнивать DELETE и TRUNCATE?
+
+**Ответ.** Закрепить: WHERE только у DELETE, identity/WAL/права различаются, rollback зависит от СУБД. Без практики путают на Q1 drill.
+
+**Вопрос.** Почему избегать `NOT IN` в лаб-решениях?
+
+**Ответ.** Nullable FK в подзапросе даёт пустой результат NOT IN. NOT EXISTS учат как default для «нет детей».
+
+**Вопрос.** Индекс на FK в учебной схеме?
+
+**Ответ.** Ускоряет JOIN и проверки referential integrity при изменениях parent — good habit с первой миграции, не «оптимизация потом».
+
 ## Лаба
 
 **Цель.** Поднять схему, залить фикстуры и закрыть чеклист из восьми задач выше с проверкой результатов.
@@ -130,15 +147,27 @@ erDiagram
 
 ### Чем TRUNCATE принципиально отличается от DELETE всех строк?
 
-**Ответ:** TRUNCATE — DDL-подобная очистка всей таблицы без WHERE, обычно быстрее; DELETE — DML построчно с возможностью WHERE и триггеров ROW
+**Ответ:** TRUNCATE без WHERE, быстрее
 
-**Пояснение:** детали прав, identity/sequence, WAL и блокировок зависят от СУБД — в ответе назовите 2–3 отличия для PostgreSQL.
+**Пояснение:** DELETE — DML с WHERE и ROW-триггерами; в PG TRUNCATE транзакционен.
 
 ### Зачем в лабе одновременно `orders.total` и сумма по `order_items`?
 
-**Ответ:** проверить согласованность денормализованного поля или правило расчёта
+**Ответ:** инвариант согласованности
 
-**Пояснение:** на собесе это связка нормализации, агрегатов и тестовых инвариантов для QA/аналитика.
+**Пояснение:** связка нормализации, агрегатов и проверок для QA/аналитика.
+
+### INNER JOIN customers и orders — что отсечёт?
+
+**Ответ:** клиентов без заказов
+
+**Пояснение:** для «все клиенты» нужен LEFT; anti-join — NOT EXISTS.
+
+### Минимальные индексы на схеме лабы?
+
+**Ответ:** FK и фильтры WHERE
+
+**Пояснение:** customer_id, order_id, status — типичные кандидаты для junior/middle.
 
 ## Шпаргалка
 
@@ -171,6 +200,18 @@ Back: JOIN с атрибутами родителя; anti-join «без дете
 
 Back: WHERE только у DELETE; TRUNCATE чистит всё быстрее; отличаются права, identity, триггеры, WAL
 
+### Front: Заказы выше среднего paid?
+
+Back: Подзапрос со скалярным avg(total) или CTE со средним
+
+### Front: Зачем QA SQL-лаба?
+
+Back: Проверить инварианты данными: COUNT, anti-join, согласованность сумм
+
+### Front: SQL12 в серии?
+
+Back: Сводная практика Q1–30 на одной схеме customers/orders
+
 ## Итоги
 
 - Одна схема закрывает большую часть практики Q1–Q30
@@ -179,6 +220,8 @@ Back: WHERE только у DELETE; TRUNCATE чистит всё быстрее;
 
 ## Ссылки
 
-- [OTUS / Хабр — топ SQL, часть I (Q1–Q30)](https://habr.com/ru/companies/otus/articles/461067/)
-- Learn | /game/learn/sql-agg-dates-count
-- Learn | /game/learn/sql-cte-window
+- [PG Exercises](https://pgexercises.com/) — основная площадка для лабы
+- [Select Star SQL](https://selectstarsql.com/) — повторение JOIN и агрегатов
+- [PostgreSQL: Tutorial](https://www.postgresql.org/docs/current/tutorial.html)
+- Индекс Q1–Q30: [OTUS / Хабр — часть I](https://habr.com/ru/companies/otus/articles/461067/)
+- Далее: [CTE и окна](/game/learn/sql-cte-window)

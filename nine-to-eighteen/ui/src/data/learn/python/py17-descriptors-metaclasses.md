@@ -58,6 +58,23 @@ class Model(metaclass=Meta):
 
 На собесе ценится фраза: «метакласс меняет, *как* создаётся класс; дескриптор — *как* читается/пишется атрибут».
 
+## Раздел: Частые вопросы с собеседования
+**Вопрос.** Дескриптор vs декоратор функции?
+
+**Ответ.** Декоратор оборачивает вызов функции. Дескриптор управляет доступом к атрибуту через `__get__`/`__set__` на классе. `@property` — data descriptor; функция метода — non-data descriptor.
+
+**Вопрос.** Когда метакласс оправдан?
+
+**Ответ.** Редко: фреймворки (ORM, регистрация моделей, DSL). Большинство задач закрывают class decorator, `__init_subclass__`, дескрипторы. Метакласс меняет создание класса, не экземпляра.
+
+**Вопрос.** Data vs non-data descriptor — приоритет?
+
+**Ответ.** Data descriptor (есть `__set__` или `__delete__`) сильнее instance `__dict__`. Non-data (только `__get__`) слабее: значение в instance dict перекрывает. Отсюда поведение методов и `@property`.
+
+**Вопрос.** `type(name, bases, dict)` — зачем знать?
+
+**Ответ.** То же, что делает statement `class` под капотом. Понимание помогает на собесах про метаклассы и динамическое создание классов в плагинах.
+
 ## Лаба
 
 **Цель.** Свой data descriptor и крошечный метакласс-регистр.
@@ -90,23 +107,35 @@ flowchart TD
 
 ## Тест
 
-### Чем data descriptor отличается от non-data?
+### data vs non-data descriptor?
 
-**Ответ:** наличием __set__/__delete__; приоритет над instance dict
+**Ответ:** __set__/__delete__ у data; приоритет над instance dict
 
-**Пояснение:** property с setter — data; обычные функции на классе — non-data.
+**Пояснение:** property с setter — data.
 
 ### Что такое метакласс?
 
-**Ответ:** класс, экземпляры которого — классы
+**Ответ:** класс, чьи экземпляры — классы
 
-**Пояснение:** обычно `type`; кастомный metaclass вмешивается в создание class object.
+**Пояснение:** обычно type; кастомный — hook создания class object.
 
-### Как создать класс без ключевого слова class?
+### Класс без keyword class?
 
-**Ответ:** type(name, bases, namespace_dict)
+**Ответ:** type(name, bases, namespace)
 
-**Пояснение:** синтаксис class — сахар над вызовом метакласса (по умолчанию type).
+**Пояснение:** class — сахар над метаклассом.
+
+### @property — это descriptor?
+
+**Ответ:** да, data descriptor
+
+**Пояснение:** __get__/__set__ через property object.
+
+### Когда метакласс overkill?
+
+**Ответ:** обычный прикладной код
+
+**Пояснение:** чаще __init_subclass__ или декоратор класса.
 
 ## Шпаргалка
 
@@ -124,9 +153,9 @@ class A(metaclass=Meta): ...
 
 ## Anki
 
-### Front: Почему функции на классе ведут себя как методы?
+### Front: Почему функции на классе — методы?
 
-Back: объекты функций — non-data descriptors с __get__, который делает bound method
+Back: non-data descriptors с __get__ → bound method
 
 ### Front: type(name, bases, dict) — что возвращает?
 
@@ -134,7 +163,19 @@ Back: новый объект класса
 
 ### Front: Когда метакласс оправдан?
 
-Back: фреймворки с регистрацией/DSL; в прикладном коде чаще __init_subclass__ или декоратор класса
+Back: фреймворки с регистрацией/DSL; иначе реже
+
+### Front: __get__ signature descriptor?
+
+Back: (self, obj, objtype=None) — obj None при access через class
+
+### Front: __init_subclass__ vs metaclass?
+
+Back: hook наследования без полного контроля создания класса
+
+### Front: ORM field как descriptor — зачем?
+
+Back: перехват get/set для lazy load и валидации на уровне атрибута
 
 ## Итоги
 
@@ -146,6 +187,6 @@ Back: фреймворки с регистрацией/DSL; в прикладн�
 
 - [Descriptor HowTo Guide](https://docs.python.org/3/howto/descriptor.html)
 - [Metaclasses — data model](https://docs.python.org/3/reference/datamodel.html#metaclasses)
-- [DEBAGanov — дескрипторы / метаклассы](https://github.com/DEBAGanov/interview_questions/blob/main/400%20вопросов%20с%20ответами%2C%20которые%20должен%20знать%20Python-разработчик.md)
+- [DEBAGanov — индекс вопросов серии](https://github.com/DEBAGanov/interview_questions/blob/main/400%20вопросов%20с%20ответами%2C%20которые%20должен%20знать%20Python-разработчик.md)
 - Learn | /game/learn
 - Ранее: [Тесты и pdb](/game/learn/py-testing-debug)

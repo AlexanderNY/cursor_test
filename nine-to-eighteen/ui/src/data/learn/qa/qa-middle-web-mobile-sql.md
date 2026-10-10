@@ -1,14 +1,14 @@
 ---
 slug: qa-middle-web-mobile-sql
 title: Middle web, mobile и SQL: auth, OWASP, GraphQL
-shortTitle: Web mobile SQL
+shortTitle: Middle web, mobile и SQL:
 episode: QA18
 rubric: tools
 order: 418
 publishedAt: 2026-12-22T10:00:00+03:00
 profiles: [tester]
 level: middle
-tags: [auth, owasp, graphql, sql, mobile, websocket, собеседование]
+tags: [qa, auth, owasp, graphql, sql, mobile, websocket, собеседование]
 onKnowledgeMap: true
 durationMin: 45
 excerpt: Auth vs authz, HTTP-методы и коды, OWASP intro, WebSocket, perf-инструменты, SQL mid и mobile middle-практика.
@@ -22,6 +22,8 @@ canonicalUrl: https://9to18.ru/game/learn/qa-middle-web-mobile-sql
 ## Введение
 
 M53–71 и M72–84: плотный middle-блок про веб-безопасность на уровне осознанности, HTTP-семантику, SQL чуть глубже junior и мобильную диагностику. Цель — связный рассказ на собесе, а не список терминов.
+
+Термины и определения согласованы с **ISTQB CTFL v4** и [глоссарием ISTQB](https://glossary.istqb.org/); номера J/M/S — опциональный индекс типовых вопросов собеса.
 
 ## Раздел: Auth, HTTP, OWASP, perf и sniffers
 
@@ -73,6 +75,28 @@ M53–71 и M72–84: плотный middle-блок про веб-безопа�
 - **Activity lifecycle (Android):** create/start/resume/pause/stop/destroy; тест поворот экрана, уход в фон, low memory kill, restore state.
 - **TestFlight / внутренний deploy:** iOS TestFlight, Android Internal/Closed testing; версии build number, expiry TestFlight, чеклист «что в этом билде».
 - **Deploy:** каналы, staged rollout, feature flags, откат; QA смотрит smoke после выкладки и мониторинг крэшей.
+
+## Раздел: Частые вопросы с собеседования
+
+**Вопрос.** Когда на собеседовании уместен smoke, а когда полный regression?
+
+**Ответ.** Smoke — узкий «жив ли билд»: логин, критичный платёж, главная. Падает smoke — глубже не идём. Regression — шире: уже работавшее после изменений. Sanity — точечно после маленького патча. Ошибка junior: называть любой повторный прогон regression.
+
+**Вопрос.** Зачем на собесе спрашивают equivalence partitioning и граничные значения?
+
+**Ответ.** EP сжимает бесконечные входы в классы «ведут себя одинаково»; BVA бьёт по стыкам классов — там чаще ломается сравнение и валидация. Для поля 18–99 достаточно классов «ниже», «внутри», «выше» и точек 17–18–19, 98–99–100; не нужно 82 случайных числа.
+
+**Вопрос.** Severity и priority в баг-репорте — одно и то же?
+
+**Ответ.** Нет. Severity — ущерб для продукта и пользователя (crash vs опечатка). Priority — когда чинить в очереди команды. Критичный по severity баг может ждать, если воспроизводится только на стенде без пользователей; наоборот, мелкий UI-bug в checkout может быть P1 перед релизом.
+
+**Вопрос.** Что имеют в виду под «пирамидой тестирования» на собеседовании?
+
+**Ответ.** Много быстрых дешёвых проверок внизу (unit, контракт API), меньше медленных UI/e2e наверху. Цель — быстрая обратная связь в CI, а не «всё через Selenium». Пирамида не запрет на e2e: сквозные сценарии оставляют на критичные деньги-потоки.
+
+**Вопрос.** Почему flaky e2e — отдельная тема на middle/senior QA?
+
+**Ответ.** Flaky — тест то зелёный, то красный без изменения кода: тайминги, данные, сеть, параллельность. Команда перестаёт верить CI. Лечат изоляцией данных, явными ожиданиями, стабильными селекторами, отсечением внешних сервисов; иногда понижают уровень — проверяют API вместо хрупкого UI.
 
 ## Лаба
 
@@ -151,6 +175,20 @@ sequenceDiagram
 
 **Пояснение:** оба разрушительны для данных; DROP ломает ещё и зависимости/код, ожидающий таблицу.
 
+### OWASP A01 Broken Access Control — пример?
+
+**Ответ:** смена id в URL и просмотр чужого заказа
+
+**Пояснение:** horizontal privilege escalation; проверяйте на каждом CRUD.
+
+### WebSocket — что тестировать кроме connect?
+
+**Ответ:** reconnect, heartbeat, порядок сообщений, auth после reconnect
+
+**Пояснение:** обрыв сети — частый прод-баг чатов и live-лент.
+
+
+
 ## Шпаргалка
 
 <h3>HTTP и безопасность</h3>
@@ -186,6 +224,20 @@ Back: мобильные сети рвутся; без reconnect и идемпо
 
 Back: связать строки одной таблицы (иерархии, пары «похожих» сущностей)
 
+### Front: CSRF vs XSS — различие
+
+Back: CSRF — чужой сайт шлёт запрос от вашей сессии; XSS — скрипт в вашем origin
+
+### Front: SQL injection — минимальный тест
+
+Back: ввод `' OR '1'='1` в поле, смотреть ошибки/SQL в ответе и логах
+
+### Front: SameSite cookie — зачем
+
+Back: ограничить отправку cookie в cross-site запросах, снижая CSRF
+
+
+
 ## Итоги
 
 - AuthN/AuthZ и коды ответа — база middle web
@@ -195,6 +247,9 @@ Back: связать строки одной таблицы (иерархии, �
 
 ## Ссылки
 
-- [QA-interview-250](https://github.com/Konstantine23/QA-interview-250)
+- [ISTQB Glossary](https://glossary.istqb.org/)
+- [CTFL v4 — Certified Tester Foundation Level](https://istqb.org/certifications/certified-tester-foundation-level-ctfl-v4-0/)
 - [OWASP Top 10](https://owasp.org/www-project-top-ten/)
+- Опционально: [QA-interview-250](https://github.com/Konstantine23/QA-interview-250) — полный список формулировок вопросов
 - Learn | /game/learn
+- Далее: [Strategy metrics](/game/learn/qa-strategy-metrics)

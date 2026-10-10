@@ -1,7 +1,7 @@
 ---
 slug: py-interview-tricky
 title: Трюки собеса — «что выведет код»
-shortTitle: Tricky drill
+shortTitle: Трюки собеса
 episode: PY23
 rubric: tools
 order: 323
@@ -40,6 +40,23 @@ canonicalUrl: https://9to18.ru/game/learn/py-interview-tricky
 
 Примеры для тренировки: модификация списка при итерации; `+=` у list vs tuple; сравнение set литералов; `True == 1`; цепочки `a < b < c`.
 
+## Раздел: Частые вопросы с собеседования
+**Вопрос.** Late binding в closure в цикле — суть ловушки?
+
+**Ответ.** Lambda или inner function захватывает имя переменной цикла, не значение на итерации; к моменту вызова цикл завершён. Фикс: default arg `lambda i=i: i` фиксирует текущее значение.
+
+**Вопрос.** Почему модифицировать list при итерации опасно?
+
+**Ответ.** Итератор не ожидает изменения коллекции — пропуск элементов или RuntimeError. Копируйте список, итерируйте индексы с конца или стройте новый list comprehension.
+
+**Вопрос.** `True == 1` — что говорить?
+
+**Ответ.** `bool` подкласс `int`, поэтому сравнение значений истинно; `True is 1` — ложь. Не используйте такие сравнения в коде — только для объяснения модели типов.
+
+**Вопрос.** LEGB — зачем на tricky-собесе?
+
+**Ответ.** Порядок поиска имён: Local, Enclosing, Global, Builtins. Объясняет closure, shadowing и почему присвоение в функции делает local без `global`/`nonlocal`.
+
 ## Лаба
 
 **Цель.** Набор из 8 карточек «output + фикс».
@@ -70,23 +87,35 @@ flowchart TD
 
 ## Тест
 
-### Почему все lambda в цикле вернули 2 для range(3)?
+### lambda в цикле range(3) — все 2?
 
-**Ответ:** замыкание читает i в момент вызова, не определения
+**Ответ:** late binding на i
 
-**Пояснение:** late binding; фикс lambda i=i: i.
+**Пояснение:** фикс lambda i=i: i.
 
-### True == 1 даст?
+### True == 1?
 
 **Ответ:** True
 
-**Пояснение:** bool — подкласс int; не используйте это в дизайне API.
+**Пояснение:** bool подкласс int; не проектировать API так.
 
-### Как безопасно менять список при обходе?
+### Менять list при for?
 
-**Ответ:** итерировать копию или собирать новый список
+**Ответ:** итерировать копию или новый список
 
-**Пояснение:** изменение размера во время for — источник багов.
+**Пояснение:** изменение размера во время обхода — баги.
+
+### [] is []?
+
+**Ответ:** False
+
+**Пояснение:** разные объекты; is сравнивает identity.
+
+### 0.1 + 0.2 == 0.3?
+
+**Ответ:** False
+
+**Пояснение:** float binary; использовать decimal или isclose.
 
 ## Шпаргалка
 
@@ -104,7 +133,7 @@ flowchart TD
 
 ### Front: Late binding в lambda — фикс?
 
-Back: захватить значение default-аргументом lambda i=i: ...
+Back: lambda i=i: i в list comprehension
 
 ### Front: for/else сработает когда?
 
@@ -112,7 +141,19 @@ Back: цикл закончился без break
 
 ### Front: a is b для больших int?
 
-Back: может быть False даже при равных значениях — не опирайтесь на is
+Back: может быть False при равных значениях — не опирайтесь на is
+
+### Front: mutable default def f(x=[]) ловушка?
+
+Back: один список на все вызовы
+
+### Front: [[0]*3]*3 матрица — ловушка?
+
+Back: общие ссылки на внутренние списки
+
+### Front: except: bare except опасность?
+
+Back: ловит BaseException включая KeyboardInterrupt
 
 ## Итоги
 
@@ -122,6 +163,8 @@ Back: может быть False даже при равных значениях 
 
 ## Ссылки
 
-- [DEBAGanov — «что выведет»](https://github.com/DEBAGanov/interview_questions/blob/main/400%20вопросов%20с%20ответами%2C%20которые%20должен%20знать%20Python-разработчик.md)
+- [Execution model — reference](https://docs.python.org/3/reference/executionmodel.html)
+- [Data model](https://docs.python.org/3/reference/datamodel.html)
+- [DEBAGanov — индекс вопросов серии (tricky)](https://github.com/DEBAGanov/interview_questions/blob/main/400%20вопросов%20с%20ответами%2C%20которые%20должен%20знать%20Python-разработчик.md)
 - Learn | /game/learn
 - Далее: [Capstone](/game/learn/py-senior-capstone)

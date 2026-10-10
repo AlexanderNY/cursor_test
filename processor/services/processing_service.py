@@ -20,6 +20,10 @@ from shared.db.posts_repo import (
     flags_from_platforms,
     resolve_publish_platforms,
 )
+from shared.digest import (
+    DEFAULT_PROCESS_PROMPT,
+    build_digest_source_index,
+)
 from shared.service_cycle_log import write_cycle_log
 from config import (
     settings,
@@ -31,6 +35,20 @@ from services.ai_processor import process_with_ai, summarize_text
 from services.platform_formatter import prepare_platform_texts
 
 logger = logging.getLogger(__name__)
+
+
+def resolve_final_status(
+    *,
+    is_digest_source: bool,
+    is_review: bool,
+    has_any_target: bool,
+) -> str:
+    """Decide posts.status after processing."""
+    if is_digest_source:
+        return "digest_hold"
+    if is_review or not has_any_target:
+        return "review"
+    return "ready"
 
 
 async def _log_cycle(
@@ -193,6 +211,8 @@ class ProcessingService:
         self.total_processed: int = 0
         self.last_cycle_processed: int = 0
         self._profile_row_cache: dict[tuple[str, int], tuple[list[str], tuple[Any, ...]]] = {}
+        self._digest_by_channel: dict[int, dict[str, Any]] = {}
+        self._channel_processing: dict[int, dict[str, Any]] = {}
 
     async def run_processing_cycle(self) -> int:
         """Выполняет один цикл обработки.
@@ -204,6 +224,8 @@ class ProcessingService:
             Количество обработанных постов за цикл.
         """
         cycle_count = 0
+
+        await self._prefetch_digest_jobs()
 
         promoted = await self._promote_pending_targets_with_destinations()
         if promoted:
@@ -233,6 +255,8 @@ class ProcessingService:
             self.last_run_at = datetime.utcnow()
             self.last_cycle_processed = 0
             await _log_cycle(items_processed=0)
+            self._digest_by_channel.clear()
+            self._channel_processing.clear()
             return 0
 
         # 3. Обработать посты параллельно (CPU в threads; AI — семафор shared.ai_client)
@@ -279,7 +303,63 @@ class ProcessingService:
 
         await _log_cycle(items_processed=cycle_count)
         self._profile_row_cache.clear()
+        self._digest_by_channel.clear()
+        self._channel_processing.clear()
         return cycle_count
+
+    async def _prefetch_digest_jobs(self) -> None:
+        """Load enabled digest jobs and per-channel processing overrides."""
+        self._digest_by_channel = {}
+        self._channel_processing = {}
+        try:
+            async with get_db_connection() as conn:
+                async with conn.cursor() as cur:
+                    await cur.execute(
+                        """
+                        SELECT id, brand_id, user_id, enabled, source_channel_ids,
+                               publish_channel_id, interval_min, process_prompt, summary_prompt
+                        FROM smm_digest_jobs
+                        WHERE enabled = TRUE
+                        """
+                    )
+                    rows = await cur.fetchall()
+                    cols = [d[0] for d in cur.description]
+                    jobs = [dict(zip(cols, row)) for row in rows]
+                    self._digest_by_channel = build_digest_source_index(jobs)
+                    source_ids = list(self._digest_by_channel.keys())
+                    if not source_ids:
+                        return
+                    placeholders = ", ".join(["%s"] * len(source_ids))
+                    await cur.execute(
+                        f"""
+                        SELECT id, processing
+                        FROM smm_brand_channels
+                        WHERE id IN ({placeholders})
+                        """,
+                        source_ids,
+                    )
+                    for channel_id, processing in await cur.fetchall():
+                        proc = processing
+                        if isinstance(proc, str):
+                            try:
+                                proc = json.loads(proc)
+                            except (json.JSONDecodeError, TypeError):
+                                proc = {}
+                        if isinstance(proc, dict):
+                            self._channel_processing[int(channel_id)] = proc
+        except Exception:
+            logger.exception("Failed to prefetch digest jobs")
+            self._digest_by_channel = {}
+            self._channel_processing = {}
+
+    def _digest_job_for_post(self, post: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        channel_id = post.get("channel_id")
+        if channel_id is None:
+            return None
+        try:
+            return self._digest_by_channel.get(int(channel_id))
+        except (TypeError, ValueError):
+            return None
 
     def _fields_for_platform(self, source_platform: str) -> tuple[Any, ...] | None:
         if source_platform not in PROFILE_TABLE_MAP:
@@ -418,6 +498,9 @@ class ProcessingService:
 
         logger.debug("Processing post id=%s (user=%s, platform=%s)", post_id, user_id, source_platform)
 
+        digest_job = self._digest_job_for_post(post)
+        is_digest_source = digest_job is not None
+
         # Загрузить настройки обработки из профиля (для url/curl — per-URL)
         proc_settings = await self._load_processing_settings(
             user_id,
@@ -425,6 +508,45 @@ class ProcessingService:
             post_url=post.get("url"),
             url_item_id=_url_item_id_from_post(post),
         )
+        if is_digest_source:
+            channel_proc = {}
+            try:
+                channel_proc = self._channel_processing.get(int(post["channel_id"]), {}) or {}
+            except (TypeError, ValueError, KeyError):
+                channel_proc = {}
+            for key in (
+                "remove_emojis",
+                "remove_images",
+                "clean_html",
+                "add_static_html",
+                "static_html_content",
+            ):
+                if key in channel_proc:
+                    proc_settings[key] = channel_proc.get(key)
+            process_prompt = (digest_job.get("process_prompt") or "").strip() or DEFAULT_PROCESS_PROMPT
+            text = await process_with_ai(text, process_prompt)
+            text, images = await asyncio.to_thread(apply_cpu_cleaning, text, images, proc_settings)
+            platform_texts = await prepare_platform_texts(
+                text=text,
+                post_flags={"to_tg": False},
+                is_add_static_html=False,
+                static_html_content=None,
+            )
+            await self._save_processed_post(
+                post_id=post_id,
+                user_id=int(user_id),
+                text=text,
+                images=images,
+                platform_texts=platform_texts,
+                status="digest_hold",
+                platforms=[],
+                target_channels=[],
+                target_groups=[],
+                clear_targets=True,
+            )
+            logger.info("Post id=%s processed -> status=digest_hold (digest job)", post_id)
+            return
+
         platforms, target_channels, target_groups = resolve_process_destinations(
             post,
             proc_settings,
@@ -451,18 +573,16 @@ class ProcessingService:
         if ai_enrichment:
             platform_texts["_ai_enrichment"] = json.dumps(ai_enrichment, ensure_ascii=False)
 
-        # Определить финальный статус
-        is_review = proc_settings.get("status_review_after_process", False)
-        has_any_target = bool(platforms)
-        if is_review or not has_any_target:
-            final_status = "review"
-            if not has_any_target:
-                logger.debug(
-                    "Post id=%s: no publish targets -> status=review",
-                    post_id,
-                )
-        else:
-            final_status = "ready"
+        final_status = resolve_final_status(
+            is_digest_source=False,
+            is_review=bool(proc_settings.get("status_review_after_process", False)),
+            has_any_target=bool(platforms),
+        )
+        if final_status == "review" and not platforms:
+            logger.debug(
+                "Post id=%s: no publish targets -> status=review",
+                post_id,
+            )
 
         # Сохранить результат
         await self._save_processed_post(
@@ -659,11 +779,24 @@ class ProcessingService:
 
     async def _promote_pending_targets_with_destinations(self) -> int:
         """pending + Channels destination → ready (processor used to leave them pending)."""
+        digest_ids = list(self._digest_by_channel.keys())
         try:
             async with get_db_connection() as conn:
                 async with conn.cursor() as cur:
-                    await cur.execute(
+                    exclude_sql = ""
+                    params: list[Any] = []
+                    if digest_ids:
+                        placeholders = ", ".join(["%s"] * len(digest_ids))
+                        exclude_sql = f"""
+                          AND NOT EXISTS (
+                            SELECT 1 FROM posts p
+                            WHERE p.id = t.post_id
+                              AND p.channel_id IN ({placeholders})
+                          )
                         """
+                        params.extend(digest_ids)
+                    await cur.execute(
+                        f"""
                         UPDATE post_targets t
                         SET status = 'ready', updated_at = CURRENT_TIMESTAMP
                         WHERE t.status = 'pending'
@@ -677,7 +810,9 @@ class ProcessingService:
                               AND jsonb_array_length(COALESCE(t.target_groups, '[]'::jsonb)) > 0
                             )
                           )
-                        """
+                          {exclude_sql}
+                        """,
+                        params,
                     )
                     return int(cur.rowcount or 0)
         except Exception:
@@ -724,6 +859,8 @@ class ProcessingService:
         platforms: List[str],
         target_channels: Optional[List[str]] = None,
         target_groups: Optional[List[str]] = None,
+        *,
+        clear_targets: bool = False,
     ) -> None:
         """Save hub content and post_targets."""
         target_status = "ready" if status == "ready" else "pending"
@@ -737,6 +874,16 @@ class ProcessingService:
                     platform_texts=platform_texts,
                     status=status,
                 )
+                if clear_targets or status == "digest_hold":
+                    await cur.execute(
+                        """
+                        DELETE FROM post_targets
+                        WHERE post_id = %s
+                          AND status IN ('pending', 'ready')
+                        """,
+                        (int(post_id),),
+                    )
+                    return
                 if platforms:
                     await repo.ensure_targets(
                         post_id=post_id,

@@ -126,7 +126,8 @@ export function collectAllowed(
   },
   platform?: { can_collect?: boolean; connected?: boolean } | null,
 ): boolean {
-  if (channel.network === 'url') return true
+  // URL scrape and public WordPress REST do not need a platform session.
+  if (channel.network === 'url' || channel.network === 'wp') return true
   const caps = channel.auth_capabilities
   if (caps && typeof caps.can_collect === 'boolean') {
     return Boolean(caps.can_collect)

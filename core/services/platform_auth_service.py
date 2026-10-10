@@ -253,17 +253,20 @@ class PlatformAuthService:
         }
 
     async def get_wp_status(self, user_id: int) -> dict[str, Any]:
+        from services.smm_networks import normalize_wp_site_url
+
         profile = await profile_service.get_wp_publish_profile(user_id)
         if not profile:
             return self._missing_status("wp", "WordPress profile not configured")
-        site = (profile.get("site_url") or "").strip()
+        site = normalize_wp_site_url(profile.get("site_url") or "")
         user = (profile.get("username") or "").strip()
         password = (profile.get("app_password") or "").strip()
+        # Publish / ownership need Application Password; public collect only needs a site URL.
         connected = bool(site and user and password)
-        soft_connected = bool(site and user)
+        soft_configured = bool(site and user)
         return {
-            "connected": soft_connected,
-            "state": "authorized" if soft_connected else "missing",
+            "connected": connected,
+            "state": "authorized" if connected else "missing",
             "username": user or site,
             "site_url": site,
             "message": (
@@ -271,13 +274,14 @@ class PlatformAuthService:
                 if connected
                 else (
                     "Configure WP application password"
-                    if soft_connected
+                    if soft_configured
                     else "Configure WP site + app password"
                 )
             ),
-            "can_collect": connected,
+            "can_collect": bool(site),
             "can_publish_text": connected,
             "can_publish_media": connected,
+            "can_alert": False,
             "setup_url": SETUP_URLS["wp"],
         }
 
@@ -330,8 +334,11 @@ class PlatformAuthService:
             p = await profile_service.get_dzen_profile(user_id)
             return (p or {}).get("yandex_login") or (p or {}).get("dzen_studio_url") or None
         if network == "wp":
+            from services.smm_networks import normalize_wp_site_url
+
             p = await profile_service.get_wp_publish_profile(user_id)
-            return (p or {}).get("site_url") or (p or {}).get("username") or None
+            site = normalize_wp_site_url((p or {}).get("site_url") or "")
+            return site or (p or {}).get("username") or None
         if network == "vk":
             raw = await profile_service.get_vk_profile_tokens_raw(user_id)
             group = (raw or {}).get("group_to_post")
@@ -468,7 +475,9 @@ class PlatformAuthService:
             result = await self._probe_tg_channel(user_id, ext, now)
         elif network == "vk":
             result = await self._probe_vk_channel(user_id, ext, now, role=role)
-        elif network in ("instagram", "threads", "tw", "dzen", "wp"):
+        elif network == "wp":
+            result = await self._probe_wp_channel(user_id, ext, now, role=role)
+        elif network in ("instagram", "threads", "tw", "dzen"):
             result = await self._probe_profile_network(user_id, network, ext, now)
         else:
             result = {
@@ -485,6 +494,70 @@ class PlatformAuthService:
             )
         return result
 
+    async def _probe_wp_channel(
+        self,
+        user_id: int,
+        external_id: str,
+        now: datetime,
+        *,
+        role: str = "own",
+    ) -> dict[str, Any]:
+        """WP brand channel: public REST collect; publish needs Application Password."""
+        from services.smm_networks import normalize_wp_site_url
+
+        site = normalize_wp_site_url(external_id)
+        if not site:
+            return {
+                "auth_status": "invalid",
+                "auth_error": "Укажите URL сайта WordPress",
+                "auth_capabilities": {
+                    "can_collect": False,
+                    "can_publish_text": False,
+                    "can_publish_media": False,
+                    "can_alert": False,
+                },
+                "auth_checked_at": now,
+            }
+
+        status = await self.get_wp_status(user_id)
+        has_publish_creds = bool(status.get("connected"))
+        # Public REST collect needs only a site URL; publish needs Application Password.
+        can_collect = True
+        can_publish = has_publish_creds
+        caps = {
+            "can_collect": can_collect,
+            "can_publish_text": can_publish,
+            "can_publish_media": can_publish,
+            "can_alert": False,
+        }
+
+        if role == "own":
+            if can_publish:
+                return {
+                    "auth_status": "connected",
+                    "auth_error": None,
+                    "auth_capabilities": caps,
+                    "auth_checked_at": now,
+                    "resolved_external_id": site,
+                }
+            return {
+                "auth_status": "pending" if status.get("site_url") or status.get("username") else "missing",
+                "auth_error": status.get("message")
+                or "Configure WP site URL + application password for publish",
+                "auth_capabilities": caps,
+                "auth_checked_at": now,
+                "resolved_external_id": site,
+            }
+
+        # source / competitor (competitor usually short-circuits earlier)
+        return {
+            "auth_status": "connected",
+            "auth_error": None,
+            "auth_capabilities": caps,
+            "auth_checked_at": now,
+            "resolved_external_id": site,
+        }
+
     async def _probe_profile_network(
         self,
         user_id: int,
@@ -497,7 +570,6 @@ class PlatformAuthService:
             "threads": self.get_threads_status,
             "tw": self.get_tw_status,
             "dzen": self.get_dzen_status,
-            "wp": self.get_wp_status,
         }
         status = await status_getters[network](user_id)
         if not status.get("connected"):
@@ -1078,8 +1150,19 @@ class PlatformAuthService:
         if updates.get("collect_enabled") is True and net in ("tg", "vk"):
             await self.require_platform(user_id, net, PlatformAction.COLLECT)
 
+        if updates.get("collect_enabled") is True and net == "wp":
+            from services.smm_networks import normalize_wp_site_url
+
+            if not normalize_wp_site_url(channel.get("external_id") or ""):
+                raise ValueError(
+                    "Cannot enable collect: укажите URL сайта WordPress на канале"
+                )
+
         if updates.get("alert_enabled") is True and net in ("tg", "vk"):
             await self.require_platform(user_id, net, PlatformAction.ALERT)
+
+        if updates.get("alert_enabled") is True and net == "wp":
+            raise ValueError("Алерты для WordPress пока недоступны")
 
     async def get_onboarding_state(self, user_id: int) -> dict[str, Any]:
         from services.smm_service import smm_service
