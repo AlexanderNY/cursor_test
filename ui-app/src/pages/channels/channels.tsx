@@ -765,10 +765,6 @@ export function ChannelsPage() {
             </CardContent>
           </Card>
 
-          {selectedBrandId != null && (
-            <BrandDigestCard brandId={selectedBrandId} channels={channels} />
-          )}
-
           <div className="flex flex-wrap gap-x-3 gap-y-1 mb-4 text-sm text-[var(--text-secondary)]">
             <span>
               Own: {ownCount}
@@ -1101,6 +1097,12 @@ export function ChannelsPage() {
             Зелёная строка = канал готов: Publish (own+auth), либо Collect с целями/Review, либо
             Alert с доставкой. Жёлтый значок = флаг включён, но настройка неполная.
           </p>
+
+          {selectedBrandId != null && (
+            <div className="mt-4">
+              <BrandDigestCard brandId={selectedBrandId} channels={channels} />
+            </div>
+          )}
         </>
       )}
     </PageContainer>

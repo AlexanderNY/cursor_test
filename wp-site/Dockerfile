@@ -12,5 +12,14 @@ RUN curl -fsSL "https://codeload.github.com/PostgreSQL-For-Wordpress/postgresql-
 	&& mv "/tmp/postgresql-for-wordpress-${PG4WP_REF}/pg4wp" /opt/pg4wp \
 	&& rm -rf "/tmp/postgresql-for-wordpress-${PG4WP_REF}"
 
+# INSERT IGNORE (core_updater.lock) is rewritten to INSERT INTO before insert-id
+# lookup. Stock PG4WP still parses the original SQL, so the table name is empty
+# and the catalog query becomes ''::regclass. WordPress then reports the update
+# as already in progress.
+COPY patches/pg4wp-insert-ignore-regclass.patch /tmp/pg4wp-insert-ignore-regclass.patch
+RUN patch -p1 -d /opt/pg4wp < /tmp/pg4wp-insert-ignore-regclass.patch \
+	&& rm /tmp/pg4wp-insert-ignore-regclass.patch
+
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+RUN sed -i 's/\r$//' /usr/local/bin/docker-entrypoint.sh \
+	&& chmod +x /usr/local/bin/docker-entrypoint.sh
