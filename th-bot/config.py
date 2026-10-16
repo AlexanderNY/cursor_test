@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     # Core (для опроса расписания при необходимости)
     CORE_SERVICE_URL: str = "http://localhost:8002"
 
+    # Signed OAuth state (same secret as gateway/core JWT)
+    JWT_SECRET_KEY: str = ""
+    INTERNAL_API_TOKEN: str = ""
+
     # Meta Threads OAuth
     META_APP_ID: str = ""
     META_APP_SECRET: str = ""

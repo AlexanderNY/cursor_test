@@ -18,8 +18,10 @@ from schemas import (
     PlanRequestRejectBody,
     PromoCodeCreate,
     PromoCodeUpdate,
+    PromoRedeemRequest,
 )
 from services.billing_service import create_checkout_session, process_stripe_webhook_payload
+from services.entitlement_service import sync_user_tariff
 from services import billing_requests_service as plan_requests
 from services.billing_requests_service import BillingRequestError
 
@@ -35,18 +37,22 @@ async def list_plans() -> dict[str, Any]:
 @router.get("/billing/me")
 async def billing_me(current_user: Dict = Depends(get_current_user)) -> dict[str, Any]:
     """Текущий тариф, лимиты плана и поля подписки."""
-    tariff = current_user.get("tariff") or "free"
+    user_id = int(current_user["id"])
+    synced = await sync_user_tariff(user_id)
+    tariff = synced["tariff"]
     plan = get_plan_by_code(tariff)
-    pending = await plan_requests.get_open_request(int(current_user["id"]))
+    pending = await plan_requests.get_open_request(user_id)
     return {
         "tariff": tariff,
         "plan": plan,
         "pending_request": pending,
+        "tariff_expires_at": synced["tariff_expires_at"],
+        "entitlements": synced["entitlements"],
         "billing_provider": current_user.get("billing_provider"),
         "billing_customer_id": current_user.get("billing_customer_id"),
         "billing_subscription_id": current_user.get("billing_subscription_id"),
-        "subscription_status": current_user.get("subscription_status"),
-        "subscription_current_period_end": current_user.get("subscription_current_period_end"),
+        "subscription_status": synced["subscription_status"],
+        "subscription_current_period_end": synced["tariff_expires_at"],
         "stripe_portal_available": bool(settings.STRIPE_SECRET_KEY and current_user.get("billing_customer_id")),
         "stripe_checkout_available": bool(
             settings.STRIPE_SECRET_KEY
@@ -182,6 +188,18 @@ async def list_my_plan_requests(
 ) -> dict[str, Any]:
     items = await plan_requests.list_my_requests(int(current_user["id"]))
     return {"requests": items}
+
+
+@router.post("/billing/promo/redeem")
+async def redeem_promo_code(
+    body: PromoRedeemRequest,
+    current_user: Dict = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Промокод бесплатного доступа: сразу включает тариф на срок кода."""
+    try:
+        return await plan_requests.redeem_grant_promo(int(current_user["id"]), body.code)
+    except BillingRequestError as exc:
+        raise _http_from_billing(exc) from exc
 
 
 @router.get("/billing/promo/preview")

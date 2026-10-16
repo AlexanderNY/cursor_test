@@ -1,6 +1,6 @@
 # ui-9to18
 
-Автономный фронтенд для **9to18.ru** (Vite + React, Bowl и Code на Pyodide).
+Автономный фронтенд для **9to18.ru** (Vite + React, Bowl/Code на Pyodide, SQL на sql.js).
 Не входит в основной `ui-app` и backend API CopyParse.
 
 За edge-прокси `ui-edge` слушает порт **8200** внутри сети `edge_net`.
@@ -15,19 +15,21 @@
 | `/admin`, `/admin/apps/:slug` | Супер-админ / админ сервиса |
 | `/app/:slug`, `/app/:slug/:postSlug` | Страница и блог сервиса |
 | `/game/bowl` | Bowl 2D — игра на Pyodide |
-| `/game/code` | Code — песочница Python (Pyodide) |
+| `/game/code` | Code — песочница + задачи junior (Pyodide) |
+| `/game/sql` | SQL — песочница + задачи SQL01–SQL13 (sql.js / SQLite) |
+| `/game/git` | Git — симулятор команд + задачи (B02/B06/GIT01–06) |
 | `/game/learn` | Learn — оглавление |
 | `/game/learn/:slug` | Статья + лаба (запуск python в браузере) + шпаргалка |
 | `/game/learn/admin…` | Learn CMS (JWT CopyParse admin/author) |
 | `/game/learning-map` | Карта обучения → Learn |
 | `/game/map` | Редирект на `/game/learning-map` |
 | `/game/tasks` | Чек-лист прогресса |
-| `/game/quiz` | Квиз из `structured.quiz` статей |
+| `/game/quiz` | Квиз по вопросам собеседования из статей Learn |
 | `/game/cert` | Сертификаты сезона (печать / PDF) |
 
 Learn: `GET /api/learn/posts` (публично), админка `/api/learn/admin/*` + `/api/auth/*`.  
 Site: `/api/site/*` (аккаунты, плитки, прогресс ученика, study).  
-Seed: `core/data/learn_seed.json` (B + S01 + MAP + PY + QA). Bowl/Code: Pyodide в браузере.
+Seed: `core/data/learn_seed.json` (B + S01 + MAP + PY + QA + SQL). Bowl/Code: Pyodide; SQL: sql.js в браузере.
 
 Прогресс ученика — только **`/site/learn/progress`** (site JWT в `db_9to18`). CopyParse JWT нужен авторам Learn CMS.
 
@@ -42,7 +44,7 @@ npm run dev
 
 http://localhost:8200 — Vite проксирует `/api` → gateway.
 
-Pyodide WASM копируется в `public/pyodide/` при `npm run dev` / `npm run build`.
+Pyodide WASM копируется в `public/pyodide/`, sql.js — в `public/sqljs/` при `npm run dev` / `npm run build`.
 
 ## Docker (production static)
 

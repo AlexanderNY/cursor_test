@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     # JWT настройки (должны совпадать с auth SECRET_KEY)
     JWT_SECRET_KEY: str = ""
     JWT_ALGORITHM: str = "HS256"
+
+    # Service-to-service token (scheduler, bots → /schedules and /internal)
+    INTERNAL_API_TOKEN: str = ""
     
     # Список сервисов для healthcheck
     HEALTHCHECK_SERVICES: List[str] = [

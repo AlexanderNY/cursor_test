@@ -6,11 +6,12 @@ import json
 import logging
 import time
 
-from fastapi import APIRouter, HTTPException, Header
+from fastapi import APIRouter, Depends, HTTPException, Header
 from pydantic import BaseModel, Field
 from typing import Optional
 
 from config import settings
+from shared.internal_auth_fastapi import require_internal_token
 from services.threads_service import (
     get_auth_status,
     build_oauth_url,
@@ -61,14 +62,26 @@ def _get_user_id(x_user_id: Optional[str] = Header(None)) -> int:
 
 
 @router.get("/auth/status/{user_id}")
-async def auth_status(user_id: int):
-    """Статус OAuth: connected, expires_at."""
+async def auth_status(
+    user_id: int,
+    x_user_id: Optional[str] = Header(None),
+):
+    """Статус OAuth: connected, expires_at. X-User-Id must match path user_id."""
+    caller = _get_user_id(x_user_id)
+    if caller != int(user_id):
+        raise HTTPException(status_code=403, detail="Access denied for this user_id")
     return await get_auth_status(user_id)
 
 
 @router.get("/auth/verify/{user_id}")
-async def auth_verify(user_id: int):
-    """Проверка токена у Meta (debug_token или GET /me)."""
+async def auth_verify(
+    user_id: int,
+    x_user_id: Optional[str] = Header(None),
+):
+    """Проверка токена у Meta. X-User-Id must match path user_id."""
+    caller = _get_user_id(x_user_id)
+    if caller != int(user_id):
+        raise HTTPException(status_code=403, detail="Access denied for this user_id")
     return await verify_threads_auth(user_id)
 
 
@@ -178,7 +191,7 @@ async def reload():
 
 
 @router.post("/schedule")
-async def schedule():
+async def schedule(_internal: None = Depends(require_internal_token)):
     """
     Один проход: для каждого пользователя с publish_enabled и токеном
     забираем посты из threads_posts и публикуем в Threads API.

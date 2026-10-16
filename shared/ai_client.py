@@ -174,7 +174,13 @@ async def is_enabled() -> bool:
     enabled = True
     try:
         client = await _get_http_client()
-        response = await client.get(_config.settings_url, timeout=2.0)
+        from shared.internal_auth import internal_auth_headers
+
+        response = await client.get(
+            _config.settings_url,
+            headers=internal_auth_headers(),
+            timeout=2.0,
+        )
         if response.status_code == 200:
             data = response.json()
             enabled = bool(data.get("enabled", True))

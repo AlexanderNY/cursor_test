@@ -6,6 +6,7 @@ import {
   CSV_QUESTIONS_COLUMNS,
   CSV_QUESTIONS_EXAMPLE,
   downloadCsvTemplate,
+  downloadQuestionsCsv,
   parseQuestionsCsv,
   type CsvParseError,
   type CsvQuestionDraft,
@@ -14,10 +15,16 @@ import {
 interface CsvImportSectionProps {
   modeId: number | null
   modeTitle?: string
+  modeCode?: string
   onImported: () => Promise<void>
 }
 
-export function CsvImportSection({ modeId, modeTitle, onImported }: CsvImportSectionProps) {
+export function CsvImportSection({
+  modeId,
+  modeTitle,
+  modeCode,
+  onImported,
+}: CsvImportSectionProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [fileName, setFileName] = useState('')
   const [parsedQuestions, setParsedQuestions] = useState<CsvQuestionDraft[]>([])
@@ -25,8 +32,31 @@ export function CsvImportSection({ modeId, modeTitle, onImported }: CsvImportSec
   const [importErrors, setImportErrors] = useState<string[]>([])
   const [isParsing, setIsParsing] = useState(false)
   const [isImporting, setIsImporting] = useState(false)
+  const [isExporting, setIsExporting] = useState(false)
   const [importProgress, setImportProgress] = useState('')
   const [importSuccess, setImportSuccess] = useState('')
+  const [exportError, setExportError] = useState('')
+
+  async function handleExport() {
+    if (!modeId) return
+    setExportError('')
+    setImportSuccess('')
+    setIsExporting(true)
+    try {
+      const questions = await gameService.listQuestionsWithOptions(modeId)
+      if (questions.length === 0) {
+        setExportError('В выбранном режиме нет вопросов для скачивания')
+        return
+      }
+      const safeCode = (modeCode || `mode-${modeId}`).replace(/[^\w.-]+/g, '_')
+      downloadQuestionsCsv(questions, `${safeCode}-questions.csv`)
+      setImportSuccess(`Скачано вопросов: ${questions.length}`)
+    } catch (e) {
+      setExportError(e instanceof Error ? e.message : 'Не удалось скачать опрос')
+    } finally {
+      setIsExporting(false)
+    }
+  }
 
   async function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
@@ -156,10 +186,20 @@ export function CsvImportSection({ modeId, modeTitle, onImported }: CsvImportSec
           type="button"
           variant="secondary"
           size="sm"
-          disabled={!modeId || isParsing || isImporting}
+          disabled={!modeId || isExporting || isParsing || isImporting}
+          isLoading={isExporting}
+          onClick={() => void handleExport()}
+        >
+          Скачать опрос
+        </Button>
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          disabled={!modeId || isParsing || isImporting || isExporting}
           onClick={() => fileInputRef.current?.click()}
         >
-          {isParsing ? 'Чтение…' : 'Выбрать CSV'}
+          {isParsing ? 'Чтение…' : 'Загрузить CSV'}
         </Button>
         <input
           ref={fileInputRef}
@@ -190,6 +230,7 @@ export function CsvImportSection({ modeId, modeTitle, onImported }: CsvImportSec
       {importSuccess && (
         <Alert variant="success">{importSuccess}</Alert>
       )}
+      {exportError && <Alert variant="error">{exportError}</Alert>}
       {parseErrors.length > 0 && (
         <Alert variant="error">
           <p className="font-medium">Ошибки в CSV</p>

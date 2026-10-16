@@ -7,24 +7,26 @@ from typing import Any, Awaitable, Callable
 
 from aiogram import BaseMiddleware, Bot, Dispatcher
 
+from bots.country_handlers import country_router
 from bots.game_handlers import game_router
 from bots.menu_handlers import menu_router
+from services.game_repository import game_repository
 
 logger = logging.getLogger(__name__)
 
 
 class GameBotContextMiddleware(BaseMiddleware):
-  def __init__(self, bot_id: int) -> None:
-      self.bot_id = bot_id
+    def __init__(self, bot_id: int) -> None:
+        self.bot_id = bot_id
 
-  async def __call__(
-      self,
-      handler: Callable[[Any, dict[str, Any]], Awaitable[Any]],
-      event: Any,
-      data: dict[str, Any],
-  ) -> Any:
-      data["game_bot_id"] = self.bot_id
-      return await handler(event, data)
+    async def __call__(
+        self,
+        handler: Callable[[Any, dict[str, Any]], Awaitable[Any]],
+        event: Any,
+        data: dict[str, Any],
+    ) -> Any:
+        data["game_bot_id"] = self.bot_id
+        return await handler(event, data)
 
 
 async def run_game_bot_polling(bot_token: str, bot_id: int) -> None:
@@ -34,10 +36,16 @@ async def run_game_bot_polling(bot_token: str, bot_id: int) -> None:
         logger.warning("Bot token is empty for bot_id=%s; polling not started.", bot_id)
         return
 
+    try:
+        await game_repository.ensure_country_modes(bot_id)
+    except Exception:
+        logger.exception("Failed to ensure country modes for bot_id=%s", bot_id)
+
     bot = Bot(token=token)
     dp = Dispatcher()
     dp.update.middleware(GameBotContextMiddleware(bot_id))
     dp.include_router(menu_router)
+    dp.include_router(country_router)
     dp.include_router(game_router)
 
     logger.info("Starting game bot polling id=%s (aiogram)...", bot_id)

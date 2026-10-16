@@ -91,6 +91,103 @@ CREATE TABLE IF NOT EXISTS site_learn_progress (
 CREATE INDEX IF NOT EXISTS idx_site_learn_progress_user ON site_learn_progress (user_id, completed_at DESC);
 """
 
+SITE_USER_TASKS_TABLE = """
+CREATE TABLE IF NOT EXISTS site_user_tasks (
+    id SERIAL PRIMARY KEY,
+    user_id INT NOT NULL REFERENCES site_users(id) ON DELETE CASCADE,
+    parent_id INT REFERENCES site_user_tasks(id) ON DELETE CASCADE,
+    title VARCHAR(512) NOT NULL,
+    notes TEXT NOT NULL DEFAULT '',
+    tag VARCHAR(64) NOT NULL DEFAULT '',
+    due_at DATE,
+    due_time TIME,
+    remind_at TIMESTAMPTZ,
+    priority VARCHAR(16) NOT NULL DEFAULT 'normal'
+        CHECK (priority IN ('low', 'normal', 'high')),
+    board VARCHAR(16) NOT NULL DEFAULT 'backlog'
+        CHECK (board IN ('backlog', 'week', 'today', 'done')),
+    checklist JSONB NOT NULL DEFAULT '[]'::jsonb,
+    repeat_rule VARCHAR(16) NOT NULL DEFAULT 'none'
+        CHECK (repeat_rule IN ('none', 'daily', 'weekly', 'monthly')),
+    series_id UUID,
+    is_done BOOLEAN NOT NULL DEFAULT FALSE,
+    completed_at TIMESTAMPTZ,
+    sort_order INT NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_site_user_tasks_user
+    ON site_user_tasks (user_id, is_done, due_at NULLS LAST, created_at DESC);
+"""
+
+SITE_USER_HABITS_TABLE = """
+CREATE TABLE IF NOT EXISTS site_user_habits (
+    id SERIAL PRIMARY KEY,
+    user_id INT NOT NULL REFERENCES site_users(id) ON DELETE CASCADE,
+    title VARCHAR(256) NOT NULL,
+    tag VARCHAR(64) NOT NULL DEFAULT '',
+    color VARCHAR(32) NOT NULL DEFAULT '',
+    sort_order INT NOT NULL DEFAULT 0,
+    is_archived BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_site_user_habits_user
+    ON site_user_habits (user_id, is_archived, sort_order, id);
+"""
+
+SITE_USER_HABIT_CHECKS_TABLE = """
+CREATE TABLE IF NOT EXISTS site_user_habit_checks (
+    habit_id INT NOT NULL REFERENCES site_user_habits(id) ON DELETE CASCADE,
+    day DATE NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (habit_id, day)
+);
+CREATE INDEX IF NOT EXISTS idx_site_user_habit_checks_day
+    ON site_user_habit_checks (habit_id, day DESC);
+"""
+
+SITE_USER_NOTES_TABLE = """
+CREATE TABLE IF NOT EXISTS site_user_notes (
+    id SERIAL PRIMARY KEY,
+    user_id INT NOT NULL REFERENCES site_users(id) ON DELETE CASCADE,
+    title VARCHAR(512) NOT NULL DEFAULT '',
+    body TEXT NOT NULL DEFAULT '',
+    tag VARCHAR(64) NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_site_user_notes_user
+    ON site_user_notes (user_id, updated_at DESC);
+"""
+
+SITE_USER_NOTE_FILES_TABLE = """
+CREATE TABLE IF NOT EXISTS site_user_note_files (
+    id SERIAL PRIMARY KEY,
+    note_id INT NOT NULL REFERENCES site_user_notes(id) ON DELETE CASCADE,
+    user_id INT NOT NULL REFERENCES site_users(id) ON DELETE CASCADE,
+    filename VARCHAR(255) NOT NULL,
+    content_type VARCHAR(128) NOT NULL DEFAULT 'application/octet-stream',
+    size_bytes INT NOT NULL DEFAULT 0,
+    storage_key VARCHAR(512) NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_site_user_note_files_note
+    ON site_user_note_files (note_id, id);
+"""
+
+SITE_USER_FOCUS_LOGS_TABLE = """
+CREATE TABLE IF NOT EXISTS site_user_focus_logs (
+    id SERIAL PRIMARY KEY,
+    user_id INT NOT NULL REFERENCES site_users(id) ON DELETE CASCADE,
+    minutes INT NOT NULL CHECK (minutes > 0 AND minutes <= 180),
+    label VARCHAR(128) NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_site_user_focus_logs_user
+    ON site_user_focus_logs (user_id, created_at DESC);
+"""
+
 SITE_PASSWORD_RESET_TABLE = """
 CREATE TABLE IF NOT EXISTS site_password_resets (
     id SERIAL PRIMARY KEY,
@@ -119,6 +216,21 @@ CREATE INDEX IF NOT EXISTS idx_site_quiz_attempts_user
     ON site_quiz_attempts (user_id, finished_at DESC);
 CREATE INDEX IF NOT EXISTS idx_site_quiz_attempts_source
     ON site_quiz_attempts (user_id, source_key);
+"""
+
+SITE_CERTIFICATES_TABLE = """
+CREATE TABLE IF NOT EXISTS site_certificates (
+    code VARCHAR(40) PRIMARY KEY,
+    user_id INT NOT NULL REFERENCES site_users(id) ON DELETE CASCADE,
+    track_id VARCHAR(32) NOT NULL,
+    track_title VARCHAR(160) NOT NULL,
+    holder_name VARCHAR(120) NOT NULL,
+    episode_count INT NOT NULL,
+    quiz_percent INT NOT NULL DEFAULT 0,
+    issued_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (user_id, track_id)
+);
+CREATE INDEX IF NOT EXISTS idx_site_certificates_user ON site_certificates (user_id);
 """
 
 SITE_ANKI_CARDS_TABLE = """
@@ -311,6 +423,46 @@ $migrate$;
     CREATE INDEX IF NOT EXISTS idx_site_resumes_user_updated
     ON site_resumes (user_id, updated_at DESC)
     """,
+    """
+    ALTER TABLE site_user_tasks
+    ADD COLUMN IF NOT EXISTS parent_id INT
+    """,
+    """
+    ALTER TABLE site_user_tasks
+    ADD COLUMN IF NOT EXISTS due_time TIME
+    """,
+    """
+    ALTER TABLE site_user_tasks
+    ADD COLUMN IF NOT EXISTS remind_at TIMESTAMPTZ
+    """,
+    """
+    ALTER TABLE site_user_tasks
+    ADD COLUMN IF NOT EXISTS priority VARCHAR(16) NOT NULL DEFAULT 'normal'
+    """,
+    """
+    ALTER TABLE site_user_tasks
+    ADD COLUMN IF NOT EXISTS board VARCHAR(16) NOT NULL DEFAULT 'backlog'
+    """,
+    """
+    ALTER TABLE site_user_tasks
+    ADD COLUMN IF NOT EXISTS checklist JSONB NOT NULL DEFAULT '[]'::jsonb
+    """,
+    """
+    ALTER TABLE site_user_tasks
+    ADD COLUMN IF NOT EXISTS repeat_rule VARCHAR(16) NOT NULL DEFAULT 'none'
+    """,
+    """
+    ALTER TABLE site_user_tasks
+    ADD COLUMN IF NOT EXISTS series_id UUID
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_site_user_tasks_parent
+    ON site_user_tasks (parent_id) WHERE parent_id IS NOT NULL
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_site_user_tasks_series
+    ON site_user_tasks (user_id, series_id) WHERE series_id IS NOT NULL
+    """,
 ]
 
 SITE_ALL_TABLES: list[str] = [
@@ -321,8 +473,15 @@ SITE_ALL_TABLES: list[str] = [
     SITE_SETTINGS_TABLE,
     SITE_CONTACTS_TABLE,
     SITE_LEARN_PROGRESS_TABLE,
+    SITE_USER_TASKS_TABLE,
+    SITE_USER_HABITS_TABLE,
+    SITE_USER_HABIT_CHECKS_TABLE,
+    SITE_USER_NOTES_TABLE,
+    SITE_USER_NOTE_FILES_TABLE,
+    SITE_USER_FOCUS_LOGS_TABLE,
     SITE_PASSWORD_RESET_TABLE,
     SITE_QUIZ_ATTEMPTS_TABLE,
+    SITE_CERTIFICATES_TABLE,
     SITE_ANKI_CARDS_TABLE,
     LEARN_POSTS_TABLE,
     SITE_USER_PROFILES_TABLE,

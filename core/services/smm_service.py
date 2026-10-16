@@ -1257,7 +1257,11 @@ class SmmService:
         return refreshed
 
     async def list_all_channels(
-        self, user_id: int, brand_id: Optional[int] = None
+        self,
+        user_id: int,
+        brand_id: Optional[int] = None,
+        *,
+        include_diagnostics: bool = False,
     ) -> list[dict]:
         from services.team_access import brand_access_clause
 
@@ -1303,9 +1307,65 @@ class SmmService:
                             cred_uid, str(ch.get("external_id") or "")
                         )
                         ch["url_config"] = item
+                if include_diagnostics and result:
+                    await self._attach_channel_diagnostics(cur, result)
                 return result
         finally:
             await release_db_connection(conn)
+
+    async def _attach_channel_diagnostics(
+        self,
+        cur: Any,
+        channels: list[dict],
+    ) -> None:
+        """Admin-only diagnostics: auth probe fields + collect/publish counters."""
+        channel_ids = [int(ch["id"]) for ch in channels if ch.get("id") is not None]
+        counters_by_id: dict[int, dict[str, Any]] = {}
+        if channel_ids:
+            await cur.execute(
+                """
+                SELECT channel_id,
+                       COALESCE(SUM(sent), 0),
+                       COALESCE(SUM(received), 0),
+                       COALESCE(SUM(failed), 0),
+                       MAX(CASE WHEN sent > 0 THEN day END),
+                       MAX(CASE WHEN received > 0 THEN day END)
+                FROM smm_channel_counters
+                WHERE channel_id = ANY(%s)
+                GROUP BY channel_id
+                """,
+                (channel_ids,),
+            )
+            for row in await cur.fetchall():
+                cid = int(row[0])
+                counters_by_id[cid] = {
+                    "sent_total": int(row[1] or 0),
+                    "received_total": int(row[2] or 0),
+                    "failed_total": int(row[3] or 0),
+                    "last_publish_day": str(row[4]) if row[4] else None,
+                    "last_collect_day": str(row[5]) if row[5] else None,
+                }
+
+        for ch in channels:
+            cid = int(ch["id"])
+            caps = ch.get("auth_capabilities") or {}
+            if not isinstance(caps, dict):
+                caps = {}
+            ctr = counters_by_id.get(cid) or {}
+            ch["diagnostics"] = {
+                "auth_error": ch.get("auth_error"),
+                "auth_checked_at": ch.get("auth_checked_at"),
+                "auth_capabilities": {
+                    "can_collect": bool(caps.get("can_collect")),
+                    "can_publish_text": bool(caps.get("can_publish_text")),
+                    "can_alert": bool(caps.get("can_alert")),
+                },
+                "last_collect_day": ctr.get("last_collect_day"),
+                "received_total": int(ctr.get("received_total") or 0),
+                "last_publish_day": ctr.get("last_publish_day"),
+                "sent_total": int(ctr.get("sent_total") or 0),
+                "failed_total": int(ctr.get("failed_total") or 0),
+            }
 
     def _serialize_channel_export(
         self,

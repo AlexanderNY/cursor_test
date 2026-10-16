@@ -91,7 +91,16 @@ class AdminService:
 
         return {
             "healthchecks": [
-                {"service_name": h["service_name"], "status": h["status"], "error": h.get("error"), "server_time": h.get("server_time")}
+                {
+                    "service_name": h["service_name"],
+                    "status": h["status"],
+                    "error": h.get("error"),
+                    "server_time": h.get("server_time"),
+                    "optional": h.get("optional", False),
+                    "cpu_percent": h.get("cpu_percent"),
+                    "memory_bytes": h.get("memory_bytes"),
+                    "memory_limit_bytes": h.get("memory_limit_bytes"),
+                }
                 for h in healthchecks
             ],
             "collector": collector_status,
@@ -342,6 +351,250 @@ class AdminService:
         except Exception as e:
             result["hints"] = [f"Ошибка при сборе диагностики: {e!s}"]
         return result
+
+    async def get_post_trace(self, post_id: int) -> Optional[Dict[str, Any]]:
+        """Полный путь одного сообщения: hub → targets → lifecycle → related tg_events."""
+        from shared.db.post_lifecycle import build_post_trace_timeline
+
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT
+                        id, user_id, brand_id, channel_id,
+                        source_platform, source_id, source_native_id,
+                        domain, url, title, author, status,
+                        post_text, images, videos, extras, platform_texts,
+                        target_channels, target_groups,
+                        created_at, updated_at
+                    FROM posts
+                    WHERE id = %s
+                    """,
+                    (int(post_id),),
+                )
+                row = await cur.fetchone()
+                if row is None:
+                    return None
+                columns = [desc[0] for desc in cur.description]
+                hub = dict(zip(columns, row))
+                for key in ("images", "videos", "extras", "platform_texts", "target_channels", "target_groups"):
+                    default: Any = {} if key in ("extras", "platform_texts") else []
+                    hub[key] = self._parse_json_field(hub.get(key), default=default)
+
+                await cur.execute(
+                    """
+                    SELECT
+                        id, post_id, user_id, platform, status,
+                        publish_at, target_channels, target_groups, result,
+                        created_at, updated_at
+                    FROM post_targets
+                    WHERE post_id = %s
+                    ORDER BY id ASC
+                    """,
+                    (int(post_id),),
+                )
+                target_rows = await cur.fetchall()
+                target_cols = [desc[0] for desc in cur.description]
+                targets: List[Dict[str, Any]] = []
+                for target_row in target_rows:
+                    target = dict(zip(target_cols, target_row))
+                    for key in ("target_channels", "target_groups", "result"):
+                        target[key] = self._parse_json_field(
+                            target.get(key),
+                            default={} if key == "result" else [],
+                        )
+                    for ts_key in ("publish_at", "created_at", "updated_at"):
+                        if target.get(ts_key) is not None:
+                            target[ts_key] = (
+                                target[ts_key].isoformat()
+                                if hasattr(target[ts_key], "isoformat")
+                                else str(target[ts_key])
+                            )
+                    targets.append(target)
+
+                await cur.execute(
+                    """
+                    SELECT
+                        id, platform, post_id, user_id, job_id,
+                        from_status, to_status, actor, payload, created_at
+                    FROM post_lifecycle_events
+                    WHERE post_id = %s
+                    ORDER BY created_at ASC, id ASC
+                    """,
+                    (int(post_id),),
+                )
+                life_rows = await cur.fetchall()
+                life_cols = [desc[0] for desc in cur.description]
+                lifecycle_events: List[Dict[str, Any]] = []
+                for life_row in life_rows:
+                    event = dict(zip(life_cols, life_row))
+                    event["payload"] = self._parse_json_field(event.get("payload"), default={})
+                    if event.get("created_at") is not None:
+                        event["created_at"] = (
+                            event["created_at"].isoformat()
+                            if hasattr(event["created_at"], "isoformat")
+                            else str(event["created_at"])
+                        )
+                    lifecycle_events.append(event)
+
+                related_tg_events: List[Dict[str, Any]] = []
+                user_id = hub.get("user_id")
+                source_native = hub.get("source_native_id")
+                hub_created = hub.get("created_at")
+                if user_id is not None and hub.get("source_platform") == "tg" and hub_created is not None:
+                    try:
+                        await cur.execute(
+                            """
+                            SELECT id, user_id, chat_id, message_id, event_type, rule_id,
+                                   text_preview, metadata, created_at
+                            FROM tg_events
+                            WHERE user_id = %s
+                              AND (
+                                (%s IS NOT NULL AND (
+                                    message_id::text = %s
+                                    OR metadata::text ILIKE %s
+                                ))
+                                OR created_at BETWEEN %s::timestamptz - INTERVAL '1 hour'
+                                                  AND %s::timestamptz + INTERVAL '6 hours'
+                              )
+                            ORDER BY created_at ASC
+                            LIMIT 50
+                            """,
+                            (
+                                int(user_id),
+                                source_native,
+                                str(source_native) if source_native is not None else None,
+                                f"%{source_native}%" if source_native else None,
+                                hub_created,
+                                hub_created,
+                            ),
+                        )
+                        tg_cols = [desc[0] for desc in cur.description]
+                        for tg_row in await cur.fetchall():
+                            item = dict(zip(tg_cols, tg_row))
+                            item["metadata"] = self._parse_json_field(item.get("metadata"), default={})
+                            if item.get("created_at") is not None:
+                                item["created_at"] = (
+                                    item["created_at"].isoformat()
+                                    if hasattr(item["created_at"], "isoformat")
+                                    else str(item["created_at"])
+                                )
+                            related_tg_events.append(item)
+                    except Exception:
+                        related_tg_events = []
+
+                for ts_key in ("created_at", "updated_at"):
+                    if hub.get(ts_key) is not None:
+                        hub[ts_key] = (
+                            hub[ts_key].isoformat()
+                            if hasattr(hub[ts_key], "isoformat")
+                            else str(hub[ts_key])
+                        )
+                post_text = hub.get("post_text") or ""
+                if isinstance(post_text, str) and len(post_text) > 2000:
+                    hub["post_text"] = post_text[:2000] + "…"
+                    hub["post_text_truncated"] = True
+                else:
+                    hub["post_text_truncated"] = False
+
+                timeline = build_post_trace_timeline(
+                    hub=hub,
+                    targets=targets,
+                    lifecycle_events=lifecycle_events,
+                )
+                stages = self._infer_path_stages(hub, targets)
+
+                return {
+                    "post_id": int(post_id),
+                    "hub": hub,
+                    "targets": targets,
+                    "lifecycle_events": lifecycle_events,
+                    "timeline": timeline,
+                    "stages": stages,
+                    "related_tg_events": related_tg_events,
+                    "collected_at": datetime.now(timezone.utc).isoformat(),
+                }
+        finally:
+            await release_db_connection(conn)
+
+    @staticmethod
+    def _parse_json_field(value: Any, *, default: Any) -> Any:
+        if value is None:
+            return default
+        if isinstance(value, (dict, list)):
+            return value
+        if isinstance(value, str):
+            try:
+                return json.loads(value)
+            except Exception:
+                return default
+        return value
+
+    @staticmethod
+    def _infer_path_stages(
+        hub: Dict[str, Any],
+        targets: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        """High-level collect → process → publish checklist for the UI."""
+        hub_status = str(hub.get("status") or "")
+        collected = hub.get("created_at") is not None
+        processed = hub_status in {"ready", "review", "digest_hold", "deleted", "processing"}
+        if hub_status == "collected":
+            processed = False
+        target_statuses = [str(t.get("status") or "") for t in targets]
+        any_publishing = any(s == "publishing" for s in target_statuses)
+        any_published = any(s == "published" for s in target_statuses)
+        any_failed = any(s == "failed" for s in target_statuses)
+        any_ready = any(s in {"pending", "ready", "publishing", "published", "failed"} for s in target_statuses)
+
+        return [
+            {
+                "stage": "collected",
+                "label": "Сбор",
+                "done": collected,
+                "detail": f"source={hub.get('source_platform') or '—'} status={hub_status or '—'}",
+            },
+            {
+                "stage": "processed",
+                "label": "Обработка",
+                "done": processed and hub_status != "processing",
+                "detail": (
+                    "в обработке"
+                    if hub_status == "processing"
+                    else f"hub status={hub_status or '—'}"
+                ),
+            },
+            {
+                "stage": "queued",
+                "label": "Очередь публикации",
+                "done": any_ready,
+                "detail": f"targets={len(targets)}" if targets else "нет post_targets",
+            },
+            {
+                "stage": "publishing",
+                "label": "Публикация",
+                "done": any_published or any_publishing or any_failed,
+                "detail": (
+                    "published"
+                    if any_published
+                    else "publishing"
+                    if any_publishing
+                    else "failed"
+                    if any_failed
+                    else "ожидание"
+                ),
+            },
+            {
+                "stage": "published",
+                "label": "Опубликовано",
+                "done": any_published and not any_failed,
+                "detail": (
+                    f"ok={sum(1 for s in target_statuses if s == 'published')}, "
+                    f"failed={sum(1 for s in target_statuses if s == 'failed')}"
+                ),
+            },
+        ]
 
     @staticmethod
     def _publishing_channels(

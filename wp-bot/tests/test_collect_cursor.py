@@ -11,6 +11,7 @@ from services.collect_cursor import (
     query_params_from_plan,
     should_skip_seen_post,
     to_wp_after_param,
+    wp_field_text,
 )
 
 
@@ -144,3 +145,24 @@ def test_page_target_extras_override_channel():
     )
     assert page_id is None
     assert slug == "about"
+
+
+def test_wp_field_text_prefers_raw():
+    assert wp_field_text({"raw": "Hello", "rendered": "<p>Hello</p>"}) == "Hello"
+    assert wp_field_text({"rendered": "<p>Hi</p>"}) == "<p>Hi</p>"
+    assert wp_field_text("plain") == "plain"
+    assert wp_field_text(None) == ""
+
+
+def test_should_update_fixed_page_from_channel_or_flag():
+    from services.publish_service import should_update_fixed_page
+    from services.wordpress_client import normalize_app_password
+
+    assert should_update_fixed_page({}, {"wp_page_id": 12}) is True
+    assert should_update_fixed_page({}, {"wp_page_slug": "about"}) is True
+    assert should_update_fixed_page({"wp_page_slug": "news"}, {}) is True
+    assert should_update_fixed_page({}, {}) is False
+    assert should_update_fixed_page({"wp_update_page": True}, {}) is True
+    assert should_update_fixed_page({"wp_update_page": False}, {"wp_page_id": 12}) is False
+    assert should_update_fixed_page({"wp_update_page": "no"}, {"wp_page_slug": "about"}) is False
+    assert normalize_app_password("abcd efgh ijkl mnop") == "abcdefghijklmnop"

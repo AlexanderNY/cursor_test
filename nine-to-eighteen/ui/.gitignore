@@ -1,5 +1,6 @@
 node_modules
 dist
 public/pyodide
+public/sqljs
 *.local
 .DS_Store

@@ -421,6 +421,49 @@ export async function siteSetLearnProgress(
   })
 }
 
+export type SiteCertTrack = {
+  id: string
+  title: string
+  done: number
+  total: number
+  earned: boolean
+  quizRequired: number
+  quizPassed: number
+  quizPercent: number
+  quizMissing: string[]
+  code: string
+  issuedAt: string
+}
+
+export type SiteCertBoard = {
+  quizThreshold: number
+  tracks: SiteCertTrack[]
+}
+
+export type SitePublicCert = {
+  code: string
+  holderName: string
+  trackId: string
+  trackTitle: string
+  episodeCount: number
+  quizPercent: number
+  quizRequired: number
+  quizThreshold: number
+  issuedAt: string
+}
+
+export async function siteListCertificates(): Promise<SiteCertBoard> {
+  return request<SiteCertBoard>('/site/learn/certificates')
+}
+
+export async function siteGetPublicCertificate(code: string): Promise<SitePublicCert> {
+  return request<SitePublicCert>(
+    `/site/learn/certificates/${encodeURIComponent(code)}`,
+    {},
+    { auth: false },
+  )
+}
+
 export type SiteLatestPost = {
   appSlug: string
   postSlug: string
@@ -442,6 +485,14 @@ export async function siteListLatestPosts(limit = 5): Promise<SiteLatestPost[]> 
   return data.items || []
 }
 
+export type SiteQuizAttemptSummary = {
+  sourceKey: string
+  score: number
+  total: number
+  percent?: number
+  finishedAt: string
+}
+
 export type SiteStudySummary = {
   quiz: {
     attempts: number
@@ -449,12 +500,9 @@ export type SiteStudySummary = {
     totalSum: number
     avgPercent: number
     lastAt: string | null
-    recent: Array<{
-      sourceKey: string
-      score: number
-      total: number
-      finishedAt: string
-    }>
+    recent: SiteQuizAttemptSummary[]
+    /** Best attempt per source_key (highest score/total). */
+    best?: SiteQuizAttemptSummary[]
   }
   anki: {
     cards: number
@@ -571,6 +619,311 @@ export async function siteUploadPhoto(file: File): Promise<{ ok: boolean; hasPho
     throw new SiteApiError(detail || `HTTP ${response.status}`, response.status)
   }
   return (await response.json()) as { ok: boolean; hasPhoto: boolean }
+}
+
+export type SiteTaskPriority = 'low' | 'normal' | 'high'
+export type SiteTaskBoard = 'backlog' | 'week' | 'today' | 'done'
+export type SiteTaskRepeat = 'none' | 'daily' | 'weekly' | 'monthly'
+
+export type SiteTaskChecklistItem = {
+  id: string
+  title: string
+  done: boolean
+}
+
+export type SiteUserTask = {
+  id: number
+  parentId: number | null
+  title: string
+  notes: string
+  tag: string
+  dueAt: string | null
+  dueTime: string | null
+  remindAt: string | null
+  priority: SiteTaskPriority
+  board: SiteTaskBoard
+  checklist: SiteTaskChecklistItem[]
+  repeatRule: SiteTaskRepeat
+  seriesId: string | null
+  completed: boolean
+  completedAt: string | null
+  sortOrder: number
+  createdAt: string
+  updatedAt: string
+  subtasks: SiteUserTask[]
+}
+
+export type SiteUserHabit = {
+  id: number
+  title: string
+  tag: string
+  color: string
+  sortOrder: number
+  isArchived: boolean
+  createdAt: string
+  updatedAt: string
+  checks: string[]
+  streak: number
+}
+
+export type SiteNoteFile = {
+  id: number
+  filename: string
+  contentType: string
+  sizeBytes: number
+  createdAt: string
+}
+
+export type SiteUserNote = {
+  id: number
+  title: string
+  body: string
+  tag: string
+  createdAt: string
+  updatedAt: string
+  files: SiteNoteFile[]
+}
+
+export type SiteFocusLog = {
+  id: number
+  minutes: number
+  label: string
+  createdAt: string
+}
+
+export async function siteListUserTasks(): Promise<SiteUserTask[]> {
+  const data = await request<{ items: SiteUserTask[] }>('/site/tasks')
+  return (data.items || []).map(normalizeTask)
+}
+
+function normalizeTask(raw: SiteUserTask): SiteUserTask {
+  return {
+    ...raw,
+    parentId: raw.parentId ?? null,
+    dueTime: raw.dueTime ?? null,
+    remindAt: raw.remindAt ?? null,
+    priority: raw.priority || 'normal',
+    board: raw.board || 'backlog',
+    checklist: Array.isArray(raw.checklist) ? raw.checklist : [],
+    repeatRule: raw.repeatRule || 'none',
+    seriesId: raw.seriesId ?? null,
+    subtasks: Array.isArray(raw.subtasks) ? raw.subtasks.map(normalizeTask) : [],
+  }
+}
+
+export async function siteCreateUserTask(input: {
+  title: string
+  notes?: string
+  tag?: string
+  due_at?: string | null
+  due_time?: string | null
+  remind_at?: string | null
+  priority?: SiteTaskPriority
+  board?: SiteTaskBoard
+  checklist?: SiteTaskChecklistItem[]
+  repeat_rule?: SiteTaskRepeat
+  parent_id?: number | null
+}): Promise<SiteUserTask> {
+  const created = await request<SiteUserTask>('/site/tasks', {
+    method: 'POST',
+    body: JSON.stringify({
+      title: input.title,
+      notes: input.notes || '',
+      tag: input.tag || '',
+      due_at: input.due_at || null,
+      due_time: input.due_time || null,
+      remind_at: input.remind_at || null,
+      priority: input.priority || 'normal',
+      board: input.board || 'backlog',
+      checklist: input.checklist || [],
+      repeat_rule: input.repeat_rule || 'none',
+      parent_id: input.parent_id ?? null,
+    }),
+  })
+  return normalizeTask(created)
+}
+
+export async function siteUpdateUserTask(
+  taskId: number,
+  input: {
+    title?: string
+    notes?: string
+    tag?: string
+    due_at?: string | null
+    due_time?: string | null
+    remind_at?: string | null
+    priority?: SiteTaskPriority
+    board?: SiteTaskBoard
+    checklist?: SiteTaskChecklistItem[]
+    repeat_rule?: SiteTaskRepeat
+    parent_id?: number | null
+    completed?: boolean
+    sort_order?: number
+  },
+): Promise<SiteUserTask> {
+  const updated = await request<SiteUserTask>(`/site/tasks/${taskId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  })
+  return normalizeTask(updated)
+}
+
+export async function siteDeleteUserTask(taskId: number): Promise<{ ok: boolean; id: number }> {
+  return request(`/site/tasks/${taskId}`, { method: 'DELETE' })
+}
+
+export async function siteListHabits(): Promise<SiteUserHabit[]> {
+  const data = await request<{ items: SiteUserHabit[] }>('/site/habits')
+  return data.items || []
+}
+
+export async function siteCreateHabit(input: {
+  title: string
+  tag?: string
+  color?: string
+}): Promise<SiteUserHabit> {
+  return request('/site/habits', {
+    method: 'POST',
+    body: JSON.stringify({
+      title: input.title,
+      tag: input.tag || '',
+      color: input.color || '',
+    }),
+  })
+}
+
+export async function siteUpdateHabit(
+  habitId: number,
+  input: {
+    title?: string
+    tag?: string
+    color?: string
+    is_archived?: boolean
+    sort_order?: number
+  },
+): Promise<SiteUserHabit> {
+  return request(`/site/habits/${habitId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  })
+}
+
+export async function siteDeleteHabit(habitId: number): Promise<{ ok: boolean; id: number }> {
+  return request(`/site/habits/${habitId}`, { method: 'DELETE' })
+}
+
+export async function siteSetHabitCheck(
+  habitId: number,
+  input: { day?: string; checked: boolean },
+): Promise<SiteUserHabit> {
+  return request(`/site/habits/${habitId}/checks`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  })
+}
+
+export async function siteListNotes(): Promise<SiteUserNote[]> {
+  const data = await request<{ items: SiteUserNote[] }>('/site/notes')
+  return data.items || []
+}
+
+export async function siteCreateNote(input: {
+  title?: string
+  body?: string
+  tag?: string
+}): Promise<SiteUserNote> {
+  return request('/site/notes', {
+    method: 'POST',
+    body: JSON.stringify({
+      title: input.title || '',
+      body: input.body || '',
+      tag: input.tag || '',
+    }),
+  })
+}
+
+export async function siteUpdateNote(
+  noteId: number,
+  input: { title?: string; body?: string; tag?: string },
+): Promise<SiteUserNote> {
+  return request(`/site/notes/${noteId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  })
+}
+
+export async function siteDeleteNote(noteId: number): Promise<{ ok: boolean; id: number }> {
+  return request(`/site/notes/${noteId}`, { method: 'DELETE' })
+}
+
+export async function siteUploadNoteFile(
+  noteId: number,
+  file: File,
+): Promise<SiteNoteFile> {
+  const token = getSiteAccessToken()
+  const form = new FormData()
+  form.append('file', file)
+  const response = await fetch(`${API_BASE}/site/notes/${noteId}/files`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    body: form,
+  })
+  if (!response.ok) {
+    let detail = response.statusText
+    try {
+      const data = (await response.json()) as { detail?: unknown }
+      if (typeof data.detail === 'string') {
+        detail = data.detail
+      }
+    } catch {
+      /* ignore */
+    }
+    throw new SiteApiError(detail || `HTTP ${response.status}`, response.status)
+  }
+  return (await response.json()) as SiteNoteFile
+}
+
+export async function siteDeleteNoteFile(
+  noteId: number,
+  fileId: number,
+): Promise<{ ok: boolean; id: number }> {
+  return request(`/site/notes/${noteId}/files/${fileId}`, { method: 'DELETE' })
+}
+
+export function siteNoteFileUrl(noteId: number, fileId: number): string {
+  return `${API_BASE}/site/notes/${noteId}/files/${fileId}`
+}
+
+export async function siteFetchNoteFileBlob(
+  noteId: number,
+  fileId: number,
+): Promise<Blob> {
+  const token = getSiteAccessToken()
+  const response = await fetch(siteNoteFileUrl(noteId, fileId), {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  })
+  if (!response.ok) {
+    throw new SiteApiError(`HTTP ${response.status}`, response.status)
+  }
+  return response.blob()
+}
+
+export async function siteListFocusLogs(): Promise<SiteFocusLog[]> {
+  const data = await request<{ items: SiteFocusLog[] }>('/site/focus-logs')
+  return data.items || []
+}
+
+export async function siteCreateFocusLog(input: {
+  minutes: number
+  label?: string
+}): Promise<SiteFocusLog> {
+  return request('/site/focus-logs', {
+    method: 'POST',
+    body: JSON.stringify({
+      minutes: input.minutes,
+      label: input.label || '',
+    }),
+  })
 }
 
 /** URL фото профиля (требует Authorization — используйте blob через siteFetchPhotoBlob). */

@@ -32,6 +32,7 @@ x-ai-environment: &ai-environment
   AI_ENABLED: "${AI_ENABLED:-true}"
   CORE_SERVICE_URL: http://core:8002
   AI_SETTINGS_URL: http://core:8002/internal/ai-enabled
+  INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN}
 
 # Linux Engine does not define host.docker.internal (Docker Desktop does).
 # host-gateway maps that name to the VM/host IP so DATABASE_URL can reach Postgres.
@@ -83,6 +84,7 @@ services:
       <<: *ai-environment
       DATABASE_URL: ${DATABASE_URL}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN}
       DB_POOL_MINSIZE: ${DB_POOL_MINSIZE:-2}
       DB_POOL_MAXSIZE: ${DB_POOL_MAXSIZE_HEAVY:-16}
       AI_MAX_CONCURRENT: ${AI_MAX_CONCURRENT:-1}
@@ -104,6 +106,7 @@ services:
       VK_BOT_SERVICE_URL: http://vk-bot:8005
       WP_BOT_SERVICE_URL: http://wp-bot:8006
       URL_BOT_SERVICE_URL: http://url-bot:8007
+      TW_BOT_SERVICE_URL: http://tw-bot:8014
       SCHEDULER_SERVICE_URL: http://scheduler:8003
       COLLECTOR_SERVICE_URL: http://collector:8009
       PROCESSOR_SERVICE_URL: http://processor:8010
@@ -129,6 +132,7 @@ services:
       - API_GATEWAY_URL=http://api_gateway:8000
       - DATABASE_URL=${DATABASE_URL}
       - SECRET_KEY=${SECRET_KEY}
+      - INTERNAL_API_TOKEN=${INTERNAL_API_TOKEN}
       - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
       - DB_POOL_MINSIZE=${DB_POOL_MINSIZE:-2}
       - DB_POOL_MAXSIZE=${DB_POOL_MAXSIZE:-8}
@@ -174,6 +178,7 @@ services:
       - TG_GAME_SERVICE_URL=http://tg-game:8015
       - GAME_ADMIN_API_TOKEN=${GAME_ADMIN_API_TOKEN}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - INTERNAL_API_TOKEN=${INTERNAL_API_TOKEN}
       - AUTH_SERVICE_URL=http://auth:8001
       - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
       - TRUSTED_PROXY_CIDRS=${TRUSTED_PROXY_CIDRS:-127.0.0.0/8,::1/128,172.20.0.0/16}
@@ -199,6 +204,8 @@ services:
       - API_GATEWAY_URL=http://gateway:8000
       - CORE_SERVICE_URL=http://core:8002
       - DATABASE_URL=${DATABASE_URL}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - INTERNAL_API_TOKEN=${INTERNAL_API_TOKEN}
       - DB_POOL_MINSIZE=${DB_POOL_MINSIZE:-2}
       - DB_POOL_MAXSIZE=${DB_POOL_MAXSIZE:-8}
       - POLL_INTERVAL_SECONDS=60
@@ -267,7 +274,7 @@ services:
         ipv4_address: 172.20.10.6
 
   url-bot:
-    <<: *mem-selenium
+    <<: [*host-docker-internal, *mem-selenium]
     build: 
       context: .
       dockerfile: ./url-bot/Dockerfile 
@@ -280,6 +287,10 @@ services:
       CHROME_BIN: /usr/bin/chromium
       CHROMEDRIVER_PATH: /usr/bin/chromedriver
       SELENIUM_MAX_CONCURRENT: ${SELENIUM_MAX_CONCURRENT:-1}
+      # SOCKS/HTTP for Cloudflare-heavy sites (finviz). Host port 10808 is typical local proxy.
+      SCRAPE_PROXY_URL: ${SCRAPE_PROXY_URL:-socks5://host.docker.internal:10808}
+      SCRAPE_STEALTH_ENABLED: ${SCRAPE_STEALTH_ENABLED:-true}
+      CLOUDFLARE_CHALLENGE_WAIT_SECONDS: ${CLOUDFLARE_CHALLENGE_WAIT_SECONDS:-50}
       TZ: ${TZ:-Europe/Moscow}
     healthcheck:
       <<: *hc
@@ -449,6 +460,8 @@ services:
     environment:
       <<: *ai-environment
       DATABASE_URL: ${DATABASE_URL}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN}
       DB_POOL_MINSIZE: ${DB_POOL_MINSIZE:-2}
       DB_POOL_MAXSIZE: ${DB_POOL_MAXSIZE:-8}
       API_PORT: "8013"

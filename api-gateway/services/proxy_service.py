@@ -19,6 +19,7 @@ class ProxyService:
         "connection",
         "x-user-id",
         "x-user-role",
+        "x-internal-token",
     }
     
     def __init__(self, http_client: httpx.AsyncClient):
@@ -47,10 +48,17 @@ class ProxyService:
         actual_method = override_method or method
         request_headers = self.prepare_headers(dict(request.headers))
         # На случай иного регистра ключей после копирования — принудительно снять identity
-        for spoofed in ("X-User-Id", "X-User-Role", "x-user-id", "x-user-role"):
+        for spoofed in (
+            "X-User-Id",
+            "X-User-Role",
+            "x-user-id",
+            "x-user-role",
+            "X-Internal-Token",
+            "x-internal-token",
+        ):
             request_headers.pop(spoofed, None)
         if extra_headers:
-            # extra_headers от gateway-кода допускаются, но клиентский spoof уже снят
+            # Gateway-only headers (including X-Internal-Token) may be re-injected here.
             cleaned_extra = {
                 k: v
                 for k, v in extra_headers.items()

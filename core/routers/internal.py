@@ -1,16 +1,21 @@
-"""Внутренние эндпоинты для сервисов в Docker-сети (без JWT)."""
+"""Внутренние эндпоинты для сервисов в Docker-сети (X-Internal-Token)."""
 
 from typing import Any, Optional
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
 from schemas import AiEnabledResponse
 from services.system_settings_service import system_settings_service
 from services.smm_service import smm_service
 from services.platform_auth_service import platform_auth_service
+from shared.internal_auth_fastapi import require_internal_token
 
-router = APIRouter(prefix="/internal", tags=["Internal"])
+router = APIRouter(
+    prefix="/internal",
+    tags=["Internal"],
+    dependencies=[Depends(require_internal_token)],
+)
 
 
 class InboxIngestBody(BaseModel):

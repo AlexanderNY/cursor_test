@@ -4,6 +4,9 @@ export interface HealthcheckItem {
   error?: string
   server_time?: string | null
   optional?: boolean
+  cpu_percent?: number | null
+  memory_bytes?: number | null
+  memory_limit_bytes?: number | null
 }
 
 export interface HealthcheckResponse {
@@ -34,6 +37,49 @@ export interface UserStatisticsItem {
 
 export interface UserStatisticsResponse {
   users: UserStatisticsItem[]
+}
+
+export interface PlatformEffectivenessItem {
+  platform: string
+  total: number
+  published: number
+  failed: number
+  skipped: number
+  in_queue: number
+  success_rate: number | null
+}
+
+export interface PipelineEffectivenessResponse {
+  period_days: number
+  since: string
+  targets_total: number
+  published: number
+  failed: number
+  skipped: number
+  in_queue: number
+  success_rate: number | null
+  by_platform: PlatformEffectivenessItem[]
+  failures: Array<{ reason: string; count: number }>
+  latency: {
+    sample_size: number
+    median_minutes: number | null
+    p95_minutes: number | null
+  }
+  stuck: {
+    posts_collected: number
+    posts_processing: number
+    posts_review: number
+    posts_ready: number
+    collected_older_than_1h: number
+    targets_pending: number
+    targets_ready: number
+    targets_publishing: number
+    ready_older_than_1h: number
+    publishing_older_than_15m: number
+  }
+  users_with_posts: number
+  users_with_published: number
+  collected_at?: string | null
 }
 
 export interface ScheduleSnapshot {
@@ -320,6 +366,17 @@ export interface StorageDeleteResponse {
   key: string
 }
 
+export interface StorageDeleteFailure {
+  key: string
+  error: string
+}
+
+export interface StorageBulkDeleteResponse {
+  ok: boolean
+  deleted: string[]
+  failed: StorageDeleteFailure[]
+}
+
 export interface PostingDiagnosticsResponse {
   tg_targets_by_status?: Array<{ status: string; count: number }>
   tg_posts_by_status: Array<{ status: string; count: number }>
@@ -328,6 +385,36 @@ export interface PostingDiagnosticsResponse {
   profiles_with_channel: number
   hints: string[]
   collected_at: string | null
+}
+
+export interface PostTraceStage {
+  stage: string
+  label: string
+  done: boolean
+  detail?: string | null
+}
+
+export interface PostTraceTimelineItem {
+  kind: string
+  at?: string | null
+  platform?: string | null
+  from_status?: string | null
+  to_status?: string | null
+  actor?: string | null
+  job_id?: number | null
+  payload?: Record<string, unknown>
+  source?: string | null
+}
+
+export interface PostTraceResponse {
+  post_id: number
+  hub: Record<string, unknown>
+  targets: Array<Record<string, unknown>>
+  lifecycle_events: Array<Record<string, unknown>>
+  timeline: PostTraceTimelineItem[]
+  stages: PostTraceStage[]
+  related_tg_events: Array<Record<string, unknown>>
+  collected_at?: string | null
 }
 
 /** Гео по публичному IP (ориентир; TZ контейнера — в local_*). */

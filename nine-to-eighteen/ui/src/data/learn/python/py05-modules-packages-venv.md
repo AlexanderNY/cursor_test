@@ -72,6 +72,23 @@ if __name__ == "__main__":
 3. Запустите как скрипт и как `python -c "import mylib"`.
 4. `pip freeze > requirements.txt`; объясните, чем freeze отличается от «прямых» зависимостей.
 
+Модель `__all__` / публичных имён (venv делайте локально; в [Code](/game/code) — только идея экспорта):
+
+```python
+fake_module = {
+    "helper": lambda: "ok",
+    "_private": 1,
+    "__dunder__": 2,
+    "util": "public",
+}
+
+def public_names(mapping: dict[str, object]) -> list[str]:
+    return sorted(name for name in mapping if not name.startswith("_"))
+
+print("public:", public_names(fake_module))
+print("__name__ in this run:", __name__)
+```
+
 **В группу:** назовите 3 модуля stdlib, которыми пользуетесь ежедневно.
 
 **Готово, если…**

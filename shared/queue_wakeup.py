@@ -80,12 +80,17 @@ async def listen_forever(
 
 
 async def wake_http(base_url: str, path: str, *, timeout: float = 5.0) -> bool:
+    from shared.internal_auth import internal_auth_headers
+
     base = (base_url or "").rstrip("/")
     if not base:
         return False
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
-            resp = await client.post(f"{base}{path}")
+            resp = await client.post(
+                f"{base}{path}",
+                headers=internal_auth_headers(),
+            )
             return resp.status_code < 400
     except Exception as exc:
         logger.debug("wake_http %s%s failed: %s", base, path, exc)

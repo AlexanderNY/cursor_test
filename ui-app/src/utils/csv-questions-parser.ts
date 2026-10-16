@@ -1,4 +1,4 @@
-import type { GameOptionInput, GameQuestionCreate } from '@/types/game'
+import type { GameOptionInput, GameQuestionCreate, GameQuestionDetail } from '@/types/game'
 
 export const CSV_QUESTIONS_COLUMNS = [
   'prompt_text',
@@ -274,8 +274,15 @@ export function parseQuestionsCsv(content: string, modeId: number): CsvParseResu
   return { questions, errors }
 }
 
-export function downloadCsvTemplate(filename = 'polls-questions-template.csv'): void {
-  const blob = new Blob([`\uFEFF${CSV_QUESTIONS_EXAMPLE}`], {
+function escapeCsvField(value: string): string {
+  if (/[;"\n\r]/.test(value)) {
+    return `"${value.replace(/"/g, '""')}"`
+  }
+  return value
+}
+
+function downloadCsvBlob(content: string, filename: string): void {
+  const blob = new Blob([`\uFEFF${content}`], {
     type: 'text/csv;charset=utf-8',
   })
   const url = URL.createObjectURL(blob)
@@ -284,4 +291,37 @@ export function downloadCsvTemplate(filename = 'polls-questions-template.csv'): 
   anchor.download = filename
   anchor.click()
   URL.revokeObjectURL(url)
+}
+
+export function questionsToCsv(questions: GameQuestionDetail[]): string {
+  const header = CSV_QUESTIONS_COLUMNS.join(';')
+  const rows = questions.map((question) => {
+    const optionsByIndex = new Map(
+      question.options.map((option) => [option.option_index, option]),
+    )
+    const optionTexts = [1, 2, 3, 4, 5, 6].map(
+      (index) => optionsByIndex.get(index)?.option_text ?? '',
+    )
+    const correctOption = question.options.find((option) => option.is_correct)
+    const correct = correctOption ? String(correctOption.option_index) : ''
+    const cells = [
+      question.prompt_text,
+      ...optionTexts,
+      correct,
+      question.image_url ?? '',
+    ]
+    return cells.map(escapeCsvField).join(';')
+  })
+  return [header, ...rows].join('\n') + (rows.length > 0 ? '\n' : '')
+}
+
+export function downloadCsvTemplate(filename = 'polls-questions-template.csv'): void {
+  downloadCsvBlob(CSV_QUESTIONS_EXAMPLE, filename)
+}
+
+export function downloadQuestionsCsv(
+  questions: GameQuestionDetail[],
+  filename = 'polls-questions.csv',
+): void {
+  downloadCsvBlob(questionsToCsv(questions), filename)
 }

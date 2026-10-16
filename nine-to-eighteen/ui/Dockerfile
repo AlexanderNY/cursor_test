@@ -34,7 +34,7 @@ COPY package*.json ./
 RUN --mount=type=cache,target=/root/.npm npm ci
 
 COPY . .
-RUN node scripts/copy-pyodide.mjs
+RUN node scripts/copy-pyodide.mjs && node scripts/copy-sqljs.mjs
 
 EXPOSE 8200
 

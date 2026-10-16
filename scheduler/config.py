@@ -26,6 +26,10 @@ class Settings(BaseSettings):
     DB_POOL_MINSIZE: int = 2
     DB_POOL_MAXSIZE: int = 8
 
+    JWT_SECRET_KEY: str = ""
+    JWT_ALGORITHM: str = "HS256"
+    INTERNAL_API_TOKEN: str = ""
+
     POLL_INTERVAL_SECONDS: int = 60
     NOTIFY_ON_CHANGE_ONLY: bool = True
     SMM_JOBS_RUN_ENABLED: bool = True

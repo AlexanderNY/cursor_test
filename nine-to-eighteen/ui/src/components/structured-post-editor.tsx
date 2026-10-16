@@ -1,4 +1,6 @@
+import { HtmlEditor } from '@/components/html-editor'
 import { LearnContent } from '@/components/learn-content'
+import { MarkdownField } from '@/components/markdown-field'
 import type { MnemonicTechniqueId, StructuredPost } from '@/data/site/structured-post'
 import {
   EMPTY_LEARN_STRUCTURED_POST,
@@ -61,20 +63,17 @@ export function StructuredPostEditor({
       )}
 
       <div id="edit-theory" className="structured-editor-block admin-jump-target">
-        <label className="learn-admin-field">
-          <span>Введение (теория)</span>
-          <textarea
-            className="learn-admin-textarea"
-            rows={4}
-            value={value.intro}
-            onChange={(e) =>
-              patch((d) => {
-                d.intro = e.target.value
-              })
-            }
-            placeholder="Зачем эта тема, контекст, что получит читатель…"
-          />
-        </label>
+        <MarkdownField
+          label="Введение (теория, markdown)"
+          rows={4}
+          value={value.intro}
+          onChange={(next) =>
+            patch((d) => {
+              d.intro = next
+            })
+          }
+          placeholder="Зачем эта тема, контекст, что получит читатель…"
+        />
 
         <div className="structured-editor-block-head">
           <h4 className="learn-panel-heading">Основная часть (теория)</h4>
@@ -103,19 +102,16 @@ export function StructuredPostEditor({
                 }
               />
             </label>
-            <label className="learn-admin-field">
-              <span>Текст (markdown)</span>
-              <textarea
-                className="learn-admin-textarea"
-                rows={5}
-                value={section.body}
-                onChange={(e) =>
-                  patch((d) => {
-                    d.sections[index].body = e.target.value
-                  })
-                }
-              />
-            </label>
+            <MarkdownField
+              label="Текст (markdown)"
+              rows={5}
+              value={section.body}
+              onChange={(next) =>
+                patch((d) => {
+                  d.sections[index].body = next
+                })
+              }
+            />
             {value.sections.length > 1 ? (
               <button
                 type="button"
@@ -141,20 +137,17 @@ export function StructuredPostEditor({
           <p className="learn-section-note">
             Что сделать на ПК: цель, шаги, что сдать в группу, чеклист «готово если».
           </p>
-          <label className="learn-admin-field">
-            <span>Лаба (markdown)</span>
-            <textarea
-              className="learn-admin-textarea"
-              rows={8}
-              value={value.lab || ''}
-              onChange={(e) =>
-                patch((d) => {
-                  d.lab = e.target.value
-                })
-              }
-              placeholder="**Цель.** …&#10;&#10;**Шаги.**&#10;1. …"
-            />
-          </label>
+          <MarkdownField
+            label="Лаба (markdown)"
+            rows={8}
+            value={value.lab || ''}
+            onChange={(next) =>
+              patch((d) => {
+                d.lab = next
+              })
+            }
+            placeholder={'**Цель.** …\n\n**Шаги.**\n1. …'}
+          />
         </div>
       ) : null}
 
@@ -300,25 +293,21 @@ export function StructuredPostEditor({
             <h4 className="learn-panel-heading">Шпаргалка (HTML)</h4>
           </div>
           <p className="learn-section-note">
-            Формулы, команды, таблицы, суть урока. Разрешены h1–h4, списки, table, pre/code.
+            Формулы, команды, таблицы, суть урока. Разрешены h1–h4, списки, table, pre/code. В
+            `.md` уходит как HTML под секцией «Шпаргалка».
           </p>
-          <label className="learn-admin-field">
-            <span>HTML</span>
-            <textarea
-              className="learn-admin-textarea"
-              rows={10}
-              value={value.cheatsheetHtml || ''}
-              onChange={(e) =>
-                patch((d) => {
-                  d.cheatsheetHtml = e.target.value
-                })
-              }
-              placeholder="<h3>Суть</h3>…"
-            />
-          </label>
+          <HtmlEditor
+            label="Шпаргалка (HTML)"
+            value={value.cheatsheetHtml || ''}
+            onChange={(html) =>
+              patch((d) => {
+                d.cheatsheetHtml = html
+              })
+            }
+          />
           {(value.cheatsheetHtml || '').trim() ? (
             <div className="structured-editor-card">
-              <p className="learn-section-note">Превью</p>
+              <p className="learn-section-note">Превью как на странице урока</p>
               <LearnContent content={value.cheatsheetHtml || ''} format="html" />
             </div>
           ) : null}
@@ -588,19 +577,16 @@ export function StructuredPostEditor({
         </div>
       )}
 
-      <label className="learn-admin-field">
-        <span>Дополнительно (необязательный markdown)</span>
-        <textarea
-          className="learn-admin-textarea"
-          rows={3}
-          value={value.appendix || ''}
-          onChange={(e) =>
-            patch((d) => {
-              d.appendix = e.target.value
-            })
-          }
-        />
-      </label>
+      <MarkdownField
+        label="Дополнительно (необязательный markdown)"
+        rows={3}
+        value={value.appendix || ''}
+        onChange={(next) =>
+          patch((d) => {
+            d.appendix = next
+          })
+        }
+      />
 
       <button
         type="button"

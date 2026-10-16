@@ -152,11 +152,14 @@ async def check_health():
     Returns:
         Статус здоровья gateway
     """
+    from shared.container_stats import get_container_stats
+
     return {
         "status": "healthy",
         "service": "api-gateway",
         "server_time": datetime.utcnow().isoformat() + "Z",
         "redis_blacklist": token_blacklist_redis.connected,
+        **get_container_stats(),
     }
 
 

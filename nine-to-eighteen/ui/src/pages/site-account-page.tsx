@@ -43,6 +43,7 @@ type AccountSectionId =
   | 'study'
   | 'learning-map'
   | 'hh-resume'
+  | 'portfolio'
   | 'contact'
   | 'password'
   | `app:${string}`
@@ -65,6 +66,7 @@ function roleFunctions(session: SiteAuthSession): string[] {
     'Личный кабинет учащегося: прогресс Learn, тесты и anki',
     'Форма связи с командой',
     'Карта обучения и материалы Learn',
+    'Публичная страница кейсов',
   ]
   if (session.appAdmin.length > 0) {
     items.push(
@@ -211,6 +213,7 @@ export function SiteAccountPage() {
       { id: 'learn', label: 'Learn', hint: 'Теория и прогресс' },
       { id: 'learning-map', label: 'Карта обучения', hint: 'Mind map · собеседование' },
       { id: 'hh-resume', label: 'Резюме', hint: 'Плашка сервиса на главной' },
+      { id: 'portfolio', label: 'Портфолио', hint: 'Публичная страница кейсов' },
       { id: 'contact', label: 'Форма связи', hint: 'Написать команде' },
       { id: 'password', label: 'Смена пароля', hint: 'Безопасность аккаунта' },
     ]
@@ -257,6 +260,7 @@ export function SiteAccountPage() {
             learn: 'Теория и прогресс',
             'learning-map': 'Mind map · собеседование',
             'hh-resume': 'Плашка сервиса на главной',
+            portfolio: 'Публичная страница кейсов',
             contact: 'Написать команде',
             password: 'Безопасность аккаунта',
             'site-admin': 'Витрина и пользователи',
@@ -720,6 +724,20 @@ export function SiteAccountPage() {
                 ) : null}
                 <Link to="/account" className="learn-admin-btn">
                   Анкета
+                </Link>
+              </div>
+            </div>
+          ) : null}
+
+          {activeId === 'portfolio' ? (
+            <div className="account-panel-body">
+              <p className="learn-section-note">
+                Публичная страница кейсов: задача, что сделано, результат. Ссылка вида{' '}
+                <code>/p/адрес</code> открывается без входа.
+              </p>
+              <div className="account-actions">
+                <Link to="/game/portfolio" className="learn-admin-btn learn-admin-btn-primary">
+                  Собрать портфолио
                 </Link>
               </div>
             </div>

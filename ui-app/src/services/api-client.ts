@@ -59,11 +59,13 @@ apiClient.interceptors.response.use(
   async (error: AxiosError<ApiError>) => {
     const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean }
     
-    // Проверяем что это именно ошибка истечения токена, а не другая 401 ошибка
-    const errorDetail = normalizeErrorDetail(error.response?.data?.detail)
-    const isTokenExpired = errorDetail.includes('Token has expired')
-    
-    if (error.response?.status === 401 && isTokenExpired && !originalRequest._retry) {
+    // On 401 try refresh once (expired, revoked, or other access failures).
+    const requestUrl = String(originalRequest?.url || '')
+    const skipRefresh =
+      requestUrl.includes('/auth/login') ||
+      requestUrl.includes('/auth/register') ||
+      requestUrl.includes('/auth/refresh')
+    if (error.response?.status === 401 && !originalRequest._retry && !skipRefresh) {
       originalRequest._retry = true
       
       const refreshToken = localStorage.getItem('refresh_token')

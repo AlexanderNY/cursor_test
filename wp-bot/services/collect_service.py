@@ -27,6 +27,7 @@ from services.collect_cursor import (
     plan_next_page,
     query_params_from_plan,
     should_skip_seen_post,
+    wp_field_text,
 )
 from services.wordpress_client import WordPressClient
 from shared.text_conditions import should_save_text
@@ -236,6 +237,7 @@ class CollectService:
                         orderby=str(params.get("orderby") or "date"),
                         order=str(params.get("order") or "desc"),
                         fields=params.get("_fields"),
+                        context="edit" if wp_client.has_auth else None,
                     )
                     posts = result.get("posts") or []
                     if not isinstance(posts, list):
@@ -252,16 +254,8 @@ class CollectService:
                             continue
 
                         wp_post_link = wp_post.get("link", "")
-                        title = (
-                            wp_post.get("title", {}).get("rendered", "")
-                            if isinstance(wp_post.get("title"), dict)
-                            else wp_post.get("title", "")
-                        )
-                        content = (
-                            wp_post.get("content", {}).get("rendered", "")
-                            if isinstance(wp_post.get("content"), dict)
-                            else wp_post.get("content", "")
-                        )
+                        title = wp_field_text(wp_post.get("title"))
+                        content = wp_field_text(wp_post.get("content"))
                         text_for_filter = f"{title}\n{content}"
                         if not should_save_text(
                             text_for_filter or "",

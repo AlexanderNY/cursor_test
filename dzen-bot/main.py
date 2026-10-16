@@ -7,9 +7,10 @@ import sys
 from typing import Optional
 
 import uvicorn
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 
 from config import settings
+from shared.internal_auth_fastapi import require_internal_token
 from database import init_db, close_db
 from services.dzen_bot_service import DzenBotService
 from services.dzen_subscriptions_probe import (
@@ -69,7 +70,7 @@ async def collect_once():
 
 
 @app.post("/schedule")
-async def schedule_from_scheduler():
+async def schedule_from_scheduler(_internal: None = Depends(require_internal_token)):
     """Оповещение от scheduler: публикация и сбор в фоне."""
     global bot_service
     bs = bot_service

@@ -61,6 +61,47 @@ def _page_target_from_sources(
     return page_id, slug
 
 
+_TRUE_FLAGS = {"1", "true", "yes", "on"}
+_FALSE_FLAGS = {"0", "false", "no", "off"}
+
+
+def _explicit_update_page(extras: Dict[str, Any]) -> Optional[bool]:
+    """None when the post does not force page-update on or off."""
+    if "wp_update_page" not in extras:
+        return None
+    raw = extras.get("wp_update_page")
+    if isinstance(raw, str):
+        lowered = raw.strip().lower()
+        if lowered in _TRUE_FLAGS:
+            return True
+        if lowered in _FALSE_FLAGS:
+            return False
+        return None
+    if isinstance(raw, bool):
+        return raw
+    if isinstance(raw, (int, float)):
+        return bool(raw)
+    return None
+
+
+def should_update_fixed_page(
+    extras: Dict[str, Any],
+    channel_processing: Optional[Dict[str, Any]],
+) -> bool:
+    """
+    Update the fixed page when the post asks for it, or when the own channel
+    has wp_page_id / wp_page_slug. Explicit wp_update_page=false creates a post.
+    """
+    flag = _explicit_update_page(extras if isinstance(extras, dict) else {})
+    if flag is not None:
+        return flag
+    page_id, slug = _page_target_from_sources(
+        extras=extras if isinstance(extras, dict) else {},
+        channel_processing=channel_processing,
+    )
+    return page_id is not None or bool(slug)
+
+
 class PublishService:
     """Публикация постов из очереди в WordPress по brand channel / target_channels."""
 
@@ -109,7 +150,6 @@ class PublishService:
                     ok_any = False
                     site_errors: list[str] = []
                     extras = _parse_json_dict(post.get("extras"))
-                    update_page = bool(extras.get("wp_update_page"))
 
                     for site_info in sites:
                         site_url = site_info["site_url"]
@@ -132,10 +172,12 @@ class PublishService:
                             app_password=creds["app_password"],
                         )
 
+                        channel_processing = _parse_json_dict(channel.get("processing"))
+                        update_page = should_update_fixed_page(extras, channel_processing)
                         if update_page:
                             page_id, page_slug = _page_target_from_sources(
                                 extras=extras,
-                                channel_processing=_parse_json_dict(channel.get("processing")),
+                                channel_processing=channel_processing,
                             )
                             resolved_id = page_id
                             if resolved_id is None and page_slug:

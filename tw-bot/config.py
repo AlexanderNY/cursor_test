@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     CHROMEDRIVER_PATH: str = ""
     SELENIUM_MAX_CONCURRENT: int = 2
     X_SELENIUM_FOLLOWING_MAX_SCROLL: int = 4
+    X_FEED_BROWSER_MAX_TWEETS: int = 30
 
     # S3 (диагностические скриншоты Selenium)
     S3_ENDPOINT_URL: str = ""

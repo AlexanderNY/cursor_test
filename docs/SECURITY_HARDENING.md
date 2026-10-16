@@ -14,6 +14,10 @@
 | IDOR | `/tg-bot/auth/status/{id}`, `/tg-bot/channels/{id}` — свой user или admin |
 | Rate limit | `X-Forwarded-For` только от `TRUSTED_PROXY_CIDRS` |
 | VK OAuth | Signed `state` (HMAC), frontend allowlist |
+| Internal API | `INTERNAL_API_TOKEN` / `X-Internal-Token` for `/schedules`, `/internal/*`, bot `/schedule` |
+| Access revoke | `users.tokens_valid_after` + Redis cutoff vs JWT `iat` |
+| Profiles | `GET /*/profiles` admin-only; TG/X/WP secrets masked |
+| Threads/X OAuth | Signed `state` (shared helper); `/tw/oauth/*` on gateway |
 | Publish | Claim `FOR UPDATE SKIP LOCKED` → `publishing` (tg/vk/ig/tw/dzen) |
 | Scheduler | `pg_try_advisory_lock` в `poll_loop` |
 | DB pools | `DB_POOL_MAXSIZE` default 8; core/collector/processor `DB_POOL_MAXSIZE_HEAVY=16`; auth явно 8 |

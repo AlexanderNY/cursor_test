@@ -6,12 +6,13 @@ import signal
 import sys
 
 import uvicorn
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 
 from config import settings
 from database import close_db, init_db
 from services.tw_bot_service import TwBotService
 from services.x_selenium_verify import verify_x_for_user
+from shared.internal_auth_fastapi import require_internal_token
 
 logging.basicConfig(
     level=getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO),
@@ -29,15 +30,18 @@ bot_service: TwBotService | None = None
 async def health_check():
     from datetime import datetime
 
+    from shared.container_stats import get_container_stats
+
     return {
         "status": "ok",
         "service": "tw-bot",
         "server_time": datetime.utcnow().isoformat() + "Z",
+        **get_container_stats(),
     }
 
 
 @app.post("/schedule")
-async def schedule_from_scheduler():
+async def schedule_from_scheduler(_internal: None = Depends(require_internal_token)):
     """Оповещение от scheduler: один проход публикации и сбора ленты."""
     global bot_service
     bs = bot_service

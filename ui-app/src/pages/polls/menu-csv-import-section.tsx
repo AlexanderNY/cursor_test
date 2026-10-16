@@ -7,6 +7,7 @@ import {
   CSV_MENU_COLUMNS,
   CSV_MENU_EXAMPLE,
   downloadMenuCsvTemplate,
+  downloadMenuNodesCsv,
   parseMenuCsv,
   type CsvParseError,
   type CsvMenuDraft,
@@ -15,6 +16,7 @@ import {
 interface MenuCsvImportSectionProps {
   modeId: number | null
   modeTitle?: string
+  modeCode?: string
   existingNodes: GameMenuNode[]
   onImported: () => Promise<void>
 }
@@ -30,6 +32,7 @@ function buildTitleMap(nodes: GameMenuNode[]): Map<string, number> {
 export function MenuCsvImportSection({
   modeId,
   modeTitle,
+  modeCode,
   existingNodes,
   onImported,
 }: MenuCsvImportSectionProps) {
@@ -42,6 +45,20 @@ export function MenuCsvImportSection({
   const [isImporting, setIsImporting] = useState(false)
   const [importProgress, setImportProgress] = useState('')
   const [importSuccess, setImportSuccess] = useState('')
+  const [exportError, setExportError] = useState('')
+
+  function handleExport() {
+    if (!modeId) return
+    setExportError('')
+    setImportSuccess('')
+    if (existingNodes.length === 0) {
+      setExportError('В выбранном режиме нет пунктов меню для скачивания')
+      return
+    }
+    const safeCode = (modeCode || `mode-${modeId}`).replace(/[^\w.-]+/g, '_')
+    downloadMenuNodesCsv(existingNodes, `${safeCode}-menu.csv`)
+    setImportSuccess(`Скачано пунктов: ${existingNodes.length}`)
+  }
 
   async function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
@@ -169,9 +186,18 @@ export function MenuCsvImportSection({
           variant="secondary"
           size="sm"
           disabled={!modeId || isParsing || isImporting}
+          onClick={handleExport}
+        >
+          Скачать меню
+        </Button>
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          disabled={!modeId || isParsing || isImporting}
           onClick={() => fileInputRef.current?.click()}
         >
-          {isParsing ? 'Чтение…' : 'Выбрать CSV'}
+          {isParsing ? 'Чтение…' : 'Загрузить CSV'}
         </Button>
         <input
           ref={fileInputRef}
@@ -192,6 +218,11 @@ export function MenuCsvImportSection({
       {importSuccess && (
         <Alert variant="success" className="text-sm">
           {importSuccess}
+        </Alert>
+      )}
+      {exportError && (
+        <Alert variant="error" className="text-sm">
+          {exportError}
         </Alert>
       )}
       {parseErrors.length > 0 && (

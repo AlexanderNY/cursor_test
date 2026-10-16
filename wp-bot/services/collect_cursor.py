@@ -122,6 +122,21 @@ def plan_next_page(
     )
 
 
+def wp_field_text(value: Any) -> str:
+    """Prefer REST `raw` (context=edit) over rendered HTML."""
+    if isinstance(value, dict):
+        raw = value.get("raw")
+        if isinstance(raw, str) and raw != "":
+            return raw
+        rendered = value.get("rendered")
+        if isinstance(rendered, str):
+            return rendered
+        return ""
+    if value is None:
+        return ""
+    return str(value)
+
+
 def post_wp_id(post: Dict[str, Any]) -> Optional[int]:
     raw = post.get("id")
     if raw is None:

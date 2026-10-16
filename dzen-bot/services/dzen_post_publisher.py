@@ -1,4 +1,4 @@
-"""Публикация постов dzen_posts (status=ready) в интерфейс Дзена через Selenium."""
+"""Публикация постов dzen (post_targets ready) в интерфейс Дзена через Selenium."""
 
 from __future__ import annotations
 
@@ -6,9 +6,8 @@ import asyncio
 import json
 import logging
 import os
-import tempfile
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
 from selenium.webdriver.common.by import By
@@ -20,13 +19,20 @@ from database import get_db_connection, release_db_connection
 from storage_helper import get_storage
 from shared import async_fs
 from shared.db.bot_queue import claimed_target_as_post, finish_claimed_publish
-from shared.db.posts_repo import PostsRepository
+from shared.db.posts_repo import PostsRepository, mark_targets_status_sql
 
 from .selenium_diag import capture_selenium_error_to_s3
 from .selenium_driver import create_chrome_driver, get_selenium_semaphore
 from .selenium_errors import format_selenium_exception
-from .yandex_auth import YandexAuthError, ensure_dzen_session
-from .yandex_dzen_flow import yandex_auth_dispatch
+from .yandex_session import (
+    SESSION_EXPIRED_MESSAGE,
+    apply_cookies,
+    clear_yandex_session,
+    cookies_nonempty,
+    is_publish_success_url,
+    parse_session_cookies,
+    session_looks_logged_in,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -152,11 +158,10 @@ async def _update_post_result(
     url: Optional[str] = None,
 ) -> None:
     post_id = int(post["id"])
-    user_id = int(post["user_id"])
     conn = await get_db_connection()
     try:
         async with conn.cursor() as cur:
-            finished = await finish_claimed_publish(
+            await finish_claimed_publish(
                 cur,
                 post,
                 ok=(status == "published"),
@@ -183,55 +188,97 @@ async def _update_post_result(
         )
 
 
-async def _fetch_ready_posts() -> List[Dict[str, Any]]:
-    """Claim ready Dzen post_targets."""
-    return await _claim_unified_dzen_posts()
+async def _release_targets(target_ids: List[int]) -> None:
+    if not target_ids:
+        return
+    conn = await get_db_connection()
+    try:
+        async with conn.cursor() as cur:
+            sql, params = mark_targets_status_sql(target_ids, "ready")
+            await cur.execute(sql, params)
+    finally:
+        await release_db_connection(conn)
 
 
-async def _claim_unified_dzen_posts() -> List[Dict[str, Any]]:
+async def _load_publishable_profiles() -> Dict[int, Dict[str, Any]]:
+    """Профили с publish_enabled и непустой yandex_session."""
     conn = await get_db_connection()
     try:
         async with conn.cursor() as cur:
             try:
-                await cur.execute("BEGIN")
-                rows = await PostsRepository(cur).claim_publish(platform="dzen", limit=5)
-                await cur.execute("COMMIT")
+                await cur.execute(
+                    """
+                    ALTER TABLE dzen_profiles
+                    ADD COLUMN IF NOT EXISTS yandex_session JSONB
+                    """
+                )
+                await cur.execute(
+                    """
+                    ALTER TABLE dzen_profiles
+                    ADD COLUMN IF NOT EXISTS yandex_session_saved_at TIMESTAMPTZ
+                    """
+                )
             except Exception:
-                await cur.execute("ROLLBACK")
-                raise
-        if not rows:
-            return []
-        claimed = [claimed_target_as_post(row) for row in rows]
-        user_ids = sorted({int(p["user_id"]) for p in claimed})
-        profiles = await _load_dzen_profiles(user_ids)
-        for post in claimed:
-            post.update(profiles.get(int(post["user_id"])) or {})
-            post["status"] = "publishing"
-        return claimed
-    finally:
-        await release_db_connection(conn)
-
-
-async def _load_dzen_profiles(user_ids: List[int]) -> Dict[int, Dict[str, Any]]:
-    if not user_ids:
-        return {}
-    conn = await get_db_connection()
-    try:
-        async with conn.cursor() as cur:
-            placeholders = ", ".join(["%s"] * len(user_ids))
+                logger.debug("dzen_profiles session columns ensure failed", exc_info=True)
             await cur.execute(
-                f"""
-                SELECT user_id, yandex_login, yandex_password, publish_enabled
+                """
+                SELECT user_id, yandex_login, publish_enabled, yandex_session
                 FROM dzen_profiles
-                WHERE user_id IN ({placeholders})
-                """,
-                user_ids,
+                WHERE publish_enabled = TRUE
+                  AND yandex_session IS NOT NULL
+                  AND jsonb_typeof(yandex_session) = 'array'
+                  AND jsonb_array_length(yandex_session) > 0
+                """
             )
             fetched = await cur.fetchall()
             cols = [c.name for c in cur.description]
-            return {int(row[0]): dict(zip(cols, row)) for row in fetched}
+            out: Dict[int, Dict[str, Any]] = {}
+            for row in fetched:
+                profile = dict(zip(cols, row))
+                cookies = parse_session_cookies(profile.get("yandex_session"))
+                if not cookies_nonempty(cookies):
+                    continue
+                uid = int(profile["user_id"])
+                profile["yandex_session"] = cookies
+                out[uid] = profile
+            return out
     finally:
         await release_db_connection(conn)
+
+
+async def _fetch_ready_posts() -> List[Dict[str, Any]]:
+    """Claim ready Dzen post_targets только у пользователей с сессией и publish_enabled."""
+    return await _claim_unified_dzen_posts()
+
+
+async def _claim_unified_dzen_posts() -> List[Dict[str, Any]]:
+    profiles = await _load_publishable_profiles()
+    if not profiles:
+        return []
+    claimed: List[Dict[str, Any]] = []
+    for user_id in sorted(profiles.keys()):
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                try:
+                    await cur.execute("BEGIN")
+                    rows = await PostsRepository(cur).claim_publish(
+                        platform="dzen",
+                        limit=5,
+                        user_id=user_id,
+                    )
+                    await cur.execute("COMMIT")
+                except Exception:
+                    await cur.execute("ROLLBACK")
+                    raise
+            for row in rows:
+                post = claimed_target_as_post(row)
+                post.update(profiles[user_id])
+                post["status"] = "publishing"
+                claimed.append(post)
+        finally:
+            await release_db_connection(conn)
+    return claimed
 
 
 def _find_editor_body(driver) -> Optional[Any]:
@@ -253,33 +300,79 @@ def _find_editor_body(driver) -> Optional[Any]:
     return None
 
 
-def _publish_sync(post: Dict[str, Any]) -> tuple[bool, Optional[str], Optional[str]]:
+def _fill_editor_body(driver, body_el: Any, text: str) -> None:
+    """Ввод текста: send_keys, при неудаче — execute_script в contenteditable."""
+    try:
+        body_el.click()
+    except Exception:
+        pass
+    time.sleep(0.3)
+    try:
+        body_el.clear()
+    except Exception:
+        pass
+    try:
+        body_el.send_keys(text)
+        content = (body_el.text or body_el.get_attribute("innerText") or "").strip()
+        probe = (text or "").strip()[:20]
+        if probe and probe in content:
+            return
+        if text and content:
+            return
+    except Exception:
+        pass
+    driver.execute_script(
+        """
+        const el = arguments[0];
+        const t = arguments[1];
+        el.focus();
+        el.innerText = t;
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        """,
+        body_el,
+        text,
+    )
+
+
+def _publish_sync(post: Dict[str, Any]) -> Tuple[bool, Optional[str], Optional[str], bool]:
     """
-    Возвращает (ok, published_url, error_message).
+    Возвращает (ok, published_url, error_message, session_expired).
     Пути к файлам изображений должны быть заранее в post['_local_image_paths'].
     """
     post_id = post.get("id")
     text = (post.get("post_text") or "")[:2000]
     title = (post.get("title") or "").strip()
-    login = (post.get("yandex_login") or "").strip()
-    password = (post.get("yandex_password") or "").strip()
+    cookies = parse_session_cookies(post.get("yandex_session"))
     local_paths: List[str] = list(post.get("_local_image_paths") or [])
 
+    if not cookies_nonempty(cookies):
+        return False, None, "Нет сохранённой сессии Яндекса", True
+
     driver = None
-    temp_files: List[str] = list(local_paths)
     try:
         driver = create_chrome_driver()
-        yandex_auth_dispatch(driver, login, password)
-        ensure_dzen_session(driver)
+        apply_cookies(driver, cookies)
+        if not session_looks_logged_in(driver):
+            capture_selenium_error_to_s3(
+                driver, "publish_post_session_expired", user_id=post.get("user_id")
+            )
+            return False, None, SESSION_EXPIRED_MESSAGE, True
 
         driver.get(settings.DZEN_NEW_ARTICLE_URL)
         time.sleep(4.0)
+
+        if not session_looks_logged_in(driver):
+            capture_selenium_error_to_s3(
+                driver, "publish_post_session_expired_editor", user_id=post.get("user_id")
+            )
+            return False, None, SESSION_EXPIRED_MESSAGE, True
 
         wait = WebDriverWait(driver, 40)
         wait.until(lambda d: _find_editor_body(d) is not None)
         body_el = _find_editor_body(driver)
         if not body_el:
-            return False, None, "Не найдено поле редактора статьи"
+            return False, None, "Не найдено поле редактора статьи", False
 
         if title:
             title_selectors = [s.strip() for s in settings.DZEN_TITLE_SELECTOR.split(",") if s.strip()]
@@ -293,12 +386,7 @@ def _publish_sync(post: Dict[str, Any]) -> tuple[bool, Optional[str], Optional[s
                 except Exception:
                     continue
 
-        try:
-            body_el.click()
-        except Exception:
-            pass
-        time.sleep(0.5)
-        body_el.send_keys(text)
+        _fill_editor_body(driver, body_el, text)
 
         for lp in local_paths:
             inputs = driver.find_elements(By.CSS_SELECTOR, settings.DZEN_FILE_INPUT_SELECTOR)
@@ -319,22 +407,15 @@ def _publish_sync(post: Dict[str, Any]) -> tuple[bool, Optional[str], Optional[s
         pub_btn.click()
         time.sleep(6.0)
         final_url = (driver.current_url or "").strip()
-        if "dzen.ru" in final_url and "/article/" in final_url:
-            return True, final_url, None
-        if "dzen.ru" in final_url:
-            return True, final_url, None
-        return False, None, "Публикация не подтверждена по URL страницы"
-    except YandexAuthError as e:
-        capture_selenium_error_to_s3(
-            driver, "publish_post_yandex_auth", user_id=post.get("user_id")
-        )
-        return False, None, str(e)
+        if is_publish_success_url(final_url):
+            return True, final_url, None, False
+        return False, None, "Публикация не подтверждена по URL страницы", False
     except Exception as e:
         capture_selenium_error_to_s3(
             driver, "publish_post_exception", user_id=post.get("user_id")
         )
         logger.exception("Dzen publish post %s: %s", post_id, e)
-        return False, None, format_selenium_exception(e)
+        return False, None, format_selenium_exception(e), False
     finally:
         if driver:
             try:
@@ -344,7 +425,7 @@ def _publish_sync(post: Dict[str, Any]) -> tuple[bool, Optional[str], Optional[s
 
 
 class DzenPostPublisher:
-    """Публикация готовых постов Дзен через Selenium."""
+    """Публикация готовых постов Дзен через Selenium по сохранённой сессии."""
 
     async def publish_ready_posts(self) -> int:
         posts = await _fetch_ready_posts()
@@ -352,7 +433,7 @@ class DzenPostPublisher:
             return 0
         published = 0
         for post in posts:
-            uid = post.get("user_id")
+            uid = int(post["user_id"])
             pid = post.get("id")
             await _set_last_auth_error(uid, None)
 
@@ -364,10 +445,17 @@ class DzenPostPublisher:
             post["_local_image_paths"] = local_paths
 
             async with get_selenium_semaphore():
-                ok, pub_url, err = await asyncio.to_thread(_publish_sync, post)
+                ok, pub_url, err, session_expired = await asyncio.to_thread(_publish_sync, post)
             for tmp in local_paths:
                 await async_fs.unlink_quiet(tmp)
             post.pop("_local_image_paths", None)
+
+            if session_expired:
+                await clear_yandex_session(uid)
+                await _release_targets([int(post["id"])])
+                await _set_last_auth_error(uid, (err or SESSION_EXPIRED_MESSAGE)[:2000])
+                logger.warning("Dzen post %s: session expired, target released to ready", pid)
+                continue
 
             if ok:
                 await _update_post_result(post, "published", pub_url)

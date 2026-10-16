@@ -312,13 +312,19 @@ class PlanRequestRejectBody(BaseModel):
 class PromoCodeCreate(BaseModel):
     code: str = Field(..., min_length=3, max_length=40)
     description: Optional[str] = Field(None, max_length=500)
+    kind: Literal["discount", "grant"] = "discount"
     discount_percent: Optional[int] = Field(None, ge=1, le=100)
     discount_amount: Optional[int] = Field(None, ge=1)
     applies_to_tariff: Optional[Literal["standard", "full"]] = None
+    grant_days: Optional[int] = Field(None, ge=1, le=366)
     max_redemptions: Optional[int] = Field(None, ge=1)
     valid_from: Optional[datetime] = None
     valid_until: Optional[datetime] = None
     is_active: bool = True
+
+
+class PromoRedeemRequest(BaseModel):
+    code: str = Field(..., min_length=3, max_length=40)
 
 
 class ActivityHeartbeatRequest(BaseModel):
@@ -339,9 +345,11 @@ class AdminProductMetrics(BaseModel):
 class PromoCodeUpdate(BaseModel):
     code: Optional[str] = Field(None, min_length=3, max_length=40)
     description: Optional[str] = Field(None, max_length=500)
+    kind: Optional[Literal["discount", "grant"]] = None
     discount_percent: Optional[int] = Field(None, ge=1, le=100)
     discount_amount: Optional[int] = Field(None, ge=0)
     applies_to_tariff: Optional[Literal["standard", "full"]] = None
+    grant_days: Optional[int] = Field(None, ge=1, le=366)
     max_redemptions: Optional[int] = Field(None, ge=1)
     valid_from: Optional[datetime] = None
     valid_until: Optional[datetime] = None

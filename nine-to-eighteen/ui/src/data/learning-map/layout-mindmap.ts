@@ -13,6 +13,9 @@ export type LayoutNode = {
   height: number
   side: -1 | 0 | 1
   childCount: number
+  /** Узел раскрыт: его дети есть на карте. */
+  isExpanded: boolean
+  /** Есть дети, но ветка свёрнута. */
   hasHiddenChildren: boolean
 }
 
@@ -103,14 +106,34 @@ function measure(
   }
 }
 
-function leafWeight(node: MindNode, depth: number, maxDepth: number): number {
-  if (depth >= maxDepth || node.children.length === 0) {
+function isBranchOpen(node: MindNode, expandedIds: ReadonlySet<string>): boolean {
+  return node.children.length > 0 && expandedIds.has(node.id)
+}
+
+function leafWeight(node: MindNode, expandedIds: ReadonlySet<string>): number {
+  if (!isBranchOpen(node, expandedIds)) {
     return 1
   }
   return Math.max(
     1,
-    node.children.reduce((sum, child) => sum + leafWeight(child, depth + 1, maxDepth), 0),
+    node.children.reduce((sum, child) => sum + leafWeight(child, expandedIds), 0),
   )
+}
+
+/** Id узлов, которые нужно раскрыть, чтобы на карте были видны уровни 0…maxDepth. */
+export function expandedIdsToDepth(root: MindNode, maxDepth: number): Set<string> {
+  const ids = new Set<string>()
+  const walk = (node: MindNode, depth: number): void => {
+    if (depth >= maxDepth || node.children.length === 0) {
+      return
+    }
+    ids.add(node.id)
+    for (const child of node.children) {
+      walk(child, depth + 1)
+    }
+  }
+  walk(root, 0)
+  return ids
 }
 
 function linkPath(x1: number, y1: number, x2: number, y2: number, side: -1 | 1): string {
@@ -127,16 +150,16 @@ function layoutChildren(
   children: MindNode[],
   side: -1 | 1,
   depth: number,
-  maxDepth: number,
+  expandedIds: ReadonlySet<string>,
   parent: LayoutNode,
   topY: number,
   acc: Accum,
 ): number {
-  if (children.length === 0 || depth > maxDepth) {
+  if (children.length === 0) {
     return 0
   }
 
-  const weights = children.map((child) => leafWeight(child, depth, maxDepth))
+  const weights = children.map((child) => leafWeight(child, expandedIds))
   const unit = 36
   const spans = weights.map((w) => Math.max(unit, w * unit))
   const totalSpan =
@@ -148,6 +171,7 @@ function layoutChildren(
     const centerY = y + span / 2
     const size = measure(child.title, depth)
     const x = parent.x + side * (parent.width / 2 + LEVEL_GAP * 0.55 + size.width / 2)
+    const open = isBranchOpen(child, expandedIds)
 
     const layoutNode: LayoutNode = {
       id: child.id,
@@ -162,7 +186,8 @@ function layoutChildren(
       height: size.height,
       side,
       childCount: child.children.length,
-      hasHiddenChildren: depth >= maxDepth && child.children.length > 0,
+      isExpanded: open,
+      hasHiddenChildren: child.children.length > 0 && !open,
     }
     acc.nodes.push(layoutNode)
 
@@ -175,13 +200,13 @@ function layoutChildren(
       d: linkPath(x1, parent.y, x2, centerY, side),
     })
 
-    if (depth < maxDepth && child.children.length > 0) {
+    if (open) {
       const childSpan = Math.max(span, child.children.length * unit)
       layoutChildren(
         child.children,
         side,
         depth + 1,
-        maxDepth,
+        expandedIds,
         layoutNode,
         centerY - childSpan / 2,
         acc,
@@ -195,8 +220,9 @@ function layoutChildren(
 }
 
 /** Классическая mind map: корень в центре, ветки влево и вправо. */
-export function layoutMindmap(root: MindNode, maxDepth: number): MindLayout {
+export function layoutMindmap(root: MindNode, expandedIds: ReadonlySet<string>): MindLayout {
   const rootSize = measure(root.title, 0)
+  const rootOpen = isBranchOpen(root, expandedIds)
   const rootNode: LayoutNode = {
     id: root.id,
     title: rootSize.label,
@@ -210,27 +236,28 @@ export function layoutMindmap(root: MindNode, maxDepth: number): MindLayout {
     height: rootSize.height,
     side: 0,
     childCount: root.children.length,
-    hasHiddenChildren: maxDepth < 1 && root.children.length > 0,
+    isExpanded: rootOpen,
+    hasHiddenChildren: root.children.length > 0 && !rootOpen,
   }
 
   const acc: Accum = { nodes: [rootNode], edges: [] }
 
-  if (maxDepth >= 1 && root.children.length > 0) {
+  if (rootOpen) {
     const mid = Math.ceil(root.children.length / 2)
     const left = root.children.slice(0, mid)
     const right = root.children.slice(mid)
 
-    const leftWeights = left.map((n) => leafWeight(n, 1, maxDepth))
-    const rightWeights = right.map((n) => leafWeight(n, 1, maxDepth))
+    const leftWeights = left.map((node) => leafWeight(node, expandedIds))
+    const rightWeights = right.map((node) => leafWeight(node, expandedIds))
     const leftSpan =
-      leftWeights.reduce((a, b) => a + Math.max(36, b * 36), 0) +
+      leftWeights.reduce((sum, weight) => sum + Math.max(36, weight * 36), 0) +
       NODE_GAP * Math.max(0, left.length - 1)
     const rightSpan =
-      rightWeights.reduce((a, b) => a + Math.max(36, b * 36), 0) +
+      rightWeights.reduce((sum, weight) => sum + Math.max(36, weight * 36), 0) +
       NODE_GAP * Math.max(0, right.length - 1)
 
-    layoutChildren(left, -1, 1, maxDepth, rootNode, -leftSpan / 2, acc)
-    layoutChildren(right, 1, 1, maxDepth, rootNode, -rightSpan / 2, acc)
+    layoutChildren(left, -1, 1, expandedIds, rootNode, -leftSpan / 2, acc)
+    layoutChildren(right, 1, 1, expandedIds, rootNode, -rightSpan / 2, acc)
   }
 
   let minX = Infinity

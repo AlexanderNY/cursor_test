@@ -81,10 +81,14 @@ async def root():
 async def health_check():
     """Проверка здоровья сервиса."""
     from datetime import datetime
+
+    from shared.container_stats import get_container_stats
+
     return {
         "status": "healthy",
         "service": "wp-bot",
         "server_time": datetime.utcnow().isoformat() + "Z",
+        **get_container_stats(),
     }
 
 

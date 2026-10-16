@@ -9,8 +9,16 @@ from billing.plan_definitions import get_plan_by_code, normalize_tariff_code
 from config import settings
 from database import get_db_connection
 from services.admin_audit_service import log_admin_audit
-from services.auth_service import get_user_by_id, update_user_role_tariff
+from services.auth_service import get_user_by_id
 from services.email_service import send_plain_email, smtp_configured
+from services.entitlement_service import grant_payment, sync_user_tariff, upsert_grant
+from shared.billing.entitlements import (
+    PAID_GRANT_DAYS,
+    PROMO_KIND_GRANT,
+    allows_paid_mark,
+    normalize_promo_kind_fields,
+    tariff_rank,
+)
 
 PAID_PLANS = ("standard", "full")
 OPEN_STATUSES = ("pending", "invoiced")
@@ -108,7 +116,7 @@ async def get_promo_by_code(code: str) -> Optional[dict[str, Any]]:
                 """
                 SELECT id, code, description, discount_percent, discount_amount,
                        applies_to_tariff, max_redemptions, redeemed_count,
-                       valid_from, valid_until, is_active
+                       valid_from, valid_until, is_active, kind, grant_days
                 FROM promo_codes
                 WHERE code = %s
                 """,
@@ -129,6 +137,8 @@ async def get_promo_by_code(code: str) -> Optional[dict[str, Any]]:
         "valid_from": row[8],
         "valid_until": row[9],
         "is_active": bool(row[10]),
+        "kind": row[11] or "discount",
+        "grant_days": row[12],
     }
 
 
@@ -169,6 +179,10 @@ async def validate_promo_for_user(
         raise BillingRequestError("Промокод исчерпан")
     if await _promo_already_used(int(promo["id"]), user_id):
         raise BillingRequestError("Вы уже использовали этот промокод")
+    if promo.get("kind") == PROMO_KIND_GRANT:
+        raise BillingRequestError(
+            "Это код бесплатного доступа. Активируйте его в биллинге, без заявки на оплату."
+        )
     return promo
 
 
@@ -182,7 +196,7 @@ def _build_invoice_body(request: dict[str, Any], user: dict[str, Any]) -> str:
         f"Получатель: {user.get('username')} <{user.get('email')}>",
         f"Заявка №{request['id']}",
         f"Тариф: {plan.get('display_name') or request['requested_tariff']}",
-        f"Период: 1 месяц",
+        f"Период: {PAID_GRANT_DAYS} дней с момента отметки об оплате",
         f"Сумма: {format_money(request['list_price'], request['currency'])}",
     ]
     if int(request["discount_amount"] or 0) > 0:
@@ -197,7 +211,7 @@ def _build_invoice_body(request: dict[str, Any], user: dict[str, Any]) -> str:
         lines.extend(
             [
                 "",
-                "Оплата по счёту. После поступления платежа тариф будет включён вручную.",
+                "Оплата по счёту. После отметки об оплате тариф включается на 30 дней.",
             ]
         )
     frontend = (settings.FRONTEND_URL or "").rstrip("/")
@@ -238,8 +252,11 @@ async def create_or_update_request(
     user = await get_user_by_id(user_id)
     if not user:
         raise BillingRequestError("Пользователь не найден", 404)
-    current = normalize_tariff_code(user.get("tariff"))
-    if current == tariff:
+    synced = await sync_user_tariff(user_id)
+    current = normalize_tariff_code(synced["tariff"])
+    if tariff_rank(tariff) < tariff_rank(current):
+        raise BillingRequestError("Можно запросить только тот же или более высокий тариф")
+    if tariff_rank(tariff) == tariff_rank(current) and tariff not in PAID_PLANS:
         raise BillingRequestError("Этот тариф уже активен")
     promo = await validate_promo_for_user(code=promo_code, tariff=tariff, user_id=user_id)
     pricing = compute_pricing(tariff, promo)
@@ -483,12 +500,22 @@ async def apply_request(request_id: int, admin_user_id: int) -> dict[str, Any]:
     req = await _get_request(request_id)
     if req["status"] not in OPEN_STATUSES:
         raise BillingRequestError("Заявку уже закрыли")
-    await update_user_role_tariff(
-        user_id=int(req["user_id"]),
-        tariff=req["requested_tariff"],
+    user_id = int(req["user_id"])
+    synced = await sync_user_tariff(user_id)
+    requested = normalize_tariff_code(req["requested_tariff"])
+    if not allows_paid_mark(synced["tariff"], requested):
+        raise BillingRequestError("Отметить можно только тот же или более высокий тариф")
+    promo = await get_promo_by_code(req["promo_code"] or "")
+    if promo and promo.get("kind") == PROMO_KIND_GRANT:
+        raise BillingRequestError(
+            "К заявке привязан код бесплатного доступа. Активируйте его отдельно."
+        )
+    await grant_payment(
+        user_id=user_id,
+        tariff=requested,
+        request_id=request_id,
         changed_by_user_id=admin_user_id,
     )
-    promo = await get_promo_by_code(req["promo_code"] or "")
     async with get_db_connection() as conn:
         async with conn.cursor() as cur:
             if promo:
@@ -574,6 +601,8 @@ def _row_promo(row: tuple) -> dict[str, Any]:
         "valid_until": row[9],
         "is_active": bool(row[10]),
         "created_at": row[11],
+        "kind": row[12] or "discount",
+        "grant_days": row[13],
     }
 
 
@@ -584,7 +613,7 @@ async def list_promo_codes() -> list[dict[str, Any]]:
                 """
                 SELECT id, code, description, discount_percent, discount_amount,
                        applies_to_tariff, max_redemptions, redeemed_count,
-                       valid_from, valid_until, is_active, created_at
+                       valid_from, valid_until, is_active, created_at, kind, grant_days
                 FROM promo_codes
                 ORDER BY created_at DESC
                 """
@@ -597,10 +626,10 @@ async def create_promo_code(payload: dict[str, Any], admin_user_id: int) -> dict
     code = _normalize_code(payload.get("code"))
     if not code or len(code) < 3:
         raise BillingRequestError("Код должен быть не короче 3 символов")
-    percent = payload.get("discount_percent")
-    amount = payload.get("discount_amount")
-    if bool(percent) == bool(amount):
-        raise BillingRequestError("Укажите либо процент, либо фиксированную скидку")
+    try:
+        fields = normalize_promo_kind_fields(payload)
+    except ValueError as exc:
+        raise BillingRequestError(str(exc)) from exc
     async with get_db_connection() as conn:
         async with conn.cursor() as cur:
             try:
@@ -609,24 +638,26 @@ async def create_promo_code(payload: dict[str, Any], admin_user_id: int) -> dict
                     INSERT INTO promo_codes (
                         code, description, discount_percent, discount_amount,
                         applies_to_tariff, max_redemptions, valid_from, valid_until,
-                        is_active, created_by_user_id
+                        is_active, created_by_user_id, kind, grant_days
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     RETURNING id, code, description, discount_percent, discount_amount,
                               applies_to_tariff, max_redemptions, redeemed_count,
-                              valid_from, valid_until, is_active, created_at
+                              valid_from, valid_until, is_active, created_at, kind, grant_days
                     """,
                     (
                         code,
                         payload.get("description"),
-                        int(percent) if percent else None,
-                        int(amount) if amount else None,
-                        (payload.get("applies_to_tariff") or None),
+                        fields["discount_percent"],
+                        fields["discount_amount"],
+                        fields["applies_to_tariff"],
                         int(payload["max_redemptions"]) if payload.get("max_redemptions") else None,
                         payload.get("valid_from"),
                         payload.get("valid_until"),
                         bool(payload.get("is_active", True)),
                         admin_user_id,
+                        fields["kind"],
+                        fields["grant_days"],
                     ),
                 )
             except Exception as exc:
@@ -637,7 +668,7 @@ async def create_promo_code(payload: dict[str, Any], admin_user_id: int) -> dict
         "promo_code_created",
         target_type="promo_code",
         target_id=code,
-        details={"percent": percent, "amount": amount},
+        details={"kind": fields["kind"], "tariff": fields["applies_to_tariff"]},
     )
     return _row_promo(row)
 
@@ -654,6 +685,8 @@ async def update_promo_code(promo_id: int, payload: dict[str, Any], admin_user_i
         "valid_from": "valid_from",
         "valid_until": "valid_until",
         "is_active": "is_active",
+        "kind": "kind",
+        "grant_days": "grant_days",
     }
     for key, column in mapping.items():
         if key in payload:
@@ -673,7 +706,7 @@ async def update_promo_code(promo_id: int, payload: dict[str, Any], admin_user_i
                 WHERE id = %s
                 RETURNING id, code, description, discount_percent, discount_amount,
                           applies_to_tariff, max_redemptions, redeemed_count,
-                          valid_from, valid_until, is_active, created_at
+                          valid_from, valid_until, is_active, created_at, kind, grant_days
                 """,
                 params,
             )
@@ -688,3 +721,66 @@ async def update_promo_code(promo_id: int, payload: dict[str, Any], admin_user_i
         details=payload,
     )
     return _row_promo(row)
+
+
+async def redeem_grant_promo(user_id: int, code: str) -> dict[str, Any]:
+    """Активировать промокод бесплатного доступа. Скидочный код сюда не подходит."""
+    normalized = _normalize_code(code)
+    if not normalized:
+        raise BillingRequestError("Укажите промокод")
+    promo = await get_promo_by_code(normalized)
+    if not promo or not promo["is_active"]:
+        raise BillingRequestError("Промокод не найден или отключён")
+    if promo.get("kind") != PROMO_KIND_GRANT:
+        raise BillingRequestError("Этот промокод даёт скидку на счёт, а не бесплатный доступ")
+    now = _now()
+    valid_from = _as_naive(promo["valid_from"])
+    valid_until = _as_naive(promo["valid_until"])
+    if valid_from and valid_from > now:
+        raise BillingRequestError("Промокод ещё не действует")
+    if valid_until and valid_until < now:
+        raise BillingRequestError("Срок действия промокода истёк")
+    applies = normalize_tariff_code(promo.get("applies_to_tariff"))
+    if applies not in PAID_PLANS:
+        raise BillingRequestError("У промокода не задан тариф")
+    if promo["max_redemptions"] is not None and promo["redeemed_count"] >= int(promo["max_redemptions"]):
+        raise BillingRequestError("Промокод исчерпан")
+    if await _promo_already_used(int(promo["id"]), user_id):
+        raise BillingRequestError("Вы уже использовали этот промокод")
+    synced = await sync_user_tariff(user_id)
+    if tariff_rank(applies) < tariff_rank(synced["tariff"]):
+        raise BillingRequestError("Промокод не повышает текущий тариф")
+    days = int(promo["grant_days"] or PAID_GRANT_DAYS)
+    async with get_db_connection() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                """
+                INSERT INTO promo_code_redemptions (promo_code_id, user_id)
+                VALUES (%s, %s)
+                ON CONFLICT (promo_code_id, user_id) DO NOTHING
+                RETURNING id
+                """,
+                (promo["id"], user_id),
+            )
+            redeemed = await cur.fetchone()
+            if not redeemed:
+                raise BillingRequestError("Вы уже использовали этот промокод")
+            await cur.execute(
+                """
+                UPDATE promo_codes
+                SET redeemed_count = redeemed_count + 1
+                WHERE id = %s
+                """,
+                (promo["id"],),
+            )
+    result = await upsert_grant(
+        user_id=user_id,
+        tariff=applies,
+        source="promo",
+        source_ref=str(promo["id"]),
+        days=days,
+        changed_by_user_id=user_id,
+    )
+    result["code"] = promo["code"]
+    result["grant_days"] = days
+    return result

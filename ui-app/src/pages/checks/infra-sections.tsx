@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
 import { coreService } from '@/services/core-service'
-import type { ScheduleSnapshot } from '@/types/core'
+import type { PostTraceResponse, ScheduleSnapshot } from '@/types/core'
 import { useChecksInfraContext } from './checks-infra-context'
 import { platformStatusCell, platformTableStatusColumns } from './checks-utils'
 import { formatDateTime } from '@/utils/date'
@@ -20,6 +20,28 @@ const SCHEDULE_BOT_PLATFORMS = [
   'dzen',
   'instagram',
 ] as const
+
+function formatCpuPercent(value: number | null | undefined): string {
+  if (value == null || Number.isNaN(value)) return '—'
+  return `${value}%`
+}
+
+function formatMemoryMb(bytes: number): string {
+  const mb = bytes / (1024 * 1024)
+  return mb >= 100 ? `${Math.round(mb)}` : mb.toFixed(1).replace(/\.0$/, '')
+}
+
+function formatMemoryUsage(
+  usedBytes: number | null | undefined,
+  limitBytes: number | null | undefined,
+): string {
+  if (usedBytes == null || Number.isNaN(usedBytes)) return '—'
+  const used = formatMemoryMb(usedBytes)
+  if (limitBytes == null || Number.isNaN(limitBytes) || limitBytes <= 0) {
+    return `${used} МБ`
+  }
+  return `${used} / ${formatMemoryMb(limitBytes)} МБ`
+}
 
 export function ServicesStatusSection() {
   const {
@@ -64,6 +86,8 @@ export function ServicesStatusSection() {
                     <tr>
                       <th className="py-3 px-4 text-left text-sm font-medium text-[var(--text-secondary)]">Service</th>
                       <th className="py-3 px-4 text-left text-sm font-medium text-[var(--text-secondary)]">Status</th>
+                      <th className="py-3 px-4 text-left text-sm font-medium text-[var(--text-secondary)]">CPU</th>
+                      <th className="py-3 px-4 text-left text-sm font-medium text-[var(--text-secondary)]">Memory</th>
                       <th className="py-3 px-4 text-left text-sm font-medium text-[var(--text-secondary)]">Server time</th>
                       <th className="py-3 px-4 text-left text-sm font-medium text-[var(--text-secondary)]">Error</th>
                     </tr>
@@ -89,6 +113,12 @@ export function ServicesStatusSection() {
                           >
                             {h.status === 'ok' ? 'ok' : h.optional ? 'down' : 'error'}
                           </span>
+                        </td>
+                        <td className="py-3 px-4 text-[var(--text-secondary)] text-sm tabular-nums">
+                          {formatCpuPercent(h.cpu_percent)}
+                        </td>
+                        <td className="py-3 px-4 text-[var(--text-secondary)] text-sm tabular-nums">
+                          {formatMemoryUsage(h.memory_bytes, h.memory_limit_bytes)}
                         </td>
                         <td className="py-3 px-4 text-[var(--text-secondary)] text-sm">{h.server_time ? formatDateTime(h.server_time) : '—'}</td>
                         <td className="py-3 px-4 text-[var(--text-secondary)] text-sm">{h.error ?? '—'}</td>
@@ -813,6 +843,32 @@ export function PostingDiagnosticsSection() {
     handleRunDistributeCycle,
   } = useChecksInfraContext()
 
+  const [tracePostId, setTracePostId] = useState('')
+  const [postTrace, setPostTrace] = useState<PostTraceResponse | null>(null)
+  const [isLoadingTrace, setIsLoadingTrace] = useState(false)
+  const [traceError, setTraceError] = useState('')
+
+  async function handleLoadPostTrace() {
+    const parsed = Number.parseInt(tracePostId.trim(), 10)
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      setTraceError('Укажите корректный post_id')
+      setPostTrace(null)
+      return
+    }
+    setTraceError('')
+    setPostTrace(null)
+    setIsLoadingTrace(true)
+    try {
+      const data = await coreService.getPostTrace(parsed)
+      setPostTrace(data)
+    } catch (error) {
+      setTraceError(error instanceof Error ? error.message : 'Не удалось загрузить трейс')
+      setPostTrace(null)
+    } finally {
+      setIsLoadingTrace(false)
+    }
+  }
+
   return (
     <Card className="animate-slide-up">
       <CardHeader>
@@ -822,9 +878,121 @@ export function PostingDiagnosticsSection() {
           </svg>
           Диагностика постинга (Telegram)
         </CardTitle>
-        <CardDescription>Сводки по post_targets (Telegram) и posts по статусам</CardDescription>
+        <CardDescription>Сводки по post_targets (Telegram) и posts по статусам; путь одного сообщения по post_id</CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
+        <div className="rounded-xl border border-[var(--border-color)] p-4 space-y-3 bg-[var(--bg-tertiary)]/40">
+          <h3 className="text-base font-semibold text-[var(--text-primary)]">Путь сообщения (post_id)</h3>
+          <p className="text-sm text-[var(--text-secondary)]">
+            Восстанавливает цепочку: сбор → обработка → post_targets → публикация (lifecycle + текущее состояние).
+          </p>
+          <div className="flex flex-wrap gap-2 items-center">
+            <input
+              type="number"
+              min={1}
+              value={tracePostId}
+              onChange={(event) => setTracePostId(event.target.value)}
+              placeholder="post_id"
+              className="px-3 py-2 rounded-lg border border-[var(--border-color)] bg-[var(--bg-secondary)] text-[var(--text-primary)] text-sm w-40"
+            />
+            <Button onClick={handleLoadPostTrace} isLoading={isLoadingTrace} size="sm">
+              Показать путь
+            </Button>
+          </div>
+          {traceError && <Alert variant="error">{traceError}</Alert>}
+          {postTrace && (
+            <div className="space-y-4 animate-slide-down">
+              <div className="flex flex-wrap gap-2">
+                {postTrace.stages.map((stage) => (
+                  <span
+                    key={stage.stage}
+                    className={`px-3 py-1.5 rounded-lg text-sm ${
+                      stage.done
+                        ? 'bg-emerald-500/15 text-emerald-300'
+                        : 'bg-[var(--bg-secondary)] text-[var(--text-muted)]'
+                    }`}
+                    title={stage.detail ?? undefined}
+                  >
+                    {stage.done ? '✓' : '○'} {stage.label}
+                    {stage.detail ? ` — ${stage.detail}` : ''}
+                  </span>
+                ))}
+              </div>
+              <div className="text-sm text-[var(--text-secondary)] space-y-1">
+                <div>
+                  Hub #{postTrace.post_id}: status=<strong className="text-[var(--text-primary)]">{String(postTrace.hub.status ?? '—')}</strong>
+                  , source=<strong className="text-[var(--text-primary)]">{String(postTrace.hub.source_platform ?? '—')}</strong>
+                  , user=<strong className="text-[var(--text-primary)]">{String(postTrace.hub.user_id ?? '—')}</strong>
+                </div>
+                <div>Targets: {postTrace.targets.length || 0}</div>
+              </div>
+              {postTrace.targets.length > 0 && (
+                <div className="overflow-x-auto rounded-xl border border-[var(--border-color)]">
+                  <table className="w-full text-sm">
+                    <thead className="bg-[var(--bg-secondary)]">
+                      <tr>
+                        <th className="py-2 px-3 text-left text-[var(--text-secondary)]">id</th>
+                        <th className="py-2 px-3 text-left text-[var(--text-secondary)]">platform</th>
+                        <th className="py-2 px-3 text-left text-[var(--text-secondary)]">status</th>
+                        <th className="py-2 px-3 text-left text-[var(--text-secondary)]">updated</th>
+                        <th className="py-2 px-3 text-left text-[var(--text-secondary)]">result</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[var(--border-color)]">
+                      {postTrace.targets.map((target) => (
+                        <tr key={String(target.id)}>
+                          <td className="py-2 px-3 text-[var(--text-primary)]">{String(target.id)}</td>
+                          <td className="py-2 px-3 text-[var(--text-primary)]">{String(target.platform)}</td>
+                          <td className="py-2 px-3 text-[var(--text-primary)]">{String(target.status)}</td>
+                          <td className="py-2 px-3 text-[var(--text-muted)]">
+                            {target.updated_at ? formatDateTime(String(target.updated_at)) : '—'}
+                          </td>
+                          <td className="py-2 px-3 text-[var(--text-muted)] font-mono text-xs max-w-xs truncate">
+                            {target.result ? JSON.stringify(target.result) : '—'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              <div>
+                <h4 className="text-sm font-semibold text-[var(--text-primary)] mb-2">
+                  Таймлайн ({postTrace.timeline.length}
+                  {postTrace.lifecycle_events.length === 0 ? ', inferred — журнал пуст для старых постов' : ''})
+                </h4>
+                <ol className="space-y-2 border-l border-[var(--border-color)] pl-4">
+                  {postTrace.timeline.map((item, idx) => (
+                    <li key={`${item.at ?? ''}-${item.to_status ?? ''}-${idx}`} className="text-sm">
+                      <div className="text-[var(--text-muted)] text-xs">
+                        {item.at ? formatDateTime(item.at) : '—'} · {item.source} · {item.actor ?? '—'}
+                      </div>
+                      <div className="text-[var(--text-primary)]">
+                        [{item.platform ?? '—'}] {item.from_status ?? '∅'} → <strong>{item.to_status ?? '—'}</strong>
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+              {postTrace.related_tg_events.length > 0 && (
+                <div>
+                  <h4 className="text-sm font-semibold text-[var(--text-primary)] mb-2">
+                    Связанные tg_events ({postTrace.related_tg_events.length})
+                  </h4>
+                  <ul className="space-y-1 text-sm text-[var(--text-secondary)]">
+                    {postTrace.related_tg_events.map((event) => (
+                      <li key={String(event.id)}>
+                        {event.created_at ? formatDateTime(String(event.created_at)) : '—'} · {String(event.event_type)}
+                        {event.text_preview ? ` — ${String(event.text_preview).slice(0, 80)}` : ''}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
         <Button onClick={handleRunPostingDiagnostics} isLoading={isLoadingPostingDiagnostics} className="w-full sm:w-auto">
           <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />

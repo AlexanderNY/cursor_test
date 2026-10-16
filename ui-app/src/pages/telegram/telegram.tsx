@@ -320,7 +320,9 @@ export function TelegramPage() {
           setPublishScheduleMinute(minute)
         }
         setApiId(profile.api_id || '')
-        setApiHash(profile.api_hash || '')
+        // api_hash is masked as "***" when stored — keep input empty so save does not overwrite.
+        const hash = profile.api_hash || ''
+        setApiHash(hash && hash !== '***' ? hash : '')
         setTelegramUsername(profile.telegram_username || '')
         setAuthPhoneNumber(profile.auth_phone_number || '')
         setProxyUrl(profile.proxy_url || '')
@@ -402,7 +404,7 @@ export function TelegramPage() {
       schedule_type: publishScheduleType,
       time_intervals: timeIntervals,
       api_id: apiId || undefined,
-      api_hash: apiHash || undefined,
+      api_hash: apiHash && apiHash !== '***' ? apiHash : undefined,
       telegram_username: telegramUsername || undefined,
       auth_phone_number: authPhoneNumber || undefined,
       proxy_url: proxyUrl.trim() || undefined,

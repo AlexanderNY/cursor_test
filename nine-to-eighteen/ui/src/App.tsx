@@ -50,6 +50,10 @@ const CertPage = lazy(() =>
   import('@/pages/cert-page').then((module) => ({ default: module.CertPage })),
 )
 
+const CertPublicPage = lazy(() =>
+  import('@/pages/cert-public-page').then((module) => ({ default: module.CertPublicPage })),
+)
+
 const HhResumePage = lazy(() =>
   import('@/pages/hh-resume-page').then((module) => ({ default: module.HhResumePage })),
 )
@@ -99,6 +103,30 @@ const CodeSandboxPage = lazy(() =>
   })),
 )
 
+const SqlSandboxPage = lazy(() =>
+  import('@/pages/sql-sandbox-page').then((module) => ({
+    default: module.SqlSandboxPage,
+  })),
+)
+
+const GitSandboxPage = lazy(() =>
+  import('@/pages/git-sandbox-page').then((module) => ({
+    default: module.GitSandboxPage,
+  })),
+)
+
+const PortfolioEditPage = lazy(() =>
+  import('@/pages/portfolio-edit-page').then((module) => ({
+    default: module.PortfolioEditPage,
+  })),
+)
+
+const PortfolioPublicPage = lazy(() =>
+  import('@/pages/portfolio-public-page').then((module) => ({
+    default: module.PortfolioPublicPage,
+  })),
+)
+
 function BowlGameFallback() {
   return (
     <div className="bowl-screen bowl-menu">
@@ -123,6 +151,14 @@ export default function App() {
   return (
     <Routes>
       <Route path="/" element={<HomePage />} />
+      <Route
+        path="/p/:handle"
+        element={
+          <Suspense fallback={<LearnFallback />}>
+            <PortfolioPublicPage />
+          </Suspense>
+        }
+      />
       <Route path="/login" element={<SiteLoginPage />} />
       <Route path="/register" element={<SiteLoginPage />} />
       <Route path="/account" element={<SiteAccountPage />} />
@@ -143,6 +179,14 @@ export default function App() {
         element={
           <Suspense fallback={<LearnFallback />}>
             <CertPage />
+          </Suspense>
+        }
+      />
+      <Route
+        path="/game/cert/:code"
+        element={
+          <Suspense fallback={<LearnFallback />}>
+            <CertPublicPage />
           </Suspense>
         }
       />
@@ -239,6 +283,30 @@ export default function App() {
         element={
           <Suspense fallback={<LearnFallback />}>
             <CodeSandboxPage />
+          </Suspense>
+        }
+      />
+      <Route
+        path="/game/sql"
+        element={
+          <Suspense fallback={<LearnFallback />}>
+            <SqlSandboxPage />
+          </Suspense>
+        }
+      />
+      <Route
+        path="/game/git"
+        element={
+          <Suspense fallback={<LearnFallback />}>
+            <GitSandboxPage />
+          </Suspense>
+        }
+      />
+      <Route
+        path="/game/portfolio"
+        element={
+          <Suspense fallback={<LearnFallback />}>
+            <PortfolioEditPage />
           </Suspense>
         }
       />

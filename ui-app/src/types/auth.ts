@@ -56,6 +56,18 @@ export interface BillingMeResponse {
   stripe_portal_available: boolean
   stripe_checkout_available?: boolean
   pending_request?: BillingPlanRequest | null
+  tariff_expires_at?: string | null
+  entitlements?: BillingEntitlement[]
+}
+
+export interface BillingEntitlement {
+  id: number
+  tariff: string
+  source: 'payment' | 'promo'
+  source_ref?: string | null
+  starts_at?: string | null
+  expires_at?: string | null
+  status: string
 }
 
 export type BillingPlanRequestStatus = 'pending' | 'invoiced' | 'applied' | 'rejected' | 'cancelled'
@@ -86,9 +98,11 @@ export interface PromoCode {
   id: number
   code: string
   description?: string | null
+  kind?: 'discount' | 'grant'
   discount_percent?: number | null
   discount_amount?: number | null
   applies_to_tariff?: string | null
+  grant_days?: number | null
   max_redemptions?: number | null
   redeemed_count: number
   valid_from?: string | null

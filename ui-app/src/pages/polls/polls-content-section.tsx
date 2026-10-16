@@ -436,7 +436,11 @@ export function PollsContentSection() {
         </Card>
 
         {isMenuMode ? (
-          <MenuNodesSection modeId={selectedModeId} modeTitle={selectedMode?.title} />
+          <MenuNodesSection
+            modeId={selectedModeId}
+            modeTitle={selectedMode?.title}
+            modeCode={selectedMode?.code}
+          />
         ) : (
         <Card>
           <CardHeader>
@@ -474,6 +478,7 @@ export function PollsContentSection() {
             <CsvImportSection
               modeId={selectedModeId}
               modeTitle={selectedMode?.title}
+              modeCode={selectedMode?.code}
               onImported={async () => {
                 if (selectedModeId) await loadQuestions(selectedModeId)
               }}

@@ -30,6 +30,9 @@ class HealthcheckItem(BaseModel):
     error: Optional[str] = None
     server_time: Optional[str] = None
     optional: bool = False
+    cpu_percent: Optional[float] = None
+    memory_bytes: Optional[int] = None
+    memory_limit_bytes: Optional[int] = None
 
 
 class HealthcheckResponse(BaseModel):
@@ -67,6 +70,60 @@ class UserStatisticsItem(BaseModel):
 class UserStatisticsResponse(BaseModel):
     """Ответ со статистикой использования по пользователям."""
     users: List[UserStatisticsItem]
+
+
+class PlatformEffectivenessItem(BaseModel):
+    """Эффективность публикации по одной платформе за период."""
+    platform: str
+    total: int = 0
+    published: int = 0
+    failed: int = 0
+    skipped: int = 0
+    in_queue: int = 0
+    success_rate: Optional[float] = None
+
+
+class FailureReasonItem(BaseModel):
+    reason: str
+    count: int
+
+
+class LatencySummary(BaseModel):
+    sample_size: int = 0
+    median_minutes: Optional[float] = None
+    p95_minutes: Optional[float] = None
+
+
+class StuckQueues(BaseModel):
+    posts_collected: int = 0
+    posts_processing: int = 0
+    posts_review: int = 0
+    posts_ready: int = 0
+    collected_older_than_1h: int = 0
+    targets_pending: int = 0
+    targets_ready: int = 0
+    targets_publishing: int = 0
+    ready_older_than_1h: int = 0
+    publishing_older_than_15m: int = 0
+
+
+class PipelineEffectivenessResponse(BaseModel):
+    """Сводка эффективности пайплайна за период."""
+    period_days: int
+    since: str
+    targets_total: int = 0
+    published: int = 0
+    failed: int = 0
+    skipped: int = 0
+    in_queue: int = 0
+    success_rate: Optional[float] = None
+    by_platform: List[PlatformEffectivenessItem] = Field(default_factory=list)
+    failures: List[FailureReasonItem] = Field(default_factory=list)
+    latency: LatencySummary = Field(default_factory=LatencySummary)
+    stuck: StuckQueues = Field(default_factory=StuckQueues)
+    users_with_posts: int = 0
+    users_with_published: int = 0
+    collected_at: Optional[str] = None
 
 
 # ==================== Schedule Snapshots ====================
@@ -772,6 +829,7 @@ class DzenProfile(DzenProfileBase):
     created_at: datetime
     updated_at: datetime
     last_auth_error: Optional[str] = None  # выставляется dzen-bot; только чтение в UI
+    yandex_session_saved_at: Optional[datetime] = None  # cookies в API не отдаём
 
     class Config:
         from_attributes = True
@@ -1277,6 +1335,39 @@ class PostsTablesResponse(BaseModel):
     processor_error: Optional[str] = None
 
 
+class PostTraceStage(BaseModel):
+    """Один этап пути сообщения (сбор → публикация)."""
+    stage: str
+    label: str
+    done: bool = False
+    detail: Optional[str] = None
+
+
+class PostTraceTimelineItem(BaseModel):
+    """Элемент таймлайна: lifecycle или inferred из текущего состояния."""
+    kind: str
+    at: Optional[str] = None
+    platform: Optional[str] = None
+    from_status: Optional[str] = None
+    to_status: Optional[str] = None
+    actor: Optional[str] = None
+    job_id: Optional[int] = None
+    payload: Dict[str, Any] = Field(default_factory=dict)
+    source: Optional[str] = None
+
+
+class PostTraceResponse(BaseModel):
+    """Восстановление пути одного сообщения от сбора до публикации."""
+    post_id: int
+    hub: Dict[str, Any] = Field(default_factory=dict)
+    targets: List[Dict[str, Any]] = Field(default_factory=list)
+    lifecycle_events: List[Dict[str, Any]] = Field(default_factory=list)
+    timeline: List[PostTraceTimelineItem] = Field(default_factory=list)
+    stages: List[PostTraceStage] = Field(default_factory=list)
+    related_tg_events: List[Dict[str, Any]] = Field(default_factory=list)
+    collected_at: Optional[str] = None
+
+
 class PostingDiagnosticsResponse(BaseModel):
     """Результат цикла диагностики постинга (Telegram и пайплайн)."""
     tg_targets_by_status: List[Dict[str, Any]] = Field(
@@ -1436,6 +1527,24 @@ class StorageDeleteResponse(BaseModel):
     """Результат удаления объекта в S3 (админ)."""
     ok: bool = True
     key: str
+
+
+class StorageBulkDeleteRequest(BaseModel):
+    """Пакетное удаление объектов S3 (админ)."""
+    keys: List[str] = Field(..., min_length=1, max_length=500)
+
+
+class StorageDeleteFailure(BaseModel):
+    """Объект, который S3 не удалил в пакетном запросе."""
+    key: str
+    error: str
+
+
+class StorageBulkDeleteResponse(BaseModel):
+    """Результат пакетного удаления объектов в S3."""
+    ok: bool = True
+    deleted: List[str] = Field(default_factory=list)
+    failed: List[StorageDeleteFailure] = Field(default_factory=list)
 
 
 class RuntimeGeoByIp(BaseModel):

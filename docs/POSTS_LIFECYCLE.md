@@ -14,6 +14,10 @@
 
 SMM «опубликовать сейчас» сразу создаёт хаб + `post_targets.status=ready` и будит бота (`/internal/publish-now`).
 
+Переходы пишутся в append-only `post_lifecycle_events` (сбор, process, claim publish, результат бота). Восстановить путь одного сообщения: `GET /admin/posts/{post_id}/trace` (gateway: `/core/admin/posts/{id}/trace`, UI: Checks → Диагностика постинга). Если журнала ещё нет (старые посты), таймлайн строится из текущего `posts` / `post_targets`.
+
+Эффективность за 7/30/90 дней: `GET /pipeline-effectiveness` (gateway: `/core/pipeline-effectiveness`, UI: Administration → Users → Statistics). Считает `post_targets` (успех = published / (published + failed), причины `result.error`, очереди) и время сбора→публикации по журналу, иначе по `posts.created_at` и `post_targets.updated_at`. Колонка Published в статистике пользователей — посты с хотя бы одной целью `published`, не `posts.status`.
+
 Публикация во **VK**: [VK_BOT_POSTING.md](VK_BOT_POSTING.md).
 
 ---

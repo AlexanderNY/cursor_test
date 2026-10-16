@@ -150,7 +150,61 @@ GAME_TABLE_DDL: list[str] = [
     """
     ALTER TABLE game_modes
         ADD CONSTRAINT game_modes_mode_type_check
-        CHECK (mode_type IN ('quiz', 'menu'))
+        CHECK (mode_type IN (
+            'quiz',
+            'menu',
+            'country_training',
+            'country_flags',
+            'country_map'
+        ))
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS game_countries (
+        id SERIAL PRIMARY KEY,
+        iso2 CHAR(2) NOT NULL UNIQUE,
+        name_ru TEXT NOT NULL,
+        capital_ru TEXT NOT NULL DEFAULT '',
+        area_km2 DOUBLE PRECISION,
+        population BIGINT,
+        flag_image_url TEXT,
+        flag_image_file_id TEXT,
+        map_image_url TEXT,
+        map_image_file_id TEXT,
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_game_countries_ready
+        ON game_countries(id)
+        WHERE is_active = TRUE
+          AND flag_image_url IS NOT NULL
+          AND map_image_url IS NOT NULL
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS game_country_steps (
+        id SERIAL PRIMARY KEY,
+        session_id INT NOT NULL REFERENCES game_sessions(id) ON DELETE CASCADE,
+        step_index INT NOT NULL CHECK (step_index >= 0),
+        country_id INT NOT NULL REFERENCES game_countries(id) ON DELETE CASCADE,
+        option_country_ids INT[] NOT NULL DEFAULT '{}',
+        UNIQUE (session_id, step_index)
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_game_country_steps_session
+        ON game_country_steps(session_id, step_index)
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS game_country_answers (
+        id SERIAL PRIMARY KEY,
+        session_id INT NOT NULL REFERENCES game_sessions(id) ON DELETE CASCADE,
+        step_index INT NOT NULL,
+        selected_country_id INT REFERENCES game_countries(id) ON DELETE SET NULL,
+        is_correct BOOLEAN NOT NULL,
+        answered_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (session_id, step_index)
+    )
     """,
     """
     CREATE TABLE IF NOT EXISTS game_menu_nodes (

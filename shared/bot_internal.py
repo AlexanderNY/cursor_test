@@ -11,6 +11,8 @@ from typing import Any, Optional
 
 import httpx
 
+from shared.internal_auth import internal_auth_headers
+
 logger = logging.getLogger(__name__)
 
 
@@ -32,6 +34,7 @@ async def post_metric_snapshot(
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.post(
                 f"{base}/internal/smm/post-metrics/snapshot",
+                headers=internal_auth_headers(),
                 json={
                     "user_id": user_id,
                     "platform": platform,
@@ -64,7 +67,11 @@ async def claim_ready_posts(
         payload["user_id"] = user_id
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.post(f"{base}/internal/smm/posts/claim", json=payload)
+            resp = await client.post(
+                f"{base}/internal/smm/posts/claim",
+                headers=internal_auth_headers(),
+                json=payload,
+            )
             if resp.status_code >= 400:
                 logger.debug("claim_ready_posts HTTP %s: %s", resp.status_code, resp.text[:200])
                 return []
@@ -90,6 +97,7 @@ async def mark_post_published(
         async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.post(
                 f"{base}/internal/smm/posts/publish-result",
+                headers=internal_auth_headers(),
                 json={
                     "platform": platform,
                     "post_id": post_id,
@@ -111,7 +119,10 @@ async def wake_publish_now(bot_base_url: str, *, timeout: float = 5.0) -> bool:
         return False
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
-            resp = await client.post(f"{base}/internal/publish-now")
+            resp = await client.post(
+                f"{base}/internal/publish-now",
+                headers=internal_auth_headers(),
+            )
             if resp.status_code < 400:
                 return True
             logger.debug(

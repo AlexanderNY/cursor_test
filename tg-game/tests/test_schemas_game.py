@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from schemas_game import GameOptionInput, GameQuestionCreate
+from schemas_game import GameModeCreate, GameOptionInput, GameQuestionCreate
 
 
 def _six_options(correct_index: int = 2) -> list[GameOptionInput]:
@@ -53,3 +53,14 @@ def test_game_question_create_no_correct() -> None:
     ]
     with pytest.raises(ValidationError):
         GameQuestionCreate(mode_id=1, prompt_text="What?", options=opts)
+
+
+def test_game_mode_create_country_types() -> None:
+    for mode_type in ("country_training", "country_flags", "country_map"):
+        body = GameModeCreate(
+            bot_id=1,
+            code=mode_type,
+            title=mode_type,
+            mode_type=mode_type,  # type: ignore[arg-type]
+        )
+        assert body.mode_type == mode_type

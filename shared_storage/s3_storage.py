@@ -1,12 +1,30 @@
 """
 S3-совместимое хранилище (MinIO, AWS S3, Yandex Object Storage).
-Единый интерфейс: put(key, body), get_presigned_url(key), get_bytes(key), list_objects(prefix).
+Единый интерфейс: put(key, body), get_presigned_url(key), get_bytes(key), list_objects(prefix), delete_objects(keys).
 """
 
 import logging
 from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
+
+_S3_DELETE_BATCH = 1000
+
+
+def collect_delete_objects_result(resp: Dict[str, Any]) -> Dict[str, Any]:
+    """Разбирает ответ S3 DeleteObjects на списки удалённых ключей и ошибок."""
+    deleted: List[str] = []
+    failed: List[Dict[str, str]] = []
+    for item in resp.get("Deleted") or []:
+        key = item.get("Key")
+        if key:
+            deleted.append(key)
+    for err in resp.get("Errors") or []:
+        failed.append({
+            "key": str(err.get("Key") or ""),
+            "error": str(err.get("Message") or err.get("Code") or "delete failed"),
+        })
+    return {"deleted": deleted, "failed": failed}
 
 # Optional: aioboto3 only when S3 is configured
 _aioboto3 = None
@@ -216,6 +234,50 @@ class S3Storage:
         async with session.client(**self._client_kwargs()) as client:
             await client.delete_object(Bucket=self.bucket, Key=key)
         logger.info("Deleted object s3://%s/%s", self.bucket, key)
+
+    async def delete_objects(self, keys: List[str]) -> Dict[str, Any]:
+        """Удаляет несколько объектов одним или несколькими вызовами DeleteObjects.
+
+        Возвращает {"deleted": [keys], "failed": [{"key", "error"}]}.
+        Пустой ключ — ValueError. Дубликаты схлопываются.
+        """
+        cleaned: List[str] = []
+        seen: set[str] = set()
+        for raw in keys:
+            key = (raw or "").lstrip("/")
+            if not key:
+                raise ValueError("Storage key cannot be empty")
+            if key in seen:
+                continue
+            seen.add(key)
+            cleaned.append(key)
+        if not cleaned:
+            raise ValueError("Storage key cannot be empty")
+
+        deleted: List[str] = []
+        failed: List[Dict[str, str]] = []
+        aioboto3 = _get_aioboto3()
+        session = aioboto3.Session()
+        async with session.client(**self._client_kwargs()) as client:
+            for start in range(0, len(cleaned), _S3_DELETE_BATCH):
+                batch = cleaned[start:start + _S3_DELETE_BATCH]
+                resp = await client.delete_objects(
+                    Bucket=self.bucket,
+                    Delete={
+                        "Objects": [{"Key": key} for key in batch],
+                        "Quiet": False,
+                    },
+                )
+                parsed = collect_delete_objects_result(resp)
+                deleted.extend(parsed["deleted"])
+                failed.extend(parsed["failed"])
+        logger.info(
+            "Deleted %s objects from s3://%s (%s failed)",
+            len(deleted),
+            self.bucket,
+            len(failed),
+        )
+        return {"deleted": deleted, "failed": failed}
 
 
 # Глобальный экземпляр (инициализируется из конфига при первом обращении)

@@ -28,12 +28,45 @@ from database import get_site_db_connection, release_site_db_connection
 from rate_limit import enforce_rate_limit
 from upload_limits import read_upload_limited
 import async_fs
+from services.cert_rules import (
+    CERT_QUIZ_PERCENT,
+    INTERVIEW_CERT_PERCENT,
+    INTERVIEW_TRACK_ID,
+    assess_interview_track,
+    assess_tracks,
+    best_quiz_percents,
+    blank_code,
+    is_cert_code,
+)
 from services.photo_process import process_profile_photo
 from storage_client import get_storage
 
 UPLOADS_SITE_RESUME_DIR = Path("uploads/site/resume")
+UPLOADS_SITE_NOTES_DIR = Path("uploads/site/notes")
 S3_SITE_RESUME_PREFIX = "site/resume"
+S3_SITE_NOTES_PREFIX = "site/notes"
 ALLOWED_RESUME_PHOTO_EXT = {".jpg", ".jpeg", ".png", ".webp"}
+ALLOWED_NOTE_FILE_EXT = {
+    ".jpg",
+    ".jpeg",
+    ".png",
+    ".webp",
+    ".gif",
+    ".pdf",
+    ".txt",
+    ".md",
+}
+NOTE_MIME_BY_EXT = {
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".webp": "image/webp",
+    ".gif": "image/gif",
+    ".pdf": "application/pdf",
+    ".txt": "text/plain",
+    ".md": "text/markdown",
+}
+MAX_NOTE_FILE_BYTES = 5 * 1024 * 1024
 
 router = APIRouter(prefix="/site", tags=["Site9to18"])
 
@@ -93,6 +126,19 @@ DEFAULT_APPS: list[dict[str, Any]] = [
         "sort_order": 4,
     },
     {
+        "slug": "portfolio",
+        "title": "Портфолио",
+        "subtitle": "Кейсы · публичная страница",
+        "description": (
+            "Публичная страница кейсов: задача, что сделано, результат, стек, "
+            "выпуски Learn и сертификат сезона."
+        ),
+        "accent": "#38bdf8",
+        "emoji": "🗂️",
+        "app_path": "/game/portfolio",
+        "sort_order": 5,
+    },
+    {
         "slug": "code",
         "title": "Code",
         "subtitle": "Python в браузере",
@@ -103,7 +149,33 @@ DEFAULT_APPS: list[dict[str, Any]] = [
         "accent": "#2dd4bf",
         "emoji": "⌨️",
         "app_path": "/game/code",
-        "sort_order": 5,
+        "sort_order": 6,
+    },
+    {
+        "slug": "sql",
+        "title": "SQL",
+        "subtitle": "SQLite в браузере",
+        "description": (
+            "Песочница sql.js: упражнения SQL без сервера. "
+            "Задачи связаны с лекциями Learn SQL01–SQL13."
+        ),
+        "accent": "#f59e0b",
+        "emoji": "🗄️",
+        "app_path": "/game/sql",
+        "sort_order": 7,
+    },
+    {
+        "slug": "git",
+        "title": "Git",
+        "subtitle": "Симулятор команд",
+        "description": (
+            "Учебный Git без диска: add/commit/branch/stash/merge. "
+            "Задачи связаны с B02, B06 и серией GIT01–GIT06."
+        ),
+        "accent": "#f97316",
+        "emoji": "🌿",
+        "app_path": "/game/git",
+        "sort_order": 8,
     },
     {
         "slug": "copyparse",
@@ -113,47 +185,7 @@ DEFAULT_APPS: list[dict[str, Any]] = [
         "accent": "#fb923c",
         "emoji": "🚀",
         "external_href": "https://www.copyparse.ru",
-        "sort_order": 6,
-    },
-    {
-        "slug": "profile",
-        "title": "Profile",
-        "subtitle": "Личный кабинет",
-        "description": "Прогресс Learn, настройки и доступы (site JWT).",
-        "accent": "#38bdf8",
-        "emoji": "👤",
-        "app_path": "/account",
-        "sort_order": 7,
-    },
-    {
-        "slug": "tasks",
-        "title": "Tasks",
-        "subtitle": "Чек-лист Learn",
-        "description": "Личные задачи и прогресс по выпускам Learn.",
-        "accent": "#4ade80",
-        "emoji": "✅",
-        "app_path": "/game/tasks",
-        "sort_order": 8,
-    },
-    {
-        "slug": "quiz",
-        "title": "Quiz",
-        "subtitle": "Закрепление теории",
-        "description": "Вопросы из тестов статей Learn (structured.quiz).",
-        "accent": "#f59e0b",
-        "emoji": "🧠",
-        "app_path": "/game/quiz",
         "sort_order": 9,
-    },
-    {
-        "slug": "cert",
-        "title": "Cert",
-        "subtitle": "Сертификаты",
-        "description": "Сертификат сезона Learn — печать / сохранить как PDF.",
-        "accent": "#eab308",
-        "emoji": "🎓",
-        "app_path": "/game/cert",
-        "sort_order": 10,
     },
     {
         "slug": "mnemonics",
@@ -166,7 +198,7 @@ DEFAULT_APPS: list[dict[str, Any]] = [
         "accent": "#a78bfa",
         "emoji": "🧩",
         "app_path": "/game/mnemonics",
-        "sort_order": 11,
+        "sort_order": 10,
     },
 ]
 
@@ -296,6 +328,79 @@ class PasswordResetIn(BaseModel):
 class LearnProgressIn(BaseModel):
     slug: str = Field(..., min_length=1, max_length=128)
     completed: bool = True
+
+
+class ChecklistItemIn(BaseModel):
+    id: str = Field(default="", max_length=64)
+    title: str = Field(..., min_length=1, max_length=256)
+    done: bool = False
+
+
+class UserTaskCreateIn(BaseModel):
+    title: str = Field(..., min_length=1, max_length=512)
+    notes: str = Field(default="", max_length=8000)
+    tag: str = Field(default="", max_length=64)
+    due_at: Optional[str] = Field(default=None, max_length=32)
+    due_time: Optional[str] = Field(default=None, max_length=16)
+    remind_at: Optional[str] = Field(default=None, max_length=64)
+    priority: str = Field(default="normal", max_length=16)
+    board: str = Field(default="backlog", max_length=16)
+    checklist: list[ChecklistItemIn] = Field(default_factory=list)
+    repeat_rule: str = Field(default="none", max_length=16)
+    parent_id: Optional[int] = None
+
+
+class UserTaskUpdateIn(BaseModel):
+    title: Optional[str] = Field(default=None, min_length=1, max_length=512)
+    notes: Optional[str] = Field(default=None, max_length=8000)
+    tag: Optional[str] = Field(default=None, max_length=64)
+    # None = no change; "" = clear due date; "YYYY-MM-DD" = set
+    due_at: Optional[str] = Field(default=None, max_length=32)
+    due_time: Optional[str] = Field(default=None, max_length=16)
+    remind_at: Optional[str] = Field(default=None, max_length=64)
+    priority: Optional[str] = Field(default=None, max_length=16)
+    board: Optional[str] = Field(default=None, max_length=16)
+    checklist: Optional[list[ChecklistItemIn]] = None
+    repeat_rule: Optional[str] = Field(default=None, max_length=16)
+    parent_id: Optional[int] = None
+    completed: Optional[bool] = None
+    sort_order: Optional[int] = None
+
+
+class HabitCreateIn(BaseModel):
+    title: str = Field(..., min_length=1, max_length=256)
+    tag: str = Field(default="", max_length=64)
+    color: str = Field(default="", max_length=32)
+
+
+class HabitUpdateIn(BaseModel):
+    title: Optional[str] = Field(default=None, min_length=1, max_length=256)
+    tag: Optional[str] = Field(default=None, max_length=64)
+    color: Optional[str] = Field(default=None, max_length=32)
+    is_archived: Optional[bool] = None
+    sort_order: Optional[int] = None
+
+
+class HabitCheckIn(BaseModel):
+    day: Optional[str] = Field(default=None, max_length=32)
+    checked: bool = True
+
+
+class NoteCreateIn(BaseModel):
+    title: str = Field(default="", max_length=512)
+    body: str = Field(default="", max_length=100_000)
+    tag: str = Field(default="", max_length=64)
+
+
+class NoteUpdateIn(BaseModel):
+    title: Optional[str] = Field(default=None, max_length=512)
+    body: Optional[str] = Field(default=None, max_length=100_000)
+    tag: Optional[str] = Field(default=None, max_length=64)
+
+
+class FocusLogCreateIn(BaseModel):
+    minutes: int = Field(..., ge=1, le=180)
+    label: str = Field(default="", max_length=128)
 
 
 class QuizAttemptIn(BaseModel):
@@ -562,6 +667,11 @@ async def _ensure_featured_apps(cur: Any) -> None:
         "forum",
         "map",
         "team",
+        # Кабинет и срезы Learn, не отдельные сервисы витрины.
+        "profile",
+        "tasks",
+        "quiz",
+        "cert",
     }
     for app in DEFAULT_APPS:
         await cur.execute(
@@ -2375,6 +2485,29 @@ async def get_study_summary(authorization: Optional[str] = Header(None)) -> dict
             recent_quiz = await cur.fetchall()
             await cur.execute(
                 """
+                SELECT source_key, score, total, finished_at
+                FROM (
+                    SELECT source_key, score, total, finished_at,
+                           ROW_NUMBER() OVER (
+                               PARTITION BY source_key
+                               ORDER BY
+                                   CASE
+                                       WHEN total > 0 THEN score::float / total
+                                       ELSE 0
+                                   END DESC,
+                                   finished_at DESC
+                           ) AS rn
+                    FROM site_quiz_attempts
+                    WHERE user_id = %s
+                ) ranked
+                WHERE rn = 1
+                ORDER BY source_key
+                """,
+                (user["user_id"],),
+            )
+            best_quiz = await cur.fetchall()
+            await cur.execute(
+                """
                 SELECT COUNT(*)::int,
                        COUNT(*) FILTER (WHERE due_at <= CURRENT_TIMESTAMP)::int,
                        COUNT(*) FILTER (WHERE repetitions > 0)::int
@@ -2396,6 +2529,19 @@ async def get_study_summary(authorization: Optional[str] = Header(None)) -> dict
             quiz_row[3].isoformat() if hasattr(quiz_row[3], "isoformat") else str(quiz_row[3])
         )
 
+    def _quiz_row_payload(row: Any) -> dict[str, Any]:
+        total = int(row[2] or 0)
+        score = int(row[1] or 0)
+        return {
+            "sourceKey": str(row[0]),
+            "score": score,
+            "total": total,
+            "percent": round((score / total) * 100) if total else 0,
+            "finishedAt": row[3].isoformat()
+            if hasattr(row[3], "isoformat")
+            else str(row[3]),
+        }
+
     return {
         "quiz": {
             "attempts": quiz_attempts,
@@ -2403,17 +2549,8 @@ async def get_study_summary(authorization: Optional[str] = Header(None)) -> dict
             "totalSum": quiz_total_sum,
             "avgPercent": round((quiz_score_sum / quiz_total_sum) * 100) if quiz_total_sum else 0,
             "lastAt": last_quiz_at,
-            "recent": [
-                {
-                    "sourceKey": str(row[0]),
-                    "score": int(row[1] or 0),
-                    "total": int(row[2] or 0),
-                    "finishedAt": row[3].isoformat()
-                    if hasattr(row[3], "isoformat")
-                    else str(row[3]),
-                }
-                for row in recent_quiz
-            ],
+            "recent": [_quiz_row_payload(row) for row in recent_quiz],
+            "best": [_quiz_row_payload(row) for row in best_quiz],
         },
         "anki": {
             "cards": int(anki_row[0] or 0) if anki_row else 0,
@@ -2458,6 +2595,209 @@ async def post_quiz_attempt(
         "total": total,
         "finishedAt": row[1].isoformat() if hasattr(row[1], "isoformat") else str(row[1]),
     }
+
+
+_CERT_POSTS_SQL = """
+SELECT slug, episode,
+       EXISTS (
+           SELECT 1
+           FROM jsonb_array_elements(
+               CASE
+                   WHEN jsonb_typeof(COALESCE(structured, '{}'::jsonb)->'quiz') = 'array'
+                   THEN COALESCE(structured, '{}'::jsonb)->'quiz'
+                   ELSE '[]'::jsonb
+               END
+           ) AS question
+           WHERE length(btrim(COALESCE(question->>'question', ''))) > 0
+             AND length(btrim(COALESCE(question->>'answer', ''))) > 0
+       ) AS has_quiz
+FROM learn_posts
+WHERE published_at <= NOW()
+ORDER BY sort_order ASC, id ASC
+"""
+
+
+def _iso_stamp(value: Any) -> str:
+    if value is None:
+        return ""
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return str(value)
+
+
+def _cert_track_payload(track: dict[str, Any], code: str, issued_at: str) -> dict[str, Any]:
+    return {
+        "id": track["id"],
+        "title": track["title"],
+        "done": track["done"],
+        "total": track["total"],
+        "earned": track["earned"],
+        "quizRequired": track["quiz_required"],
+        "quizPassed": track["quiz_passed"],
+        "quizPercent": track["quiz_percent"],
+        "quizMissing": track["quiz_missing"],
+        "code": code,
+        "issuedAt": issued_at,
+    }
+
+
+async def _load_certificate_board(cur: Any, user_id: int) -> list[dict[str, Any]]:
+    await cur.execute(_CERT_POSTS_SQL)
+    post_rows = await cur.fetchall()
+    posts = [
+        {
+            "slug": str(row[0] or ""),
+            "episode": str(row[1] or ""),
+            "has_quiz": bool(row[2]),
+        }
+        for row in post_rows
+    ]
+    await cur.execute(
+        "SELECT slug FROM site_learn_progress WHERE user_id = %s",
+        (user_id,),
+    )
+    completed = {str(row[0]).strip().lower() for row in await cur.fetchall() if row and row[0]}
+    await cur.execute(
+        """
+        SELECT source_key, score, total, source_type
+        FROM site_quiz_attempts
+        WHERE user_id = %s AND source_type IN ('learn', 'quiz_page')
+        """,
+        (user_id,),
+    )
+    learn_attempts: list[dict[str, Any]] = []
+    interview_attempts: list[dict[str, Any]] = []
+    for row in await cur.fetchall():
+        item = {
+            "source_key": str(row[0] or ""),
+            "score": int(row[1] or 0),
+            "total": int(row[2] or 0),
+        }
+        source_type = str(row[3] or "")
+        if source_type == "quiz_page":
+            interview_attempts.append(item)
+        else:
+            learn_attempts.append(item)
+    board = assess_tracks(posts, completed, best_quiz_percents(learn_attempts))
+    board.append(assess_interview_track(interview_attempts))
+    return board
+
+
+async def _sync_certificates(cur: Any, user_id: int, holder_name: str) -> list[dict[str, Any]]:
+    board = await _load_certificate_board(cur, user_id)
+    earned_ids = [track["id"] for track in board if track["earned"]]
+    if earned_ids:
+        await cur.execute(
+            """
+            DELETE FROM site_certificates
+            WHERE user_id = %s AND NOT (track_id = ANY(%s))
+            """,
+            (user_id, earned_ids),
+        )
+    else:
+        await cur.execute("DELETE FROM site_certificates WHERE user_id = %s", (user_id,))
+
+    stored: dict[str, tuple[str, str]] = {}
+    holder = (holder_name or "").strip() or "Участник"
+    for track in board:
+        if not track["earned"]:
+            continue
+        code = blank_code(user_id, track["id"])
+        await cur.execute(
+            """
+            INSERT INTO site_certificates (
+                code, user_id, track_id, track_title, holder_name, episode_count, quiz_percent
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (user_id, track_id) DO UPDATE SET
+                track_title = EXCLUDED.track_title,
+                holder_name = EXCLUDED.holder_name,
+                episode_count = EXCLUDED.episode_count,
+                quiz_percent = EXCLUDED.quiz_percent
+            RETURNING code, issued_at
+            """,
+            (
+                code,
+                user_id,
+                track["id"],
+                track["title"],
+                holder,
+                track["total"],
+                track["quiz_percent"],
+            ),
+        )
+        saved = await cur.fetchone()
+        stored[track["id"]] = (str(saved[0]), _iso_stamp(saved[1]))
+
+    return [
+        _cert_track_payload(
+            track,
+            stored.get(track["id"], ("", ""))[0],
+            stored.get(track["id"], ("", ""))[1],
+        )
+        for track in board
+    ]
+
+
+@router.get("/learn/certificates")
+async def list_certificates(authorization: Optional[str] = Header(None)) -> dict[str, Any]:
+    """Выдать или снять бланки по текущему прогрессу и вернуть доску."""
+    user = await _require_user(authorization)
+    conn = await get_site_db_connection()
+    try:
+        async with conn.cursor() as cur:
+            tracks = await _sync_certificates(cur, int(user["user_id"]), str(user["username"]))
+    finally:
+        await release_site_db_connection(conn)
+    return {"quizThreshold": CERT_QUIZ_PERCENT, "tracks": tracks}
+
+
+@router.get("/learn/certificates/{code}")
+async def public_certificate(code: str, request: Request) -> dict[str, Any]:
+    """Публичная проверка бланка. Без сессии. Просроченный прогресс снимает бланк."""
+    enforce_rate_limit(request, "public")
+    normalized = (code or "").strip().upper()
+    if not is_cert_code(normalized):
+        raise HTTPException(status_code=404, detail="Сертификат не найден")
+    conn = await get_site_db_connection()
+    try:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                """
+                SELECT user_id, track_id, holder_name, issued_at
+                FROM site_certificates
+                WHERE code = %s
+                """,
+                (normalized,),
+            )
+            found = await cur.fetchone()
+            if not found:
+                raise HTTPException(status_code=404, detail="Сертификат не найден")
+            user_id = int(found[0])
+            track_id = str(found[1])
+            board = await _load_certificate_board(cur, user_id)
+            track = next((item for item in board if item["id"] == track_id and item["earned"]), None)
+            if track is None:
+                await cur.execute("DELETE FROM site_certificates WHERE code = %s", (normalized,))
+                raise HTTPException(status_code=404, detail="Сертификат не найден")
+            payload = {
+                "code": normalized,
+                "holderName": str(found[2] or ""),
+                "trackId": track["id"],
+                "trackTitle": track["title"],
+                "episodeCount": track["total"],
+                "quizPercent": track["quiz_percent"],
+                "quizRequired": track["quiz_required"],
+                "quizThreshold": (
+                    INTERVIEW_CERT_PERCENT
+                    if track["id"] == INTERVIEW_TRACK_ID
+                    else CERT_QUIZ_PERCENT
+                ),
+                "issuedAt": _iso_stamp(found[3]),
+            }
+    finally:
+        await release_site_db_connection(conn)
+    return payload
 
 
 @router.get("/study/anki")
@@ -2566,4 +2906,1250 @@ async def put_anki_review(
         "intervalDays": int(row[2] or 0),
         "repetitions": int(row[3] or 0),
         "ease": body.ease,
+    }
+
+
+def _parse_optional_due_date(raw: Optional[str], *, allow_clear: bool = False) -> Optional[date]:
+    """Parse YYYY-MM-DD. Empty string clears when allow_clear=True; otherwise None means unset."""
+    if raw is None:
+        return None
+    value = raw.strip()
+    if not value:
+        if allow_clear:
+            return None
+        raise HTTPException(status_code=400, detail="due_at must be YYYY-MM-DD")
+    try:
+        return date.fromisoformat(value[:10])
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="due_at must be YYYY-MM-DD") from exc
+
+
+def _parse_optional_time(raw: Optional[str], *, allow_clear: bool = False):
+    from datetime import time as time_cls
+
+    if raw is None:
+        return None
+    value = raw.strip()
+    if not value:
+        if allow_clear:
+            return None
+        raise HTTPException(status_code=400, detail="due_time must be HH:MM")
+    try:
+        parts = value.split(":")
+        hour = int(parts[0])
+        minute = int(parts[1]) if len(parts) > 1 else 0
+        return time_cls(hour=hour, minute=minute)
+    except (ValueError, IndexError) as exc:
+        raise HTTPException(status_code=400, detail="due_time must be HH:MM") from exc
+
+
+def _parse_optional_remind_at(raw: Optional[str], *, allow_clear: bool = False) -> Optional[datetime]:
+    if raw is None:
+        return None
+    value = raw.strip()
+    if not value:
+        if allow_clear:
+            return None
+        raise HTTPException(status_code=400, detail="remind_at must be ISO datetime")
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="remind_at must be ISO datetime") from exc
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
+def _normalize_priority(raw: str) -> str:
+    from services.task_planner import VALID_PRIORITIES
+
+    value = (raw or "normal").strip().lower()
+    if value not in VALID_PRIORITIES:
+        raise HTTPException(status_code=400, detail="invalid priority")
+    return value
+
+
+def _normalize_board(raw: str) -> str:
+    from services.task_planner import VALID_BOARDS
+
+    value = (raw or "backlog").strip().lower()
+    if value not in VALID_BOARDS:
+        raise HTTPException(status_code=400, detail="invalid board")
+    return value
+
+
+def _normalize_repeat_rule(raw: str) -> str:
+    from services.task_planner import VALID_REPEAT_RULES
+
+    value = (raw or "none").strip().lower()
+    if value not in VALID_REPEAT_RULES:
+        raise HTTPException(status_code=400, detail="invalid repeat_rule")
+    return value
+
+
+def _checklist_from_db(raw: Any) -> list[dict[str, Any]]:
+    from services.task_planner import normalize_checklist
+
+    if raw is None:
+        return []
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except json.JSONDecodeError:
+            return []
+    if not isinstance(raw, list):
+        return []
+    return normalize_checklist(raw)
+
+
+def _user_task_payload(row: Any) -> dict[str, Any]:
+    # id, parent_id, title, notes, tag, due_at, due_time, remind_at, priority, board,
+    # checklist, repeat_rule, series_id, is_done, completed_at, sort_order, created_at, updated_at
+    due = row[5]
+    due_time = row[6]
+    remind_at = row[7]
+    completed_at = row[14]
+    created_at = row[16]
+    updated_at = row[17]
+    series_id = row[12]
+    parent_id = row[1]
+    due_time_str = None
+    if due_time is not None:
+        if hasattr(due_time, "strftime"):
+            due_time_str = due_time.strftime("%H:%M")
+        else:
+            due_time_str = str(due_time)[:5]
+    return {
+        "id": int(row[0]),
+        "parentId": int(parent_id) if parent_id is not None else None,
+        "title": str(row[2] or ""),
+        "notes": str(row[3] or ""),
+        "tag": str(row[4] or ""),
+        "dueAt": due.isoformat() if hasattr(due, "isoformat") else (str(due) if due else None),
+        "dueTime": due_time_str,
+        "remindAt": (
+            remind_at.isoformat()
+            if hasattr(remind_at, "isoformat")
+            else (str(remind_at) if remind_at else None)
+        ),
+        "priority": str(row[8] or "normal"),
+        "board": str(row[9] or "backlog"),
+        "checklist": _checklist_from_db(row[10]),
+        "repeatRule": str(row[11] or "none"),
+        "seriesId": str(series_id) if series_id else None,
+        "completed": bool(row[13]),
+        "completedAt": (
+            completed_at.isoformat()
+            if hasattr(completed_at, "isoformat")
+            else (str(completed_at) if completed_at else None)
+        ),
+        "sortOrder": int(row[15] or 0),
+        "createdAt": (
+            created_at.isoformat() if hasattr(created_at, "isoformat") else str(created_at)
+        ),
+        "updatedAt": (
+            updated_at.isoformat() if hasattr(updated_at, "isoformat") else str(updated_at)
+        ),
+        "subtasks": [],
+    }
+
+
+_USER_TASK_SELECT = """
+SELECT id, parent_id, title, notes, tag, due_at, due_time, remind_at, priority, board,
+       checklist, repeat_rule, series_id, is_done, completed_at, sort_order,
+       created_at, updated_at
+FROM site_user_tasks
+"""
+
+_USER_TASK_RETURNING = """
+RETURNING id, parent_id, title, notes, tag, due_at, due_time, remind_at, priority, board,
+          checklist, repeat_rule, series_id, is_done, completed_at, sort_order,
+          created_at, updated_at
+"""
+
+
+def _nest_tasks(payloads: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    by_id = {item["id"]: item for item in payloads}
+    roots: list[dict[str, Any]] = []
+    for item in payloads:
+        parent_id = item.get("parentId")
+        if parent_id and parent_id in by_id:
+            by_id[parent_id].setdefault("subtasks", []).append(item)
+        else:
+            roots.append(item)
+    return roots
+
+
+async def _catch_up_recurring_tasks(cur: Any, user_id: int) -> None:
+    from services.task_planner import catch_up_due_dates, reset_checklist
+
+    await cur.execute(
+        f"""
+        {_USER_TASK_SELECT}
+        WHERE user_id = %s
+          AND parent_id IS NULL
+          AND repeat_rule <> 'none'
+          AND series_id IS NOT NULL
+        ORDER BY series_id, due_at DESC NULLS LAST, id DESC
+        """,
+        (user_id,),
+    )
+    rows = await cur.fetchall()
+    latest_by_series: dict[str, Any] = {}
+    for row in rows:
+        series_key = str(row[12]) if row[12] else ""
+        if not series_key or series_key in latest_by_series:
+            continue
+        latest_by_series[series_key] = row
+
+    today = date.today()
+    for series_key, row in latest_by_series.items():
+        rule = str(row[11] or "none")
+        last_due = row[5]
+        if last_due is None:
+            continue
+        if hasattr(last_due, "isoformat"):
+            last_due_date = last_due
+        else:
+            try:
+                last_due_date = date.fromisoformat(str(last_due)[:10])
+            except ValueError:
+                continue
+        missing = catch_up_due_dates(last_due_date, rule, until=today)
+        if not missing:
+            continue
+        checklist = json.dumps(reset_checklist(_checklist_from_db(row[10])))
+        due_time = row[6]
+        remind_at = None
+        for due in missing:
+            await cur.execute(
+                f"""
+                INSERT INTO site_user_tasks (
+                    user_id, parent_id, title, notes, tag, due_at, due_time, remind_at,
+                    priority, board, checklist, repeat_rule, series_id, is_done
+                )
+                VALUES (%s, NULL, %s, %s, %s, %s, %s, %s, %s, 'backlog', %s::jsonb, %s, %s, FALSE)
+                {_USER_TASK_RETURNING}
+                """,
+                (
+                    user_id,
+                    str(row[2] or "")[:512],
+                    str(row[3] or "")[:8000],
+                    str(row[4] or "")[:64],
+                    due,
+                    due_time,
+                    remind_at,
+                    str(row[8] or "normal"),
+                    checklist,
+                    rule,
+                    series_key,
+                ),
+            )
+
+
+async def _spawn_next_occurrence(cur: Any, user_id: int, source_row: Any) -> None:
+    from services.task_planner import next_due_date, reset_checklist
+
+    rule = str(source_row[11] or "none")
+    if rule == "none":
+        return
+    series_id = source_row[12]
+    if series_id is None:
+        series_id = uuid.uuid4()
+        await cur.execute(
+            """
+            UPDATE site_user_tasks
+            SET series_id = %s, updated_at = CURRENT_TIMESTAMP
+            WHERE id = %s AND user_id = %s
+            """,
+            (str(series_id), int(source_row[0]), user_id),
+        )
+    due = source_row[5]
+    base_due = None
+    if due is not None:
+        base_due = due if hasattr(due, "isoformat") else date.fromisoformat(str(due)[:10])
+    nxt = next_due_date(base_due, rule, from_day=date.today())
+    if nxt is None:
+        return
+    # Skip if an open occurrence with this due already exists
+    await cur.execute(
+        """
+        SELECT 1 FROM site_user_tasks
+        WHERE user_id = %s AND series_id = %s AND due_at = %s AND is_done = FALSE
+        LIMIT 1
+        """,
+        (user_id, str(series_id), nxt),
+    )
+    if await cur.fetchone():
+        return
+    checklist = json.dumps(reset_checklist(_checklist_from_db(source_row[10])))
+    await cur.execute(
+        f"""
+        INSERT INTO site_user_tasks (
+            user_id, parent_id, title, notes, tag, due_at, due_time, remind_at,
+            priority, board, checklist, repeat_rule, series_id, is_done
+        )
+        VALUES (%s, NULL, %s, %s, %s, %s, %s, NULL, %s, 'backlog', %s::jsonb, %s, %s, FALSE)
+        {_USER_TASK_RETURNING}
+        """,
+        (
+            user_id,
+            str(source_row[2] or "")[:512],
+            str(source_row[3] or "")[:8000],
+            str(source_row[4] or "")[:64],
+            nxt,
+            source_row[6],
+            str(source_row[8] or "normal"),
+            checklist,
+            rule,
+            str(series_id),
+        ),
+    )
+
+
+@router.get("/tasks")
+async def list_user_tasks(authorization: Optional[str] = Header(None)) -> dict[str, Any]:
+    """Personal task tracker — independent of Learn progress."""
+    user = await _require_user(authorization)
+    user_id = int(user["user_id"])
+    conn = await get_site_db_connection()
+    try:
+        async with conn.cursor() as cur:
+            await _catch_up_recurring_tasks(cur, user_id)
+            await cur.execute(
+                f"""
+                {_USER_TASK_SELECT}
+                WHERE user_id = %s
+                ORDER BY is_done ASC,
+                         due_at ASC NULLS LAST,
+                         sort_order ASC,
+                         created_at DESC
+                """,
+                (user_id,),
+            )
+            rows = await cur.fetchall()
+    finally:
+        await release_site_db_connection(conn)
+    payloads = [_user_task_payload(row) for row in rows]
+    return {"items": _nest_tasks(payloads)}
+
+
+@router.post("/tasks")
+async def create_user_task(
+    body: UserTaskCreateIn,
+    authorization: Optional[str] = Header(None),
+) -> dict[str, Any]:
+    from services.task_planner import (
+        board_for_completion,
+        due_hint_for_board,
+        normalize_checklist,
+    )
+
+    user = await _require_user(authorization)
+    user_id = int(user["user_id"])
+    title = body.title.strip()
+    if not title:
+        raise HTTPException(status_code=400, detail="title required")
+    due_at = None
+    if body.due_at is not None and body.due_at.strip():
+        due_at = _parse_optional_due_date(body.due_at)
+    due_time = None
+    if body.due_time is not None and body.due_time.strip():
+        due_time = _parse_optional_time(body.due_time)
+    remind_at = None
+    if body.remind_at is not None and body.remind_at.strip():
+        remind_at = _parse_optional_remind_at(body.remind_at)
+    notes = (body.notes or "").strip()[:8000]
+    tag = (body.tag or "").strip()[:64]
+    priority = _normalize_priority(body.priority)
+    board = _normalize_board(body.board)
+    repeat_rule = _normalize_repeat_rule(body.repeat_rule)
+    checklist = normalize_checklist([item.model_dump() for item in body.checklist])
+    parent_id = body.parent_id if body.parent_id and body.parent_id > 0 else None
+    series_id = str(uuid.uuid4()) if repeat_rule != "none" else None
+    is_done = board == "done"
+    completed_at = datetime.now(timezone.utc) if is_done else None
+    board = board_for_completion(is_done, board)
+    if due_at is None:
+        due_at = due_hint_for_board(board)
+
+    conn = await get_site_db_connection()
+    try:
+        async with conn.cursor() as cur:
+            if parent_id is not None:
+                await cur.execute(
+                    """
+                    SELECT id FROM site_user_tasks
+                    WHERE id = %s AND user_id = %s AND parent_id IS NULL
+                    """,
+                    (parent_id, user_id),
+                )
+                if not await cur.fetchone():
+                    raise HTTPException(status_code=400, detail="parent task not found")
+                # Subtasks do not carry their own recurrence series
+                series_id = None
+                repeat_rule = "none"
+            await cur.execute(
+                f"""
+                INSERT INTO site_user_tasks (
+                    user_id, parent_id, title, notes, tag, due_at, due_time, remind_at,
+                    priority, board, checklist, repeat_rule, series_id, is_done, completed_at
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s)
+                {_USER_TASK_RETURNING}
+                """,
+                (
+                    user_id,
+                    parent_id,
+                    title[:512],
+                    notes,
+                    tag,
+                    due_at,
+                    due_time,
+                    remind_at,
+                    priority,
+                    board,
+                    json.dumps(checklist),
+                    repeat_rule,
+                    series_id,
+                    is_done,
+                    completed_at,
+                ),
+            )
+            row = await cur.fetchone()
+    finally:
+        await release_site_db_connection(conn)
+    return _user_task_payload(row)
+
+
+@router.patch("/tasks/{task_id}")
+async def update_user_task(
+    task_id: int,
+    body: UserTaskUpdateIn,
+    authorization: Optional[str] = Header(None),
+) -> dict[str, Any]:
+    from services.task_planner import (
+        board_for_completion,
+        due_hint_for_board,
+        normalize_checklist,
+    )
+
+    user = await _require_user(authorization)
+    user_id = int(user["user_id"])
+    if task_id <= 0:
+        raise HTTPException(status_code=400, detail="invalid task id")
+    conn = await get_site_db_connection()
+    try:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                f"""
+                {_USER_TASK_SELECT}
+                WHERE id = %s AND user_id = %s
+                """,
+                (task_id, user_id),
+            )
+            existing = await cur.fetchone()
+            if not existing:
+                raise HTTPException(status_code=404, detail="task not found")
+
+            parent_id = existing[1]
+            title = str(existing[2] or "")
+            notes = str(existing[3] or "")
+            tag = str(existing[4] or "")
+            due_at = existing[5]
+            due_time = existing[6]
+            remind_at = existing[7]
+            priority = str(existing[8] or "normal")
+            board = str(existing[9] or "backlog")
+            checklist = _checklist_from_db(existing[10])
+            repeat_rule = str(existing[11] or "none")
+            series_id = existing[12]
+            is_done = bool(existing[13])
+            completed_at = existing[14]
+            sort_order = int(existing[15] or 0)
+            was_done = is_done
+
+            if body.title is not None:
+                title = body.title.strip()
+                if not title:
+                    raise HTTPException(status_code=400, detail="title required")
+                title = title[:512]
+            if body.notes is not None:
+                notes = body.notes.strip()[:8000]
+            if body.tag is not None:
+                tag = body.tag.strip()[:64]
+            if body.due_at is not None:
+                if body.due_at.strip() == "":
+                    due_at = None
+                else:
+                    due_at = _parse_optional_due_date(body.due_at)
+            if body.due_time is not None:
+                if body.due_time.strip() == "":
+                    due_time = None
+                else:
+                    due_time = _parse_optional_time(body.due_time)
+            if body.remind_at is not None:
+                if body.remind_at.strip() == "":
+                    remind_at = None
+                else:
+                    remind_at = _parse_optional_remind_at(body.remind_at)
+            if body.priority is not None:
+                priority = _normalize_priority(body.priority)
+            if body.board is not None:
+                board = _normalize_board(body.board)
+                hint = due_hint_for_board(board)
+                if hint is not None and due_at is None:
+                    due_at = hint
+                if board == "done":
+                    is_done = True
+                elif board != "done" and is_done and body.completed is None:
+                    is_done = False
+            if body.checklist is not None:
+                checklist = normalize_checklist([item.model_dump() for item in body.checklist])
+            if body.repeat_rule is not None:
+                repeat_rule = _normalize_repeat_rule(body.repeat_rule)
+                if repeat_rule != "none" and series_id is None and parent_id is None:
+                    series_id = uuid.uuid4()
+                if repeat_rule == "none":
+                    series_id = None
+            if body.parent_id is not None:
+                if body.parent_id <= 0:
+                    parent_id = None
+                else:
+                    if body.parent_id == task_id:
+                        raise HTTPException(status_code=400, detail="task cannot be its parent")
+                    await cur.execute(
+                        """
+                        SELECT id FROM site_user_tasks
+                        WHERE id = %s AND user_id = %s AND parent_id IS NULL
+                        """,
+                        (body.parent_id, user_id),
+                    )
+                    if not await cur.fetchone():
+                        raise HTTPException(status_code=400, detail="parent task not found")
+                    parent_id = body.parent_id
+                    repeat_rule = "none"
+                    series_id = None
+            if body.sort_order is not None:
+                sort_order = int(body.sort_order)
+            if body.completed is not None:
+                is_done = bool(body.completed)
+            board = board_for_completion(is_done, board)
+            if is_done and completed_at is None:
+                completed_at = datetime.now(timezone.utc)
+            if not is_done:
+                completed_at = None
+
+            await cur.execute(
+                f"""
+                UPDATE site_user_tasks
+                SET parent_id = %s,
+                    title = %s,
+                    notes = %s,
+                    tag = %s,
+                    due_at = %s,
+                    due_time = %s,
+                    remind_at = %s,
+                    priority = %s,
+                    board = %s,
+                    checklist = %s::jsonb,
+                    repeat_rule = %s,
+                    series_id = %s,
+                    is_done = %s,
+                    completed_at = %s,
+                    sort_order = %s,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = %s AND user_id = %s
+                {_USER_TASK_RETURNING}
+                """,
+                (
+                    parent_id,
+                    title,
+                    notes,
+                    tag,
+                    due_at,
+                    due_time,
+                    remind_at,
+                    priority,
+                    board,
+                    json.dumps(checklist),
+                    repeat_rule,
+                    str(series_id) if series_id else None,
+                    is_done,
+                    completed_at,
+                    sort_order,
+                    task_id,
+                    user_id,
+                ),
+            )
+            row = await cur.fetchone()
+            if is_done and not was_done and parent_id is None:
+                await _spawn_next_occurrence(cur, user_id, row)
+    finally:
+        await release_site_db_connection(conn)
+    return _user_task_payload(row)
+
+
+@router.delete("/tasks/{task_id}")
+async def delete_user_task(
+    task_id: int,
+    authorization: Optional[str] = Header(None),
+) -> dict[str, Any]:
+    user = await _require_user(authorization)
+    if task_id <= 0:
+        raise HTTPException(status_code=400, detail="invalid task id")
+    conn = await get_site_db_connection()
+    try:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                """
+                DELETE FROM site_user_tasks
+                WHERE id = %s AND user_id = %s
+                RETURNING id
+                """,
+                (task_id, user["user_id"]),
+            )
+            row = await cur.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="task not found")
+    finally:
+        await release_site_db_connection(conn)
+    return {"ok": True, "id": int(row[0])}
+
+
+def _habit_payload(row: Any, *, checks: list[str], streak: int) -> dict[str, Any]:
+    return {
+        "id": int(row[0]),
+        "title": str(row[1] or ""),
+        "tag": str(row[2] or ""),
+        "color": str(row[3] or ""),
+        "sortOrder": int(row[4] or 0),
+        "isArchived": bool(row[5]),
+        "createdAt": row[6].isoformat() if hasattr(row[6], "isoformat") else str(row[6]),
+        "updatedAt": row[7].isoformat() if hasattr(row[7], "isoformat") else str(row[7]),
+        "checks": checks,
+        "streak": streak,
+    }
+
+
+@router.get("/habits")
+async def list_habits(authorization: Optional[str] = Header(None)) -> dict[str, Any]:
+    from services.task_planner import habit_streak
+
+    user = await _require_user(authorization)
+    user_id = int(user["user_id"])
+    since = date.today() - timedelta(days=60)
+    conn = await get_site_db_connection()
+    try:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                """
+                SELECT id, title, tag, color, sort_order, is_archived, created_at, updated_at
+                FROM site_user_habits
+                WHERE user_id = %s AND is_archived = FALSE
+                ORDER BY sort_order ASC, id ASC
+                """,
+                (user_id,),
+            )
+            habits = await cur.fetchall()
+            result: list[dict[str, Any]] = []
+            for habit in habits:
+                await cur.execute(
+                    """
+                    SELECT day FROM site_user_habit_checks
+                    WHERE habit_id = %s AND day >= %s
+                    ORDER BY day DESC
+                    """,
+                    (int(habit[0]), since),
+                )
+                check_rows = await cur.fetchall()
+                days = [
+                    (r[0].isoformat() if hasattr(r[0], "isoformat") else str(r[0])[:10])
+                    for r in check_rows
+                ]
+                day_objs = [
+                    r[0] if hasattr(r[0], "isoformat") else date.fromisoformat(str(r[0])[:10])
+                    for r in check_rows
+                ]
+                result.append(
+                    _habit_payload(habit, checks=days, streak=habit_streak(day_objs))
+                )
+    finally:
+        await release_site_db_connection(conn)
+    return {"items": result}
+
+
+@router.post("/habits")
+async def create_habit(
+    body: HabitCreateIn,
+    authorization: Optional[str] = Header(None),
+) -> dict[str, Any]:
+    user = await _require_user(authorization)
+    title = body.title.strip()
+    if not title:
+        raise HTTPException(status_code=400, detail="title required")
+    conn = await get_site_db_connection()
+    try:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                """
+                INSERT INTO site_user_habits (user_id, title, tag, color)
+                VALUES (%s, %s, %s, %s)
+                RETURNING id, title, tag, color, sort_order, is_archived, created_at, updated_at
+                """,
+                (
+                    user["user_id"],
+                    title[:256],
+                    (body.tag or "").strip()[:64],
+                    (body.color or "").strip()[:32],
+                ),
+            )
+            row = await cur.fetchone()
+    finally:
+        await release_site_db_connection(conn)
+    return _habit_payload(row, checks=[], streak=0)
+
+
+@router.patch("/habits/{habit_id}")
+async def update_habit(
+    habit_id: int,
+    body: HabitUpdateIn,
+    authorization: Optional[str] = Header(None),
+) -> dict[str, Any]:
+    from services.task_planner import habit_streak
+
+    user = await _require_user(authorization)
+    user_id = int(user["user_id"])
+    if habit_id <= 0:
+        raise HTTPException(status_code=400, detail="invalid habit id")
+    conn = await get_site_db_connection()
+    try:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                """
+                SELECT id, title, tag, color, sort_order, is_archived, created_at, updated_at
+                FROM site_user_habits
+                WHERE id = %s AND user_id = %s
+                """,
+                (habit_id, user_id),
+            )
+            existing = await cur.fetchone()
+            if not existing:
+                raise HTTPException(status_code=404, detail="habit not found")
+            title = str(existing[1] or "")
+            tag = str(existing[2] or "")
+            color = str(existing[3] or "")
+            sort_order = int(existing[4] or 0)
+            is_archived = bool(existing[5])
+            if body.title is not None:
+                title = body.title.strip()[:256]
+                if not title:
+                    raise HTTPException(status_code=400, detail="title required")
+            if body.tag is not None:
+                tag = body.tag.strip()[:64]
+            if body.color is not None:
+                color = body.color.strip()[:32]
+            if body.sort_order is not None:
+                sort_order = int(body.sort_order)
+            if body.is_archived is not None:
+                is_archived = bool(body.is_archived)
+            await cur.execute(
+                """
+                UPDATE site_user_habits
+                SET title = %s, tag = %s, color = %s, sort_order = %s,
+                    is_archived = %s, updated_at = CURRENT_TIMESTAMP
+                WHERE id = %s AND user_id = %s
+                RETURNING id, title, tag, color, sort_order, is_archived, created_at, updated_at
+                """,
+                (title, tag, color, sort_order, is_archived, habit_id, user_id),
+            )
+            row = await cur.fetchone()
+            since = date.today() - timedelta(days=60)
+            await cur.execute(
+                """
+                SELECT day FROM site_user_habit_checks
+                WHERE habit_id = %s AND day >= %s
+                ORDER BY day DESC
+                """,
+                (habit_id, since),
+            )
+            check_rows = await cur.fetchall()
+    finally:
+        await release_site_db_connection(conn)
+    days = [
+        (r[0].isoformat() if hasattr(r[0], "isoformat") else str(r[0])[:10]) for r in check_rows
+    ]
+    day_objs = [
+        r[0] if hasattr(r[0], "isoformat") else date.fromisoformat(str(r[0])[:10])
+        for r in check_rows
+    ]
+    return _habit_payload(row, checks=days, streak=habit_streak(day_objs))
+
+
+@router.delete("/habits/{habit_id}")
+async def delete_habit(
+    habit_id: int,
+    authorization: Optional[str] = Header(None),
+) -> dict[str, Any]:
+    user = await _require_user(authorization)
+    if habit_id <= 0:
+        raise HTTPException(status_code=400, detail="invalid habit id")
+    conn = await get_site_db_connection()
+    try:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                """
+                DELETE FROM site_user_habits
+                WHERE id = %s AND user_id = %s
+                RETURNING id
+                """,
+                (habit_id, user["user_id"]),
+            )
+            row = await cur.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="habit not found")
+    finally:
+        await release_site_db_connection(conn)
+    return {"ok": True, "id": int(row[0])}
+
+
+@router.post("/habits/{habit_id}/checks")
+async def set_habit_check(
+    habit_id: int,
+    body: HabitCheckIn,
+    authorization: Optional[str] = Header(None),
+) -> dict[str, Any]:
+    from services.task_planner import habit_streak
+
+    user = await _require_user(authorization)
+    user_id = int(user["user_id"])
+    if habit_id <= 0:
+        raise HTTPException(status_code=400, detail="invalid habit id")
+    day_value = date.today()
+    if body.day is not None and body.day.strip():
+        day_value = _parse_optional_due_date(body.day) or date.today()
+    conn = await get_site_db_connection()
+    try:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                """
+                SELECT id FROM site_user_habits
+                WHERE id = %s AND user_id = %s
+                """,
+                (habit_id, user_id),
+            )
+            if not await cur.fetchone():
+                raise HTTPException(status_code=404, detail="habit not found")
+            if body.checked:
+                await cur.execute(
+                    """
+                    INSERT INTO site_user_habit_checks (habit_id, day)
+                    VALUES (%s, %s)
+                    ON CONFLICT (habit_id, day) DO NOTHING
+                    """,
+                    (habit_id, day_value),
+                )
+            else:
+                await cur.execute(
+                    """
+                    DELETE FROM site_user_habit_checks
+                    WHERE habit_id = %s AND day = %s
+                    """,
+                    (habit_id, day_value),
+                )
+            since = date.today() - timedelta(days=60)
+            await cur.execute(
+                """
+                SELECT day FROM site_user_habit_checks
+                WHERE habit_id = %s AND day >= %s
+                ORDER BY day DESC
+                """,
+                (habit_id, since),
+            )
+            check_rows = await cur.fetchall()
+            await cur.execute(
+                """
+                SELECT id, title, tag, color, sort_order, is_archived, created_at, updated_at
+                FROM site_user_habits WHERE id = %s
+                """,
+                (habit_id,),
+            )
+            row = await cur.fetchone()
+    finally:
+        await release_site_db_connection(conn)
+    days = [
+        (r[0].isoformat() if hasattr(r[0], "isoformat") else str(r[0])[:10]) for r in check_rows
+    ]
+    day_objs = [
+        r[0] if hasattr(r[0], "isoformat") else date.fromisoformat(str(r[0])[:10])
+        for r in check_rows
+    ]
+    return _habit_payload(row, checks=days, streak=habit_streak(day_objs))
+
+
+def _note_file_payload(row: Any) -> dict[str, Any]:
+    return {
+        "id": int(row[0]),
+        "filename": str(row[1] or ""),
+        "contentType": str(row[2] or ""),
+        "sizeBytes": int(row[3] or 0),
+        "createdAt": row[4].isoformat() if hasattr(row[4], "isoformat") else str(row[4]),
+    }
+
+
+def _note_payload(row: Any, *, files: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    return {
+        "id": int(row[0]),
+        "title": str(row[1] or ""),
+        "body": str(row[2] or ""),
+        "tag": str(row[3] or ""),
+        "createdAt": row[4].isoformat() if hasattr(row[4], "isoformat") else str(row[4]),
+        "updatedAt": row[5].isoformat() if hasattr(row[5], "isoformat") else str(row[5]),
+        "files": files or [],
+    }
+
+
+@router.get("/notes")
+async def list_notes(authorization: Optional[str] = Header(None)) -> dict[str, Any]:
+    user = await _require_user(authorization)
+    user_id = int(user["user_id"])
+    conn = await get_site_db_connection()
+    try:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                """
+                SELECT id, title, body, tag, created_at, updated_at
+                FROM site_user_notes
+                WHERE user_id = %s
+                ORDER BY updated_at DESC, id DESC
+                """,
+                (user_id,),
+            )
+            notes = await cur.fetchall()
+            result: list[dict[str, Any]] = []
+            for note in notes:
+                await cur.execute(
+                    """
+                    SELECT id, filename, content_type, size_bytes, created_at
+                    FROM site_user_note_files
+                    WHERE note_id = %s
+                    ORDER BY id ASC
+                    """,
+                    (int(note[0]),),
+                )
+                files = [_note_file_payload(f) for f in await cur.fetchall()]
+                result.append(_note_payload(note, files=files))
+    finally:
+        await release_site_db_connection(conn)
+    return {"items": result}
+
+
+@router.post("/notes")
+async def create_note(
+    body: NoteCreateIn,
+    authorization: Optional[str] = Header(None),
+) -> dict[str, Any]:
+    user = await _require_user(authorization)
+    title = (body.title or "").strip()[:512] or "Без названия"
+    body_text = (body.body or "")[:100_000]
+    tag = (body.tag or "").strip()[:64]
+    conn = await get_site_db_connection()
+    try:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                """
+                INSERT INTO site_user_notes (user_id, title, body, tag)
+                VALUES (%s, %s, %s, %s)
+                RETURNING id, title, body, tag, created_at, updated_at
+                """,
+                (user["user_id"], title, body_text, tag),
+            )
+            row = await cur.fetchone()
+    finally:
+        await release_site_db_connection(conn)
+    return _note_payload(row, files=[])
+
+
+@router.patch("/notes/{note_id}")
+async def update_note(
+    note_id: int,
+    body: NoteUpdateIn,
+    authorization: Optional[str] = Header(None),
+) -> dict[str, Any]:
+    user = await _require_user(authorization)
+    user_id = int(user["user_id"])
+    if note_id <= 0:
+        raise HTTPException(status_code=400, detail="invalid note id")
+    conn = await get_site_db_connection()
+    try:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                """
+                SELECT id, title, body, tag, created_at, updated_at
+                FROM site_user_notes
+                WHERE id = %s AND user_id = %s
+                """,
+                (note_id, user_id),
+            )
+            existing = await cur.fetchone()
+            if not existing:
+                raise HTTPException(status_code=404, detail="note not found")
+            title = str(existing[1] or "")
+            body_text = str(existing[2] or "")
+            tag = str(existing[3] or "")
+            if body.title is not None:
+                title = body.title.strip()[:512] or "Без названия"
+            if body.body is not None:
+                body_text = body.body[:100_000]
+            if body.tag is not None:
+                tag = body.tag.strip()[:64]
+            await cur.execute(
+                """
+                UPDATE site_user_notes
+                SET title = %s, body = %s, tag = %s, updated_at = CURRENT_TIMESTAMP
+                WHERE id = %s AND user_id = %s
+                RETURNING id, title, body, tag, created_at, updated_at
+                """,
+                (title, body_text, tag, note_id, user_id),
+            )
+            row = await cur.fetchone()
+            await cur.execute(
+                """
+                SELECT id, filename, content_type, size_bytes, created_at
+                FROM site_user_note_files
+                WHERE note_id = %s
+                ORDER BY id ASC
+                """,
+                (note_id,),
+            )
+            files = [_note_file_payload(f) for f in await cur.fetchall()]
+    finally:
+        await release_site_db_connection(conn)
+    return _note_payload(row, files=files)
+
+
+@router.delete("/notes/{note_id}")
+async def delete_note(
+    note_id: int,
+    authorization: Optional[str] = Header(None),
+) -> dict[str, Any]:
+    user = await _require_user(authorization)
+    if note_id <= 0:
+        raise HTTPException(status_code=400, detail="invalid note id")
+    conn = await get_site_db_connection()
+    try:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                """
+                DELETE FROM site_user_notes
+                WHERE id = %s AND user_id = %s
+                RETURNING id
+                """,
+                (note_id, user["user_id"]),
+            )
+            row = await cur.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="note not found")
+    finally:
+        await release_site_db_connection(conn)
+    return {"ok": True, "id": int(row[0])}
+
+
+@router.post("/notes/{note_id}/files")
+async def upload_note_file(
+    note_id: int,
+    file: UploadFile = File(...),
+    authorization: Optional[str] = Header(None),
+) -> dict[str, Any]:
+    user = await _require_user(authorization)
+    user_id = int(user["user_id"])
+    if note_id <= 0:
+        raise HTTPException(status_code=400, detail="invalid note id")
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No file name")
+    ext = Path(file.filename).suffix.lower()
+    if ext not in ALLOWED_NOTE_FILE_EXT:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Allowed formats: {', '.join(sorted(ALLOWED_NOTE_FILE_EXT))}",
+        )
+    raw = await read_upload_limited(file, max_bytes=MAX_NOTE_FILE_BYTES, label="Note file")
+    safe_name = Path(file.filename).name[:200]
+    stored_name = f"{uuid.uuid4().hex}{ext}"
+    content_type = NOTE_MIME_BY_EXT.get(ext, "application/octet-stream")
+    key = f"{S3_SITE_NOTES_PREFIX}/{user_id}/{note_id}/{stored_name}"
+    storage = get_storage()
+    if storage:
+        await storage.put(key, raw, content_type=content_type)
+        storage_key = key
+    else:
+        target_dir = UPLOADS_SITE_NOTES_DIR / str(user_id) / str(note_id)
+        await async_fs.makedirs(target_dir)
+        await async_fs.write_bytes(target_dir / stored_name, raw)
+        storage_key = f"local:{user_id}/{note_id}/{stored_name}"
+
+    conn = await get_site_db_connection()
+    try:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                """
+                SELECT id FROM site_user_notes
+                WHERE id = %s AND user_id = %s
+                """,
+                (note_id, user_id),
+            )
+            if not await cur.fetchone():
+                raise HTTPException(status_code=404, detail="note not found")
+            await cur.execute(
+                """
+                INSERT INTO site_user_note_files
+                    (note_id, user_id, filename, content_type, size_bytes, storage_key)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                RETURNING id, filename, content_type, size_bytes, created_at
+                """,
+                (note_id, user_id, safe_name, content_type, len(raw), storage_key),
+            )
+            row = await cur.fetchone()
+            await cur.execute(
+                """
+                UPDATE site_user_notes SET updated_at = CURRENT_TIMESTAMP
+                WHERE id = %s
+                """,
+                (note_id,),
+            )
+    finally:
+        await release_site_db_connection(conn)
+    return _note_file_payload(row)
+
+
+@router.get("/notes/{note_id}/files/{file_id}")
+async def download_note_file(
+    note_id: int,
+    file_id: int,
+    authorization: Optional[str] = Header(None),
+) -> Response:
+    user = await _require_user(authorization)
+    user_id = int(user["user_id"])
+    conn = await get_site_db_connection()
+    try:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                """
+                SELECT filename, content_type, storage_key
+                FROM site_user_note_files
+                WHERE id = %s AND note_id = %s AND user_id = %s
+                """,
+                (file_id, note_id, user_id),
+            )
+            row = await cur.fetchone()
+    finally:
+        await release_site_db_connection(conn)
+    if not row:
+        raise HTTPException(status_code=404, detail="file not found")
+    filename = str(row[0] or "file")
+    content_type = str(row[1] or "application/octet-stream")
+    storage_key = str(row[2] or "")
+    if storage_key.startswith("local:"):
+        rel = storage_key[len("local:") :]
+        if ".." in rel or rel.startswith("/") or "\\" in rel:
+            raise HTTPException(status_code=400, detail="Invalid storage key")
+        path = UPLOADS_SITE_NOTES_DIR / rel
+        if not path.is_file():
+            raise HTTPException(status_code=404, detail="file not found")
+        data = path.read_bytes()
+    else:
+        storage = get_storage()
+        if not storage:
+            raise HTTPException(status_code=404, detail="storage unavailable")
+        data = await storage.get_bytes(storage_key)
+        if not data:
+            raise HTTPException(status_code=404, detail="file not found")
+    headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+    return Response(content=data, media_type=content_type, headers=headers)
+
+
+@router.delete("/notes/{note_id}/files/{file_id}")
+async def delete_note_file(
+    note_id: int,
+    file_id: int,
+    authorization: Optional[str] = Header(None),
+) -> dict[str, Any]:
+    user = await _require_user(authorization)
+    user_id = int(user["user_id"])
+    conn = await get_site_db_connection()
+    try:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                """
+                DELETE FROM site_user_note_files
+                WHERE id = %s AND note_id = %s AND user_id = %s
+                RETURNING id
+                """,
+                (file_id, note_id, user_id),
+            )
+            row = await cur.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="file not found")
+    finally:
+        await release_site_db_connection(conn)
+    return {"ok": True, "id": int(row[0])}
+
+
+@router.get("/focus-logs")
+async def list_focus_logs(authorization: Optional[str] = Header(None)) -> dict[str, Any]:
+    user = await _require_user(authorization)
+    conn = await get_site_db_connection()
+    try:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                """
+                SELECT id, minutes, label, created_at
+                FROM site_user_focus_logs
+                WHERE user_id = %s
+                ORDER BY created_at DESC
+                LIMIT 50
+                """,
+                (user["user_id"],),
+            )
+            rows = await cur.fetchall()
+    finally:
+        await release_site_db_connection(conn)
+    return {
+        "items": [
+            {
+                "id": int(r[0]),
+                "minutes": int(r[1]),
+                "label": str(r[2] or ""),
+                "createdAt": r[3].isoformat() if hasattr(r[3], "isoformat") else str(r[3]),
+            }
+            for r in rows
+        ]
+    }
+
+
+@router.post("/focus-logs")
+async def create_focus_log(
+    body: FocusLogCreateIn,
+    authorization: Optional[str] = Header(None),
+) -> dict[str, Any]:
+    user = await _require_user(authorization)
+    conn = await get_site_db_connection()
+    try:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                """
+                INSERT INTO site_user_focus_logs (user_id, minutes, label)
+                VALUES (%s, %s, %s)
+                RETURNING id, minutes, label, created_at
+                """,
+                (user["user_id"], int(body.minutes), (body.label or "").strip()[:128]),
+            )
+            row = await cur.fetchone()
+    finally:
+        await release_site_db_connection(conn)
+    return {
+        "id": int(row[0]),
+        "minutes": int(row[1]),
+        "label": str(row[2] or ""),
+        "createdAt": row[3].isoformat() if hasattr(row[3], "isoformat") else str(row[3]),
     }

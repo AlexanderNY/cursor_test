@@ -9,7 +9,7 @@ from typing import Any, Optional
 from urllib.parse import quote, urlencode
 
 import httpx
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from fastapi.responses import RedirectResponse
 
 from config import settings
@@ -17,6 +17,8 @@ from schemas import TwitterProfileCreate, TwitterPost, TwitterFollowingResponse,
 from services.post_service import post_service
 from services.profile_service import profile_service
 from services.twitter_oauth import ensure_user_access_token
+from dependencies import get_admin_user
+from shared.oauth_state import sign_oauth_state, verify_oauth_state
 
 logger = logging.getLogger(__name__)
 
@@ -85,8 +87,9 @@ async def save_tw_profile(
 
 
 @router.get("/profiles")
-async def get_all_tw_profiles():
-    """Получает все профили Twitter (админка)."""
+async def get_all_tw_profiles(admin_user: dict = Depends(get_admin_user)):
+    """Получает все профили Twitter (только admin)."""
+    del admin_user
     profiles = await profile_service.get_all_tw_profiles()
     return {"profiles": profiles}
 
@@ -143,12 +146,16 @@ async def get_tw_oauth_url(x_user_id: Optional[str] = Header(None)):
     challenge = _pkce_challenge(code_verifier)
     expires = datetime.utcnow() + timedelta(minutes=10)
     await profile_service.set_tw_oauth_pkce(user_id, code_verifier, expires)
+    try:
+        state = sign_oauth_state(user_id, settings.JWT_SECRET_KEY)
+    except ValueError as exc:
+        raise HTTPException(status_code=503, detail="OAuth state secret not configured") from exc
     params = {
         "response_type": "code",
         "client_id": client_id,
         "redirect_uri": redirect_uri,
         "scope": TWITTER_SCOPES,
-        "state": str(user_id),
+        "state": state,
         "code_challenge": challenge,
         "code_challenge_method": "S256",
     }
@@ -287,9 +294,8 @@ async def tw_oauth_callback(
         return _redirect_err(msg)
     if not code or not state:
         return _redirect_err("missing_code_or_state")
-    try:
-        user_id = int(state)
-    except (ValueError, TypeError):
+    user_id = verify_oauth_state(state, settings.JWT_SECRET_KEY)
+    if user_id is None:
         return _redirect_err("invalid_state")
 
     client_id = (getattr(settings, "TWITTER_CLIENT_ID", None) or "").strip()

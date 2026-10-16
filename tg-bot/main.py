@@ -54,10 +54,13 @@ async def health_check():
     """Health check endpoint with Telegram intelligence counters."""
     from datetime import datetime
 
+    from shared.container_stats import get_container_stats
+
     payload = {
         "status": "ok",
         "service": "tg-bot",
         "server_time": datetime.utcnow().isoformat() + "Z",
+        **get_container_stats(),
     }
     try:
         from services.post_enrichment import get_enrichment_stats

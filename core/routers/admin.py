@@ -22,13 +22,18 @@ from schemas import (
     PostRow,
     ProcessorRunResponse,
     PostingDiagnosticsResponse,
+    PostTraceResponse,
     PipelineEventsResponse,
     StorageFileItem,
     StorageFilesResponse,
     StoragePresignedUrlResponse,
     StorageDeleteResponse,
+    StorageBulkDeleteRequest,
+    StorageBulkDeleteResponse,
+    StorageDeleteFailure,
     RuntimeLocationResponse,
 )
+from storage_keys import validate_storage_key, validate_storage_keys
 from services.system_settings_service import system_settings_service
 
 
@@ -167,6 +172,19 @@ async def get_posting_diagnostics(admin_user: Dict[str, Any] = Depends(get_admin
     return PostingDiagnosticsResponse(**data)
 
 
+@router.get("/posts/{post_id}/trace", response_model=PostTraceResponse)
+async def get_admin_post_trace(
+    post_id: int,
+    admin_user: Dict[str, Any] = Depends(get_admin_user),
+):
+    """Восстанавливает путь сообщения: posts → post_targets → lifecycle → tg_events."""
+    del admin_user
+    data = await admin_service.get_post_trace(post_id)
+    if not data:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
+    return PostTraceResponse(**data)
+
+
 @router.get("/pipeline-events", response_model=PipelineEventsResponse)
 async def get_pipeline_events(
     limit: int = Query(50, ge=1, le=200),
@@ -288,7 +306,7 @@ async def get_storage_presigned_url(
 ):
     """Временная ссылка для просмотра/скачивания файла из S3 (например PNG диагностики). Только admin."""
     del admin_user
-    storage_key = _validate_storage_key(key)
+    storage_key = validate_storage_key(key)
     storage = get_storage()
     if not storage:
         raise HTTPException(
@@ -304,21 +322,6 @@ async def get_storage_presigned_url(
     return StoragePresignedUrlResponse(url=url, expires_in=expires_in)
 
 
-def _validate_storage_key(key: str) -> str:
-    k = (key or "").strip().lstrip("/")
-    if not k:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Query parameter 'key' is required and cannot be empty",
-        )
-    if ".." in k or k.startswith("\\"):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid storage key",
-        )
-    return k
-
-
 @router.delete("/storage/files", response_model=StorageDeleteResponse)
 async def delete_storage_file(
     key: str = Query(..., min_length=1, description="Ключ объекта в бакете (полный путь, например uploads/tg/x.png)"),
@@ -326,7 +329,7 @@ async def delete_storage_file(
 ):
     """Удаляет один объект в S3. Только admin."""
     del admin_user
-    storage_key = _validate_storage_key(key)
+    storage_key = validate_storage_key(key)
     storage = get_storage()
     if not storage:
         raise HTTPException(
@@ -343,6 +346,37 @@ async def delete_storage_file(
             detail=f"Failed to delete object: {e!s}",
         ) from e
     return StorageDeleteResponse(ok=True, key=storage_key)
+
+
+@router.post("/storage/files/delete", response_model=StorageBulkDeleteResponse)
+async def delete_storage_files(
+    body: StorageBulkDeleteRequest,
+    admin_user: Dict[str, Any] = Depends(get_admin_user),
+):
+    """Удаляет несколько объектов в S3. Только admin."""
+    del admin_user
+    storage_keys = validate_storage_keys(body.keys)
+    storage = get_storage()
+    if not storage:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="S3 storage is not configured",
+        )
+    try:
+        result = await storage.delete_objects(storage_keys)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Failed to delete objects: {e!s}",
+        ) from e
+    failed = [StorageDeleteFailure(**item) for item in result["failed"]]
+    return StorageBulkDeleteResponse(
+        ok=len(failed) == 0,
+        deleted=result["deleted"],
+        failed=failed,
+    )
 
 
 @router.post("/checks/ai", response_model=AiCheckResponse)

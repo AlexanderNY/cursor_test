@@ -8,6 +8,7 @@ from typing import Any, Optional
 import httpx
 
 from config import settings
+from shared.internal_auth import internal_auth_headers
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +57,7 @@ async def bump_channel_counter(
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.post(
                 f"{base}/internal/smm/channel-counter/bump",
+                headers=internal_auth_headers(),
                 json=payload,
             )
             if resp.status_code >= 400:

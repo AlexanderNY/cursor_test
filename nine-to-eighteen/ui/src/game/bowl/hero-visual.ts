@@ -11,8 +11,8 @@ export interface HeroLobeLayout {
 }
 
 export function getHeroLobeLayout(radius: number, facing: number): HeroLobeLayout {
-  const lobeRadius = radius * 0.58
-  const separation = radius * 0.5
+  const lobeRadius = radius * 0.42
+  const separation = radius * 0.36
   const frontOffsetX = Math.cos(facing) * separation
   const frontOffsetY = Math.sin(facing) * separation
   return {
@@ -58,8 +58,8 @@ export function drawHeroComicFace(
     facing,
     {
       lookTarget,
-      eyeScale,
-      beakScale: 1.05,
+      eyeScale: eyeScale * 0.9,
+      beakScale: 0.72,
       browAngle: 0.28,
       beakOpen,
       eyeCount,
@@ -78,5 +78,5 @@ export function drawHeroPaws(
   count = 2,
   reachScale = 1,
 ): void {
-  drawComicPaws(ctx, x, y, radius, facing, fill, wag, count, reachScale)
+  drawComicPaws(ctx, x, y, radius, facing, fill, wag, count, reachScale * 0.62, 0.7)
 }

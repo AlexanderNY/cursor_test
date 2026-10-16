@@ -98,7 +98,14 @@ async def root():
 @app.get("/health", response_model=HealthResponse)
 async def health():
     """Healthcheck."""
-    return HealthResponse(status="healthy", service="processor", server_time=datetime.utcnow().isoformat() + "Z")
+    from shared.container_stats import get_container_stats
+
+    return HealthResponse(
+        status="healthy",
+        service="processor",
+        server_time=datetime.utcnow().isoformat() + "Z",
+        **get_container_stats(),
+    )
 
 
 @app.get("/status", response_model=ServiceStatus)

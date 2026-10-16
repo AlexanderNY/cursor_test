@@ -13,7 +13,8 @@
                          │
                          └─ www.9to18.ru ──────→ ui-9to18:8200
                                                    ├─ /api/(learn|site) → site-api:8020
-                                                   └─ /api/resume → resume-api:8021
+                                                   ├─ /api/resume → resume-api:8021
+                                                   └─ /api/portfolio → portfolio-api:8022
 ```
 
 ## Структура
@@ -38,7 +39,7 @@ deploy/ui-edge/
     └── gen-self-signed.sh
 ```
 
-Upstream’ы резолвятся по именам контейнеров/сервисов в сети **`edge_net`**: `ui`, `ui-9to18`, `site-api`, `resume-api`, `gateway` (Docker DNS `127.0.0.11` в рантайме — edge может стартовать до приложений).
+Upstream’ы резолвятся по именам контейнеров/сервисов в сети **`edge_net`**: `ui`, `ui-9to18`, `site-api`, `resume-api`, `portfolio-api`, `gateway` (Docker DNS `127.0.0.11` в рантайме — edge может стартовать до приложений).
 
 ## Запуск
 

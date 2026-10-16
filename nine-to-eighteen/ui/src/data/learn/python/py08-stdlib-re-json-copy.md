@@ -64,6 +64,33 @@ canonicalUrl: https://9to18.ru/game/learn/py-stdlib-re-json-copy
 3. Сделайте shallow и deep copy одного пользователя с вложенным `meta={}`; измените `meta` и сравните оригинал.
 4. `json.dump` результата с `ensure_ascii=False`, indent=2.
 
+Заготовка regex + deepcopy (файл на диске — отдельно на ПК):
+
+```python
+import copy
+import json
+import re
+
+EMAIL = re.compile(r"[A-Za-z0-9._+]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
+raw = [
+    {"name": "Ada", "email": "ada@example.com", "meta": {"role": "dev"}},
+    {"name": "Bad", "email": "not-an-email", "meta": {"role": "x"}},
+]
+valid = [u for u in raw if EMAIL.fullmatch(u["email"])]
+invalid = [u for u in raw if not EMAIL.fullmatch(u["email"])]
+print("valid:", [u["email"] for u in valid])
+print("invalid:", [u["email"] for u in invalid])
+
+user = valid[0]
+shallow = copy.copy(user)
+deep = copy.deepcopy(user)
+shallow["meta"]["role"] = "shallow"
+print("after shallow edit original:", user["meta"]["role"])
+deep["meta"]["role"] = "deep"
+print("original after deep edit:", user["meta"]["role"], "deep:", deep["meta"]["role"])
+print(json.dumps(valid, ensure_ascii=False, indent=2))
+```
+
 **В группу:** когда pickle уместен, а когда опасен?
 
 **Готово, если…**

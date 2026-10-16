@@ -83,6 +83,8 @@ def try_consume_entity(
 ) -> bool:
     if not can_eat_entity(eater.radius, target.radius):
         return False
+    if distance(eater.x, eater.y, target.x, target.y) >= eater.radius + target.radius:
+        return False
     eater.radius = grow_from_green(eater.radius)
     if isinstance(eater, Player):
         eater.enemies_eaten += 1

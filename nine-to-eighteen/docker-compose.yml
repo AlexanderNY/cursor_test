@@ -53,6 +53,23 @@ services:
       - edge_net
     restart: unless-stopped
 
+  portfolio-api:
+    build:
+      context: ..
+      dockerfile: nine-to-eighteen/portfolio/Dockerfile
+    container_name: portfolio-api
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-}
+    ports:
+      - "${BIND_HOST:-127.0.0.1}:8022:8022/tcp"
+    networks:
+      - edge_net
+    restart: unless-stopped
+
   ui-9to18:
     build:
       context: ./ui
@@ -64,6 +81,7 @@ services:
     depends_on:
       - site-api
       - resume-api
+      - portfolio-api
     networks:
       - edge_net
     restart: unless-stopped

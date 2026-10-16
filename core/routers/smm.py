@@ -404,10 +404,19 @@ async def get_my_usage_summary(x_user_id: Optional[str] = Header(None)):
 
 @router.get("/channels")
 async def list_all_channels(
-    brand_id: Optional[int] = None, x_user_id: Optional[str] = Header(None)
+    brand_id: Optional[int] = None,
+    x_user_id: Optional[str] = Header(None),
+    x_user_role: Optional[str] = Header(None, alias="X-User-Role"),
 ):
     user_id = get_user_id(x_user_id)
-    return {"channels": await smm_service.list_all_channels(user_id, brand_id)}
+    include_diagnostics = (x_user_role or "").strip().lower() == "admin"
+    return {
+        "channels": await smm_service.list_all_channels(
+            user_id,
+            brand_id,
+            include_diagnostics=include_diagnostics,
+        )
+    }
 
 
 @router.get("/channels/export")
@@ -1757,7 +1766,10 @@ async def ai_adapt(body: AiAdaptRequest, x_user_id: Optional[str] = Header(None)
 
 
 @router.get("/platform-status")
-async def platform_status(x_user_id: Optional[str] = Header(None)):
+async def platform_status(
+    x_user_id: Optional[str] = Header(None),
+    brand_id: Optional[int] = Query(None),
+):
     """Read-only platform readiness. Credential writes stay on auth tabs (admin-only in UI/API)."""
     user_id = get_user_id(x_user_id)
     from services.team_access import can_manage_platform_auth
@@ -1770,8 +1782,21 @@ async def platform_status(x_user_id: Optional[str] = Header(None)):
     owner_ids = {int(b["user_id"]) for b in brands if b.get("user_id")}
     if not owner_ids:
         return await platform_auth_service.get_all_platform_status(user_id)
-    # Prefer credentials of shared brand owners (usually the team admin).
-    owner_id = next(iter(owner_ids))
+    if len(owner_ids) == 1:
+        owner_id = next(iter(owner_ids))
+    else:
+        if brand_id is None:
+            raise HTTPException(
+                status_code=400,
+                detail="brand_id is required when multiple brand owners are available",
+            )
+        matched = next(
+            (b for b in brands if int(b.get("id") or 0) == int(brand_id)),
+            None,
+        )
+        if not matched or not matched.get("user_id"):
+            raise HTTPException(status_code=404, detail="Brand not found")
+        owner_id = int(matched["user_id"])
     status = await platform_auth_service.get_all_platform_status(owner_id)
     status["credential_user_id"] = owner_id
     status["read_only"] = True

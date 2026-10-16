@@ -146,6 +146,9 @@ export function HhResumePage() {
         <Link to="/game/hh-resume/path" className="learn-admin-btn learn-admin-btn-primary">
           Пройти путь
         </Link>
+        <Link to="/game/portfolio" className="learn-admin-btn">
+          Портфолио
+        </Link>
         <Link to="/account" className="learn-admin-btn">
           Анкета
         </Link>

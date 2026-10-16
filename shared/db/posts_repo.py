@@ -14,6 +14,7 @@ from shared.db.post_model import (
     POST_TARGETS_TABLE_NAME,
     PUBLISH_PLATFORMS,
 )
+from shared.db.post_lifecycle import HUB_PLATFORM, insert_lifecycle_event
 from shared.post_adapt import normalize_network
 from shared.status_lease import (
     DEFAULT_STALE_PROCESSING_MINUTES,
@@ -564,10 +565,21 @@ class PostsRepository:
         if row is None:
             raise RuntimeError("INSERT posts did not return a row")
         created = _rows_as_dicts(self._cur, [row], ("id", "user_id", "source_platform", "status"))[0]
+        post_id = int(created["id"])
+        await insert_lifecycle_event(
+            self._cur,
+            platform=str(created.get("source_platform") or HUB_PLATFORM),
+            post_id=post_id,
+            user_id=int(payload.user_id),
+            from_status=None,
+            to_status=str(created.get("status") or "collected"),
+            actor="posts.create_inbound",
+            payload={"source_native_id": payload.source_native_id},
+        )
         created["targets"] = []
         if payload.target_platforms:
             created["targets"] = await self.ensure_targets(
-                post_id=int(created["id"]),
+                post_id=post_id,
                 user_id=int(payload.user_id),
                 platforms=payload.target_platforms,
                 status=payload.target_status,
@@ -596,7 +608,19 @@ class PostsRepository:
         )
         await self._cur.execute(sql, params)
         rows = await self._cur.fetchall()
-        return _rows_as_dicts(self._cur, rows or (), ("id", "post_id", "platform", "status"))
+        targets = _rows_as_dicts(self._cur, rows or (), ("id", "post_id", "platform", "status"))
+        for target in targets:
+            await insert_lifecycle_event(
+                self._cur,
+                platform=str(target.get("platform") or "unknown"),
+                post_id=int(post_id),
+                user_id=int(user_id),
+                from_status=None,
+                to_status=str(target.get("status") or status),
+                actor="posts.ensure_targets",
+                payload={"target_id": target.get("id")},
+            )
+        return targets
 
     async def claim_process(
         self,
@@ -622,6 +646,15 @@ class PostsRepository:
         await self._cur.execute(update_sql, update_params)
         for item in records:
             item["status"] = "processing"
+            await insert_lifecycle_event(
+                self._cur,
+                platform=HUB_PLATFORM,
+                post_id=int(item["id"]),
+                user_id=int(item["user_id"]) if item.get("user_id") is not None else None,
+                from_status="collected",
+                to_status="processing",
+                actor="processor.claim_process",
+            )
         return records
 
     async def complete_processing(self, post_ids: Sequence[int], status: str) -> None:
@@ -631,6 +664,15 @@ class PostsRepository:
             return
         sql, params = mark_posts_status_sql(post_ids, status)
         await self._cur.execute(sql, params)
+        for post_id in post_ids:
+            await insert_lifecycle_event(
+                self._cur,
+                platform=HUB_PLATFORM,
+                post_id=int(post_id),
+                from_status="processing",
+                to_status=status,
+                actor="processor.complete_processing",
+            )
 
     async def save_processed(
         self,
@@ -649,6 +691,14 @@ class PostsRepository:
             status=status,
         )
         await self._cur.execute(sql, params)
+        await insert_lifecycle_event(
+            self._cur,
+            platform=HUB_PLATFORM,
+            post_id=int(post_id),
+            from_status="processing",
+            to_status=status,
+            actor="processor.save_processed",
+        )
 
     async def set_posts_status(self, post_ids: Sequence[int], status: str) -> None:
         if not post_ids:
@@ -696,6 +746,16 @@ class PostsRepository:
         await self._cur.execute(update_sql, update_params)
         for item in records:
             item["status"] = "publishing"
+            await insert_lifecycle_event(
+                self._cur,
+                platform=str(item.get("platform") or platform),
+                post_id=int(item["post_id"]),
+                user_id=int(item["user_id"]) if item.get("user_id") is not None else None,
+                from_status="ready",
+                to_status="publishing",
+                actor=f"{platform}.claim_publish",
+                payload={"target_id": item.get("target_id")},
+            )
         return records
 
     async def apply_publish_result(self, payload: PublishResult) -> Optional[dict[str, Any]]:
@@ -704,11 +764,25 @@ class PostsRepository:
         row = await self._cur.fetchone()
         if row is None:
             return None
-        return _rows_as_dicts(
+        updated = _rows_as_dicts(
             self._cur,
             [row],
             ("id", "post_id", "platform", "status", "result"),
         )[0]
+        await insert_lifecycle_event(
+            self._cur,
+            platform=str(updated.get("platform") or "unknown"),
+            post_id=int(updated["post_id"]),
+            from_status="publishing",
+            to_status=str(updated.get("status") or ("published" if payload.ok else "failed")),
+            actor="bot.apply_publish_result",
+            payload={
+                "target_id": updated.get("id"),
+                "ok": payload.ok,
+                "result": updated.get("result") or {},
+            },
+        )
+        return updated
 
     async def list_targets(
         self,

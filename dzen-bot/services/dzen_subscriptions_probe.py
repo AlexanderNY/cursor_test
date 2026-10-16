@@ -39,6 +39,7 @@ from .yandex_dzen_flow import (
     page_indicates_push_code,
     yandex_auth_dispatch,
 )
+from .yandex_session import export_cookies, save_yandex_session
 
 logger = logging.getLogger(__name__)
 
@@ -353,11 +354,14 @@ def verify_yandex_start_sync(
             "message": wmsg,
             "error": None,
             "diag_image_url": None,
+            "_cookies": None,
         }
         if wmsg and "не подтверждена" in wmsg:
             res["ok"] = False
             res["error"] = wmsg
             res["diag_image_url"] = _diag_url(driver, "verify_yandex_start_unconfirmed", user_id)
+        else:
+            res["_cookies"] = export_cookies(driver)
         return res
     except PushCodeRequiredError:
         if not driver:
@@ -441,15 +445,23 @@ def verify_yandex_push_code_sync(
                 }
             _step_checkpoint(driver, "verify_yandex_ok", user_id)
             subs, wmsg = run_subscriptions_collection_driver(driver, user_id)
+            cookies = export_cookies(driver)
             pop_and_quit(user_id)
-            return {
+            res_ok: Dict[str, Any] = {
                 "ok": True,
                 "need_push_code": False,
                 "subscriptions": subs,
                 "message": wmsg,
                 "error": None,
                 "diag_image_url": get_last_diag_url(user_id),
+                "_cookies": None,
             }
+            if wmsg and "не подтверждена" in (wmsg or ""):
+                res_ok["ok"] = False
+                res_ok["error"] = wmsg
+            else:
+                res_ok["_cookies"] = cookies
+            return res_ok
         except StaleElementReferenceException as e:
             friendly = (
                 "Страница Яндекса обновилась во время входа (StaleElement). "
@@ -632,6 +644,9 @@ async def verify_yandex_start_for_user(
         first_name,
         last_name,
     )
+    cookies = d.pop("_cookies", None)
+    if d.get("ok") and not d.get("need_push_code") and cookies:
+        await save_yandex_session(user_id, cookies)
     if d.get("ok") and d.get("need_push_code"):
         await set_last_auth_error(user_id, None)
     elif d.get("error"):
@@ -680,6 +695,9 @@ async def verify_yandex_push_for_user(user_id: int, code: str) -> Dict[str, Any]
         first_name,
         last_name,
     )
+    cookies = d.pop("_cookies", None)
+    if d.get("ok") and not d.get("need_push_code") and cookies:
+        await save_yandex_session(user_id, cookies)
     if d.get("ok") and not d.get("error"):
         await set_last_auth_error(user_id, None)
     elif d.get("error"):

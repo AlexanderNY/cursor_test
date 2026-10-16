@@ -1,6 +1,6 @@
 """Маршруты API Gateway для Дзен (проксирование на Core)."""
 
-from fastapi import APIRouter, Request, Depends
+from fastapi import APIRouter, HTTPException, Request, Depends
 from fastapi.responses import Response
 
 from config import settings
@@ -9,6 +9,12 @@ from middleware.jwt_validator import get_current_user
 
 
 router = APIRouter(prefix="/dzen", tags=["Dzen"])
+
+
+def _require_admin(current_user: dict | None) -> dict:
+    if not current_user or (current_user.get("role") or "").lower() != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return current_user
 
 
 async def forward_to_core(target_path: str, request: Request) -> Response:
@@ -45,7 +51,8 @@ async def get_all_dzen_profiles(
     request: Request,
     current_user: dict = Depends(get_current_user),
 ) -> Response:
-    """GET /dzen/profiles -> Core."""
+    """GET /dzen/profiles -> Core. Только admin."""
+    _require_admin(current_user)
     return await forward_to_core("/dzen/profiles", request)
 
 

@@ -300,6 +300,14 @@ async def billing_promo_preview(
     return await forward_to_auth("/billing/promo/preview", request)
 
 
+@router.post("/billing/promo/redeem")
+async def billing_promo_redeem(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    return await forward_to_auth("/billing/promo/redeem", request)
+
+
 @router.get("/billing/admin/requests")
 async def billing_admin_requests(
     request: Request,

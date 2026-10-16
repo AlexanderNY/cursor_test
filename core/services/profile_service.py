@@ -1,6 +1,7 @@
 """Сервис для управления профилями пользователей."""
 
 import json
+import secrets
 import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -211,7 +212,7 @@ class ProfileService:
                         schedule_type = EXCLUDED.schedule_type,
                         time_intervals = EXCLUDED.time_intervals,
                         api_id = EXCLUDED.api_id,
-                        api_hash = EXCLUDED.api_hash,
+                        api_hash = COALESCE(NULLIF(EXCLUDED.api_hash, ''), tg_profiles.api_hash),
                         telegram_username = EXCLUDED.telegram_username,
                         auth_phone_number = EXCLUDED.auth_phone_number,
                         chats_to_read = EXCLUDED.chats_to_read,
@@ -239,7 +240,10 @@ class ProfileService:
                         proxy_url = EXCLUDED.proxy_url,
                         auth_state = CASE
                             WHEN tg_profiles.api_id IS DISTINCT FROM EXCLUDED.api_id
-                              OR tg_profiles.api_hash IS DISTINCT FROM EXCLUDED.api_hash
+                              OR (
+                                    NULLIF(EXCLUDED.api_hash, '') IS NOT NULL
+                                    AND tg_profiles.api_hash IS DISTINCT FROM EXCLUDED.api_hash
+                                 )
                               OR tg_profiles.auth_phone_number IS DISTINCT FROM EXCLUDED.auth_phone_number
                               OR tg_profiles.proxy_url IS DISTINCT FROM EXCLUDED.proxy_url
                             THEN 'pending_code'
@@ -247,7 +251,10 @@ class ProfileService:
                         END,
                         auth_phone_code_hash = CASE
                             WHEN tg_profiles.api_id IS DISTINCT FROM EXCLUDED.api_id
-                              OR tg_profiles.api_hash IS DISTINCT FROM EXCLUDED.api_hash
+                              OR (
+                                    NULLIF(EXCLUDED.api_hash, '') IS NOT NULL
+                                    AND tg_profiles.api_hash IS DISTINCT FROM EXCLUDED.api_hash
+                                 )
                               OR tg_profiles.auth_phone_number IS DISTINCT FROM EXCLUDED.auth_phone_number
                               OR tg_profiles.proxy_url IS DISTINCT FROM EXCLUDED.proxy_url
                             THEN NULL
@@ -263,7 +270,11 @@ class ProfileService:
                         data.get("schedule_type", "immediate"),
                         json.dumps(data.get("time_intervals", [])),
                         data.get("api_id"),
-                        data.get("api_hash"),
+                        (
+                            None
+                            if data.get("api_hash") in (None, "", "***")
+                            else data.get("api_hash")
+                        ),
                         data.get("telegram_username"),
                         data.get("auth_phone_number"),
                         json.dumps(
@@ -388,6 +399,12 @@ class ProfileService:
                 profile["classification_categories"] = []
         elif not isinstance(cc, list):
             profile["classification_categories"] = []
+        raw_hash = profile.get("api_hash")
+        profile["has_api_hash"] = bool(raw_hash)
+        if raw_hash:
+            profile["api_hash"] = "***"
+        if profile.get("auth_phone_code_hash"):
+            profile["auth_phone_code_hash"] = "***"
         return profile
     
     # ==================== Threads ====================
@@ -830,6 +847,9 @@ class ProfileService:
             profile["twitter_oauth_refresh_token"] = "***"
         if profile.get("twitter_password"):
             profile["twitter_password"] = "***"
+        cookies = profile.get("twitter_session_cookies")
+        profile["has_twitter_session"] = bool(cookies)
+        profile.pop("twitter_session_cookies", None)
         return profile
     
     # ==================== WordPress (publish / collect profiles) ====================
@@ -840,6 +860,10 @@ class ProfileService:
         """
         columns = [col.name for col in description]
         profile = dict(zip(columns, row))
+        raw_pw = profile.get("app_password")
+        profile["has_app_password"] = bool(raw_pw)
+        if raw_pw:
+            profile["app_password"] = "***"
         ti = profile.get("time_intervals")
         if ti is not None and isinstance(ti, str) and ti.strip().startswith("["):
             try:
@@ -911,7 +935,10 @@ class ProfileService:
                         time_intervals = EXCLUDED.time_intervals,
                         site_url = EXCLUDED.site_url,
                         username = EXCLUDED.username,
-                        app_password = EXCLUDED.app_password,
+                        app_password = COALESCE(
+                            NULLIF(EXCLUDED.app_password, ''),
+                            wp_publish_profile.app_password
+                        ),
                         publish_all_ready = EXCLUDED.publish_all_ready,
                         publish_limit = EXCLUDED.publish_limit,
                         publish_interval_minutes = EXCLUDED.publish_interval_minutes,
@@ -934,7 +961,11 @@ class ProfileService:
                         json.dumps(data.get("time_intervals")) if data.get("time_intervals") else None,
                         data.get("site_url"),
                         data.get("username"),
-                        data.get("app_password"),
+                        (
+                            None
+                            if data.get("app_password") in (None, "", "***")
+                            else data.get("app_password")
+                        ),
                         data.get("publish_all_ready", True),
                         data.get("publish_limit"),
                         data.get("publish_interval_minutes"),
@@ -1791,6 +1822,18 @@ class ProfileService:
                     """
                 )
                 await cur.execute(
+                    """
+                    ALTER TABLE dzen_profiles
+                    ADD COLUMN IF NOT EXISTS yandex_session JSONB
+                    """
+                )
+                await cur.execute(
+                    """
+                    ALTER TABLE dzen_profiles
+                    ADD COLUMN IF NOT EXISTS yandex_session_saved_at TIMESTAMPTZ
+                    """
+                )
+                await cur.execute(
                     "SELECT * FROM dzen_profiles WHERE user_id = %s",
                     (user_id,)
                 )
@@ -1815,7 +1858,18 @@ class ProfileService:
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
-                # Живые БД без миграции: добавить колонки ФИО при первом сохранении
+                await cur.execute(
+                    "SELECT rss_token FROM dzen_profiles WHERE user_id = %s",
+                    (user_id,),
+                )
+                existing_rss = await cur.fetchone()
+                rss_token = (data.get("rss_token") or "").strip()
+                if not rss_token:
+                    if existing_rss and existing_rss[0]:
+                        rss_token = existing_rss[0]
+                    else:
+                        rss_token = secrets.token_urlsafe(24)
+                # Живые БД без миграции: добавить колонки ФИО / сессии при первом сохранении
                 await cur.execute(
                     """
                     ALTER TABLE dzen_profiles
@@ -1826,6 +1880,18 @@ class ProfileService:
                     """
                     ALTER TABLE dzen_profiles
                     ADD COLUMN IF NOT EXISTS yandex_last_name VARCHAR(255)
+                    """
+                )
+                await cur.execute(
+                    """
+                    ALTER TABLE dzen_profiles
+                    ADD COLUMN IF NOT EXISTS yandex_session JSONB
+                    """
+                )
+                await cur.execute(
+                    """
+                    ALTER TABLE dzen_profiles
+                    ADD COLUMN IF NOT EXISTS yandex_session_saved_at TIMESTAMPTZ
                     """
                 )
                 await cur.execute(
@@ -1844,7 +1910,7 @@ class ProfileService:
                         rss_feed_url = EXCLUDED.rss_feed_url,
                         channel_name = EXCLUDED.channel_name,
                         channels_to_read = EXCLUDED.channels_to_read,
-                        rss_token = EXCLUDED.rss_token,
+                        rss_token = COALESCE(NULLIF(EXCLUDED.rss_token, ''), dzen_profiles.rss_token),
                         yandex_login = EXCLUDED.yandex_login,
                         yandex_password = COALESCE(NULLIF(EXCLUDED.yandex_password, ''), dzen_profiles.yandex_password),
                         yandex_first_name = EXCLUDED.yandex_first_name,
@@ -1863,7 +1929,7 @@ class ProfileService:
                         data.get("rss_feed_url"),
                         data.get("channel_name"),
                         json.dumps(channels_to_read),
-                        data.get("rss_token"),
+                        rss_token,
                         data.get("yandex_login"),
                         yandex_password,
                         data.get("yandex_first_name"),
@@ -1908,6 +1974,8 @@ class ProfileService:
                 profile["channels_to_read"] = []
         if profile.get("yandex_password"):
             profile["yandex_password"] = "***"
+        # Cookies сессии Яндекса наружу не отдаём — только метка времени
+        profile.pop("yandex_session", None)
         if profile.get("collect_source") in (None, ""):
             profile["collect_source"] = "rss"
         return profile

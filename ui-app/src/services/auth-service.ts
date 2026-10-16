@@ -206,6 +206,16 @@ export const authService = {
     return data.requests ?? []
   },
 
+  async redeemPromo(code: string): Promise<{
+    tariff: string
+    tariff_expires_at?: string | null
+    code: string
+    grant_days?: number
+  }> {
+    const { data } = await apiClient.post('/auth/billing/promo/redeem', { code })
+    return data
+  },
+
   async previewPromo(code: string, plan: string): Promise<{
     code: string
     discount_percent?: number | null
@@ -271,9 +281,11 @@ export const authService = {
   async adminCreatePromoCode(payload: {
     code: string
     description?: string
+    kind?: 'discount' | 'grant'
     discount_percent?: number
     discount_amount?: number
     applies_to_tariff?: string
+    grant_days?: number
     max_redemptions?: number
     is_active?: boolean
   }): Promise<PromoCode> {

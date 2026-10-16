@@ -6,8 +6,9 @@ import signal
 import sys
 
 import uvicorn
-from fastapi import FastAPI, Header, HTTPException, Query
+from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from pydantic import BaseModel, Field
+from shared.internal_auth_fastapi import require_internal_token
 
 from config import settings
 from database import init_db, close_db
@@ -69,8 +70,19 @@ class InstagramVerifyCodeBody(BaseModel):
 
 
 @app.post("/instagram/verify-code")
-async def instagram_set_verification_code(body: InstagramVerifyCodeBody):
+async def instagram_set_verification_code(
+    body: InstagramVerifyCodeBody,
+    x_user_id: str | None = Header(None, alias="X-User-Id"),
+):
     """Сохраняет код 2FA в профиле; бот подхватит его при следующем login и очистит после успеха."""
+    if not x_user_id or not str(x_user_id).strip():
+        raise HTTPException(status_code=401, detail="X-User-Id header required")
+    try:
+        header_uid = int(x_user_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid X-User-Id") from exc
+    if header_uid != int(body.user_id):
+        raise HTTPException(status_code=403, detail="Access denied for this user_id")
     await set_instagram_verification_code(body.user_id, body.code)
     return {"status": "ok", "message": "Verification code stored for next login"}
 
@@ -224,7 +236,7 @@ async def reload_collect():
 
 
 @app.post("/schedule")
-async def schedule_from_scheduler():
+async def schedule_from_scheduler(_internal: None = Depends(require_internal_token)):
     """Оповещение от scheduler: один проход сбора (как /instagram/reload)."""
     global bot_service
     if not bot_service:

@@ -18,7 +18,7 @@ import {
   type AnkiCard,
 } from '@/data/learning-map/anki-cards'
 import { collectMnemonicDrillsForMap } from '@/data/mnemonics/collect'
-import { siteReviewAnkiCard } from '@/data/site/site-api'
+import { siteListAnkiCards, siteReviewAnkiCard, type SiteAnkiCardState } from '@/data/site/site-api'
 import { getSiteAuthSession } from '@/data/site/site-auth'
 import {
   loadHiddenBranchIds,
@@ -44,7 +44,19 @@ import {
   type LeafNote,
 } from '@/data/learning-map/leaf-notes'
 import { buildLeafPanelData } from '@/data/learning-map/leaf-panel'
-import { layoutMindmap } from '@/data/learning-map/layout-mindmap'
+import { TOPIC_DECKS } from '@/data/learning-map/decks'
+import { expandedIdsToDepth, layoutMindmap } from '@/data/learning-map/layout-mindmap'
+import {
+  buildGapIndex,
+  buildProgressIndex,
+  dueSlugSet,
+  filterUnfinished,
+  findNextUnfinished,
+  gapLabel,
+  gapTone,
+  studyCaption,
+} from '@/data/learning-map/map-progress'
+import { loadMapView, mapViewKey, saveMapView } from '@/data/learning-map/map-view'
 import {
   findL1Ancestor,
   getMapLearnLink,
@@ -67,6 +79,7 @@ import {
   saveTagColors,
   setTagColor,
 } from '@/data/learning-map/tag-style'
+import { postsWithBundledEpisodes } from '@/data/learn/learn-store'
 import { getPublishedPosts, useLearnPosts } from '@/data/learn/use-learn-posts'
 import { useSiteLearnProgress } from '@/data/site/use-learn-progress'
 
@@ -79,6 +92,7 @@ interface LearningMindmapProps {
 const DEPTH_OPTIONS = [1, 2, 3, 4, 5] as const
 const MIN_ZOOM = 0.25
 const MAX_ZOOM = 2.5
+const EMPTY_IDS: ReadonlySet<string> = new Set()
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))
@@ -114,14 +128,42 @@ function isLeafNode(node: MindNode | null | undefined): boolean {
   return Boolean(node && node.children.length === 0)
 }
 
+function collectBranchIds(node: MindNode): Set<string> {
+  const ids = new Set<string>()
+  const walk = (current: MindNode): void => {
+    if (current.children.length === 0) {
+      return
+    }
+    ids.add(current.id)
+    for (const child of current.children) {
+      walk(child)
+    }
+  }
+  walk(node)
+  return ids
+}
+
 export function LearningMindmap({ root, branchCount, nodeCount }: LearningMindmapProps) {
   const shellRef = useRef<HTMLDivElement>(null)
   const viewportRef = useRef<HTMLDivElement>(null)
   const [query, setQuery] = useState('')
-  const [depth, setDepth] = useState<number>(2)
   const [selectedId, setSelectedId] = useState(root.id)
-  const [zoom, setZoom] = useState(0.85)
-  const [pan, setPan] = useState({ x: 0, y: 0 })
+  const [expandedIds, setExpandedIds] = useState<ReadonlySet<string>>(() => {
+    const saved = loadMapView('developer')
+    if (saved) {
+      return new Set(saved.expandedIds)
+    }
+    return expandedIdsToDepth(root, 2)
+  })
+  const [collapseState, setCollapseState] = useState<{
+    key: string
+    ids: ReadonlySet<string>
+  }>({ key: '', ids: EMPTY_IDS })
+  const [zoom, setZoom] = useState(() => {
+    const saved = loadMapView('developer')
+    return saved ? clamp(saved.zoom, MIN_ZOOM, MAX_ZOOM) : 0.85
+  })
+  const [pan, setPan] = useState(() => loadMapView('developer')?.pan ?? { x: 0, y: 0 })
   const [hiddenBranchIds, setHiddenBranchIds] = useState<string[]>(() => loadHiddenBranchIds())
   const [crossLinks, setCrossLinks] = useState<MapCrossLink[]>(() => loadCrossLinks())
   const [linkMode, setLinkMode] = useState(false)
@@ -134,9 +176,20 @@ export function LearningMindmap({ root, branchCount, nodeCount }: LearningMindma
   const [activeTags, setActiveTags] = useState<string[]>([])
   const [tagColors, setTagColors] = useState<Record<string, string>>(() => loadTagColors())
   const [profileId, setProfileId] = useState<LearnMapProfileId | null>('developer')
+  const [studyGapsOnly, setStudyGapsOnly] = useState(false)
+  const [showContentGaps, setShowContentGaps] = useState(false)
+  const [focusedBranchId, setFocusedBranchId] = useState<string | null>(null)
+  const [pendingCenterId, setPendingCenterId] = useState<string | null>(null)
+  const [pendingFit, setPendingFit] = useState(false)
+  const [ankiStates, setAnkiStates] = useState<SiteAnkiCardState[]>([])
   const { posts, isReady: learnReady } = useLearnPosts()
-  const publishedPosts = useMemo(() => getPublishedPosts(posts), [posts])
-  const { completedSlugs } = useSiteLearnProgress()
+  const publishedPosts = useMemo(
+    () => postsWithBundledEpisodes(getPublishedPosts(posts)),
+    [posts],
+  )
+  const { completedSlugs, items: progressItems, isAuthed } = useSiteLearnProgress()
+  const skipInitialFit = useRef(loadMapView('developer') != null)
+  const viewKeyRef = useRef(mapViewKey('developer'))
   const dragRef = useRef<{
     pointerId: number
     startX: number
@@ -175,7 +228,109 @@ export function LearningMindmap({ root, branchCount, nodeCount }: LearningMindma
       }
     )
   }, [visibleRoot, query, activeTags, leafNotes, profileId])
-  const layout = useMemo(() => layoutMindmap(filtered, depth), [filtered, depth])
+
+  const hasBranchFilter = query.trim().length > 0 || activeTags.length > 0 || studyGapsOnly
+  const branchFilterKey = hasBranchFilter
+    ? `${query.trim().toLowerCase()}\n${[...activeTags].sort().join('\n')}\n${studyGapsOnly ? 'gaps' : ''}`
+    : ''
+  const collapsedIds = collapseState.key === branchFilterKey ? collapseState.ids : EMPTY_IDS
+  const setCollapsedIds = (
+    value: ReadonlySet<string> | ((prev: ReadonlySet<string>) => ReadonlySet<string>),
+  ) => {
+    setCollapseState((prev) => {
+      const current = prev.key === branchFilterKey ? prev.ids : EMPTY_IDS
+      const next = typeof value === 'function' ? value(current) : value
+      if (next === current) {
+        return prev
+      }
+      return { key: branchFilterKey, ids: next }
+    })
+  }
+
+  const completedSlugSet = useMemo(() => {
+    const slugs = new Set<string>()
+    for (const item of progressItems) {
+      slugs.add(item.slug.trim().toLowerCase())
+    }
+    return slugs
+  }, [progressItems])
+  const dueSlugs = useMemo(() => dueSlugSet(ankiStates), [ankiStates])
+  const deckSlugs = useMemo(() => {
+    const slugs = new Set<string>()
+    for (const deck of TOPIC_DECKS) {
+      for (const card of deck.cards) {
+        if (card.learnSlug) {
+          slugs.add(card.learnSlug.trim().toLowerCase())
+        }
+      }
+    }
+    return slugs
+  }, [])
+  const progressById = useMemo(
+    () => buildProgressIndex(root, completedSlugSet, dueSlugs),
+    [completedSlugSet, dueSlugs, root],
+  )
+  const gapById = useMemo(
+    () => buildGapIndex(root, leafNotes, publishedPosts, learnReady, deckSlugs),
+    [deckSlugs, leafNotes, learnReady, publishedPosts, root],
+  )
+  const mapTree = useMemo(() => {
+    if (!studyGapsOnly) {
+      return filtered
+    }
+    return (
+      filterUnfinished(filtered, completedSlugSet, dueSlugs) ?? {
+        ...filtered,
+        children: [],
+      }
+    )
+  }, [completedSlugSet, dueSlugs, filtered, studyGapsOnly])
+
+  const autoBranchIds = useMemo(
+    () => (hasBranchFilter ? collectBranchIds(mapTree) : null),
+    [hasBranchFilter, mapTree],
+  )
+  const layoutIds = useMemo(() => {
+    if (!autoBranchIds) {
+      return expandedIds
+    }
+    const ids = new Set(expandedIds)
+    for (const id of autoBranchIds) {
+      ids.add(id)
+    }
+    for (const id of collapsedIds) {
+      ids.delete(id)
+    }
+    return ids
+  }, [autoBranchIds, collapsedIds, expandedIds])
+
+  const depthPresets = useMemo(
+    () => DEPTH_OPTIONS.map((value) => ({ value, ids: expandedIdsToDepth(root, value) })),
+    [root],
+  )
+  const activeDepth = useMemo(() => {
+    for (const preset of depthPresets) {
+      if (preset.ids.size !== layoutIds.size) {
+        continue
+      }
+      let matches = true
+      for (const id of preset.ids) {
+        if (!layoutIds.has(id)) {
+          matches = false
+          break
+        }
+      }
+      if (matches) {
+        return preset.value
+      }
+    }
+    return null
+  }, [depthPresets, layoutIds])
+
+  const layout = useMemo(
+    () => layoutMindmap(mapTree, layoutIds),
+    [layoutIds, mapTree],
+  )
 
   const allTags = useMemo(
     () => collectAllTags(visibleRoot, leafNotes),
@@ -212,6 +367,19 @@ export function LearningMindmap({ root, branchCount, nodeCount }: LearningMindma
     () => findL1Ancestor(root, selectedId),
     [root, selectedId],
   )
+  const l1ByNodeId = useMemo(() => {
+    const map = new Map<string, string>()
+    const walk = (node: MindNode, branchId: string): void => {
+      map.set(node.id, branchId)
+      for (const child of node.children) {
+        walk(child, branchId)
+      }
+    }
+    for (const branch of root.children) {
+      walk(branch, branch.id)
+    }
+    return map
+  }, [root])
   const learnLink = useMemo(() => {
     if (!l1Branch) {
       return undefined
@@ -255,8 +423,11 @@ export function LearningMindmap({ root, branchCount, nodeCount }: LearningMindma
       if (selectedId === branchId || collectPath(root, selectedId)?.some((n) => n.id === branchId)) {
         setSelectedId(root.id)
       }
+      if (focusedBranchId === branchId) {
+        setFocusedBranchId(null)
+      }
     },
-    [hiddenBranchIds, persistHidden, root, selectedId],
+    [focusedBranchId, hiddenBranchIds, persistHidden, root, selectedId],
   )
 
   const showBranch = useCallback(
@@ -434,23 +605,119 @@ export function LearningMindmap({ root, branchCount, nodeCount }: LearningMindma
       .filter((item): item is NonNullable<typeof item> => item != null)
   }, [crossLinks, layout.nodes])
 
-  const selectNode = (id: string, expandNextLevel = false) => {
+  const selectNode = (id: string, expandSelf = false) => {
     setSelectedId(id)
     const path = collectPath(root, id)
-    const nodeDepth = Math.max(0, (path?.length ?? 1) - 1)
-    const node = path?.[path.length - 1]
-    let needed = Math.max(1, nodeDepth)
-    if (expandNextLevel && node && node.children.length > 0) {
-      needed = Math.max(needed, nodeDepth + 1)
+    if (!path) {
+      return
     }
-    if (needed > depth) {
-      setDepth(Math.min(5, needed))
+    setExpandedIds((prev) => {
+      const next = new Set(prev)
+      let changed = false
+      const lastIndex = expandSelf ? path.length : path.length - 1
+      for (let index = 0; index < lastIndex; index += 1) {
+        const node = path[index]
+        if (node.children.length > 0 && !next.has(node.id)) {
+          next.add(node.id)
+          changed = true
+        }
+      }
+      return changed ? next : prev
+    })
+    setCollapsedIds((prev) => {
+      if (prev.size === 0) {
+        return prev
+      }
+      const next = new Set(prev)
+      let changed = false
+      const lastIndex = expandSelf ? path.length : path.length - 1
+      for (let index = 0; index < lastIndex; index += 1) {
+        if (next.delete(path[index].id)) {
+          changed = true
+        }
+      }
+      return changed ? next : prev
+    })
+  }
+
+  const focusBranch = (branchId: string) => {
+    if (hiddenSet.has(branchId)) {
+      showBranch(branchId)
     }
+    if (focusedBranchId === branchId) {
+      setFocusedBranchId(null)
+      return
+    }
+    setFocusedBranchId(branchId)
+    selectNode(branchId, true)
+    setPendingCenterId(branchId)
+  }
+
+  const goToNextUnfinished = () => {
+    const next = findNextUnfinished(filtered, completedSlugSet, dueSlugs)
+    if (!next) {
+      setLinkMessage('В этом наборе всё пройдено')
+      return
+    }
+    const branch = findL1Ancestor(root, next.id)
+    if (branch) {
+      if (hiddenSet.has(branch.id)) {
+        showBranch(branch.id)
+      }
+      setFocusedBranchId(branch.id)
+    }
+    selectNode(next.id)
+    setPendingCenterId(next.id)
+    setLinkMessage(`Дальше: ${next.title}`)
   }
 
   const onNodeClick = (nodeId: string) => {
     if (!linkMode) {
-      selectNode(nodeId, true)
+      const node = findNode(mapTree, nodeId)
+      const canToggle = Boolean(node && node.children.length > 0)
+      const isOpen = canToggle && layoutIds.has(nodeId)
+      setSelectedId(nodeId)
+      setExpandedIds((prev) => {
+        const next = new Set(prev)
+        let changed = false
+        const path = collectPath(root, nodeId)
+        if (path) {
+          for (let index = 0; index < path.length - 1; index += 1) {
+            const ancestor = path[index]
+            if (ancestor.children.length > 0 && !next.has(ancestor.id)) {
+              next.add(ancestor.id)
+              changed = true
+            }
+          }
+        }
+        if (canToggle) {
+          if (isOpen) {
+            if (next.delete(nodeId)) {
+              changed = true
+            }
+          } else if (!next.has(nodeId)) {
+            next.add(nodeId)
+            changed = true
+          }
+        }
+        return changed ? next : prev
+      })
+      if (hasBranchFilter && canToggle) {
+        setCollapsedIds((prev) => {
+          const next = new Set(prev)
+          if (isOpen) {
+            if (next.has(nodeId)) {
+              return prev
+            }
+            next.add(nodeId)
+            return next
+          }
+          if (!next.delete(nodeId)) {
+            return prev
+          }
+          return next
+        })
+      }
       return
     }
     const node = findNode(root, nodeId)
@@ -503,16 +770,98 @@ export function LearningMindmap({ root, branchCount, nodeCount }: LearningMindma
   const fitToViewRef = useRef(fitToView)
   fitToViewRef.current = fitToView
 
-  // Автовписать только при старте / поиске / скрытии веток / fullscreen — не при раскрытии глубины.
+  // Автовписать только при старте / поиске / скрытии веток / fullscreen — не при раскрытии узла.
   useEffect(() => {
     fitToViewRef.current()
   }, [query, hiddenBranchIds, isFullscreen])
 
   useEffect(() => {
+    if (skipInitialFit.current) {
+      skipInitialFit.current = false
+      return
+    }
     fitToViewRef.current()
-    // initial fit once
+    // initial fit once, unless this profile already has a saved view
     // eslint-disable-next-line react-hooks/exhaustive-deps -- mount only
   }, [])
+
+  useEffect(() => {
+    if (!getSiteAuthSession()?.accessToken) {
+      setAnkiStates([])
+      return
+    }
+    let cancelled = false
+    void siteListAnkiCards()
+      .then((cards) => {
+        if (!cancelled) {
+          setAnkiStates(cards)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setAnkiStates([])
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [ankiOpen, isAuthed])
+
+  useEffect(() => {
+    const key = mapViewKey(profileId)
+    if (viewKeyRef.current !== key) {
+      saveMapView(viewKeyRef.current, {
+        expandedIds: [...expandedIds],
+        zoom,
+        pan,
+      })
+      viewKeyRef.current = key
+      setFocusedBranchId(null)
+      const saved = loadMapView(profileId)
+      if (saved) {
+        setExpandedIds(new Set(saved.expandedIds))
+        setZoom(clamp(saved.zoom, MIN_ZOOM, MAX_ZOOM))
+        setPan(saved.pan)
+      } else {
+        setExpandedIds(expandedIdsToDepth(root, 2))
+        setPendingFit(true)
+      }
+      return
+    }
+    const timer = window.setTimeout(() => {
+      saveMapView(profileId, {
+        expandedIds: [...expandedIds],
+        zoom,
+        pan,
+      })
+    }, 300)
+    return () => window.clearTimeout(timer)
+  }, [expandedIds, pan, profileId, root, zoom])
+
+  useEffect(() => {
+    if (!pendingFit) {
+      return
+    }
+    setPendingFit(false)
+    fitToViewRef.current()
+  }, [layout.height, layout.width, pendingFit])
+
+  useEffect(() => {
+    if (!pendingCenterId) {
+      return
+    }
+    const node = layout.nodes.find((item) => item.id === pendingCenterId)
+    const viewport = viewportRef.current
+    if (!node || !viewport) {
+      return
+    }
+    const rect = viewport.getBoundingClientRect()
+    setPan({
+      x: rect.width / 2 - (layout.originX + node.x) * zoom,
+      y: rect.height / 2 - (layout.originY + node.y) * zoom,
+    })
+    setPendingCenterId(null)
+  }, [layout, pendingCenterId, zoom])
 
   useEffect(() => {
     const syncFs = () => {
@@ -681,20 +1030,58 @@ export function LearningMindmap({ root, branchCount, nodeCount }: LearningMindma
               </div>
             </div>
 
-            <div className="lm-depth" role="group" aria-label="Глубина карты">
-              <span className="lm-search-label">Уровни</span>
+            <div className="lm-depth" role="group" aria-label="Раскрыть карту до уровня">
+              <span className="lm-search-label">Раскрыть до</span>
               <div className="lm-depth-btns">
-                {DEPTH_OPTIONS.map((value) => (
+                {depthPresets.map((preset) => (
                   <button
-                    key={value}
+                    key={preset.value}
                     type="button"
-                    className={`lm-depth-btn${depth === value ? ' is-active' : ''}`}
-                    onClick={() => setDepth(value)}
-                    aria-pressed={depth === value}
+                    className={`lm-depth-btn${activeDepth === preset.value ? ' is-active' : ''}`}
+                    onClick={() => {
+                      setExpandedIds(new Set(preset.ids))
+                      if (!autoBranchIds) {
+                        setCollapsedIds(new Set())
+                        return
+                      }
+                      const collapsed = new Set<string>()
+                      for (const id of autoBranchIds) {
+                        if (!preset.ids.has(id)) {
+                          collapsed.add(id)
+                        }
+                      }
+                      setCollapsedIds(collapsed)
+                    }}
+                    aria-pressed={activeDepth === preset.value}
+                    title={`Показать узлы до уровня ${preset.value}`}
                   >
-                    {value}
+                    {preset.value}
                   </button>
                 ))}
+              </div>
+            </div>
+
+            <div className="lm-depth" role="group" aria-label="Учёба">
+              <span className="lm-search-label">Учёба</span>
+              <div className="lm-profile-btns">
+                <button
+                  type="button"
+                  className={`lm-profile-btn${studyGapsOnly ? ' is-active' : ''}`}
+                  onClick={() => setStudyGapsOnly((prev) => !prev)}
+                  aria-pressed={studyGapsOnly}
+                  title="Оставить непрочитанные статьи и просроченные карточки"
+                >
+                  Пробелы
+                </button>
+                <button
+                  type="button"
+                  className={`lm-profile-btn${showContentGaps ? ' is-active' : ''}`}
+                  onClick={() => setShowContentGaps((prev) => !prev)}
+                  aria-pressed={showContentGaps}
+                  title="Подсветить листья без статьи, карточки или заметки"
+                >
+                  Дыры
+                </button>
               </div>
             </div>
           </div>
@@ -715,6 +1102,14 @@ export function LearningMindmap({ root, branchCount, nodeCount }: LearningMindma
               </button>
               <button type="button" className="lm-btn" onClick={fitToView}>
                 Вписать
+              </button>
+              <button
+                type="button"
+                className="lm-btn"
+                onClick={goToNextUnfinished}
+                title="Раскрыть путь к ближайшему непройденному листу и показать его"
+              >
+                Дальше
               </button>
               <button
                 type="button"
@@ -778,10 +1173,16 @@ export function LearningMindmap({ root, branchCount, nodeCount }: LearningMindma
 
             <p className="lm-stats">
               {branches.length - hiddenSet.size}/{branchCount} веток · показано {visibleCount} /{' '}
-              {nodeCount} · глубина {depth}
+              {nodeCount}
+              {activeDepth != null ? ` · уровень ${activeDepth}` : ' · свой набор веток'}
               {hiddenSet.size > 0 ? ` · скрыто ${hiddenSet.size}` : ''}
               {crossLinks.length > 0 ? ` · связей ${crossLinks.length}` : ''}
               {activeTags.length > 0 ? ` · теги: ${activeTags.map((t) => `#${t}`).join(' ')}` : ''}
+              {progressById.get(root.id)?.total
+                ? ` · пройдено ${progressById.get(root.id)?.done}/${progressById.get(root.id)?.total}`
+                : ''}
+              {studyGapsOnly ? ' · только пробелы' : ''}
+              {focusedBranchId ? ' · фокус ветки' : ''}
             </p>
             {linkMessage ? <p className="lm-link-hint">{linkMessage}</p> : null}
           </div>
@@ -852,25 +1253,36 @@ export function LearningMindmap({ root, branchCount, nodeCount }: LearningMindma
               Показать все
             </button>
           ) : null}
+          {focusedBranchId ? (
+            <button type="button" className="lm-btn" onClick={() => setFocusedBranchId(null)}>
+              Все ветки
+            </button>
+          ) : null}
         </div>
         <ul className="lm-branch-chips">
           {branches.map((branch) => {
             const isHidden = hiddenSet.has(branch.id)
             const isCurrent = selectedId === branch.id || l1Branch?.id === branch.id
+            const isFocused = focusedBranchId === branch.id
+            const branchProgress = progressById.get(branch.id)
+            const progressTitle =
+              branchProgress && branchProgress.total > 0
+                ? ` · ${branchProgress.done}/${branchProgress.total}`
+                : ''
             return (
-              <li key={branch.id} className={`lm-branch-chip-wrap${isHidden ? ' is-hidden' : ''}`}>
+              <li key={branch.id} className={`lm-branch-chip-wrap${isHidden ? ' is-hidden' : ''}${isFocused ? ' is-focused' : ''}`}>
                 <button
                   type="button"
-                  className={`lm-branch-chip${isHidden ? ' is-hidden' : ''}${isCurrent ? ' is-current' : ''}`}
-                  title={isHidden ? `Показать «${branch.title}»` : `Открыть «${branch.title}»`}
-                  onClick={() => {
-                    if (isHidden) {
-                      showBranch(branch.id)
-                    }
-                    selectNode(branch.id)
-                  }}
+                  className={`lm-branch-chip${isHidden ? ' is-hidden' : ''}${isCurrent ? ' is-current' : ''}${isFocused ? ' is-focused' : ''}`}
+                  title={
+                    isFocused
+                      ? `Показать все ветки`
+                      : `Фокус: только «${branch.title}»${progressTitle}`
+                  }
+                  onClick={() => focusBranch(branch.id)}
                 >
                   {branch.title}
+                  {progressTitle}
                 </button>
                 {!isHidden ? (
                   <button
@@ -928,15 +1340,20 @@ export function LearningMindmap({ root, branchCount, nodeCount }: LearningMindma
               </marker>
             </defs>
             <g transform={`translate(${layout.originX} ${layout.originY})`}>
-              {layout.edges.map((edge) => (
-                <path
-                  key={edge.id}
-                  d={edge.d}
-                  className="lm-edge"
-                  markerEnd="url(#lm-arrow)"
-                  fill="none"
-                />
-              ))}
+              {layout.edges.map((edge) => {
+                const edgeDimmed = Boolean(
+                  focusedBranchId && l1ByNodeId.get(edge.childId) !== focusedBranchId,
+                )
+                return (
+                  <path
+                    key={edge.id}
+                    d={edge.d}
+                    className={`lm-edge${edgeDimmed ? ' is-dimmed' : ''}`}
+                    markerEnd="url(#lm-arrow)"
+                    fill="none"
+                  />
+                )
+              })}
               {layout.nodes.map((node) => {
                 const isSelected = node.id === selectedId
                 const isRoot = node.depth === 0
@@ -946,11 +1363,46 @@ export function LearningMindmap({ root, branchCount, nodeCount }: LearningMindma
                 const nodeTags = tagsByNodeId.get(node.id) || []
                 const primaryTag = pickPrimaryTag(nodeTags, activeTags)
                 const tagColor = primaryTag ? resolveTagColor(primaryTag, tagColors) : null
+                const canToggle = node.childCount > 0
+                const toggleX = node.side < 0 ? 0 : node.side > 0 ? node.width : node.width / 2
+                const toggleY = node.side === 0 ? node.height : node.height / 2
+                const rollup = progressById.get(node.id)
+                const gaps = showContentGaps ? gapById.get(node.id) : undefined
+                const tone = showContentGaps ? gapTone(gaps) : null
+                const isDimmed = Boolean(
+                  focusedBranchId && !isRoot && l1ByNodeId.get(node.id) !== focusedBranchId,
+                )
+                const studyClass =
+                  rollup && rollup.state !== 'none' && !canToggle ? ` is-study-${rollup.state}` : ''
+                const toggleHint = !canToggle
+                  ? ''
+                  : node.isExpanded
+                    ? '\n\nКлик — свернуть ветку'
+                    : `\n\nКлик — раскрыть ветку (${node.childCount})`
+                const progressHint =
+                  rollup && rollup.total > 0 ? `\n\n${studyCaption(rollup)}` : ''
+                const gapHint =
+                  gaps && gaps.length > 0 ? `\n\nДыры: ${gaps.map((kind) => gapLabel(kind)).join(', ')}` : ''
+                const fraction =
+                  rollup && rollup.total > 0 && canToggle ? `${rollup.done}/${rollup.total}` : ''
                 return (
                   <g
                     key={node.id}
-                    className={`lm-node lm-node-d${Math.min(node.depth, 5)}${isSelected ? ' is-selected' : ''}${isRoot ? ' is-root' : ''}${isLinkFrom ? ' is-link-from' : ''}${linkMode && canLink ? ' is-linkable' : ''}${linkMode && !canLink && !isRoot ? ' is-link-disabled' : ''}${tagColor ? ' has-tag-color' : ''}`}
+                    className={`lm-node lm-node-d${Math.min(node.depth, 5)}${isSelected ? ' is-selected' : ''}${isRoot ? ' is-root' : ''}${canToggle ? ' is-branch' : ''}${node.isExpanded ? ' is-expanded' : ''}${node.hasHiddenChildren ? ' is-collapsed' : ''}${isLinkFrom ? ' is-link-from' : ''}${linkMode && canLink ? ' is-linkable' : ''}${linkMode && !canLink && !isRoot ? ' is-link-disabled' : ''}${tagColor ? ' has-tag-color' : ''}${studyClass}${isDimmed ? ' is-dimmed' : ''}${tone ? ` is-gap-${tone}` : ''}`}
                     transform={`translate(${node.x - node.width / 2} ${node.y - node.height / 2})`}
+                    role="button"
+                    aria-expanded={canToggle ? node.isExpanded : undefined}
+                    aria-label={
+                      [
+                        node.fullTitle,
+                        canToggle ? (node.isExpanded ? 'Свернуть ветку' : 'Раскрыть ветку') : '',
+                        fraction,
+                        studyCaption(rollup),
+                        gapHint.replace('\n\n', ''),
+                      ]
+                        .filter(Boolean)
+                        .join('. ')
+                    }
                     onClick={(event) => {
                       event.stopPropagation()
                       onNodeClick(node.id)
@@ -961,7 +1413,9 @@ export function LearningMindmap({ root, branchCount, nodeCount }: LearningMindma
                       {node.fullTitle}
                       {node.description ? `\n\n${node.description}` : ''}
                       {nodeTags.length ? `\n\n#${nodeTags.join(' #')}` : ''}
-                      {node.hasHiddenChildren ? '\n\nКлик — показать следующий уровень' : ''}
+                      {toggleHint}
+                      {progressHint}
+                      {gapHint}
                     </title>
                     <rect
                       width={node.width}
@@ -975,6 +1429,44 @@ export function LearningMindmap({ root, branchCount, nodeCount }: LearningMindma
                           : undefined
                       }
                     />
+                    {rollup && rollup.total > 0 ? (
+                      <>
+                        <rect
+                          x={3}
+                          y={node.height - 5}
+                          width={Math.max(0, node.width - 6)}
+                          height={3}
+                          rx={1.5}
+                          className="lm-node-meter-track"
+                        />
+                        <rect
+                          x={3}
+                          y={node.height - 5}
+                          width={Math.max(0, ((node.width - 6) * rollup.done) / rollup.total)}
+                          height={3}
+                          rx={1.5}
+                          className={`lm-node-meter is-${rollup.due > 0 ? 'due' : rollup.done > 0 ? 'done' : 'new'}`}
+                        />
+                      </>
+                    ) : null}
+                    {fraction ? (
+                      <text
+                        x={6}
+                        y={node.height - 8}
+                        textAnchor="start"
+                        className={`lm-node-fraction is-${rollup?.state || 'new'}`}
+                      >
+                        {fraction}
+                      </text>
+                    ) : null}
+                    {tone ? (
+                      <circle
+                        cx={node.width / 2}
+                        cy={node.height - 2}
+                        r={tone === 'note' ? 2.5 : 3.5}
+                        className={`lm-node-gap-mark is-${tone}`}
+                      />
+                    ) : null}
                     {tagColor ? (
                       <circle
                         cx={isRoot ? 14 : 8}
@@ -1009,13 +1501,24 @@ export function LearningMindmap({ root, branchCount, nodeCount }: LearningMindma
                         ),
                       )}
                     </text>
-                    {node.hasHiddenChildren ? (
-                      <circle
-                        cx={node.side >= 0 ? node.width - 6 : 6}
-                        cy={node.height - 6}
-                        r={4}
-                        className="lm-node-more"
-                      />
+                    {canToggle ? (
+                      <g className="lm-node-toggle" aria-hidden="true">
+                        <circle
+                          cx={toggleX}
+                          cy={toggleY}
+                          r={8}
+                          className="lm-node-toggle-shape"
+                        />
+                        <text
+                          x={toggleX}
+                          y={toggleY}
+                          textAnchor="middle"
+                          dominantBaseline="central"
+                          className="lm-node-toggle-text"
+                        >
+                          {node.isExpanded ? '−' : '+'}
+                        </text>
+                      </g>
                     ) : null}
                   </g>
                 )
@@ -1072,7 +1575,7 @@ export function LearningMindmap({ root, branchCount, nodeCount }: LearningMindma
           </svg>
         </div>
         <p className="lm-viewport-hint">
-          Колёсико — масштаб · перетаскивание — панорама · клик по узлу с детьми — следующий уровень
+          Колёсико — масштаб · перетаскивание — панорама · клик по узлу — раскрыть или свернуть ветку
           {linkMode ? ' · режим связи: два листа разных веток' : ' · «Связь» — пунктир между ветками'}
           {drawnCrossLinks.length > 0 ? ' · × на пунктире удаляет связь' : ''}
           {isFullscreen ? ' · Esc — выйти из полного экрана' : ''}
@@ -1086,6 +1589,16 @@ export function LearningMindmap({ root, branchCount, nodeCount }: LearningMindma
             <h2 id="lm-panel-title" className="lm-panel-title">
               {selectedNode.title}
             </h2>
+            {studyCaption(progressById.get(selectedId)) ? (
+              <p className={`lm-study-caption is-${progressById.get(selectedId)?.state || 'none'}`}>
+                {studyCaption(progressById.get(selectedId))}
+              </p>
+            ) : null}
+            {showContentGaps && gapById.get(selectedId)?.length ? (
+              <p className="lm-study-caption is-due">
+                Дыры: {gapById.get(selectedId)?.map((kind) => gapLabel(kind)).join(', ')}
+              </p>
+            ) : null}
           </div>
         </header>
 
@@ -1224,7 +1737,10 @@ export function LearningMindmap({ root, branchCount, nodeCount }: LearningMindma
                 ? `learn/${card.learn.slug}`
                 : `map/${card.branchId || 'root'}`,
               ease,
-            }).catch(() => undefined)
+            })
+              .then(() => siteListAnkiCards())
+              .then((cards) => setAnkiStates(cards))
+              .catch(() => undefined)
           }}
         />
       ) : null}

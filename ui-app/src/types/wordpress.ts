@@ -26,6 +26,7 @@ export interface WordPressPublishProfile {
   site_url?: string
   username?: string
   app_password?: string
+  has_app_password?: boolean
   /** Публиковать все посты, готовые к публикации */
   publish_all_ready?: boolean
   /** Ограничение количества постов (если publish_all_ready = false) */

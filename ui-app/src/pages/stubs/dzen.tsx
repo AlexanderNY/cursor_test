@@ -95,6 +95,7 @@ export function DzenPage() {
   const [dzenStudioUrl, setDzenStudioUrl] = useState('')
   const [collectSource, setCollectSource] = useState<DzenCollectSource>('rss')
   const [lastAuthError, setLastAuthError] = useState<string | null>(null)
+  const [yandexSessionSavedAt, setYandexSessionSavedAt] = useState<string | null>(null)
 
   const [postText, setPostText] = useState('')
   const [postTitle, setPostTitle] = useState('')
@@ -137,8 +138,10 @@ export function DzenPage() {
     try {
       const profile = await dzenService.getProfile()
       setLastAuthError(null)
+      setYandexSessionSavedAt(null)
       if (profile) {
         setLastAuthError(profile.last_auth_error ?? null)
+        setYandexSessionSavedAt(profile.yandex_session_saved_at ?? null)
         setPublishEnabled(profile.publish_enabled ?? false)
         setCollectEnabled(profile.collect_enabled ?? false)
         setScheduleType((profile.schedule_type as ScheduleType) ?? 'immediate')
@@ -954,6 +957,11 @@ export function DzenPage() {
                     Последняя ошибка бота: {lastAuthError}
                   </Alert>
                 )}
+                <Alert variant={yandexSessionSavedAt ? 'success' : 'info'} className="text-sm">
+                  {yandexSessionSavedAt
+                    ? `Сессия сохранена ${new Date(yandexSessionSavedAt).toLocaleString('ru-RU')}. Публикация новых постов использует эту сессию.`
+                    : 'Сессии нет — публикация ждёт проверку авторизации.'}
+                </Alert>
                 <form onSubmit={handleSaveCredentials} className="space-y-4">
                   <Input
                     label="Телефон Яндекс (для этой проверки)"

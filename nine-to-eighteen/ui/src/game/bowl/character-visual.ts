@@ -11,7 +11,7 @@ export interface ComicFaceOptions {
   eyeWhite?: string
   beakFill?: string
   browColor?: string
-  /** Сколько глаз в одном ряду поперёк морды. Лишние садятся рядом, а не сеткой. */
+  /** Сколько глаз. Два стоят парой, четыре и шесть — сотами. */
   eyeCount?: number
 }
 
@@ -71,16 +71,16 @@ export function drawComicBody(
   const lineWidth = style === 'boss' ? 3.5 : 2.2
 
   if (style === 'hero') {
-    const lobe = radius * 0.58
-    const sep = radius * 0.5
+    const lobe = radius * 0.42
+    const sep = radius * 0.36
     drawFilledCircle(ctx, x - fx * sep, y - fy * sep, lobe, fill, stroke, lineWidth)
     drawFilledCircle(ctx, x + fx * sep, y + fy * sep, lobe, fill, stroke, lineWidth)
     drawFilledEllipse(
       ctx,
       x - fx * radius * 0.08,
       y - fy * radius * 0.08,
-      radius * 0.42,
-      radius * 0.34,
+      radius * 0.3,
+      radius * 0.24,
       facing,
       fill,
       stroke,
@@ -241,6 +241,22 @@ export function drawComicBody(
   )
 }
 
+function honeycombRowSizes(count: number): number[] {
+  if (count <= 2) return [count]
+  if (count === 3) return [2, 1]
+  if (count === 4) return [2, 2]
+  if (count === 5) return [3, 2]
+  if (count === 6) return [3, 3]
+  const rows: number[] = []
+  let left = count
+  while (left > 0) {
+    const size = Math.min(3, left)
+    rows.push(size)
+    left -= size
+  }
+  return rows
+}
+
 /** Крупные глаза, брови и треугольный клюв по facing. */
 export function drawComicFace(
   ctx: CanvasRenderingContext2D,
@@ -268,27 +284,36 @@ export function drawComicFace(
   const faceX = x + fx * radius * 0.18
   const faceY = y + fy * radius * 0.18
   const eyeCount = Math.max(1, Math.round(options.eyeCount ?? 2))
-  const baseEyeR = Math.max(2.4, radius * 0.28 * eyeScale)
-  const maxSpan = radius * 1.55
+  const rows = honeycombRowSizes(eyeCount)
+  const baseEyeR = Math.max(2, radius * 0.22 * eyeScale)
+  const widest = Math.max(...rows)
   let eyeR = baseEyeR
-  let eyeStep = eyeR * 2.16
-  if (eyeCount > 1) {
-    const span = (eyeCount - 1) * eyeStep
-    if (span > maxSpan) {
-      eyeStep = maxSpan / (eyeCount - 1)
-      eyeR = Math.max(2.1, eyeStep / 2.16)
+  let eyeStep = eyeR * 2.25
+  const maxAcross = radius * 1.45
+  if (widest > 1) {
+    const span = (widest - 1) * eyeStep + (rows.length > 1 ? eyeStep * 0.5 : 0)
+    if (span > maxAcross) {
+      eyeStep = maxAcross / (widest - 1 + (rows.length > 1 ? 0.5 : 0))
+      eyeR = Math.max(1.4, eyeStep / 2.25)
     }
   }
-  const rowStart = -((eyeCount - 1) * eyeStep) / 2
-  const eyeForward = -radius * 0.22
-  const eyes: Array<{ x: number; y: number }> = []
-  for (let index = 0; index < eyeCount; index += 1) {
-    const offset = rowStart + index * eyeStep
-    eyes.push({
-      x: faceX + px * offset + fx * eyeForward,
-      y: faceY + py * offset + fy * eyeForward,
-    })
-  }
+  const rowGap = eyeR * 2.7
+  const frontRow = -radius * 0.04
+  const eyes: Array<{ x: number; y: number; across: number }> = []
+  rows.forEach((rowSize, rowIndex) => {
+    const along = frontRow - rowIndex * rowGap
+    const stagger = rows.length > 1 && rowIndex % 2 === 1 ? eyeStep * 0.5 : 0
+    const centerBias = rows.length > 1 ? eyeStep * 0.25 : 0
+    const rowStart = -((rowSize - 1) * eyeStep) / 2 + stagger - centerBias
+    for (let index = 0; index < rowSize; index += 1) {
+      const across = rowStart + index * eyeStep
+      eyes.push({
+        x: faceX + px * across + fx * along,
+        y: faceY + py * across + fy * along,
+        across,
+      })
+    }
+  })
 
   for (const eye of eyes) {
     const lookAngle = lookTarget
@@ -301,10 +326,8 @@ export function drawComicFace(
   ctx.strokeStyle = browColor
   ctx.lineWidth = Math.max(1.4, eyeR * 0.22)
   ctx.lineCap = 'round'
-  const browMid = (eyeCount - 1) / 2
-  for (let index = 0; index < eyes.length; index += 1) {
-    const eye = eyes[index]
-    const side = index < browMid ? 1 : index > browMid ? -1 : 0
+  for (const eye of eyes) {
+    const side = eye.across < -eyeStep * 0.2 ? 1 : eye.across > eyeStep * 0.2 ? -1 : 0
     const browBaseX = eye.x - fy * eyeR * 1.15
     const browBaseY = eye.y + fx * eyeR * 1.15
     const alongX = px * side
@@ -382,6 +405,7 @@ export function drawComicPaws(
   wag: number,
   count = 2,
   reachScale = 1,
+  bulk = 1,
 ): void {
   const pairs = Math.floor(count / 2)
   if (pairs <= 0) return
@@ -391,8 +415,9 @@ export function drawComicPaws(
   const px = -fy
   const py = fx
   const span = 0.7
-  const lineWidth = Math.max(2, radius * (0.12 - Math.min(pairs - 1, 2) * 0.012))
-  const footR = Math.max(2, radius * 0.1 * Math.min(1, 0.75 + reachScale * 0.25))
+  const lineWidth = Math.max(1.5, radius * (0.12 - Math.min(pairs - 1, 2) * 0.012) * bulk)
+  const footR = Math.max(1.5, radius * 0.08 * bulk * Math.min(1, 0.75 + reachScale * 0.25))
+  const outward = 0.72 * reachScale * bulk
 
   ctx.save()
   ctx.lineCap = 'round'
@@ -403,13 +428,13 @@ export function drawComicPaws(
     for (const side of [-1, 1]) {
       const rootX = x + fx * radius * along + px * side * radius * 0.55
       const rootY = y + fy * radius * along + py * side * radius * 0.55
-      const tipX = rootX + px * side * radius * 0.72 * reachScale + fx * radius * swing
-      const tipY = rootY + py * side * radius * 0.72 * reachScale + fy * radius * swing
+      const tipX = rootX + px * side * radius * outward + fx * radius * swing
+      const tipY = rootY + py * side * radius * outward + fy * radius * swing
       ctx.beginPath()
       ctx.moveTo(rootX, rootY)
       ctx.lineTo(tipX, tipY)
       ctx.strokeStyle = 'rgba(15, 23, 42, 0.55)'
-      ctx.lineWidth = lineWidth + 1.6
+      ctx.lineWidth = lineWidth + 1.4 * bulk
       ctx.stroke()
       ctx.beginPath()
       ctx.moveTo(rootX, rootY)

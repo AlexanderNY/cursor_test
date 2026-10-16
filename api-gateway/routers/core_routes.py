@@ -1,9 +1,15 @@
-from fastapi import APIRouter, Request, Depends
+from fastapi import APIRouter, HTTPException, Request, Depends
 from fastapi.responses import Response
 
 from config import settings
 from services.proxy_service import get_proxy_service
 from middleware.jwt_validator import get_current_user
+
+
+def _require_admin(current_user: dict | None) -> dict:
+    if not current_user or (current_user.get("role") or "").lower() != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return current_user
 
 
 router = APIRouter(prefix="/core", tags=["Core"])
@@ -153,6 +159,19 @@ async def get_admin_posts(
     return await forward_to_core("/admin/posts", request)
 
 
+@router.get("/admin/posts/{post_id}/trace")
+async def get_admin_post_trace(
+    post_id: int,
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+) -> Response:
+    """Путь сообщения от сбора до публикации.
+
+    GET /core/admin/posts/{id}/trace -> GET /admin/posts/{id}/trace на core.
+    """
+    return await forward_to_core(f"/admin/posts/{post_id}/trace", request)
+
+
 @router.get("/admin/posts/{post_id}")
 async def get_admin_post(
     post_id: int,
@@ -249,6 +268,18 @@ async def delete_storage_file(
     return await forward_to_core("/admin/storage/files", request)
 
 
+@router.post("/admin/storage/files/delete")
+async def delete_storage_files(
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+) -> Response:
+    """Пакетное удаление объектов в S3. Только admin.
+
+    POST /core/admin/storage/files/delete -> POST /admin/storage/files/delete на core.
+    """
+    return await forward_to_core("/admin/storage/files/delete", request)
+
+
 @router.post("/admin/checks/ai")
 async def run_admin_ai_check(
     request: Request,
@@ -290,6 +321,18 @@ async def get_schedules(
     Требует JWT аутентификации. Используется scheduler.
     """
     return await forward_to_core("/schedules", request)
+
+
+@router.get("/pipeline-effectiveness")
+async def get_pipeline_effectiveness(
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+) -> Response:
+    """Эффективность пайплайна за период.
+
+    GET /core/pipeline-effectiveness -> GET /pipeline-effectiveness на core.
+    """
+    return await forward_to_core("/pipeline-effectiveness", request)
 
 
 @router.get("/users-statistics")
@@ -362,6 +405,7 @@ async def start_discovery(
     POST /core/start-discovery -> POST /start-discovery на scheduler сервисе
     Требует JWT аутентификации и роли admin.
     """
+    _require_admin(current_user)
     return await forward_to_scheduler("/start-discovery", request)
 
 
@@ -375,6 +419,7 @@ async def start_bot(
     POST /core/start-bot -> POST /start-bot на scheduler сервисе
     Требует JWT аутентификации и роли admin.
     """
+    _require_admin(current_user)
     return await forward_to_scheduler("/start-bot", request)
 
 

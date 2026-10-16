@@ -45,23 +45,23 @@
       "1": {
         "speed_mult": 1.5,
         "limb_count": 2,
-        "visibility_mult": 1.4,
+        "visibility_mult": 1.75,
         "lightness_mult": 1.35,
-        "description": "Два глаза. Скорость +50%, обзор +40%."
+        "description": "Два глаза сотами. Скорость +50%, обзор +75%."
       },
       "2": {
         "speed_mult": 2.0,
         "limb_count": 4,
-        "visibility_mult": 1.85,
+        "visibility_mult": 2.6,
         "lightness_mult": 1.7,
-        "description": "Четыре глаза. Скорость +100%, обзор +85%."
+        "description": "Четыре глаза сотами. Скорость +100%, обзор +160%."
       },
       "3": {
         "speed_mult": 2.5,
         "limb_count": 6,
-        "visibility_mult": 2.4,
+        "visibility_mult": 3.6,
         "lightness_mult": 2.1,
-        "description": "Шесть глаз. Скорость +150%, обзор +140%."
+        "description": "Шесть глаз сотами. Скорость +150%, обзор +260%."
       }
     }
   },

@@ -16,7 +16,7 @@ import { getErrorMessage } from '@/services/api-client'
 import { formatRub, PLAN_REQUEST_STATUS_LABEL } from '@/lib/billing'
 
 export function BillingTabContent() {
-  const { user } = useAuth()
+  const { user, refreshUserData } = useAuth()
   const [searchParams] = useSearchParams()
   const [me, setMe] = useState<BillingMeResponse | null>(null)
   const [events, setEvents] = useState<BillingEventRow[]>([])
@@ -26,6 +26,8 @@ export function BillingTabContent() {
   const [checkoutPlan, setCheckoutPlan] = useState<'standard' | 'full' | null>(null)
   const [requestingPlan, setRequestingPlan] = useState<'standard' | 'full' | null>(null)
   const [promoCode, setPromoCode] = useState('')
+  const [grantCode, setGrantCode] = useState('')
+  const [grantBusy, setGrantBusy] = useState(false)
   const [error, setError] = useState('')
 
   const checkoutFlash = searchParams.get('checkout')
@@ -82,6 +84,24 @@ export function BillingTabContent() {
     }
   }
 
+  async function redeemGrant() {
+    const code = grantCode.trim()
+    if (!code) return
+    setGrantBusy(true)
+    setError('')
+    try {
+      await authService.redeemPromo(code)
+      const billing = await authService.getBillingMe()
+      setMe(billing)
+      setGrantCode('')
+      await refreshUserData()
+    } catch (e) {
+      setError(getErrorMessage(e))
+    } finally {
+      setGrantBusy(false)
+    }
+  }
+
   async function requestPlan(plan: 'standard' | 'full') {
     setRequestingPlan(plan)
     setError('')
@@ -97,7 +117,9 @@ export function BillingTabContent() {
 
   const plan = me?.plan
   const tariff = (me?.tariff ?? user?.tariff ?? 'free').toLowerCase()
-  const showUpgrade = tariff === 'free' || tariff === 'standard' || tariff === 'basic'
+  const canMarkStandard = tariff === 'free' || tariff === 'basic' || tariff === 'standard'
+  const standardLabel = tariff === 'standard' ? 'Продлить Standard' : 'Запросить Standard'
+  const fullLabel = tariff === 'full' ? 'Продлить Full' : 'Запросить Full'
 
   return (
     <Card className="animate-slide-up">
@@ -132,6 +154,12 @@ export function BillingTabContent() {
           <span className="text-[var(--text-secondary)]">Tariff</span>
           <span className="font-medium capitalize">{tariff}</span>
         </div>
+        {me?.tariff_expires_at && tariff !== 'free' && (
+          <div className="flex justify-between items-center text-sm">
+            <span className="text-[var(--text-secondary)]">Повышенный тариф до</span>
+            <span className="font-medium">{formatDateTime(me.tariff_expires_at)}</span>
+          </div>
+        )}
 
         {usage?.metrics && (
           <div className="space-y-3">
@@ -179,14 +207,6 @@ export function BillingTabContent() {
             <span className="text-[var(--text-secondary)]">Subscription status</span>
             <span className="font-medium">{me?.subscription_status ?? '—'}</span>
           </div>
-          {me?.subscription_current_period_end && (
-            <div className="flex justify-between">
-              <span className="text-[var(--text-secondary)]">Current period ends</span>
-              <span className="font-medium">
-                {formatDateTime(me.subscription_current_period_end)}
-              </span>
-            </div>
-          )}
           {me?.billing_provider && (
             <div className="flex justify-between">
               <span className="text-[var(--text-secondary)]">Provider</span>
@@ -196,38 +216,52 @@ export function BillingTabContent() {
         </div>
 
         <div className="space-y-3 border-t border-[var(--border-color)] pt-4">
-          {showUpgrade && (
-            <>
-              <Input
-                label="Промокод"
-                value={promoCode}
-                onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
-                placeholder="Необязательно"
-              />
-              <div className="flex flex-wrap gap-3">
-                {(tariff === 'free' || tariff === 'basic') && (
-                  <Button
-                    type="button"
-                    onClick={() => void requestPlan('standard')}
-                    isLoading={requestingPlan === 'standard'}
-                    disabled={requestingPlan != null}
-                  >
-                    Запросить Standard
-                  </Button>
-                )}
-                <Button
-                  type="button"
-                  variant={tariff === 'standard' ? 'primary' : 'secondary'}
-                  onClick={() => void requestPlan('full')}
-                  isLoading={requestingPlan === 'full'}
-                  disabled={requestingPlan != null}
-                >
-                  Запросить Full
-                </Button>
-              </div>
-            </>
-          )}
-          {me?.stripe_checkout_available && showUpgrade && (
+          <div className="flex flex-wrap items-end gap-3">
+            <Input
+              label="Код бесплатного доступа"
+              value={grantCode}
+              onChange={(e) => setGrantCode(e.target.value.toUpperCase())}
+              placeholder="GIFT30"
+              className="max-w-xs"
+            />
+            <Button type="button" onClick={() => void redeemGrant()} isLoading={grantBusy} disabled={!grantCode.trim()}>
+              Активировать
+            </Button>
+          </div>
+          <p className="text-xs text-[var(--text-muted)]">
+            Код сразу включает Standard или Full на срок, указанный в промокоде. По окончании тариф вернётся к Free, если нет другой действующей оплаты.
+          </p>
+          <Input
+            label="Промокод на скидку"
+            value={promoCode}
+            onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
+            placeholder="Необязательно"
+          />
+          <div className="flex flex-wrap gap-3">
+            {canMarkStandard && (
+              <Button
+                type="button"
+                onClick={() => void requestPlan('standard')}
+                isLoading={requestingPlan === 'standard'}
+                disabled={requestingPlan != null}
+              >
+                {standardLabel}
+              </Button>
+            )}
+            <Button
+              type="button"
+              variant={tariff === 'standard' || tariff === 'full' ? 'primary' : 'secondary'}
+              onClick={() => void requestPlan('full')}
+              isLoading={requestingPlan === 'full'}
+              disabled={requestingPlan != null}
+            >
+              {fullLabel}
+            </Button>
+          </div>
+          <p className="text-xs text-[var(--text-muted)]">
+            Заявка не включает тариф сама. Администратор отмечает оплату, и с этой отметки тариф действует 30 дней.
+          </p>
+          {me?.stripe_checkout_available && (tariff === 'free' || tariff === 'basic' || tariff === 'standard') && (
             <div className="flex flex-wrap gap-3">
               {(tariff === 'free' || tariff === 'basic') && (
                 <Button

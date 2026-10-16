@@ -105,7 +105,7 @@ async def _reply_main_menu(
 
     await bot.send_message(
         chat_id,
-        "Выберите режим игры:",
+        "выбери режим игры",
         reply_markup=_mode_keyboard(modes),
     )
 
@@ -265,6 +265,18 @@ async def cb_pick_mode(query: CallbackQuery, game_bot_id: int) -> None:
             mode_id,
             game_bot_id=game_bot_id,
             telegram_user_id=uid,
+        )
+        return
+
+    if mode.mode_type in {"country_training", "country_flags", "country_map"}:
+        await query.answer()
+        from bots.country_handlers import start_country_mode
+
+        await start_country_mode(
+            bot,
+            query.message.chat.id,
+            mode,
+            player_id=player_id,
         )
         return
 

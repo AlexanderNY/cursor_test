@@ -23,11 +23,19 @@ CREATE TABLE IF NOT EXISTS tw_profiles (
     oauth_pkce_expires_at TIMESTAMPTZ,
     take_screenshot_collect BOOLEAN DEFAULT FALSE,
     screenshot_xpath TEXT,
+    twitter_session_cookies TEXT,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 """
 
+TW_PROFILES_SESSION_COOKIES_MIGRATION = """
+DO $$ BEGIN
+  ALTER TABLE tw_profiles ADD COLUMN twitter_session_cookies TEXT;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+"""
+
 ALL_TABLES: list[str] = [
     TW_PROFILES_TABLE,
+    TW_PROFILES_SESSION_COOKIES_MIGRATION,
 ]

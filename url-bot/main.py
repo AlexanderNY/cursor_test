@@ -37,7 +37,15 @@ async def root():
 async def health_check():
     """Проверка здоровья сервиса."""
     from datetime import datetime
-    return {"status": "healthy", "service": "url-bot", "server_time": datetime.utcnow().isoformat() + "Z"}
+
+    from shared.container_stats import get_container_stats
+
+    return {
+        "status": "healthy",
+        "service": "url-bot",
+        "server_time": datetime.utcnow().isoformat() + "Z",
+        **get_container_stats(),
+    }
 
 
 if __name__ == "__main__":

@@ -203,6 +203,12 @@ async def run_bot_diagnostics(bot_id: int) -> GameBotDiagnosticsOut:
     else:
         quiz_modes = [mode for mode in active_modes if mode.mode_type == "quiz"]
         menu_modes = [mode for mode in active_modes if mode.mode_type == "menu"]
+        country_modes = [
+            mode
+            for mode in active_modes
+            if mode.mode_type
+            in {"country_training", "country_flags", "country_map"}
+        ]
         checks.append(
             DiagnosticCheck(
                 key="modes",
@@ -210,10 +216,35 @@ async def run_bot_diagnostics(bot_id: int) -> GameBotDiagnosticsOut:
                 status="ok",
                 message=(
                     f"{len(active_modes)} активных "
-                    f"({len(quiz_modes)} викторина, {len(menu_modes)} меню)"
+                    f"({len(quiz_modes)} викторина, {len(menu_modes)} меню, "
+                    f"{len(country_modes)} страны)"
                 ),
             )
         )
+
+        if country_modes:
+            ready_countries = await game_repository.count_ready_countries()
+            if ready_countries < 6:
+                checks.append(
+                    DiagnosticCheck(
+                        key="countries_ready",
+                        label="Справочник стран",
+                        status="error" if ready_countries == 0 else "warning",
+                        message=f"{ready_countries} стран с флагом и картой (нужно ≥ 6)",
+                    )
+                )
+                hints.append(
+                    "Запустите tg-game/scripts/seed_countries.py, чтобы загрузить страны."
+                )
+            else:
+                checks.append(
+                    DiagnosticCheck(
+                        key="countries_ready",
+                        label="Справочник стран",
+                        status="ok",
+                        message=f"{ready_countries} стран готовы к игре",
+                    )
+                )
 
         for mode in quiz_modes:
             questions = await game_repository.admin_list_questions(mode.id)

@@ -4,7 +4,7 @@ import uuid
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Header, File, UploadFile, Form
+from fastapi import APIRouter, Depends, HTTPException, Header, File, UploadFile, Form
 from fastapi.responses import FileResponse, RedirectResponse
 
 from services.profile_service import profile_service
@@ -21,6 +21,7 @@ from storage_client import get_storage
 from shared import async_fs
 from upload_limits import read_upload_limited
 from config import settings
+from dependencies import get_admin_user
 
 
 router = APIRouter(prefix="/tg", tags=["Telegram"])
@@ -114,12 +115,9 @@ async def save_tg_profile(
 
 
 @router.get("/profiles")
-async def get_all_tg_profiles():
-    """Получает все профили Telegram.
-    
-    Returns:
-        Список всех профилей Telegram
-    """
+async def get_all_tg_profiles(admin_user: dict = Depends(get_admin_user)):
+    """Получает все профили Telegram (только admin)."""
+    del admin_user
     profiles = await profile_service.get_all_tg_profiles()
     return {"profiles": profiles}
 

@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import json
 import logging
 from typing import Any, Optional
 
 from database import get_db_connection, release_db_connection
+from shared.db.post_lifecycle import insert_lifecycle_event
 
 logger = logging.getLogger(__name__)
 
@@ -29,22 +29,16 @@ async def log_post_lifecycle_event(
         if owns_conn:
             conn = await get_db_connection()
         async with conn.cursor() as cur:
-            await cur.execute(
-                """
-                INSERT INTO post_lifecycle_events
-                    (platform, post_id, user_id, job_id, from_status, to_status, actor, payload)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s::jsonb)
-                """,
-                (
-                    platform,
-                    post_id,
-                    user_id,
-                    job_id,
-                    from_status,
-                    to_status,
-                    (actor or "system")[:80],
-                    json.dumps(payload or {}),
-                ),
+            await insert_lifecycle_event(
+                cur,
+                platform=platform,
+                post_id=post_id,
+                to_status=to_status,
+                from_status=from_status,
+                user_id=user_id,
+                job_id=job_id,
+                actor=actor,
+                payload=payload,
             )
     except Exception as exc:
         logger.debug(

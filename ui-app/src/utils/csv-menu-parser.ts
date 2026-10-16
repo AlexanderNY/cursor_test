@@ -1,4 +1,4 @@
-import type { GameMenuNodeCreate } from '@/types/game'
+import type { GameMenuNode, GameMenuNodeCreate } from '@/types/game'
 
 export const CSV_MENU_COLUMNS = [
   'parent_title',
@@ -242,8 +242,15 @@ export function parseMenuCsv(content: string, modeId: number): CsvMenuParseResul
   return { nodes, errors }
 }
 
-export function downloadMenuCsvTemplate(filename = 'polls-menu-template.csv'): void {
-  const blob = new Blob([`\uFEFF${CSV_MENU_EXAMPLE}`], {
+function escapeCsvField(value: string): string {
+  if (/[;"\n\r]/.test(value)) {
+    return `"${value.replace(/"/g, '""')}"`
+  }
+  return value
+}
+
+function downloadCsvBlob(content: string, filename: string): void {
+  const blob = new Blob([`\uFEFF${content}`], {
     type: 'text/csv;charset=utf-8',
   })
   const url = URL.createObjectURL(blob)
@@ -252,4 +259,57 @@ export function downloadMenuCsvTemplate(filename = 'polls-menu-template.csv'): v
   anchor.download = filename
   anchor.click()
   URL.revokeObjectURL(url)
+}
+
+function nodeDepth(node: GameMenuNode, byId: Map<number, GameMenuNode>): number {
+  let depth = 0
+  let current: GameMenuNode | undefined = node
+  const seen = new Set<number>()
+  while (current?.parent_id != null) {
+    if (seen.has(current.id)) break
+    seen.add(current.id)
+    current = byId.get(current.parent_id)
+    if (!current) break
+    depth += 1
+  }
+  return depth
+}
+
+export function menuNodesToCsv(nodes: GameMenuNode[]): string {
+  const byId = new Map(nodes.map((node) => [node.id, node]))
+  const ordered = [...nodes].sort((left, right) => {
+    const depthDiff = nodeDepth(left, byId) - nodeDepth(right, byId)
+    if (depthDiff !== 0) return depthDiff
+    if (left.sort_order !== right.sort_order) return left.sort_order - right.sort_order
+    return left.id - right.id
+  })
+
+  const header = CSV_MENU_COLUMNS.join(';')
+  const rows = ordered.map((node) => {
+    const parentTitle =
+      node.parent_id != null ? (byId.get(node.parent_id)?.title ?? '') : ''
+    const price =
+      node.price != null && Number.isFinite(node.price) ? String(node.price) : ''
+    const cells = [
+      parentTitle,
+      node.title,
+      node.body_text ?? '',
+      price,
+      String(node.sort_order ?? 0),
+      node.image_url ?? '',
+    ]
+    return cells.map(escapeCsvField).join(';')
+  })
+  return [header, ...rows].join('\n') + (rows.length > 0 ? '\n' : '')
+}
+
+export function downloadMenuCsvTemplate(filename = 'polls-menu-template.csv'): void {
+  downloadCsvBlob(CSV_MENU_EXAMPLE, filename)
+}
+
+export function downloadMenuNodesCsv(
+  nodes: GameMenuNode[],
+  filename = 'polls-menu.csv',
+): void {
+  downloadCsvBlob(menuNodesToCsv(nodes), filename)
 }

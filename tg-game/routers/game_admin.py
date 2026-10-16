@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Optional, Union
 
 import psycopg2
-from fastapi import APIRouter, Depends, HTTPException, Query, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from deps_game_admin import verify_game_admin_token
 from schemas_game import (
@@ -21,8 +21,6 @@ from schemas_game import (
     LeaderboardEntryOut,
 )
 from services.game_repository import game_repository
-from services.media_storage import resolve_public_media_url
-from services.rating_service import get_leaderboard
 from services.media_storage import resolve_public_media_url
 from services.rating_service import get_leaderboard
 
@@ -259,14 +257,19 @@ async def admin_completed_sessions(
 
 @router.get(
     "/modes/{mode_id}/questions",
-    response_model=list[GameQuestionOut],
+    response_model=Union[list[GameQuestionDetailOut], list[GameQuestionOut]],
     dependencies=[Depends(verify_game_admin_token)],
 )
-async def list_questions(mode_id: int) -> list[GameQuestionOut]:
+async def list_questions(
+    mode_id: int,
+    with_options: bool = Query(default=False),
+) -> list[GameQuestionDetailOut] | list[GameQuestionOut]:
     mode = await game_repository.get_mode(mode_id)
     if not mode:
         raise HTTPException(status_code=404, detail="Mode not found")
-    rows = await game_repository.admin_list_questions(mode_id)
+    rows = await game_repository.admin_list_questions(mode_id, with_options=with_options)
+    if with_options:
+        return [GameQuestionDetailOut(**r) for r in rows]
     return [GameQuestionOut(**r) for r in rows]
 
 

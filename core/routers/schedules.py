@@ -5,6 +5,7 @@ from services.schedules_service import schedules_service
 from services.schedule_service import schedule_service
 from schemas import ScheduleResponse
 from dependencies import get_admin_user
+from shared.internal_auth_fastapi import require_internal_token
 from typing import Dict
 
 
@@ -12,10 +13,10 @@ router = APIRouter(tags=["Schedules"])
 
 
 @router.get("/schedules")
-async def get_schedules():
+async def get_schedules(_internal: None = Depends(require_internal_token)):
     """Возвращает сводку расписаний из tg/tw/wp/vk_profiles.
 
-    Используется scheduler для опроса изменений. Не требует x_user_id.
+    Используется scheduler. Требует X-Internal-Token.
     """
     schedules = await schedules_service.get_all_schedules()
     return {"schedules": schedules}

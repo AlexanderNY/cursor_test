@@ -1,9 +1,59 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from database import get_db_connection
 from utils.jwt_utils import decode_token
 from utils.exceptions import TokenExpiredError, TokenInvalidError
 from shared.token_blacklist_redis import token_blacklist_redis
+
+
+async def invalidate_user_access_tokens(user_id: int) -> int:
+    """Mark all access JWTs for user as invalid (iat must be >= returned epoch).
+
+    Writes users.tokens_valid_after and mirrors the cutoff into Redis.
+    """
+    now = datetime.now(timezone.utc)
+    epoch = int(now.timestamp())
+    async with get_db_connection() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                """
+                ALTER TABLE users ADD COLUMN IF NOT EXISTS tokens_valid_after TIMESTAMPTZ
+                """
+            )
+            await cur.execute(
+                """
+                UPDATE users
+                SET tokens_valid_after = %s, updated_at = CURRENT_TIMESTAMP
+                WHERE id = %s
+                """,
+                (now, user_id),
+            )
+    await token_blacklist_redis.set_tokens_valid_after(user_id, epoch)
+    return epoch
+
+
+async def get_tokens_valid_after_epoch(user_id: int) -> Optional[int]:
+    """Return epoch seconds cutoff for user access JWTs, or None."""
+    redis_value = await token_blacklist_redis.get_tokens_valid_after(user_id)
+    if redis_value is not None:
+        return redis_value
+    async with get_db_connection() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                """
+                SELECT tokens_valid_after FROM users WHERE id = %s
+                """,
+                (user_id,),
+            )
+            row = await cur.fetchone()
+            if not row or row[0] is None:
+                return None
+            value = row[0]
+            if isinstance(value, datetime):
+                if value.tzinfo is None:
+                    value = value.replace(tzinfo=timezone.utc)
+                return int(value.timestamp())
+            return int(value)
 
 
 async def save_refresh_token(user_id: int, token: str) -> None:

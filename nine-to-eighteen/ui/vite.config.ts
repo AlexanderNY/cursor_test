@@ -5,7 +5,7 @@ import path from 'path'
 export default defineConfig({
   plugins: [react()],
   optimizeDeps: {
-    exclude: ['pyodide'],
+    exclude: ['pyodide', 'sql.js'],
   },
   resolve: {
     alias: {
@@ -26,6 +26,11 @@ export default defineConfig({
         rewrite: (path) => path.replace(/^\/api/, ''),
         timeout: 90_000,
         proxyTimeout: 90_000,
+      },
+      '/api/portfolio': {
+        target: process.env.VITE_PORTFOLIO_API_URL || 'http://127.0.0.1:8022',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, ''),
       },
       '/api': {
         target: process.env.VITE_SITE_API_URL || 'http://127.0.0.1:8020',

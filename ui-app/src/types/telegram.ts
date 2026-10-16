@@ -39,6 +39,7 @@ export interface TelegramConfig {
   time_intervals?: TimeInterval[]
   api_id?: string
   api_hash?: string
+  has_api_hash?: boolean
   telegram_username?: string
   auth_phone_number?: string
   proxy_url?: string

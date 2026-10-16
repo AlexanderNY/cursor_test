@@ -19,6 +19,11 @@ logger = logging.getLogger(__name__)
 
 KEY_PREFIX = "jwt:bl:"
 READY_KEY = "jwt:bl:ready"
+TOKENS_VALID_AFTER_PREFIX = "user:tokens_valid_after:"
+
+
+def tokens_valid_after_key(user_id: int) -> str:
+    return f"{TOKENS_VALID_AFTER_PREFIX}{int(user_id)}"
 
 
 def token_blacklist_key(token: str) -> str:
@@ -143,6 +148,35 @@ class TokenBlacklistRedis:
         except Exception as exc:
             logger.warning("Redis blacklist warm failed: %s", exc)
             return 0
+
+    async def set_tokens_valid_after(self, user_id: int, epoch_seconds: int) -> bool:
+        """Invalidate access JWTs with iat < epoch_seconds for this user."""
+        if self._client is None:
+            return False
+        try:
+            # Keep until well past max access TTL (30m default → 7d safety).
+            await self._client.set(
+                tokens_valid_after_key(user_id),
+                str(int(epoch_seconds)),
+                ex=7 * 24 * 3600,
+            )
+            return True
+        except Exception as exc:
+            logger.warning("Redis set_tokens_valid_after failed: %s", exc)
+            return False
+
+    async def get_tokens_valid_after(self, user_id: int) -> Optional[int]:
+        """Epoch seconds; None if unset or Redis down."""
+        if self._client is None:
+            return None
+        try:
+            raw = await self._client.get(tokens_valid_after_key(user_id))
+            if raw is None:
+                return None
+            return int(raw)
+        except Exception as exc:
+            logger.debug("Redis get_tokens_valid_after failed: %s", exc)
+            return None
 
 
 # Process-local singleton (auth and gateway each have their own process).

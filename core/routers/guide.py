@@ -5,10 +5,11 @@ from __future__ import annotations
 import json
 from typing import Any, Optional
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from database import get_db_connection, release_db_connection
+from dependencies import get_admin_user
 
 router = APIRouter(prefix="/guide", tags=["Guide"])
 
@@ -200,13 +201,6 @@ class GuideBlockCreate(BaseModel):
     style: dict[str, Any] = Field(default_factory=dict)
 
 
-def _require_admin(x_user_id: Optional[str], x_user_role: Optional[str]) -> None:
-    if not x_user_id:
-        raise HTTPException(status_code=401, detail="User ID not provided")
-    if x_user_role != "admin":
-        raise HTTPException(status_code=403, detail="Only admins can manage guide blocks")
-
-
 def _row_to_block(row: tuple) -> dict[str, Any]:
     style = row[8] if isinstance(row[8], dict) else (json.loads(row[8]) if row[8] else {})
     return {
@@ -286,20 +280,18 @@ async def list_public_blocks() -> dict[str, Any]:
 
 @router.get("/blocks/admin")
 async def list_admin_blocks(
-    x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
-    x_user_role: Optional[str] = Header(None, alias="X-User-Role"),
+    admin_user: dict = Depends(get_admin_user),
 ) -> dict[str, Any]:
-    _require_admin(x_user_id, x_user_role)
+    del admin_user
     return {"blocks": await _list_blocks(visible_only=False)}
 
 
 @router.post("/blocks")
 async def create_block(
     body: GuideBlockCreate,
-    x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
-    x_user_role: Optional[str] = Header(None, alias="X-User-Role"),
+    admin_user: dict = Depends(get_admin_user),
 ) -> dict[str, Any]:
-    _require_admin(x_user_id, x_user_role)
+    del admin_user
     slug = body.slug.strip().lower().replace(" ", "-")
     style = {**DEFAULT_STYLE, **(body.style or {})}
     conn = await get_db_connection()
@@ -338,10 +330,9 @@ async def create_block(
 async def update_block(
     block_id: int,
     body: GuideBlockUpdate,
-    x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
-    x_user_role: Optional[str] = Header(None, alias="X-User-Role"),
+    admin_user: dict = Depends(get_admin_user),
 ) -> dict[str, Any]:
-    _require_admin(x_user_id, x_user_role)
+    del admin_user
     fields: list[str] = []
     params: list[Any] = []
     data = body.model_dump(exclude_unset=True)
@@ -380,10 +371,9 @@ async def update_block(
 @router.delete("/blocks/{block_id}")
 async def delete_block(
     block_id: int,
-    x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
-    x_user_role: Optional[str] = Header(None, alias="X-User-Role"),
+    admin_user: dict = Depends(get_admin_user),
 ) -> dict[str, Any]:
-    _require_admin(x_user_id, x_user_role)
+    del admin_user
     conn = await get_db_connection()
     try:
         async with conn.cursor() as cur:
@@ -401,11 +391,10 @@ async def delete_block(
 
 @router.post("/blocks/seed")
 async def reseeds_blocks(
-    x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
-    x_user_role: Optional[str] = Header(None, alias="X-User-Role"),
+    admin_user: dict = Depends(get_admin_user),
 ) -> dict[str, Any]:
     """Восстановить дефолтные блоки (только отсутствующие slug; не затирает правки)."""
-    _require_admin(x_user_id, x_user_role)
+    del admin_user
     conn = await get_db_connection()
     try:
         async with conn.cursor() as cur:

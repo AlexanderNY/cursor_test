@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Request, Depends
+from fastapi import APIRouter, HTTPException, Request, Depends
 from fastapi.responses import Response
 
 from config import settings
@@ -7,6 +7,12 @@ from middleware.jwt_validator import get_current_user
 
 
 router = APIRouter(prefix="/tw", tags=["Twitter"])
+
+
+def _require_admin(current_user: dict | None) -> dict:
+    if not current_user or (current_user.get("role") or "").lower() != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return current_user
 
 
 async def forward_to_core(target_path: str, request: Request) -> Response:
@@ -60,11 +66,8 @@ async def get_all_tw_profiles(
     request: Request,
     current_user: dict = Depends(get_current_user)
 ) -> Response:
-    """Получает все профили Twitter из core сервиса.
-    
-    GET /tw/profiles -> GET /tw/profiles на core сервисе
-    Требует JWT аутентификации.
-    """
+    """GET /tw/profiles -> core. Только admin."""
+    _require_admin(current_user)
     return await forward_to_core("/tw/profiles", request)
 
 
@@ -88,3 +91,27 @@ async def get_tw_following(
 ) -> Response:
     """Список подписок X (following) из core."""
     return await forward_to_core("/tw/following", request)
+
+
+@router.get("/oauth/url")
+async def get_tw_oauth_url(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    """GET /tw/oauth/url -> core. JWT required."""
+    return await forward_to_core("/tw/oauth/url", request)
+
+
+@router.get("/oauth/status")
+async def get_tw_oauth_status(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    """GET /tw/oauth/status -> core. JWT required."""
+    return await forward_to_core("/tw/oauth/status", request)
+
+
+@router.get("/oauth/callback")
+async def tw_oauth_callback(request: Request) -> Response:
+    """GET /tw/oauth/callback -> core. Public (OAuth redirect from X)."""
+    return await forward_to_core("/tw/oauth/callback", request)

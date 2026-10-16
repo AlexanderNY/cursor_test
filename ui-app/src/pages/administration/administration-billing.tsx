@@ -20,8 +20,9 @@ export function AdministrationBillingPanel() {
   const [promoCode, setPromoCode] = useState('')
   const [promoPercent, setPromoPercent] = useState('20')
   const [promoAmount, setPromoAmount] = useState('')
-  const [promoMode, setPromoMode] = useState<'percent' | 'amount'>('percent')
+  const [promoMode, setPromoMode] = useState<'percent' | 'amount' | 'grant'>('percent')
   const [promoPlan, setPromoPlan] = useState('')
+  const [promoDays, setPromoDays] = useState('30')
   const [promoDesc, setPromoDesc] = useState('')
 
   async function load() {
@@ -94,9 +95,11 @@ export function AdministrationBillingPanel() {
       const created = await authService.adminCreatePromoCode({
         code: promoCode.trim().toUpperCase(),
         description: promoDesc.trim() || undefined,
+        kind: promoMode === 'grant' ? 'grant' : 'discount',
         discount_percent: promoMode === 'percent' ? Number(promoPercent) : undefined,
         discount_amount: promoMode === 'amount' ? Number(promoAmount) : undefined,
-        applies_to_tariff: promoPlan || undefined,
+        applies_to_tariff: promoMode === 'grant' ? promoPlan || 'standard' : promoPlan || undefined,
+        grant_days: promoMode === 'grant' ? Number(promoDays) || 30 : undefined,
       })
       setPromos((prev) => [created, ...prev])
       setPromoCode('')
@@ -123,7 +126,7 @@ export function AdministrationBillingPanel() {
         <CardHeader>
           <CardTitle>Заявки на тариф</CardTitle>
           <CardDescription>
-            Заявка с Pricing или кнопка Save в Users. Дальше: счёт на почту или ручное включение тарифа.
+            Заявка с Pricing. «Отметить оплату» включает тариф на 30 дней с этой отметки. Понижение — только когда срок гранта кончится.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -192,7 +195,7 @@ export function AdministrationBillingPanel() {
                             disabled={busyId === r.id}
                             onClick={() => void applyRequest(r.id)}
                           >
-                            Включить тариф
+                            Отметить оплату
                           </Button>
                           <Button
                             size="sm"
@@ -221,7 +224,9 @@ export function AdministrationBillingPanel() {
       <Card>
         <CardHeader>
           <CardTitle>Промокоды</CardTitle>
-          <CardDescription>Процент или фиксированная скидка в рублях. Один код — один раз на пользователя.</CardDescription>
+          <CardDescription>
+            Скидка уменьшает счёт. Код бесплатного доступа пользователь активирует сам: тариф включается сразу на указанное число дней.
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
@@ -230,24 +235,31 @@ export function AdministrationBillingPanel() {
             <select
               className="h-11 mt-auto rounded-xl border border-[var(--border-color)] bg-[var(--bg-tertiary)] px-3 text-sm"
               value={promoMode}
-              onChange={(e) => setPromoMode(e.target.value as 'percent' | 'amount')}
+              onChange={(e) => {
+                const next = e.target.value as 'percent' | 'amount' | 'grant'
+                setPromoMode(next)
+                if (next === 'grant' && !promoPlan) setPromoPlan('standard')
+              }}
             >
               <option value="percent">Скидка %</option>
               <option value="amount">Скидка ₽</option>
+              <option value="grant">Бесплатный доступ</option>
             </select>
             {promoMode === 'percent' ? (
               <Input label="Процент" type="number" value={promoPercent} onChange={(e) => setPromoPercent(e.target.value)} />
-            ) : (
+            ) : promoMode === 'amount' ? (
               <Input label="Сумма ₽" type="number" value={promoAmount} onChange={(e) => setPromoAmount(e.target.value)} />
+            ) : (
+              <Input label="Дней" type="number" value={promoDays} onChange={(e) => setPromoDays(e.target.value)} />
             )}
             <select
               className="h-11 mt-auto rounded-xl border border-[var(--border-color)] bg-[var(--bg-tertiary)] px-3 text-sm"
               value={promoPlan}
               onChange={(e) => setPromoPlan(e.target.value)}
             >
-              <option value="">Все платные тарифы</option>
-              <option value="standard">Только Standard</option>
-              <option value="full">Только Full</option>
+              {promoMode === 'grant' ? null : <option value="">Все платные тарифы</option>}
+              <option value="standard">Standard</option>
+              <option value="full">Full</option>
             </select>
             <Button type="button" onClick={() => void createPromo()} className="mt-auto">
               Создать
@@ -269,7 +281,11 @@ export function AdministrationBillingPanel() {
                   <tr key={p.id} className="border-b border-[var(--border-color)]">
                     <td className="py-2 pr-2 font-medium">{p.code}</td>
                     <td className="py-2 pr-2">
-                      {p.discount_percent ? `${p.discount_percent}%` : formatRub(p.discount_amount ?? 0)}
+                      {p.kind === 'grant'
+                        ? `доступ ${p.grant_days ?? 30} дн.`
+                        : p.discount_percent
+                          ? `${p.discount_percent}%`
+                          : formatRub(p.discount_amount ?? 0)}
                     </td>
                     <td className="py-2 pr-2">{p.applies_to_tariff || 'все'}</td>
                     <td className="py-2 pr-2">

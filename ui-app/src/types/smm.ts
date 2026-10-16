@@ -160,6 +160,23 @@ export interface BrandChannel {
   auth_checked_at?: string | null
   auth_error?: string | null
   auth_capabilities?: Record<string, boolean>
+  /** Present only for platform admin on GET /smm/channels */
+  diagnostics?: ChannelDiagnostics | null
+}
+
+export interface ChannelDiagnostics {
+  auth_error?: string | null
+  auth_checked_at?: string | null
+  auth_capabilities?: {
+    can_collect?: boolean
+    can_publish_text?: boolean
+    can_alert?: boolean
+  }
+  last_collect_day?: string | null
+  received_total?: number
+  last_publish_day?: string | null
+  sent_total?: number
+  failed_total?: number
 }
 
 export interface DigestJob {

@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, Navigate, useParams, useSearchParams } from 'react-router-dom'
 import { LabPythonRunner } from '@/components/lab-python-runner'
+import { LabSqlRunner } from '@/components/lab-sql-runner'
+import {
+  isGitTrainerEpisode,
+  LabGitRunner,
+} from '@/components/lab-git-runner'
 import { LearnContent } from '@/components/learn-content'
 import { MermaidBlock } from '@/components/learn-mermaid'
 import { LearnPostBadges } from '@/components/learn-post-badges'
@@ -331,7 +336,17 @@ export function LearnEpisodePage() {
         {activeTab === 'lab' && hasLab && (
           <>
             <LearnContent content={labContent} format={episode.labFormat} />
-            <LabPythonRunner labMarkdown={labContent} />
+            {episode.episode.toUpperCase().startsWith('SQL') ? (
+              <LabSqlRunner labMarkdown={labContent} episode={episode.episode} />
+            ) : isGitTrainerEpisode(episode.episode, episode.slug) ? (
+              <LabGitRunner
+                labMarkdown={labContent}
+                episode={episode.episode}
+                slug={episode.slug}
+              />
+            ) : (
+              <LabPythonRunner labMarkdown={labContent} />
+            )}
           </>
         )}
 

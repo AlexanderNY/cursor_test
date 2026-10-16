@@ -5,24 +5,34 @@
   "type": "module",
   "scripts": {
     "copy-pyodide": "node scripts/copy-pyodide.mjs",
-    "predev": "node scripts/copy-pyodide.mjs",
+    "copy-sqljs": "node scripts/copy-sqljs.mjs",
+    "predev": "node scripts/copy-pyodide.mjs && node scripts/copy-sqljs.mjs",
     "dev": "vite --host 0.0.0.0 --port 8200",
-    "build": "node scripts/copy-pyodide.mjs && tsc -b && vite build",
+    "build": "node scripts/copy-pyodide.mjs && node scripts/copy-sqljs.mjs && tsc -b && vite build",
     "lint": "eslint .",
+    "check:sql-compare": "node scripts/check-sql-compare.mjs",
+    "check:git-sandbox": "node scripts/check-git-sandbox.mjs",
     "preview": "vite preview --host 0.0.0.0 --port 8200"
   },
   "dependencies": {
+    "@codemirror/lang-python": "^6.2.1",
+    "@codemirror/lang-sql": "^6.10.0",
+    "@codemirror/state": "^6.7.6",
+    "@codemirror/view": "^6.43.14",
+    "@uiw/react-codemirror": "^4.25.12",
     "mermaid": "^11.17.0",
     "pyodide": "^314.0.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-markdown": "^10.1.0",
     "react-router-dom": "^7.18.0",
-    "remark-gfm": "^4.0.1"
+    "remark-gfm": "^4.0.1",
+    "sql.js": "^1.15.0"
   },
   "devDependencies": {
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
+    "@types/sql.js": "^1.4.11",
     "@vitejs/plugin-react": "^4.3.4",
     "typescript": "~5.6.2",
     "vite": "^6.0.5"

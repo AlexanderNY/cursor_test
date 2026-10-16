@@ -6,7 +6,7 @@
 | База | Кто использует | Что хранит |
 |------|----------------|------------|
 | `db_bot` | CopyParse (auth, core SMM, боты…) | пользователи SaaS, посты соцсетей; старые `learn_posts` — архив |
-| `db_9to18` | `site-api` + `resume-api` (`nine-to-eighteen/`) | `site_users`, apps/posts, `learn_posts`, прогресс Learn, study, `site_resumes` / профили |
+| `db_9to18` | `site-api` + `resume-api` + `portfolio-api` (`nine-to-eighteen/`) | `site_users`, apps/posts, `learn_posts`, прогресс Learn, study, `site_resumes` / профили, `site_portfolios` / `site_portfolio_cases` |
 | `db_wp` | локальный WordPress (`wp-site/`, PG4WP) | таблицы `wp_*` |
 
 ## Создание

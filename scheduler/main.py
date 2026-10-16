@@ -61,7 +61,14 @@ async def root():
 
 @app.get("/health")
 async def health():
-    return {"status": "healthy", "service": "scheduler", "server_time": datetime.utcnow().isoformat() + "Z"}
+    from shared.container_stats import get_container_stats
+
+    return {
+        "status": "healthy",
+        "service": "scheduler",
+        "server_time": datetime.utcnow().isoformat() + "Z",
+        **get_container_stats(),
+    }
 
 
 @app.get("/status")
@@ -80,29 +87,58 @@ async def status():
     }
 
 
-async def get_auth_token(
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)
+async def require_admin_jwt(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
 ) -> str:
-    """Получение токена авторизации из заголовков."""
+    """Validate access JWT signature and admin role."""
+    import jwt
+
     if not credentials:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authorization token required"
+            detail="Authorization token required",
+        )
+    secret = (settings.JWT_SECRET_KEY or "").strip()
+    if not secret:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="JWT_SECRET_KEY is not configured on scheduler",
+        )
+    try:
+        payload = jwt.decode(
+            credentials.credentials,
+            secret,
+            algorithms=[settings.JWT_ALGORITHM or "HS256"],
+        )
+    except jwt.ExpiredSignatureError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token has expired",
+        ) from exc
+    except jwt.InvalidTokenError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token",
+        ) from exc
+    if payload.get("type") != "access":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token type",
+        )
+    if (payload.get("role") or "").lower() != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin role required",
         )
     return credentials.credentials
 
 
 @app.post("/start-discovery")
 async def start_discovery(
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)
+    _token: str = Depends(require_admin_jwt),
 ):
-    """Принудительный запуск одного цикла сбора расписаний.
-
-    JWT нужен только для доступа к endpoint (admin через gateway).
-    Сам цикл ходит в Core/ботов напрямую по user_id из БД, без service-login.
-    """
+    """Принудительный запуск одного цикла сбора расписаний (admin JWT)."""
     try:
-        await get_auth_token(credentials)
         changed = await run_poll_cycle()
         return {
             "status": "success",
@@ -119,7 +155,7 @@ async def start_discovery(
 
 @app.get("/schedules")
 async def get_schedules(
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)
+    token: str = Depends(require_admin_jwt),
 ):
     """Получает расписания из профилей через API Gateway и сохраняет в schedule_snapshots.
     
@@ -130,8 +166,6 @@ async def get_schedules(
     4. Возврат собранных расписаний
     """
     try:
-        token = await get_auth_token(credentials)
-        
         # Параллельно получаем все профили
         profiles_data = await _fetch_profiles_parallel(token)
         
@@ -158,15 +192,10 @@ async def get_schedules(
 @app.post("/start-bot")
 async def start_bot(
     request: StartBotRequest,
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)
+    _token: str = Depends(require_admin_jwt),
 ):
-    """Принудительный запуск ботов для указанных платформ.
-
-    JWT — доступ к endpoint; расписания и notify — напрямую Core/боты по user_id из БД.
-    """
+    """Принудительный запуск ботов для указанных платформ (admin JWT)."""
     try:
-        await get_auth_token(credentials)
-
         valid_platforms = list(BOT_PLATFORMS)
         invalid_platforms = [p for p in request.platforms if p not in valid_platforms]
         if invalid_platforms:

@@ -17,6 +17,9 @@ class HealthResponse(BaseModel):
     status: str
     service: str
     server_time: Optional[str] = None
+    cpu_percent: Optional[float] = None
+    memory_bytes: Optional[int] = None
+    memory_limit_bytes: Optional[int] = None
 
 
 class CycleResult(BaseModel):

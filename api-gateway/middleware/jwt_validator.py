@@ -4,7 +4,7 @@ from typing import Optional
 from fastapi import Request, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
-from config import settings, PUBLIC_ENDPOINTS
+from config import settings, PUBLIC_ENDPOINTS, PUBLIC_PATH_PREFIXES
 from utils.exceptions import TokenValidationException
 
 
@@ -104,6 +104,7 @@ class JwtValidator:
             "role": payload.get("role"),
             "type": token_type,
             "exp": payload.get("exp"),
+            "iat": payload.get("iat"),
         }
 
 
@@ -118,39 +119,6 @@ jwt_validator = JwtValidator(
 security_scheme = HTTPBearer(auto_error=False)
 
 
-# Пути оповещения ботов о расписании и перезагрузки — требуют JWT (scheduler)
-BOT_SCHEDULE_PROTECTED = [
-    "/tg-bot/schedule",
-    "/tg-bot/reload",
-    "/wp-bot/schedule",
-    "/vk-bot/schedule",
-    "/url-bot/schedule",
-    "/tw-bot/schedule",
-    "/th-bot/schedule",
-    "/th-bot/reload",
-    "/threads-bot/schedule",
-    "/dzen-bot/publish-once",
-    "/dzen-bot/collect-once",
-    "/dzen-bot/schedule",
-    "/dzen-bot/verify-yandex",
-    "/dzen-bot/verify-yandex/start",
-    "/dzen-bot/verify-yandex/push-code",
-    "/dzen-bot/verify-yandex/pending-diag",
-    "/instagram-bot/schedule",
-    "/vk-bot/verify-selenium",
-]
-
-# Префиксы tg-bot, требующие JWT (помимо точных путей выше)
-BOT_TG_PROTECTED_PREFIXES = [
-    "/tg-bot/schedule/",
-    "/tg-bot/published/",
-    "/tg-bot/channels/",
-]
-
-# Пути авторизации ботов — требуют JWT
-BOT_AUTH_PROTECTED_PREFIXES = ["/tg-bot/auth/", "/th-bot/auth/"]
-
-
 def check_public_endpoint(endpoint_path: str) -> bool:
     """Проверяет, является ли endpoint публичным (не требует JWT).
     
@@ -160,29 +128,11 @@ def check_public_endpoint(endpoint_path: str) -> bool:
     Returns:
         True если endpoint публичный
     """
-    # Точное совпадение
     if endpoint_path in PUBLIC_ENDPOINTS:
         return True
-    
-    # Schedule-прокси к ботам требуют JWT
-    if endpoint_path in BOT_SCHEDULE_PROTECTED:
-        return False
-
-    # tg-bot auth endpoints требуют JWT
-    for prefix in BOT_AUTH_PROTECTED_PREFIXES:
-        if endpoint_path.startswith(prefix):
-            return False
-
-    for prefix in BOT_TG_PROTECTED_PREFIXES:
-        if endpoint_path.startswith(prefix):
-            return False
-
-    # Проверка префиксов для заглушек
-    stub_prefixes = ["/scheduler", "/tg-bot", "/vk-bot", "/wp-bot", "/url-bot", "/th-bot"]
-    for prefix in stub_prefixes:
+    for prefix in PUBLIC_PATH_PREFIXES:
         if endpoint_path.startswith(prefix):
             return True
-    
     return False
 
 
@@ -191,12 +141,18 @@ async def _blacklist_via_auth_http(
 ) -> bool:
     """Fallback: auth Postgres-backed blacklist-check (fail closed)."""
     url = f"{settings.AUTH_SERVICE_URL.rstrip('/')}/token/blacklist-check"
+    headers = {}
+    internal = (settings.INTERNAL_API_TOKEN or "").strip()
+    if internal:
+        headers["X-Internal-Token"] = internal
     try:
         if http_client is not None:
-            response = await http_client.post(url, json={"token": token}, timeout=5.0)
+            response = await http_client.post(
+                url, json={"token": token}, headers=headers, timeout=5.0
+            )
         else:
             async with httpx.AsyncClient(timeout=5.0) as client:
-                response = await client.post(url, json={"token": token})
+                response = await client.post(url, json={"token": token}, headers=headers)
         if response.status_code != 200:
             raise TokenValidationException("Unable to verify token revocation status.")
         data = response.json()
@@ -222,6 +178,53 @@ async def is_token_blacklisted(token: str, http_client: Optional[httpx.AsyncClie
     return await _blacklist_via_auth_http(token, http_client)
 
 
+def _iat_as_epoch(iat_value) -> Optional[int]:
+    if iat_value is None:
+        return None
+    if isinstance(iat_value, (int, float)):
+        return int(iat_value)
+    try:
+        return int(iat_value.timestamp())
+    except Exception:
+        return None
+
+
+async def _tokens_valid_after_epoch(
+    user_id: int, http_client: Optional[httpx.AsyncClient] = None
+) -> Optional[int]:
+    """Earliest acceptable JWT iat for user; None if no cutoff."""
+    from shared.token_blacklist_redis import token_blacklist_redis
+
+    redis_value = await token_blacklist_redis.get_tokens_valid_after(user_id)
+    if redis_value is not None:
+        return redis_value
+
+    url = f"{settings.AUTH_SERVICE_URL.rstrip('/')}/token/valid-after/{user_id}"
+    headers = {}
+    internal = (settings.INTERNAL_API_TOKEN or "").strip()
+    if internal:
+        headers["X-Internal-Token"] = internal
+    try:
+        if http_client is not None:
+            response = await http_client.get(url, headers=headers, timeout=5.0)
+        else:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                response = await client.get(url, headers=headers)
+        if response.status_code != 200:
+            raise TokenValidationException("Unable to verify token validity cutoff.")
+        data = response.json()
+        raw = data.get("tokens_valid_after_epoch")
+        if raw is None:
+            return None
+        return int(raw)
+    except TokenValidationException:
+        raise
+    except Exception as error:
+        raise TokenValidationException(
+            "Unable to verify token validity cutoff."
+        ) from error
+
+
 async def get_current_user(
     request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security_scheme)
@@ -230,24 +233,12 @@ async def get_current_user(
     
     Для публичных endpoints возвращает None без ошибки.
     Для защищенных endpoints требует валидный JWT и отсутствие в blacklist.
-    
-    Args:
-        request: FastAPI Request объект
-        credentials: HTTP Bearer credentials
-    
-    Returns:
-        Данные пользователя или None для публичных endpoints
-    
-    Raises:
-        TokenValidationException: Если JWT отсутствует, невалидный или отозван
     """
     endpoint_path = request.url.path
     
-    # Публичные endpoints не требуют аутентификации
     if check_public_endpoint(endpoint_path):
         return None
     
-    # Для защищенных endpoints требуем токен
     if not credentials:
         raise TokenValidationException("Authorization header is required.")
     
@@ -258,24 +249,20 @@ async def get_current_user(
     if await is_token_blacklisted(token, http_client):
         raise TokenValidationException("Token has been revoked")
 
+    user_id = user.get("user_id")
+    if user_id is not None:
+        cutoff = await _tokens_valid_after_epoch(int(user_id), http_client)
+        iat_epoch = _iat_as_epoch(user.get("iat"))
+        if cutoff is not None and (iat_epoch is None or iat_epoch < cutoff):
+            raise TokenValidationException("Token has been revoked")
+
     return user
 
 
 async def validate_jwt_middleware(request: Request) -> Optional[dict]:
-    """Валидирует JWT из запроса (для использования в middleware).
-    
-    Args:
-        request: FastAPI Request объект
-    
-    Returns:
-        Данные пользователя или None для публичных endpoints
-    
-    Raises:
-        TokenValidationException: Если JWT невалидный или отозван
-    """
+    """Валидирует JWT из запроса (для использования в middleware)."""
     endpoint_path = request.url.path
     
-    # Публичные endpoints
     if check_public_endpoint(endpoint_path):
         return None
     
@@ -290,5 +277,12 @@ async def validate_jwt_middleware(request: Request) -> Optional[dict]:
     http_client = getattr(request.app.state, "http_client", None)
     if await is_token_blacklisted(token, http_client):
         raise TokenValidationException("Token has been revoked")
+
+    user_id = user.get("user_id")
+    if user_id is not None:
+        cutoff = await _tokens_valid_after_epoch(int(user_id), http_client)
+        iat_epoch = _iat_as_epoch(user.get("iat"))
+        if cutoff is not None and (iat_epoch is None or iat_epoch < cutoff):
+            raise TokenValidationException("Token has been revoked")
 
     return user

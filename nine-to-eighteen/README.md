@@ -9,6 +9,7 @@ UI + FastAPI (`site-api`, `resume-api`) + БД `db_9to18`. Связь с CopyPar
 | `ui-9to18` | 8200 | SPA (nginx) |
 | `site-api` | 8020 | `/site/*`, `/learn/*` |
 | `resume-api` | 8021 | `/resume/*` (HH-резюме) |
+| `portfolio-api` | 8022 | `/portfolio/*` (публичные кейсы) |
 
 ## Быстрый старт
 
@@ -22,6 +23,7 @@ cp .env.example .env
 docker compose up -d --build
 curl http://127.0.0.1:8020/health
 curl http://127.0.0.1:8021/health
+curl http://127.0.0.1:8022/health
 curl http://127.0.0.1:8200/
 ```
 
@@ -30,7 +32,8 @@ curl http://127.0.0.1:8200/
 ```powershell
 cd ui
 npm install
-# site-api :8020 и resume-api :8021 (или VITE_SITE_API_URL / VITE_RESUME_API_URL)
+# site-api :8020, resume-api :8021, portfolio-api :8022
+# (или VITE_SITE_API_URL / VITE_RESUME_API_URL / VITE_PORTFOLIO_API_URL)
 npm run dev
 ```
 
@@ -87,6 +90,20 @@ psql -U postgres -d db_9to18 -f sql/migrate_learn_from_db_bot.sql
   - `/game/hh-resume/:resumeId/edit` — split (редактор | live-превью) + AI + mock-interview
   - `/game/hh-resume/:resumeId/quiz` — опросник; `/game/hh-resume/quiz` и `/path` без id — выбор или явное создание версии
 
+## Портфолио кейсов
+
+Отдельный `portfolio-api`. Одна страница на пользователя, до 6 кейсов. Публичная ссылка `/p/{handle}` — только если страница опубликована.
+
+- Черновик: `GET|PUT /portfolio/me`
+- Источники (GitHub из резюме, пройденные Learn, сезоны Cert, версии резюме): `GET /portfolio/sources`
+- Кейсы: `POST /portfolio/cases`, `PUT|DELETE /portfolio/cases/{id}`, `POST /portfolio/cases/reorder`
+- Публично без JWT: `GET /portfolio/p/{handle}`
+- Публикация требует заголовок и хотя бы один кейс с задачей, «что сделано» и результатом
+- На публичной странице: имя и город из анкеты, закреплённое резюме (название, специализация, «О себе»). Телефон и почта не отдаются
+- К выпуску Learn можно привязать только пройденный slug; сертификат сезона — только если сезон закрыт целиком
+- UI: `/game/portfolio` (редактор), `/p/:handle` (просмотр)
+- Rate limits (in-memory, один процесс): запись 40/мин на пользователя, публичное чтение 120/мин на IP
+
 ## Edge
 
-`deploy/ui-edge/conf.d/9to18.conf` проксирует `/api/(site|learn)` → `site-api:8020`, `/api/resume` → `resume-api:8021`.
+`deploy/ui-edge/conf.d/9to18.conf` проксирует `/api/(site|learn)` → `site-api:8020`, `/api/resume` → `resume-api:8021`, `/api/portfolio` → `portfolio-api:8022`.

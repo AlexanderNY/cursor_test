@@ -43,6 +43,9 @@ class Settings(BaseSettings):
     # Redis JWT blacklist (shared with auth). Empty = always HTTP check to auth.
     REDIS_URL: str = ""
 
+    # Service-to-service token (scheduler → bots/core; gateway injects on admin schedule proxy).
+    INTERNAL_API_TOKEN: str = ""
+
     # Доверять X-Forwarded-For / X-Real-IP только от этих peer CIDR (через запятую)
     TRUSTED_PROXY_CIDRS: str = "127.0.0.0/8,::1/128,172.20.0.0/16"
     
@@ -53,6 +56,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = True
+        extra = "ignore"
 
 
 # Singleton экземпляр настроек
@@ -88,6 +92,7 @@ RATE_LIMITS_CONFIG: dict[str, dict[str, int]] = {
     "/site/contact": {"requests": 5, "window_seconds": 60},
     "/core/statistics": {"requests": 30, "window_seconds": 60},
     "/core/users-statistics": {"requests": 30, "window_seconds": 60},
+    "/core/pipeline-effectiveness": {"requests": 30, "window_seconds": 60},
     "/core/schedule": {"requests": 30, "window_seconds": 60},
     "/core/start-discovery": {"requests": 10, "window_seconds": 60},
     "/core/start-bot": {"requests": 10, "window_seconds": 60},
@@ -149,6 +154,7 @@ PUBLIC_ENDPOINTS: list[str] = [
     "/threads/oauth/callback",
     "/vk/oauth/callback",
     "/vk/callback",
+    "/tw/oauth/callback",
     "/dzen-bot/health",
     "/auth/login",
     "/auth/register",
@@ -168,6 +174,11 @@ PUBLIC_ENDPOINTS: list[str] = [
     "/site/promo",
     "/site/contact",
     "/health",
+]
+
+# Exact PUBLIC_ENDPOINTS plus path prefixes that stay public without JWT.
+PUBLIC_PATH_PREFIXES: list[str] = [
+    "/dzen/rss/",
 ]
 
 

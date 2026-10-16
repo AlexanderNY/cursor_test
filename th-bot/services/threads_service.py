@@ -275,18 +275,23 @@ async def verify_threads_auth(user_id: int) -> dict:
 
 
 def build_oauth_url(user_id: int) -> str:
-    """Собирает URL для редиректа пользователя на Meta OAuth (state = user_id)."""
+    """Собирает URL для редиректа пользователя на Meta OAuth (signed state)."""
+    from shared.oauth_state import sign_oauth_state
+
     app_id = (settings.META_APP_ID or "").strip()
     redirect_uri = (settings.THREADS_OAUTH_REDIRECT_URI or "").strip()
     scope = (settings.THREADS_OAUTH_SCOPE or "threads_basic,threads_content_publish").strip()
     if not app_id or not redirect_uri:
+        return ""
+    secret = (getattr(settings, "JWT_SECRET_KEY", None) or "").strip()
+    if not secret:
         return ""
     from urllib.parse import urlencode
     params = {
         "client_id": app_id,
         "redirect_uri": redirect_uri,
         "scope": scope,
-        "state": str(user_id),
+        "state": sign_oauth_state(user_id, secret),
         "response_type": "code",
     }
     return f"{META_OAUTH_BASE}?{urlencode(params)}"

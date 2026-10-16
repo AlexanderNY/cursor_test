@@ -4,7 +4,7 @@
 
 H02 · История · gateway / auth / core / ui-app
 
-7 января коммит `c0d145b9` (`cursor test with fastapi`) кладёт в `py/cursor_test` четыре каталога: `api-gateway`, `auth`, `core`, `ui-app`. Это уже не правила — это границы процессов.
+До января Telegram был одним скриптом в `py/bot`. 7 января коммит `c0d145b9` (`cursor test with fastapi`) кладёт в `py/cursor_test` четыре каталога: `api-gateway`, `auth`, `core`, `ui-app`. Это уже не тот скрипт и не правила Cursor — границы процессов продукта.
 
 10 января `4b1b58eb` — сообщение «масштабный рефакторинг и разделение на сервисы». В шлюзе появляется `wp_routes`, у Telegram в дереве ещё планы (`IMPLEMENTATION_PLAN.md`, `ARCHITECTURE_ANALYSIS.md`), а не сбор сообщений в БД.
 

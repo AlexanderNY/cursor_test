@@ -121,11 +121,8 @@ export function LeafDetailPanel({
             </>
           ) : (
             <>
-              Ожидается статья <code>{learnSlug}</code>{' '}
-              <Link to={`/game/learn/${learnSlug}`} className="lm-btn">
-                Открыть →
-              </Link>
-              <span className="lm-detail-empty"> (пока нет в каталоге)</span>
+              Ожидается статья <code>{learnSlug}</code>
+              <span className="lm-detail-empty"> (в каталоге и во встроенных лекциях её нет)</span>
             </>
           )}
         </p>

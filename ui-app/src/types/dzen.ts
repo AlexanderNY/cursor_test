@@ -46,6 +46,8 @@ export interface DzenProfile {
   dzen_studio_url?: string | null
   collect_source?: DzenCollectSource
   last_auth_error?: string | null
+  /** Когда dzen-bot сохранил cookies после успешной проверки (сами cookies в API не приходят) */
+  yandex_session_saved_at?: string | null
 }
 
 export interface DzenPost {

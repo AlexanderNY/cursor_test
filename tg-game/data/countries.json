@@ -1,0 +1,1360 @@
+[
+  {
+    "iso2": "AU",
+    "name_ru": "Австралия",
+    "capital_ru": "Canberra",
+    "area_km2": 7692024,
+    "population": 27400013
+  },
+  {
+    "iso2": "AT",
+    "name_ru": "Австрия",
+    "capital_ru": "Vienna",
+    "area_km2": 83871,
+    "population": 9200931
+  },
+  {
+    "iso2": "AZ",
+    "name_ru": "Азербайджан",
+    "capital_ru": "Baku",
+    "area_km2": 86600,
+    "population": 10241722
+  },
+  {
+    "iso2": "AL",
+    "name_ru": "Албания",
+    "capital_ru": "Tirana",
+    "area_km2": 28748,
+    "population": 2363314
+  },
+  {
+    "iso2": "DZ",
+    "name_ru": "Алжир",
+    "capital_ru": "Algiers",
+    "area_km2": 2381741,
+    "population": 47400000
+  },
+  {
+    "iso2": "AO",
+    "name_ru": "Ангола",
+    "capital_ru": "Luanda",
+    "area_km2": 1246700,
+    "population": 36170961
+  },
+  {
+    "iso2": "AD",
+    "name_ru": "Андорра",
+    "capital_ru": "Andorra la Vella",
+    "area_km2": 468,
+    "population": 88306
+  },
+  {
+    "iso2": "AG",
+    "name_ru": "Антигуа и Барбуда",
+    "capital_ru": "Saint John's",
+    "area_km2": 442,
+    "population": 103603
+  },
+  {
+    "iso2": "AR",
+    "name_ru": "Аргентина",
+    "capital_ru": "Buenos Aires",
+    "area_km2": 2780400,
+    "population": 46735004
+  },
+  {
+    "iso2": "AM",
+    "name_ru": "Армения",
+    "capital_ru": "Yerevan",
+    "area_km2": 29743,
+    "population": 3081100
+  },
+  {
+    "iso2": "AF",
+    "name_ru": "Афганистан",
+    "capital_ru": "Kabul",
+    "area_km2": 652230,
+    "population": 43844000
+  },
+  {
+    "iso2": "BS",
+    "name_ru": "Багамские Острова",
+    "capital_ru": "Nassau",
+    "area_km2": 13943,
+    "population": 398165
+  },
+  {
+    "iso2": "BD",
+    "name_ru": "Бангладеш",
+    "capital_ru": "Dhaka",
+    "area_km2": 147570,
+    "population": 169828911
+  },
+  {
+    "iso2": "BB",
+    "name_ru": "Барбадос",
+    "capital_ru": "Bridgetown",
+    "area_km2": 430,
+    "population": 267800
+  },
+  {
+    "iso2": "BH",
+    "name_ru": "Бахрейн",
+    "capital_ru": "Manama",
+    "area_km2": 765,
+    "population": 1594654
+  },
+  {
+    "iso2": "BY",
+    "name_ru": "Беларусь",
+    "capital_ru": "Minsk",
+    "area_km2": 207600,
+    "population": 9109280
+  },
+  {
+    "iso2": "BZ",
+    "name_ru": "Белиз",
+    "capital_ru": "Belmopan",
+    "area_km2": 22966,
+    "population": 417634
+  },
+  {
+    "iso2": "BE",
+    "name_ru": "Бельгия",
+    "capital_ru": "Brussels",
+    "area_km2": 30528,
+    "population": 11825551
+  },
+  {
+    "iso2": "BJ",
+    "name_ru": "Бенин",
+    "capital_ru": "Porto-Novo",
+    "area_km2": 112622,
+    "population": 13224860
+  },
+  {
+    "iso2": "BG",
+    "name_ru": "Болгария",
+    "capital_ru": "Sofia",
+    "area_km2": 110879,
+    "population": 6437360
+  },
+  {
+    "iso2": "BO",
+    "name_ru": "Боливия",
+    "capital_ru": "Sucre",
+    "area_km2": 1098581,
+    "population": 11312620
+  },
+  {
+    "iso2": "BA",
+    "name_ru": "Босния и Герцеговина",
+    "capital_ru": "Sarajevo",
+    "area_km2": 51209,
+    "population": 3422000
+  },
+  {
+    "iso2": "BW",
+    "name_ru": "Ботсвана",
+    "capital_ru": "Gaborone",
+    "area_km2": 582000,
+    "population": 2359609
+  },
+  {
+    "iso2": "BR",
+    "name_ru": "Бразилия",
+    "capital_ru": "Brasília",
+    "area_km2": 8515767,
+    "population": 213421037
+  },
+  {
+    "iso2": "BN",
+    "name_ru": "Бруней",
+    "capital_ru": "Bandar Seri Begawan",
+    "area_km2": 5765,
+    "population": 455500
+  },
+  {
+    "iso2": "BF",
+    "name_ru": "Буркина-Фасо",
+    "capital_ru": "Ouagadougou",
+    "area_km2": 272967,
+    "population": 24070553
+  },
+  {
+    "iso2": "BI",
+    "name_ru": "Бурунди",
+    "capital_ru": "Gitega",
+    "area_km2": 27834,
+    "population": 12332788
+  },
+  {
+    "iso2": "BT",
+    "name_ru": "Бутан",
+    "capital_ru": "Thimphu",
+    "area_km2": 38394,
+    "population": 784043
+  },
+  {
+    "iso2": "VU",
+    "name_ru": "Вануату",
+    "capital_ru": "Port Vila",
+    "area_km2": 12189,
+    "population": 321409
+  },
+  {
+    "iso2": "VA",
+    "name_ru": "Ватикан",
+    "capital_ru": "Vatican City",
+    "area_km2": 0.44,
+    "population": 882
+  },
+  {
+    "iso2": "GB",
+    "name_ru": "Великобритания",
+    "capital_ru": "London",
+    "area_km2": 242900,
+    "population": 68265209
+  },
+  {
+    "iso2": "HU",
+    "name_ru": "Венгрия",
+    "capital_ru": "Budapest",
+    "area_km2": 93028,
+    "population": 9539502
+  },
+  {
+    "iso2": "VE",
+    "name_ru": "Венесуэла",
+    "capital_ru": "Caracas",
+    "area_km2": 916445,
+    "population": 28517000
+  },
+  {
+    "iso2": "TL",
+    "name_ru": "Восточный Тимор",
+    "capital_ru": "Dili",
+    "area_km2": 14874,
+    "population": 1391221
+  },
+  {
+    "iso2": "VN",
+    "name_ru": "Вьетнам",
+    "capital_ru": "Hanoi",
+    "area_km2": 331212,
+    "population": 101343800
+  },
+  {
+    "iso2": "GA",
+    "name_ru": "Габон",
+    "capital_ru": "Libreville",
+    "area_km2": 267668,
+    "population": 2469296
+  },
+  {
+    "iso2": "HT",
+    "name_ru": "Гаити",
+    "capital_ru": "Port-au-Prince",
+    "area_km2": 27750,
+    "population": 11867032
+  },
+  {
+    "iso2": "GY",
+    "name_ru": "Гайана",
+    "capital_ru": "Georgetown",
+    "area_km2": 214969,
+    "population": 772975
+  },
+  {
+    "iso2": "GM",
+    "name_ru": "Гамбия",
+    "capital_ru": "Banjul",
+    "area_km2": 10689,
+    "population": 2422712
+  },
+  {
+    "iso2": "GH",
+    "name_ru": "Гана",
+    "capital_ru": "Accra",
+    "area_km2": 238533,
+    "population": 33742380
+  },
+  {
+    "iso2": "GT",
+    "name_ru": "Гватемала",
+    "capital_ru": "Guatemala City",
+    "area_km2": 108889,
+    "population": 18079810
+  },
+  {
+    "iso2": "GN",
+    "name_ru": "Гвинея",
+    "capital_ru": "Conakry",
+    "area_km2": 245857,
+    "population": 14363931
+  },
+  {
+    "iso2": "GW",
+    "name_ru": "Гвинея-Бисау",
+    "capital_ru": "Bissau",
+    "area_km2": 36125,
+    "population": 1781308
+  },
+  {
+    "iso2": "DE",
+    "name_ru": "Германия",
+    "capital_ru": "Berlin",
+    "area_km2": 357114,
+    "population": 83517030
+  },
+  {
+    "iso2": "HN",
+    "name_ru": "Гондурас",
+    "capital_ru": "Tegucigalpa",
+    "area_km2": 112492,
+    "population": 9892632
+  },
+  {
+    "iso2": "GD",
+    "name_ru": "Гренада",
+    "capital_ru": "St. George's",
+    "area_km2": 344,
+    "population": 109021
+  },
+  {
+    "iso2": "GR",
+    "name_ru": "Греция",
+    "capital_ru": "Athens",
+    "area_km2": 131990,
+    "population": 10400720
+  },
+  {
+    "iso2": "GE",
+    "name_ru": "Грузия",
+    "capital_ru": "Tbilisi",
+    "area_km2": 69700,
+    "population": 3704500
+  },
+  {
+    "iso2": "DK",
+    "name_ru": "Дания",
+    "capital_ru": "Copenhagen",
+    "area_km2": 43094,
+    "population": 6004342
+  },
+  {
+    "iso2": "CD",
+    "name_ru": "Демократическая Республика Конго",
+    "capital_ru": "Kinshasa",
+    "area_km2": 2344858,
+    "population": 112832000
+  },
+  {
+    "iso2": "DJ",
+    "name_ru": "Джибути",
+    "capital_ru": "Djibouti",
+    "area_km2": 23200,
+    "population": 1066809
+  },
+  {
+    "iso2": "DM",
+    "name_ru": "Доминика",
+    "capital_ru": "Roseau",
+    "area_km2": 751,
+    "population": 67408
+  },
+  {
+    "iso2": "DO",
+    "name_ru": "Доминиканская Республика",
+    "capital_ru": "Santo Domingo",
+    "area_km2": 48671,
+    "population": 10771504
+  },
+  {
+    "iso2": "EG",
+    "name_ru": "Египет",
+    "capital_ru": "Cairo",
+    "area_km2": 1002450,
+    "population": 107271260
+  },
+  {
+    "iso2": "ZM",
+    "name_ru": "Замбия",
+    "capital_ru": "Lusaka",
+    "area_km2": 752612,
+    "population": 19693423
+  },
+  {
+    "iso2": "ZW",
+    "name_ru": "Зимбабве",
+    "capital_ru": "Harare",
+    "area_km2": 390757,
+    "population": 17073087
+  },
+  {
+    "iso2": "IL",
+    "name_ru": "Израиль",
+    "capital_ru": "Jerusalem",
+    "area_km2": 20770,
+    "population": 10119400
+  },
+  {
+    "iso2": "IN",
+    "name_ru": "Индия",
+    "capital_ru": "New Delhi",
+    "area_km2": 3287590,
+    "population": 1417492000
+  },
+  {
+    "iso2": "ID",
+    "name_ru": "Индонезия",
+    "capital_ru": "Jakarta",
+    "area_km2": 1904569,
+    "population": 284438782
+  },
+  {
+    "iso2": "JO",
+    "name_ru": "Иордания",
+    "capital_ru": "Amman",
+    "area_km2": 89342,
+    "population": 11734000
+  },
+  {
+    "iso2": "IQ",
+    "name_ru": "Ирак",
+    "capital_ru": "Baghdad",
+    "area_km2": 438317,
+    "population": 46118793
+  },
+  {
+    "iso2": "IR",
+    "name_ru": "Иран",
+    "capital_ru": "Tehran",
+    "area_km2": 1648195,
+    "population": 85961000
+  },
+  {
+    "iso2": "IE",
+    "name_ru": "Ирландия",
+    "capital_ru": "Dublin",
+    "area_km2": 70273,
+    "population": 5458600
+  },
+  {
+    "iso2": "IS",
+    "name_ru": "Исландия",
+    "capital_ru": "Reykjavik",
+    "area_km2": 103000,
+    "population": 391810
+  },
+  {
+    "iso2": "ES",
+    "name_ru": "Испания",
+    "capital_ru": "Madrid",
+    "area_km2": 505992,
+    "population": 49315949
+  },
+  {
+    "iso2": "IT",
+    "name_ru": "Италия",
+    "capital_ru": "Rome",
+    "area_km2": 301336,
+    "population": 58919230
+  },
+  {
+    "iso2": "YE",
+    "name_ru": "Йемен",
+    "capital_ru": "Sana'a",
+    "area_km2": 527968,
+    "population": 32684503
+  },
+  {
+    "iso2": "CV",
+    "name_ru": "Кабо-Верде",
+    "capital_ru": "Praia",
+    "area_km2": 4033,
+    "population": 491233
+  },
+  {
+    "iso2": "KZ",
+    "name_ru": "Казахстан",
+    "capital_ru": "Astana",
+    "area_km2": 2724900,
+    "population": 20407844
+  },
+  {
+    "iso2": "KH",
+    "name_ru": "Камбоджа",
+    "capital_ru": "Phnom Penh",
+    "area_km2": 181035,
+    "population": 17577760
+  },
+  {
+    "iso2": "CM",
+    "name_ru": "Камерун",
+    "capital_ru": "Yaoundé",
+    "area_km2": 475442,
+    "population": 29442327
+  },
+  {
+    "iso2": "CA",
+    "name_ru": "Канада",
+    "capital_ru": "Ottawa",
+    "area_km2": 9984670,
+    "population": 41548787
+  },
+  {
+    "iso2": "QA",
+    "name_ru": "Катар",
+    "capital_ru": "Doha",
+    "area_km2": 11586,
+    "population": 3173024
+  },
+  {
+    "iso2": "KE",
+    "name_ru": "Кения",
+    "capital_ru": "Nairobi",
+    "area_km2": 580367,
+    "population": 53330978
+  },
+  {
+    "iso2": "CY",
+    "name_ru": "Кипр",
+    "capital_ru": "Nicosia",
+    "area_km2": 9251,
+    "population": 966400
+  },
+  {
+    "iso2": "KG",
+    "name_ru": "Киргизия",
+    "capital_ru": "Bishkek",
+    "area_km2": 199951,
+    "population": 7281800
+  },
+  {
+    "iso2": "KI",
+    "name_ru": "Кирибати",
+    "capital_ru": "South Tarawa",
+    "area_km2": 811,
+    "population": 120740
+  },
+  {
+    "iso2": "CN",
+    "name_ru": "Китай",
+    "capital_ru": "Beijing",
+    "area_km2": 9706961,
+    "population": 1408280000
+  },
+  {
+    "iso2": "CO",
+    "name_ru": "Колумбия",
+    "capital_ru": "Bogotá",
+    "area_km2": 1141748,
+    "population": 53057212
+  },
+  {
+    "iso2": "KM",
+    "name_ru": "Коморы",
+    "capital_ru": "Moroni",
+    "area_km2": 1862,
+    "population": 870038
+  },
+  {
+    "iso2": "CR",
+    "name_ru": "Коста-Рика",
+    "capital_ru": "San José",
+    "area_km2": 51100,
+    "population": 5309625
+  },
+  {
+    "iso2": "CI",
+    "name_ru": "Кот-д’Ивуар",
+    "capital_ru": "Yamoussoukro",
+    "area_km2": 322463,
+    "population": 29389150
+  },
+  {
+    "iso2": "CU",
+    "name_ru": "Куба",
+    "capital_ru": "Havana",
+    "area_km2": 109884,
+    "population": 9748007
+  },
+  {
+    "iso2": "KW",
+    "name_ru": "Кувейт",
+    "capital_ru": "Kuwait City",
+    "area_km2": 17818,
+    "population": 4881254
+  },
+  {
+    "iso2": "LA",
+    "name_ru": "Лаос",
+    "capital_ru": "Vientiane",
+    "area_km2": 236800,
+    "population": 7647000
+  },
+  {
+    "iso2": "LV",
+    "name_ru": "Латвия",
+    "capital_ru": "Riga",
+    "area_km2": 64559,
+    "population": 1830400
+  },
+  {
+    "iso2": "LS",
+    "name_ru": "Лесото",
+    "capital_ru": "Maseru",
+    "area_km2": 30355,
+    "population": 2116427
+  },
+  {
+    "iso2": "LR",
+    "name_ru": "Либерия",
+    "capital_ru": "Monrovia",
+    "area_km2": 111369,
+    "population": 5248621
+  },
+  {
+    "iso2": "LB",
+    "name_ru": "Ливан",
+    "capital_ru": "Beirut",
+    "area_km2": 10452,
+    "population": 5490000
+  },
+  {
+    "iso2": "LY",
+    "name_ru": "Ливия",
+    "capital_ru": "Tripoli",
+    "area_km2": 1759540,
+    "population": 7459000
+  },
+  {
+    "iso2": "LT",
+    "name_ru": "Литва",
+    "capital_ru": "Vilnius",
+    "area_km2": 65300,
+    "population": 2894548
+  },
+  {
+    "iso2": "LI",
+    "name_ru": "Лихтенштейн",
+    "capital_ru": "Vaduz",
+    "area_km2": 160,
+    "population": 40900
+  },
+  {
+    "iso2": "LU",
+    "name_ru": "Люксембург",
+    "capital_ru": "Luxembourg",
+    "area_km2": 2586,
+    "population": 681973
+  },
+  {
+    "iso2": "MU",
+    "name_ru": "Маврикий",
+    "capital_ru": "Port Louis",
+    "area_km2": 2040,
+    "population": 1243741
+  },
+  {
+    "iso2": "MR",
+    "name_ru": "Мавритания",
+    "capital_ru": "Nouakchott",
+    "area_km2": 1030700,
+    "population": 4927532
+  },
+  {
+    "iso2": "MG",
+    "name_ru": "Мадагаскар",
+    "capital_ru": "Antananarivo",
+    "area_km2": 587041,
+    "population": 31727042
+  },
+  {
+    "iso2": "MW",
+    "name_ru": "Малави",
+    "capital_ru": "Lilongwe",
+    "area_km2": 118484,
+    "population": 20734262
+  },
+  {
+    "iso2": "MY",
+    "name_ru": "Малайзия",
+    "capital_ru": "Kuala Lumpur",
+    "area_km2": 330803,
+    "population": 34231700
+  },
+  {
+    "iso2": "ML",
+    "name_ru": "Мали",
+    "capital_ru": "Bamako",
+    "area_km2": 1240192,
+    "population": 22395489
+  },
+  {
+    "iso2": "MV",
+    "name_ru": "Мальдивы",
+    "capital_ru": "Malé",
+    "area_km2": 300,
+    "population": 515132
+  },
+  {
+    "iso2": "MT",
+    "name_ru": "Мальта",
+    "capital_ru": "Valletta",
+    "area_km2": 316,
+    "population": 574250
+  },
+  {
+    "iso2": "MA",
+    "name_ru": "Марокко",
+    "capital_ru": "Rabat",
+    "area_km2": 446550,
+    "population": 36828330
+  },
+  {
+    "iso2": "MH",
+    "name_ru": "Маршалловы Острова",
+    "capital_ru": "Majuro",
+    "area_km2": 181,
+    "population": 42418
+  },
+  {
+    "iso2": "MX",
+    "name_ru": "Мексика",
+    "capital_ru": "Mexico City",
+    "area_km2": 1964375,
+    "population": 130575786
+  },
+  {
+    "iso2": "MZ",
+    "name_ru": "Мозамбик",
+    "capital_ru": "Maputo",
+    "area_km2": 801590,
+    "population": 34090466
+  },
+  {
+    "iso2": "MD",
+    "name_ru": "Молдавия",
+    "capital_ru": "Chișinău",
+    "area_km2": 33846,
+    "population": 2381300
+  },
+  {
+    "iso2": "MC",
+    "name_ru": "Монако",
+    "capital_ru": "Monaco",
+    "area_km2": 2.02,
+    "population": 38423
+  },
+  {
+    "iso2": "MN",
+    "name_ru": "Монголия",
+    "capital_ru": "Ulan Bator",
+    "area_km2": 1564110,
+    "population": 3544835
+  },
+  {
+    "iso2": "MM",
+    "name_ru": "Мьянма",
+    "capital_ru": "Naypyidaw",
+    "area_km2": 676578,
+    "population": 51316756
+  },
+  {
+    "iso2": "NA",
+    "name_ru": "Намибия",
+    "capital_ru": "Windhoek",
+    "area_km2": 825615,
+    "population": 3022401
+  },
+  {
+    "iso2": "NR",
+    "name_ru": "Науру",
+    "capital_ru": "Yaren",
+    "area_km2": 21,
+    "population": 11680
+  },
+  {
+    "iso2": "NP",
+    "name_ru": "Непал",
+    "capital_ru": "Kathmandu",
+    "area_km2": 147181,
+    "population": 29911840
+  },
+  {
+    "iso2": "NE",
+    "name_ru": "Нигер",
+    "capital_ru": "Niamey",
+    "area_km2": 1267000,
+    "population": 26312034
+  },
+  {
+    "iso2": "NG",
+    "name_ru": "Нигерия",
+    "capital_ru": "Abuja",
+    "area_km2": 923768,
+    "population": 223800000
+  },
+  {
+    "iso2": "NL",
+    "name_ru": "Нидерланды",
+    "capital_ru": "Amsterdam",
+    "area_km2": 41850,
+    "population": 18080943
+  },
+  {
+    "iso2": "NI",
+    "name_ru": "Никарагуа",
+    "capital_ru": "Managua",
+    "area_km2": 130373,
+    "population": 6803886
+  },
+  {
+    "iso2": "NZ",
+    "name_ru": "Новая Зеландия",
+    "capital_ru": "Wellington",
+    "area_km2": 270467,
+    "population": 5324700
+  },
+  {
+    "iso2": "NO",
+    "name_ru": "Норвегия",
+    "capital_ru": "Oslo",
+    "area_km2": 323802,
+    "population": 5606944
+  },
+  {
+    "iso2": "AE",
+    "name_ru": "Объединённые Арабские Эмираты",
+    "capital_ru": "Abu Dhabi",
+    "area_km2": 83600,
+    "population": 10678556
+  },
+  {
+    "iso2": "OM",
+    "name_ru": "Оман",
+    "capital_ru": "Muscat",
+    "area_km2": 309500,
+    "population": 5306976
+  },
+  {
+    "iso2": "PK",
+    "name_ru": "Пакистан",
+    "capital_ru": "Islamabad",
+    "area_km2": 881912,
+    "population": 241499431
+  },
+  {
+    "iso2": "PW",
+    "name_ru": "Палау",
+    "capital_ru": "Ngerulmud",
+    "area_km2": 459,
+    "population": 16733
+  },
+  {
+    "iso2": "PA",
+    "name_ru": "Панама",
+    "capital_ru": "Panama City",
+    "area_km2": 75417,
+    "population": 4064780
+  },
+  {
+    "iso2": "PG",
+    "name_ru": "Папуа — Новая Гвинея",
+    "capital_ru": "Port Moresby",
+    "area_km2": 462840,
+    "population": 11781559
+  },
+  {
+    "iso2": "PY",
+    "name_ru": "Парагвай",
+    "capital_ru": "Asunción",
+    "area_km2": 406752,
+    "population": 6109644
+  },
+  {
+    "iso2": "PE",
+    "name_ru": "Перу",
+    "capital_ru": "Lima",
+    "area_km2": 1285216,
+    "population": 34350244
+  },
+  {
+    "iso2": "PL",
+    "name_ru": "Польша",
+    "capital_ru": "Warsaw",
+    "area_km2": 312679,
+    "population": 37401000
+  },
+  {
+    "iso2": "PT",
+    "name_ru": "Португалия",
+    "capital_ru": "Lisbon",
+    "area_km2": 92090,
+    "population": 10749635
+  },
+  {
+    "iso2": "CG",
+    "name_ru": "Республика Конго",
+    "capital_ru": "Brazzaville",
+    "area_km2": 342000,
+    "population": 6142180
+  },
+  {
+    "iso2": "RU",
+    "name_ru": "Россия",
+    "capital_ru": "Moscow",
+    "area_km2": 17098242,
+    "population": 146028325
+  },
+  {
+    "iso2": "RW",
+    "name_ru": "Руанда",
+    "capital_ru": "Kigali",
+    "area_km2": 26338,
+    "population": 14104969
+  },
+  {
+    "iso2": "RO",
+    "name_ru": "Румыния",
+    "capital_ru": "Bucharest",
+    "area_km2": 238391,
+    "population": 19036031
+  },
+  {
+    "iso2": "SV",
+    "name_ru": "Сальвадор",
+    "capital_ru": "San Salvador",
+    "area_km2": 21041,
+    "population": 6029976
+  },
+  {
+    "iso2": "WS",
+    "name_ru": "Самоа",
+    "capital_ru": "Apia",
+    "area_km2": 2842,
+    "population": 205557
+  },
+  {
+    "iso2": "SM",
+    "name_ru": "Сан-Марино",
+    "capital_ru": "City of San Marino",
+    "area_km2": 61,
+    "population": 34132
+  },
+  {
+    "iso2": "ST",
+    "name_ru": "Сан-Томе и Принсипи",
+    "capital_ru": "São Tomé",
+    "area_km2": 964,
+    "population": 209607
+  },
+  {
+    "iso2": "SA",
+    "name_ru": "Саудовская Аравия",
+    "capital_ru": "Riyadh",
+    "area_km2": 2149690,
+    "population": 35300280
+  },
+  {
+    "iso2": "SZ",
+    "name_ru": "Свазиленд",
+    "capital_ru": "Lobamba",
+    "area_km2": 17364,
+    "population": 1235549
+  },
+  {
+    "iso2": "KP",
+    "name_ru": "Северная Корея",
+    "capital_ru": "Pyongyang",
+    "area_km2": 120538,
+    "population": 25950000
+  },
+  {
+    "iso2": "MK",
+    "name_ru": "Северная Македония",
+    "capital_ru": "Skopje",
+    "area_km2": 25713,
+    "population": 1826247
+  },
+  {
+    "iso2": "SC",
+    "name_ru": "Сейшельские Острова",
+    "capital_ru": "Victoria",
+    "area_km2": 452,
+    "population": 122729
+  },
+  {
+    "iso2": "SN",
+    "name_ru": "Сенегал",
+    "capital_ru": "Dakar",
+    "area_km2": 196722,
+    "population": 18593258
+  },
+  {
+    "iso2": "VC",
+    "name_ru": "Сент-Винсент и Гренадины",
+    "capital_ru": "Kingstown",
+    "area_km2": 389,
+    "population": 110872
+  },
+  {
+    "iso2": "KN",
+    "name_ru": "Сент-Китс и Невис",
+    "capital_ru": "Basseterre",
+    "area_km2": 261,
+    "population": 51320
+  },
+  {
+    "iso2": "LC",
+    "name_ru": "Сент-Люсия",
+    "capital_ru": "Castries",
+    "area_km2": 616,
+    "population": 184100
+  },
+  {
+    "iso2": "RS",
+    "name_ru": "Сербия",
+    "capital_ru": "Belgrade",
+    "area_km2": 88361,
+    "population": 6567783
+  },
+  {
+    "iso2": "SG",
+    "name_ru": "Сингапур",
+    "capital_ru": "Singapore",
+    "area_km2": 710,
+    "population": 6036900
+  },
+  {
+    "iso2": "SY",
+    "name_ru": "Сирия",
+    "capital_ru": "Damascus",
+    "area_km2": 185180,
+    "population": 25620000
+  },
+  {
+    "iso2": "SK",
+    "name_ru": "Словакия",
+    "capital_ru": "Bratislava",
+    "area_km2": 49037,
+    "population": 5413813
+  },
+  {
+    "iso2": "SI",
+    "name_ru": "Словения",
+    "capital_ru": "Ljubljana",
+    "area_km2": 20273,
+    "population": 2130638
+  },
+  {
+    "iso2": "US",
+    "name_ru": "Соединённые Штаты Америки",
+    "capital_ru": "Washington D.C.",
+    "area_km2": 9372610,
+    "population": 340110988
+  },
+  {
+    "iso2": "SB",
+    "name_ru": "Соломоновы Острова",
+    "capital_ru": "Honiara",
+    "area_km2": 28896,
+    "population": 750325
+  },
+  {
+    "iso2": "SO",
+    "name_ru": "Сомали",
+    "capital_ru": "Mogadishu",
+    "area_km2": 637657,
+    "population": 19655000
+  },
+  {
+    "iso2": "SD",
+    "name_ru": "Судан",
+    "capital_ru": "Khartoum",
+    "area_km2": 1886068,
+    "population": 51662000
+  },
+  {
+    "iso2": "SR",
+    "name_ru": "Суринам",
+    "capital_ru": "Paramaribo",
+    "area_km2": 163820,
+    "population": 616500
+  },
+  {
+    "iso2": "SL",
+    "name_ru": "Сьерра-Леоне",
+    "capital_ru": "Freetown",
+    "area_km2": 71740,
+    "population": 9077691
+  },
+  {
+    "iso2": "TJ",
+    "name_ru": "Таджикистан",
+    "capital_ru": "Dushanbe",
+    "area_km2": 143100,
+    "population": 10499000
+  },
+  {
+    "iso2": "TH",
+    "name_ru": "Таиланд",
+    "capital_ru": "Bangkok",
+    "area_km2": 513120,
+    "population": 65859640
+  },
+  {
+    "iso2": "TZ",
+    "name_ru": "Танзания",
+    "capital_ru": "Dodoma",
+    "area_km2": 945087,
+    "population": 68153004
+  },
+  {
+    "iso2": "TG",
+    "name_ru": "Того",
+    "capital_ru": "Lomé",
+    "area_km2": 56785,
+    "population": 8095498
+  },
+  {
+    "iso2": "TO",
+    "name_ru": "Тонга",
+    "capital_ru": "Nuku'alofa",
+    "area_km2": 747,
+    "population": 100179
+  },
+  {
+    "iso2": "TT",
+    "name_ru": "Тринидад и Тобаго",
+    "capital_ru": "Port of Spain",
+    "area_km2": 5130,
+    "population": 1368333
+  },
+  {
+    "iso2": "TV",
+    "name_ru": "Тувалу",
+    "capital_ru": "Funafuti",
+    "area_km2": 26,
+    "population": 10643
+  },
+  {
+    "iso2": "TN",
+    "name_ru": "Тунис",
+    "capital_ru": "Tunis",
+    "area_km2": 163610,
+    "population": 11972169
+  },
+  {
+    "iso2": "TM",
+    "name_ru": "Туркмения",
+    "capital_ru": "Ashgabat",
+    "area_km2": 488100,
+    "population": 7057841
+  },
+  {
+    "iso2": "TR",
+    "name_ru": "Турция",
+    "capital_ru": "Ankara",
+    "area_km2": 783562,
+    "population": 85664944
+  },
+  {
+    "iso2": "UG",
+    "name_ru": "Уганда",
+    "capital_ru": "Kampala",
+    "area_km2": 241550,
+    "population": 45905417
+  },
+  {
+    "iso2": "UZ",
+    "name_ru": "Узбекистан",
+    "capital_ru": "Tashkent",
+    "area_km2": 447400,
+    "population": 37859698
+  },
+  {
+    "iso2": "UA",
+    "name_ru": "Украина",
+    "capital_ru": "Kyiv",
+    "area_km2": 603500,
+    "population": 32862000
+  },
+  {
+    "iso2": "UY",
+    "name_ru": "Уругвай",
+    "capital_ru": "Montevideo",
+    "area_km2": 181034,
+    "population": 3499451
+  },
+  {
+    "iso2": "FM",
+    "name_ru": "Федеративные Штаты Микронезии",
+    "capital_ru": "Palikir",
+    "area_km2": 702,
+    "population": 105564
+  },
+  {
+    "iso2": "FJ",
+    "name_ru": "Фиджи",
+    "capital_ru": "Suva",
+    "area_km2": 18272,
+    "population": 900869
+  },
+  {
+    "iso2": "PH",
+    "name_ru": "Филиппины",
+    "capital_ru": "Manila",
+    "area_km2": 342353,
+    "population": 114123600
+  },
+  {
+    "iso2": "FI",
+    "name_ru": "Финляндия",
+    "capital_ru": "Helsinki",
+    "area_km2": 338424,
+    "population": 5645651
+  },
+  {
+    "iso2": "FR",
+    "name_ru": "Франция",
+    "capital_ru": "Paris",
+    "area_km2": 551695,
+    "population": 68688000
+  },
+  {
+    "iso2": "HR",
+    "name_ru": "Хорватия",
+    "capital_ru": "Zagreb",
+    "area_km2": 56594,
+    "population": 3866233
+  },
+  {
+    "iso2": "CF",
+    "name_ru": "Центральноафриканская Республика",
+    "capital_ru": "Bangui",
+    "area_km2": 622984,
+    "population": 6470307
+  },
+  {
+    "iso2": "TD",
+    "name_ru": "Чад",
+    "capital_ru": "N'Djamena",
+    "area_km2": 1284000,
+    "population": 19340757
+  },
+  {
+    "iso2": "ME",
+    "name_ru": "Черногория",
+    "capital_ru": "Podgorica",
+    "area_km2": 13812,
+    "population": 623327
+  },
+  {
+    "iso2": "CZ",
+    "name_ru": "Чехия",
+    "capital_ru": "Prague",
+    "area_km2": 78865,
+    "population": 10876875
+  },
+  {
+    "iso2": "CL",
+    "name_ru": "Чили",
+    "capital_ru": "Santiago",
+    "area_km2": 756102,
+    "population": 20206953
+  },
+  {
+    "iso2": "CH",
+    "name_ru": "Швейцария",
+    "capital_ru": "Bern",
+    "area_km2": 41284,
+    "population": 9082848
+  },
+  {
+    "iso2": "SE",
+    "name_ru": "Швеция",
+    "capital_ru": "Stockholm",
+    "area_km2": 450295,
+    "population": 10596652
+  },
+  {
+    "iso2": "LK",
+    "name_ru": "Шри-Ланка",
+    "capital_ru": "Colombo",
+    "area_km2": 65610,
+    "population": 21763170
+  },
+  {
+    "iso2": "EC",
+    "name_ru": "Эквадор",
+    "capital_ru": "Quito",
+    "area_km2": 276841,
+    "population": 18103660
+  },
+  {
+    "iso2": "GQ",
+    "name_ru": "Экваториальная Гвинея",
+    "capital_ru": "Malabo",
+    "area_km2": 28051,
+    "population": 1668768
+  },
+  {
+    "iso2": "ER",
+    "name_ru": "Эритрея",
+    "capital_ru": "Asmara",
+    "area_km2": 117600,
+    "population": 3607000
+  },
+  {
+    "iso2": "EE",
+    "name_ru": "Эстония",
+    "capital_ru": "Tallinn",
+    "area_km2": 45227,
+    "population": 1369995
+  },
+  {
+    "iso2": "ET",
+    "name_ru": "Эфиопия",
+    "capital_ru": "Addis Ababa",
+    "area_km2": 1104300,
+    "population": 111652998
+  },
+  {
+    "iso2": "KR",
+    "name_ru": "Южная Корея",
+    "capital_ru": "Seoul",
+    "area_km2": 100210,
+    "population": 51159889
+  },
+  {
+    "iso2": "ZA",
+    "name_ru": "Южно-Африканская Республика",
+    "capital_ru": "Pretoria",
+    "area_km2": 1221037,
+    "population": 63100945
+  },
+  {
+    "iso2": "SS",
+    "name_ru": "Южный Судан",
+    "capital_ru": "Juba",
+    "area_km2": 619745,
+    "population": 15786898
+  },
+  {
+    "iso2": "JM",
+    "name_ru": "Ямайка",
+    "capital_ru": "Kingston",
+    "area_km2": 10991,
+    "population": 2825544
+  },
+  {
+    "iso2": "JP",
+    "name_ru": "Япония",
+    "capital_ru": "Tokyo",
+    "area_km2": 377930,
+    "population": 123300000
+  }
+]

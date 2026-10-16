@@ -6,7 +6,7 @@ import signal
 import sys
 
 import uvicorn
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from pydantic import BaseModel, Field
 
 from config import settings
@@ -14,6 +14,7 @@ from database import init_db, close_db
 from models import ALL_TABLES
 from services.vk_bot_service import VkBotService
 from services.vk_selenium_probe import verify_vk_selenium_async
+from shared.internal_auth_fastapi import require_internal_token
 
 
 logging.basicConfig(
@@ -40,10 +41,14 @@ _reload_task = None
 @app.get("/health")
 async def health_check():
     from datetime import datetime
+
+    from shared.container_stats import get_container_stats
+
     return {
         "status": "ok",
         "service": "vk-bot",
         "server_time": datetime.utcnow().isoformat() + "Z",
+        **get_container_stats(),
     }
 
 
@@ -95,6 +100,16 @@ async def publish_now():
         return {"status": "error", "message": "Bot service not initialized", "published": 0}
     published = await bot_service._post_publisher.publish_ready_posts()
     return {"status": "ok", "published": published}
+
+
+@app.post("/schedule")
+async def schedule_from_scheduler(_internal: None = Depends(require_internal_token)):
+    """Оповещение от scheduler: один проход сбора/публикации."""
+    global bot_service
+    if not bot_service:
+        return {"status": "error", "message": "Bot service not initialized"}
+    asyncio.create_task(bot_service.run_collect_once())
+    return {"status": "ok", "message": "vk-bot schedule pass started"}
 
 
 async def run_api_server():

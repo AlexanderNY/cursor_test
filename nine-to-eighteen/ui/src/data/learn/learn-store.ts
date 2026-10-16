@@ -136,6 +136,17 @@ export function seedPostsLocal(): LearnPost[] {
   }))
 }
 
+/** Published API posts win. Bundled episodes fill slugs the catalog has not published yet. */
+export function postsWithBundledEpisodes(published: LearnPost[]): LearnPost[] {
+  const bySlug = new Map(published.map((post) => [post.slug, post]))
+  for (const post of seedPostsLocal()) {
+    if (!bySlug.has(post.slug)) {
+      bySlug.set(post.slug, post)
+    }
+  }
+  return [...bySlug.values()]
+}
+
 export async function loadLearnPosts(opts?: { admin?: boolean }): Promise<LearnPost[]> {
   const admin = Boolean(opts?.admin && canEditLearn())
   try {
@@ -160,7 +171,14 @@ export async function getLearnPostBySlug(
       const posts = await apiListAdminPosts()
       return posts.find((post) => post.slug === slug)
     }
-    return await apiGetPublishedPost(slug, { preview })
+    const published = await apiGetPublishedPost(slug, { preview })
+    if (published) {
+      return published
+    }
+    if (!preview) {
+      return seedPostsLocal().find((post) => post.slug === slug)
+    }
+    return undefined
   } catch (error) {
     console.warn('Learn API unavailable, using local seed fallback', error)
     return seedPostsLocal().find((post) => post.slug === slug)

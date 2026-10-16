@@ -127,13 +127,13 @@ async def _require_site_admin(authorization: Optional[str]) -> dict[str, Any]:
     return user
 
 
-def _is_site_admin_token(authorization: Optional[str]) -> bool:
+async def _can_preview_unpublished(authorization: Optional[str]) -> bool:
+    """Preview drafts only when site_admin is confirmed from DB (not JWT claim alone)."""
+    if not authorization:
+        return False
     try:
-        token = site_router._bearer_token(authorization)
-        if not token:
-            return False
-        payload = site_router._decode_site_token(token)
-        return str(payload.get("site_role") or "") == "site_admin"
+        await _require_site_admin(authorization)
+        return True
     except Exception:
         return False
 
@@ -183,7 +183,7 @@ async def list_learn_posts(
     preview: bool = Query(False),
     authorization: Optional[str] = Header(None),
 ) -> dict[str, Any]:
-    include = bool(preview and _is_site_admin_token(authorization))
+    include = bool(preview and await _can_preview_unpublished(authorization))
     posts = await learn_service.list_posts(include_unpublished=include)
     return {"posts": posts}
 
@@ -194,7 +194,7 @@ async def get_learn_post(
     preview: bool = Query(False),
     authorization: Optional[str] = Header(None),
 ) -> dict[str, Any]:
-    include = bool(preview and _is_site_admin_token(authorization))
+    include = bool(preview and await _can_preview_unpublished(authorization))
     post = await learn_service.get_post(slug, include_unpublished=include)
     if not post:
         raise HTTPException(status_code=404, detail="Post not found")

@@ -37,17 +37,65 @@ def _assert_admin(current_user: Optional[dict]) -> None:
         raise HTTPException(status_code=403, detail="Admin role required")
 
 
+def _internal_token_headers() -> dict[str, str]:
+    token = (settings.INTERNAL_API_TOKEN or "").strip()
+    if not token:
+        raise HTTPException(
+            status_code=503,
+            detail="INTERNAL_API_TOKEN is not configured on API gateway",
+        )
+    return {"X-Internal-Token": token}
+
+
+async def _assert_body_user_id_self_or_admin(
+    request: Request,
+    current_user: Optional[dict],
+) -> None:
+    """Bind JSON body user_id to JWT (Telegram/Instagram auth)."""
+    try:
+        body = await request.json()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Invalid JSON body") from exc
+    if not isinstance(body, dict) or "user_id" not in body:
+        raise HTTPException(status_code=400, detail="user_id required in body")
+    try:
+        body_uid = int(body["user_id"])
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="Invalid user_id") from exc
+    _assert_self_or_admin(current_user, body_uid)
+
+
 async def _forward_to_bot(
     service_url: str,
     path: str,
     request: Request,
     *,
     timeout_seconds: Optional[float] = None,
+    extra_headers: Optional[dict[str, str]] = None,
 ) -> Response:
     proxy = get_proxy_service()
     target = proxy.build_target_url(service_url.rstrip("/"), path)
     return await proxy.forward_request(
-        target, request.method, request, timeout=timeout_seconds
+        target,
+        request.method,
+        request,
+        timeout=timeout_seconds,
+        extra_headers=extra_headers,
+    )
+
+
+async def _forward_schedule_admin(
+    service_url: str,
+    path: str,
+    request: Request,
+    current_user: Optional[dict],
+) -> Response:
+    _assert_admin(current_user)
+    return await _forward_to_bot(
+        service_url,
+        path,
+        request,
+        extra_headers=_internal_token_headers(),
     )
 
 
@@ -56,7 +104,8 @@ async def tg_bot_auth_code(
     request: Request,
     current_user: Optional[dict] = Depends(get_current_user),
 ) -> Response:
-    """POST /tg-bot/auth/code -> tg-bot /tg/auth/code. Требует JWT."""
+    """POST /tg-bot/auth/code -> tg-bot /tg/auth/code. JWT + body user_id = self/admin."""
+    await _assert_body_user_id_self_or_admin(request, current_user)
     return await _forward_to_bot(settings.TG_BOT_SERVICE_URL, "/tg/auth/code", request)
 
 
@@ -80,7 +129,8 @@ async def tg_bot_auth_password(
     request: Request,
     current_user: Optional[dict] = Depends(get_current_user),
 ) -> Response:
-    """POST /tg-bot/auth/password -> tg-bot /tg/auth/password. Требует JWT."""
+    """POST /tg-bot/auth/password -> tg-bot /tg/auth/password. JWT + body user_id = self/admin."""
+    await _assert_body_user_id_self_or_admin(request, current_user)
     return await _forward_to_bot(settings.TG_BOT_SERVICE_URL, "/tg/auth/password", request)
 
 
@@ -120,8 +170,10 @@ async def tg_bot_schedule(
     request: Request,
     current_user: Optional[dict] = Depends(get_current_user),
 ) -> Response:
-    """POST /tg-bot/schedule -> tg-bot /schedule. Требует JWT."""
-    return await _forward_to_bot(settings.TG_BOT_SERVICE_URL, "/schedule", request)
+    """POST /tg-bot/schedule -> tg-bot /schedule. Admin JWT + internal token."""
+    return await _forward_schedule_admin(
+        settings.TG_BOT_SERVICE_URL, "/schedule", request, current_user
+    )
 
 
 @router.get("/tg-bot/schedule/upcoming")
@@ -160,8 +212,10 @@ async def wp_bot_schedule(
     request: Request,
     current_user: Optional[dict] = Depends(get_current_user),
 ) -> Response:
-    """POST /wp-bot/schedule -> wp-bot /schedule. Требует JWT."""
-    return await _forward_to_bot(settings.WP_BOT_SERVICE_URL, "/schedule", request)
+    """POST /wp-bot/schedule -> wp-bot /schedule. Admin JWT + internal token."""
+    return await _forward_schedule_admin(
+        settings.WP_BOT_SERVICE_URL, "/schedule", request, current_user
+    )
 
 
 @router.post("/vk-bot/schedule")
@@ -169,8 +223,10 @@ async def vk_bot_schedule(
     request: Request,
     current_user: Optional[dict] = Depends(get_current_user),
 ) -> Response:
-    """POST /vk-bot/schedule -> vk-bot /schedule. Требует JWT."""
-    return await _forward_to_bot(settings.VK_BOT_SERVICE_URL, "/schedule", request)
+    """POST /vk-bot/schedule -> vk-bot /schedule. Admin JWT + internal token."""
+    return await _forward_schedule_admin(
+        settings.VK_BOT_SERVICE_URL, "/schedule", request, current_user
+    )
 
 
 @router.post("/url-bot/schedule")
@@ -178,8 +234,10 @@ async def url_bot_schedule(
     request: Request,
     current_user: Optional[dict] = Depends(get_current_user),
 ) -> Response:
-    """POST /url-bot/schedule -> url-bot /schedule. Требует JWT."""
-    return await _forward_to_bot(settings.URL_BOT_SERVICE_URL, "/schedule", request)
+    """POST /url-bot/schedule -> url-bot /schedule. Admin JWT + internal token."""
+    return await _forward_schedule_admin(
+        settings.URL_BOT_SERVICE_URL, "/schedule", request, current_user
+    )
 
 
 @router.post("/tw-bot/schedule")
@@ -187,8 +245,10 @@ async def tw_bot_schedule(
     request: Request,
     current_user: Optional[dict] = Depends(get_current_user),
 ) -> Response:
-    """POST /tw-bot/schedule -> tw-bot /schedule. Требует JWT."""
-    return await _forward_to_bot(settings.TW_BOT_SERVICE_URL, "/schedule", request)
+    """POST /tw-bot/schedule -> tw-bot /schedule. Admin JWT + internal token."""
+    return await _forward_schedule_admin(
+        settings.TW_BOT_SERVICE_URL, "/schedule", request, current_user
+    )
 
 
 @router.post("/dzen-bot/schedule")
@@ -196,8 +256,10 @@ async def dzen_bot_schedule(
     request: Request,
     current_user: dict = Depends(get_current_user),
 ) -> Response:
-    """POST /dzen-bot/schedule -> dzen-bot /schedule. Требует JWT."""
-    return await _forward_to_bot(settings.DZEN_BOT_SERVICE_URL, "/schedule", request)
+    """POST /dzen-bot/schedule -> dzen-bot /schedule. Admin JWT + internal token."""
+    return await _forward_schedule_admin(
+        settings.DZEN_BOT_SERVICE_URL, "/schedule", request, current_user
+    )
 
 
 @router.post("/instagram-bot/schedule")
@@ -205,8 +267,10 @@ async def instagram_bot_schedule(
     request: Request,
     current_user: dict = Depends(get_current_user),
 ) -> Response:
-    """POST /instagram-bot/schedule -> instagram-bot /schedule. Требует JWT."""
-    return await _forward_to_bot(settings.INSTAGRAM_BOT_SERVICE_URL, "/schedule", request)
+    """POST /instagram-bot/schedule -> instagram-bot /schedule. Admin JWT + internal token."""
+    return await _forward_schedule_admin(
+        settings.INSTAGRAM_BOT_SERVICE_URL, "/schedule", request, current_user
+    )
 
 
 @router.post("/url-bot/run")
@@ -337,7 +401,8 @@ async def threads_bot_auth_status(
     request: Request,
     current_user: Optional[dict] = Depends(get_current_user),
 ) -> Response:
-    """GET /th-bot/auth/status/{user_id} -> th-bot."""
+    """GET /threads-bot/auth/status/{user_id} -> th-bot. Self or admin."""
+    _assert_self_or_admin(current_user, user_id)
     return await _forward_to_bot(
         settings.THREADS_BOT_SERVICE_URL,
         f"/threads/auth/status/{user_id}",
@@ -351,7 +416,8 @@ async def threads_bot_auth_verify(
     request: Request,
     current_user: Optional[dict] = Depends(get_current_user),
 ) -> Response:
-    """GET /threads-bot/auth/verify/{user_id} -> th-bot (проверка токена у Meta)."""
+    """GET /threads-bot/auth/verify/{user_id} -> th-bot. Self or admin."""
+    _assert_self_or_admin(current_user, user_id)
     return await _forward_to_bot(
         settings.THREADS_BOT_SERVICE_URL,
         f"/threads/auth/verify/{user_id}",
@@ -390,11 +456,12 @@ async def threads_bot_schedule(
     request: Request,
     current_user: Optional[dict] = Depends(get_current_user),
 ) -> Response:
-    """POST /threads-bot/schedule -> th-bot /threads/schedule."""
-    return await _forward_to_bot(
+    """POST /threads-bot/schedule -> th-bot /threads/schedule. Admin + internal token."""
+    return await _forward_schedule_admin(
         settings.THREADS_BOT_SERVICE_URL,
         "/threads/schedule",
         request,
+        current_user,
     )
 
 
@@ -444,6 +511,7 @@ async def th_bot_auth_status(
     request: Request,
     current_user: Optional[dict] = Depends(get_current_user),
 ) -> Response:
+    _assert_self_or_admin(current_user, user_id)
     return await _forward_to_bot(
         settings.THREADS_BOT_SERVICE_URL,
         f"/threads/auth/status/{user_id}",
@@ -457,6 +525,7 @@ async def th_bot_auth_verify(
     request: Request,
     current_user: Optional[dict] = Depends(get_current_user),
 ) -> Response:
+    _assert_self_or_admin(current_user, user_id)
     return await _forward_to_bot(
         settings.THREADS_BOT_SERVICE_URL,
         f"/threads/auth/verify/{user_id}",
@@ -493,10 +562,11 @@ async def th_bot_schedule(
     request: Request,
     current_user: Optional[dict] = Depends(get_current_user),
 ) -> Response:
-    return await _forward_to_bot(
+    return await _forward_schedule_admin(
         settings.THREADS_BOT_SERVICE_URL,
         "/threads/schedule",
         request,
+        current_user,
     )
 
 
@@ -554,8 +624,11 @@ async def instagram_bot_verify_code(
     request: Request,
     current_user: dict = Depends(get_current_user),
 ) -> Response:
-    """POST /instagram-bot/verify-code -> instagram-bot /instagram/verify-code (2FA)."""
-    return await _forward_to_bot(settings.INSTAGRAM_BOT_SERVICE_URL, "/instagram/verify-code", request)
+    """POST /instagram-bot/verify-code -> instagram-bot (2FA). Body user_id = self/admin."""
+    await _assert_body_user_id_self_or_admin(request, current_user)
+    return await _forward_to_bot(
+        settings.INSTAGRAM_BOT_SERVICE_URL, "/instagram/verify-code", request
+    )
 
 
 @router.post("/instagram-bot/login-test")

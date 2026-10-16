@@ -2,6 +2,8 @@
 
 Учебный кейс: как с января по октябрь 2026 собирался кросспостер. Обращение на **вы**. Карточка выпуска — как в [PERSONAL_BRAND.md](../PERSONAL_BRAND.md) и [telegram-s01](../telegram-s01/).
 
+До января 2026 продукта нет: ноутбуки Jupyter ([python-notebook](https://github.com/AlexanderNY/python-notebook)) и скрипты Python, включая простой Telegram-бот на Telethon в папке `bot/` репозитория [py](https://github.com/AlexanderNY/py). Разработка CopyParse начинается в январе 2026.
+
 Это **не** сезон слоёв `S01E…` и **не** релиз-посты продукта ([RELEASES.md](../RELEASES.md)).
 
 Источники фактов:
@@ -30,7 +32,7 @@
 
 | Файл | Выпуск |
 |------|--------|
-| [H01-pravila.md](H01-pravila.md) | 1 января · правила Cursor, не продукт |
+| [H01-pravila.md](H01-pravila.md) | До января · скрипт бота и ноутбуки, старт CopyParse |
 | [H02-korobki.md](H02-korobki.md) | 7–10 января · gateway / auth / core / ui-app |
 | [H03-kontrakt.md](H03-kontrakt.md) | 16–25 января · контракт раньше платформы |
 | [H04-zhivoi-kontur.md](H04-zhivoi-kontur.md) | Февраль · живой контур WP / TG / URL |

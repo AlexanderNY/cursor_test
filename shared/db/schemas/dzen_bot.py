@@ -19,6 +19,8 @@ CREATE TABLE IF NOT EXISTS dzen_profiles (
     dzen_studio_url TEXT,
     collect_source VARCHAR(20) DEFAULT 'rss',
     last_auth_error TEXT,
+    yandex_session JSONB,
+    yandex_session_saved_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );

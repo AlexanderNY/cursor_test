@@ -66,6 +66,26 @@ Junior-собес часто смешивает операторы, строки
 3. Добавьте режим «перевернуть строки» в новый файл.
 4. Сравните `is` и `==` на маленьких int и на больших числах / строках.
 
+Заготовка для шага 4 и `join` (в [Code](/game/code) нет настоящего диска — файл на ПК сделайте отдельно):
+
+```python
+a = 256
+b = 256
+print("small int is:", a is b, "eq:", a == b)
+
+x = 10**6
+y = 10**6
+print("big int is:", x is y, "eq:", x == y)
+
+parts = ["alpha", "beta", "gamma"]
+# плохо в горячем цикле: s = ""; s += p
+print("join:", "-".join(parts))
+
+text = "  one\n\n two \n"
+lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+print("normalized:", lines)
+```
+
 **В группу:** объясните, почему `with open` предпочтительнее голого `open/close`.
 
 **Готово, если…**

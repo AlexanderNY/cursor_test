@@ -2,7 +2,7 @@
 
 from pathlib import Path
 from typing import Optional
-from fastapi import APIRouter, HTTPException, Header, File, UploadFile, Form
+from fastapi import APIRouter, Depends, HTTPException, Header, File, UploadFile, Form
 from fastapi.responses import RedirectResponse, FileResponse
 import uuid
 import httpx
@@ -14,6 +14,8 @@ from storage_client import get_storage
 from config import settings
 from shared import async_fs
 from upload_limits import read_upload_limited
+from dependencies import get_admin_user
+from shared.oauth_state import verify_oauth_state
 
 
 router = APIRouter(prefix="/threads", tags=["Threads"])
@@ -71,8 +73,9 @@ async def save_threads_profile(
 
 
 @router.get("/profiles")
-async def get_all_threads_profiles():
-    """Получает все профили Threads (для админки)."""
+async def get_all_threads_profiles(admin_user: dict = Depends(get_admin_user)):
+    """Получает все профили Threads (только admin)."""
+    del admin_user
     profiles = await profile_service.get_all_threads_profiles()
     return {"profiles": profiles}
 
@@ -229,9 +232,8 @@ async def threads_oauth_callback(
         return RedirectResponse(url=f"{threads_page}?oauth=error&message={error}")
     if not code or not state:
         return RedirectResponse(url=f"{threads_page}?oauth=error&message=missing_code_or_state")
-    try:
-        user_id = int(state)
-    except (ValueError, TypeError):
+    user_id = verify_oauth_state(state, settings.JWT_SECRET_KEY)
+    if user_id is None:
         return RedirectResponse(url=f"{threads_page}?oauth=error&message=invalid_state")
     app_id = getattr(settings, "META_APP_ID", None) or ""
     app_secret = getattr(settings, "META_APP_SECRET", None) or ""

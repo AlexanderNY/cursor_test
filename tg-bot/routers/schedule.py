@@ -3,8 +3,9 @@
 import logging
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
+from shared.internal_auth_fastapi import require_internal_token
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +42,10 @@ class DeletePublishedRequest(BaseModel):
 
 
 @router.post("/schedule")
-async def handle_schedule(request: ScheduleRequest) -> Dict[str, Any]:
+async def handle_schedule(
+    request: ScheduleRequest,
+    _internal: None = Depends(require_internal_token),
+) -> Dict[str, Any]:
     """Обрабатывает команды от scheduler: публикует due-посты."""
     if not _bot_service or not _bot_service.post_publisher:
         return {"status": "error", "message": "Bot service not initialized"}

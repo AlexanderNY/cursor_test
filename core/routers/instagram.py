@@ -4,7 +4,7 @@ import uuid
 from pathlib import Path
 from typing import Optional, List
 
-from fastapi import APIRouter, HTTPException, Header, File, UploadFile, Form
+from fastapi import APIRouter, Depends, HTTPException, Header, File, UploadFile, Form
 from services.profile_service import profile_service
 from services.post_service import post_service
 from schemas import InstagramProfileCreate, InstagramPost, InstagramPostUpdate
@@ -12,6 +12,7 @@ from storage_client import get_storage
 from shared import async_fs
 from config import settings
 from upload_limits import enforce_upload_count, read_upload_limited
+from dependencies import get_admin_user
 
 
 router = APIRouter(prefix="/instagram", tags=["Instagram"])
@@ -91,8 +92,9 @@ async def save_instagram_profile(
 
 
 @router.get("/profiles")
-async def get_all_instagram_profiles():
-    """Получает все профили Instagram."""
+async def get_all_instagram_profiles(admin_user: dict = Depends(get_admin_user)):
+    """Получает все профили Instagram (только admin)."""
+    del admin_user
     profiles = await profile_service.get_all_instagram_profiles()
     return {"profiles": profiles}
 

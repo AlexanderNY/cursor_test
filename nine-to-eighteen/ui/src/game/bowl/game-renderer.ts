@@ -991,18 +991,22 @@ function drawTentacleWaves(
   radius: number,
   facing: number,
 ): void {
+  const fx = Math.cos(facing)
+  const fy = Math.sin(facing)
+  const px = -fy
+  const py = fx
   ctx.save()
-  ctx.translate(x, y)
-  ctx.rotate(facing)
   ctx.strokeStyle = '#c084fc'
-  ctx.lineWidth = 2
+  ctx.lineWidth = 1.6
   ctx.lineCap = 'round'
   for (const side of [-1, 1]) {
     ctx.beginPath()
     for (let step = 0; step <= 8; step += 1) {
       const t = step / 8
-      const waveX = side * radius * (0.55 + t * 0.35)
-      const waveY = -radius * 0.15 + Math.sin(t * Math.PI * 2) * radius * 0.12
+      const along = (t - 0.5) * radius * 0.28
+      const out = radius * (0.48 + Math.sin(t * Math.PI * 2) * 0.08)
+      const waveX = x + fx * along + px * side * out
+      const waveY = y + fy * along + py * side * out
       if (step === 0) ctx.moveTo(waveX, waveY)
       else ctx.lineTo(waveX, waveY)
     }
@@ -1049,27 +1053,32 @@ function drawTentacles(
   count: number,
   isGrabbing: boolean,
 ): void {
-  ctx.save()
-  ctx.translate(x, y)
-  ctx.rotate(facing)
-  ctx.strokeStyle = isGrabbing ? '#e879f9' : '#c084fc'
-  ctx.lineWidth = isGrabbing ? 3 : 2.5
-  ctx.lineCap = 'round'
+  const fx = Math.cos(facing)
+  const fy = Math.sin(facing)
+  const px = -fy
+  const py = fx
   const pairs = Math.ceil(count / 2)
+  const span = 0.55
+  ctx.save()
+  ctx.strokeStyle = isGrabbing ? '#e879f9' : '#c084fc'
+  ctx.lineWidth = isGrabbing ? 2.6 : 2.2
+  ctx.lineCap = 'round'
   for (let pair = 0; pair < pairs; pair += 1) {
+    const centered = pairs === 1 ? 0 : pair / (pairs - 1) - 0.5
+    const along = centered * span
     for (const side of [-1, 1]) {
       const index = pair * 2 + (side === 1 ? 1 : 0)
       if (index >= count) continue
-      const reach = isGrabbing ? 1.35 : 1.05
-      const along = -0.2 + pair * 0.18
+      const reach = isGrabbing ? 0.95 : 0.68
+      const rootX = x + fx * radius * along + px * side * radius * 0.42
+      const rootY = y + fy * radius * along + py * side * radius * 0.42
+      const midX = rootX + px * side * radius * reach * 0.55 + fx * radius * 0.06
+      const midY = rootY + py * side * radius * reach * 0.55 + fy * radius * 0.06
+      const tipX = rootX + px * side * radius * reach
+      const tipY = rootY + py * side * radius * reach
       ctx.beginPath()
-      ctx.moveTo(side * radius * (0.42 + pair * 0.05), radius * along)
-      ctx.quadraticCurveTo(
-        side * radius * 1.15,
-        -radius * (0.35 + pair * 0.08),
-        side * radius * reach,
-        -radius * (0.65 + pair * 0.05),
-      )
+      ctx.moveTo(rootX, rootY)
+      ctx.quadraticCurveTo(midX, midY, tipX, tipY)
       ctx.stroke()
     }
   }
@@ -1141,43 +1150,24 @@ function drawFogOfWar(
 ): void {
   const screenX = state.player.x - state.camera.x
   const screenY = state.player.y - state.camera.y
-  const radius = state.visibility_radius
-  const fogAlpha = 0.55
-  const softEdge = 32
+  const radius = Math.max(28, state.visibility_radius)
+  const softEdge = Math.max(26, radius * 0.16)
+  const inner = Math.max(8, radius - softEdge)
 
   ctx.save()
-
-  // Туман поверх мира, «дыра» через even-odd — мир под кругом не затрагивается
-  ctx.fillStyle = `rgba(15, 23, 42, ${fogAlpha})`
+  ctx.fillStyle = '#02040a'
   ctx.beginPath()
   ctx.rect(0, 0, viewportWidth, viewportHeight)
   ctx.arc(screenX, screenY, radius, 0, Math.PI * 2, true)
   ctx.fill('evenodd')
 
-  // Мягкий переход на границе круга (только кольцо снаружи)
-  const edgeGradient = ctx.createRadialGradient(
-    screenX,
-    screenY,
-    radius,
-    screenX,
-    screenY,
-    radius + softEdge,
-  )
-  edgeGradient.addColorStop(0, 'rgba(15, 23, 42, 0)')
-  edgeGradient.addColorStop(0.65, `rgba(15, 23, 42, ${fogAlpha * 0.35})`)
-  edgeGradient.addColorStop(1, `rgba(15, 23, 42, ${fogAlpha})`)
-  ctx.fillStyle = edgeGradient
-  ctx.beginPath()
-  ctx.arc(screenX, screenY, radius + softEdge, 0, Math.PI * 2)
-  ctx.arc(screenX, screenY, radius, 0, Math.PI * 2, true)
-  ctx.fill('evenodd')
-
-  ctx.strokeStyle = 'rgba(100, 116, 139, 0.28)'
-  ctx.lineWidth = 1
+  const fade = ctx.createRadialGradient(screenX, screenY, inner, screenX, screenY, radius)
+  fade.addColorStop(0, 'rgba(2, 4, 10, 0)')
+  fade.addColorStop(1, '#02040a')
+  ctx.fillStyle = fade
   ctx.beginPath()
   ctx.arc(screenX, screenY, radius, 0, Math.PI * 2)
-  ctx.stroke()
-
+  ctx.fill()
   ctx.restore()
 }
 

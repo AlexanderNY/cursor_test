@@ -12,6 +12,7 @@ from services.token_service import (
     get_password_reset_token,
     delete_password_reset_token,
     revoke_all_refresh_tokens,
+    invalidate_user_access_tokens,
 )
 from utils.jwt_utils import (
     create_access_token,
@@ -227,6 +228,7 @@ async def reset_password(token: str, new_password: str) -> bool:
             
             # Отзыв всех refresh токенов пользователя (безопасность)
             await revoke_all_refresh_tokens(user_id)
+            await invalidate_user_access_tokens(user_id)
             
             return True
 
@@ -422,8 +424,9 @@ async def update_user_role_tariff(
                         "subscription_status": user_row[11],
                         "subscription_current_period_end": user_row[12],
                     }
-                    if is_blocked is True:
+                    if is_blocked is True or role is not None:
                         await revoke_all_refresh_tokens(user_id)
+                        await invalidate_user_access_tokens(user_id)
                     if changed_by_user_id is not None:
                         await log_admin_audit(
                             changed_by_user_id,

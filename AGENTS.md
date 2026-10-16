@@ -38,14 +38,14 @@ Python 3.12 FastAPI microservices + React/Vite UIs. Each backend service is a to
 | `shared/` | Cross-service Python (`ai_client`, `retry`, `db` schemas, billing) | — |
 | `shared_storage/` | Shared storage helpers copied into images | — |
 | `ui-app/` | CopyParse SPA (React 18, Vite, Tailwind, TanStack Query) | 8100 |
-| `nine-to-eighteen/` | 9to18.ru: UI + site-api + resume-api (`db_9to18`) | 8200 / 8020 / 8021 |
+| `nine-to-eighteen/` | 9to18.ru: UI + site-api + resume-api + portfolio-api (`db_9to18`) | 8200 / 8020 / 8021 / 8022 |
 | `deploy/ui-edge/` | Public nginx :80/:443 | 80/443 |
 | `deploy/e2e-tester/` | On-demand browser E2E (SQLite) | 8300 |
 | `k8s/` | Minikube manifests (`Makefile` targets) | — |
 
 There is **no root `package.json` or `pyproject.toml`**. Install and test inside the service you change.
 
-`ui-9to18/` at the repo root is a leftover tree. Canonical 9to18 stack is [`nine-to-eighteen/`](nine-to-eighteen/) (UI + `site-api` + `resume-api`). `deploy/ui-9to18/` is a pointer README only.
+`ui-9to18/` at the repo root is a leftover tree. Canonical 9to18 stack is [`nine-to-eighteen/`](nine-to-eighteen/) (UI + `site-api` + `resume-api` + `portfolio-api`). `deploy/ui-9to18/` is a pointer README only.
 
 PostgreSQL 16 is **external** (not a compose service). Databases: `db_bot` (CopyParse), `db_9to18` (9to18 site-api), and `db_wp` (local WordPress in `wp-site/`). MinIO, Redis, and Ollama **are** in `docker-compose.yaml`.
 

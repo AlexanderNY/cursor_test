@@ -18,6 +18,7 @@ import { Input } from '@/components/ui/input'
 import type { User, RoleTariffHistoryEntry, GroupResponse, AdminAuditLogEntry, AdminProductMetrics } from '@/types/auth'
 import type {
   UserStatisticsItem,
+  PipelineEffectivenessResponse,
   Notification,
   Feedback,
   PostsTablesResponse,
@@ -77,6 +78,18 @@ function formatRatio(value: number | null): string {
   return `${(value * 100).toFixed(1)}%`
 }
 
+function formatMinutes(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) {
+    return '—'
+  }
+  if (value < 90) {
+    return `${value.toFixed(1)} мин`
+  }
+  const hours = Math.floor(value / 60)
+  const minutes = Math.round(value % 60)
+  return minutes > 0 ? `${hours} ч ${minutes} мин` : `${hours} ч`
+}
+
 export function AdministrationPage() {
   const { user: currentUser } = useAuth()
   const [searchParams] = useSearchParams()
@@ -84,6 +97,8 @@ export function AdministrationPage() {
   const [usersSubTab, setUsersSubTab] = useState<UsersSubTab>('management')
   const [users, setUsers] = useState<User[]>([])
   const [statistics, setStatistics] = useState<UserStatisticsItem[]>([])
+  const [effectiveness, setEffectiveness] = useState<PipelineEffectivenessResponse | null>(null)
+  const [effectivenessDays, setEffectivenessDays] = useState<7 | 30 | 90>(30)
   const [isLoadingUsers, setIsLoadingUsers] = useState(false)
   const [isLoadingStatistics, setIsLoadingStatistics] = useState(false)
   const [usersError, setUsersError] = useState('')
@@ -160,6 +175,8 @@ export function AdministrationPage() {
   const [storageFilesError, setStorageFilesError] = useState('')
   const [storageDeletingKey, setStorageDeletingKey] = useState<string | null>(null)
   const [storageOpeningKey, setStorageOpeningKey] = useState<string | null>(null)
+  const [selectedStorageKeys, setSelectedStorageKeys] = useState<Set<string>>(new Set())
+  const [isDeletingStorageSelection, setIsDeletingStorageSelection] = useState(false)
 
   const [runtimeLocation, setRuntimeLocation] = useState<RuntimeLocationResponse | null>(null)
   const [isLoadingRuntimeLocation, setIsLoadingRuntimeLocation] = useState(false)
@@ -359,7 +376,7 @@ export function AdministrationPage() {
           )
         )
         setUserUpdateNotice(
-          `Заявка на тариф ${nextTariff} создана. Счёт или включение тарифа — во вкладке Billing.`,
+          `Заявка на тариф ${nextTariff} создана. Отметьте оплату во вкладке Billing — тариф действует 30 дней.`,
         )
         return
       }
@@ -413,15 +430,21 @@ export function AdministrationPage() {
     }
   }
 
-  async function handleLoadStatistics() {
+  async function handleLoadStatistics(days: 7 | 30 | 90 = effectivenessDays) {
     setStatisticsError('')
     setIsLoadingStatistics(true)
+    setEffectivenessDays(days)
     try {
-      const response = await coreService.getUsersStatistics()
+      const [response, pipeline] = await Promise.all([
+        coreService.getUsersStatistics(),
+        coreService.getPipelineEffectiveness(days),
+      ])
       setStatistics(response.users || [])
+      setEffectiveness(pipeline)
     } catch (error) {
       setStatisticsError(error instanceof Error ? error.message : 'Failed to fetch statistics')
       setStatistics([])
+      setEffectiveness(null)
     } finally {
       setIsLoadingStatistics(false)
     }
@@ -547,9 +570,11 @@ export function AdministrationPage() {
         ...(storageDiagOnly ? { key_contains: 'diag' } : {}),
       })
       setStorageFiles(data)
+      setSelectedStorageKeys(new Set())
     } catch (error) {
       setStorageFilesError(error instanceof Error ? error.message : 'Failed to fetch storage files')
       setStorageFiles(null)
+      setSelectedStorageKeys(new Set())
     } finally {
       setIsLoadingStorageFiles(false)
     }
@@ -584,10 +609,74 @@ export function AdministrationPage() {
           objects: prev.objects.filter((o) => o.key !== key),
         }
       })
+      setSelectedStorageKeys((prev) => {
+        if (!prev.has(key)) return prev
+        const next = new Set(prev)
+        next.delete(key)
+        return next
+      })
     } catch (error) {
       setStorageFilesError(error instanceof Error ? error.message : 'Не удалось удалить файл')
     } finally {
       setStorageDeletingKey(null)
+    }
+  }
+
+  function toggleStorageKey(key: string) {
+    setSelectedStorageKeys((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
+  function toggleAllVisibleStorageKeys(keys: string[]) {
+    setSelectedStorageKeys((prev) => {
+      const allSelected = keys.length > 0 && keys.every((item) => prev.has(item))
+      if (allSelected) {
+        const next = new Set(prev)
+        for (const item of keys) next.delete(item)
+        return next
+      }
+      return new Set([...prev, ...keys])
+    })
+  }
+
+  async function handleDeleteSelectedStorageFiles() {
+    const keys = [...selectedStorageKeys]
+    if (keys.length === 0) return
+    const preview = keys.slice(0, 8).join('\n')
+    const more = keys.length > 8 ? `\n… и ещё ${keys.length - 8}` : ''
+    const ok = window.confirm(
+      `Удалить выбранные объекты из S3 (${keys.length})? Это действие необратимо.\n\n${preview}${more}`,
+    )
+    if (!ok) return
+    setStorageFilesError('')
+    setIsDeletingStorageSelection(true)
+    try {
+      const result = await coreService.deleteStorageFiles(keys)
+      const deleted = new Set(result.deleted)
+      setStorageFiles((prev) => {
+        if (!prev?.enabled) return prev
+        return {
+          ...prev,
+          objects: prev.objects.filter((item) => !deleted.has(item.key)),
+        }
+      })
+      setSelectedStorageKeys((prev) => {
+        const next = new Set(prev)
+        for (const item of deleted) next.delete(item)
+        return next
+      })
+      if (result.failed.length > 0) {
+        const details = result.failed.map((item) => `${item.key}: ${item.error}`).join('; ')
+        setStorageFilesError(`Удалено: ${result.deleted.length}. Не удалось удалить: ${details}`)
+      }
+    } catch (error) {
+      setStorageFilesError(error instanceof Error ? error.message : 'Не удалось удалить файлы')
+    } finally {
+      setIsDeletingStorageSelection(false)
     }
   }
 
@@ -805,6 +894,12 @@ export function AdministrationPage() {
       </div>
     )
   }
+
+  const visibleStorageKeys = storageFiles?.objects.map((obj) => obj.key) ?? []
+  const allVisibleStorageSelected =
+    visibleStorageKeys.length > 0 && visibleStorageKeys.every((key) => selectedStorageKeys.has(key))
+  const someVisibleStorageSelected = visibleStorageKeys.some((key) => selectedStorageKeys.has(key))
+  const storageBusy = isDeletingStorageSelection || storageDeletingKey !== null
 
   return (
     <PageContainer maxWidth="wide">
@@ -1521,6 +1616,113 @@ export function AdministrationPage() {
           </CardContent>
         </Card>
         )}
+          {usersSubTab === 'statistics' && effectiveness && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Эффективность пайплайна</CardTitle>
+            <CardDescription>
+              Цели публикации за {effectiveness.period_days} дн. Успех = published / (published + failed).
+              Время — от сбора до published.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+              <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-tertiary)] p-4">
+                <p className="text-sm text-[var(--text-muted)]">Успех публикации</p>
+                <p className="mt-1 text-2xl font-semibold text-[var(--text-primary)]">
+                  {formatRatio(effectiveness.success_rate)}
+                </p>
+                <p className="mt-2 text-xs text-[var(--text-secondary)]">
+                  {effectiveness.published.toLocaleString()} published / {effectiveness.failed.toLocaleString()} failed
+                  {effectiveness.skipped > 0 ? ` / ${effectiveness.skipped.toLocaleString()} skipped` : ''}
+                </p>
+              </div>
+              <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-tertiary)] p-4">
+                <p className="text-sm text-[var(--text-muted)]">Время до публикации</p>
+                <p className="mt-1 text-2xl font-semibold text-[var(--text-primary)]">
+                  {formatMinutes(effectiveness.latency.median_minutes)}
+                </p>
+                <p className="mt-2 text-xs text-[var(--text-secondary)]">
+                  медиана · p95 {formatMinutes(effectiveness.latency.p95_minutes)} · n={effectiveness.latency.sample_size.toLocaleString()}
+                </p>
+              </div>
+              <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-tertiary)] p-4">
+                <p className="text-sm text-[var(--text-muted)]">Кто публикует</p>
+                <p className="mt-1 text-2xl font-semibold text-[var(--text-primary)]">
+                  {effectiveness.users_with_published.toLocaleString()}
+                </p>
+                <p className="mt-2 text-xs text-[var(--text-secondary)]">
+                  из {effectiveness.users_with_posts.toLocaleString()} пользователей с новыми постами
+                </p>
+              </div>
+              <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-tertiary)] p-4">
+                <p className="text-sm text-[var(--text-muted)]">Очередь сейчас</p>
+                <p className="mt-1 text-2xl font-semibold text-[var(--text-primary)]">
+                  {(effectiveness.stuck.posts_collected + effectiveness.stuck.targets_ready + effectiveness.stuck.targets_publishing).toLocaleString()}
+                </p>
+                <p className="mt-2 text-xs text-[var(--text-secondary)]">
+                  collected {effectiveness.stuck.posts_collected.toLocaleString()}
+                  {' · '}ready {effectiveness.stuck.targets_ready.toLocaleString()}
+                  {' · '}publishing {effectiveness.stuck.targets_publishing.toLocaleString()}
+                </p>
+              </div>
+            </div>
+            {effectiveness.by_platform.length > 0 && (
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr className="border-b border-[var(--border-color)]">
+                      <th className="text-left py-2 px-3 text-sm text-[var(--text-primary)]">Платформа</th>
+                      <th className="text-right py-2 px-3 text-sm text-[var(--text-primary)]">Всего</th>
+                      <th className="text-right py-2 px-3 text-sm text-[var(--text-primary)]">Published</th>
+                      <th className="text-right py-2 px-3 text-sm text-[var(--text-primary)]">Failed</th>
+                      <th className="text-right py-2 px-3 text-sm text-[var(--text-primary)]">В очереди</th>
+                      <th className="text-right py-2 px-3 text-sm text-[var(--text-primary)]">Успех</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {effectiveness.by_platform.map((row) => (
+                      <tr key={row.platform} className="border-b border-[var(--border-color)]">
+                        <td className="py-2 px-3 text-[var(--text-secondary)]">{row.platform}</td>
+                        <td className="py-2 px-3 text-right text-[var(--text-secondary)]">{row.total.toLocaleString()}</td>
+                        <td className="py-2 px-3 text-right text-[var(--text-secondary)]">{row.published.toLocaleString()}</td>
+                        <td className="py-2 px-3 text-right text-[var(--text-secondary)]">{row.failed.toLocaleString()}</td>
+                        <td className="py-2 px-3 text-right text-[var(--text-secondary)]">{row.in_queue.toLocaleString()}</td>
+                        <td className="py-2 px-3 text-right text-[var(--text-secondary)]">{formatRatio(row.success_rate)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div>
+                <p className="text-sm font-medium text-[var(--text-primary)] mb-2">Причины failed</p>
+                {effectiveness.failures.length === 0 ? (
+                  <p className="text-sm text-[var(--text-muted)]">Нет ошибок за период</p>
+                ) : (
+                  <ul className="space-y-1 text-sm text-[var(--text-secondary)]">
+                    {effectiveness.failures.map((item) => (
+                      <li key={item.reason}>
+                        {item.count.toLocaleString()} — {item.reason}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              <div>
+                <p className="text-sm font-medium text-[var(--text-primary)] mb-2">Застряло дольше обычного</p>
+                <ul className="space-y-1 text-sm text-[var(--text-secondary)]">
+                  <li>collected &gt; 1 ч: {effectiveness.stuck.collected_older_than_1h.toLocaleString()}</li>
+                  <li>review: {effectiveness.stuck.posts_review.toLocaleString()} · processing: {effectiveness.stuck.posts_processing.toLocaleString()}</li>
+                  <li>ready &gt; 1 ч: {effectiveness.stuck.ready_older_than_1h.toLocaleString()}</li>
+                  <li>publishing &gt; 15 мин: {effectiveness.stuck.publishing_older_than_15m.toLocaleString()}</li>
+                </ul>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+          )}
           {usersSubTab === 'statistics' && (
         <Card>
           <CardHeader>
@@ -1530,11 +1732,26 @@ export function AdministrationPage() {
               </svg>
               Usage Statistics
             </CardTitle>
-            <CardDescription>View usage statistics for all users</CardDescription>
+            <CardDescription>
+              Посты по пользователям. Published — число постов, у которых есть цель со статусом published.
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            <div className="flex flex-wrap gap-2 items-center">
+              {([7, 30, 90] as const).map((days) => (
+                <Button
+                  key={days}
+                  size="sm"
+                  variant={effectivenessDays === days ? 'primary' : 'secondary'}
+                  onClick={() => void handleLoadStatistics(days)}
+                  isLoading={isLoadingStatistics && effectivenessDays === days}
+                >
+                  {days} дн.
+                </Button>
+              ))}
+            </div>
             <Button 
-              onClick={handleLoadStatistics} 
+              onClick={() => void handleLoadStatistics()} 
               isLoading={isLoadingStatistics}
               className="w-full sm:w-auto"
             >
@@ -2227,10 +2444,48 @@ export function AdministrationPage() {
             )}
 
             {storageFiles?.enabled && (
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className="text-sm text-[var(--text-secondary)]">
+                    Выбрано: {selectedStorageKeys.size}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="danger"
+                    size="sm"
+                    isLoading={isDeletingStorageSelection}
+                    disabled={selectedStorageKeys.size === 0 || storageBusy}
+                    onClick={handleDeleteSelectedStorageFiles}
+                  >
+                    Удалить выбранные
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled={selectedStorageKeys.size === 0 || storageBusy}
+                    onClick={() => setSelectedStorageKeys(new Set())}
+                  >
+                    Снять выделение
+                  </Button>
+                </div>
               <div className="overflow-x-auto rounded-xl border border-[var(--border-color)]">
                 <table className="w-full">
                   <thead className="bg-[var(--bg-tertiary)]">
                     <tr>
+                      <th className="py-3 px-4 w-10">
+                        <input
+                          type="checkbox"
+                          aria-label="Выбрать все файлы"
+                          checked={allVisibleStorageSelected}
+                          ref={(el) => {
+                            if (el) el.indeterminate = someVisibleStorageSelected && !allVisibleStorageSelected
+                          }}
+                          disabled={visibleStorageKeys.length === 0 || storageBusy}
+                          onChange={() => toggleAllVisibleStorageKeys(visibleStorageKeys)}
+                          className="rounded border-[var(--border-color)]"
+                        />
+                      </th>
                       <th className="py-3 px-4 text-left text-sm font-medium text-[var(--text-secondary)]">Ключ</th>
                       <th className="py-3 px-4 text-right text-sm font-medium text-[var(--text-secondary)]">Размер</th>
                       <th className="py-3 px-4 text-left text-sm font-medium text-[var(--text-secondary)]">Изменён</th>
@@ -2240,13 +2495,28 @@ export function AdministrationPage() {
                   <tbody className="divide-y divide-[var(--border-color)]">
                     {storageFiles.objects.length === 0 ? (
                       <tr>
-                        <td colSpan={4} className="py-3 px-4 text-[var(--text-muted)] text-sm">
+                        <td colSpan={5} className="py-3 px-4 text-[var(--text-muted)] text-sm">
                           Файлов нет{storagePrefix ? ` по префиксу «${storagePrefix}»` : ''}.
                         </td>
                       </tr>
                     ) : (
-                      storageFiles.objects.map((obj: StorageFileItem) => (
-                        <tr key={obj.key} className="hover:bg-[var(--bg-tertiary)]">
+                      storageFiles.objects.map((obj: StorageFileItem) => {
+                        const isSelected = selectedStorageKeys.has(obj.key)
+                        return (
+                        <tr
+                          key={obj.key}
+                          className={isSelected ? 'bg-primary-500/10 hover:bg-primary-500/15' : 'hover:bg-[var(--bg-tertiary)]'}
+                        >
+                          <td className="py-3 px-4">
+                            <input
+                              type="checkbox"
+                              aria-label={`Выбрать ${obj.key}`}
+                              checked={isSelected}
+                              disabled={storageBusy}
+                              onChange={() => toggleStorageKey(obj.key)}
+                              className="rounded border-[var(--border-color)]"
+                            />
+                          </td>
                           <td className="py-3 px-4 text-[var(--text-primary)] font-mono text-sm break-all">{obj.key}</td>
                           <td className="py-3 px-4 text-right text-[var(--text-secondary)] text-sm">
                             {obj.size >= 1024 ? `${(obj.size / 1024).toFixed(1)} KB` : `${obj.size} B`}
@@ -2271,7 +2541,7 @@ export function AdministrationPage() {
                                 variant="danger"
                                 size="sm"
                                 isLoading={storageDeletingKey === obj.key}
-                                disabled={storageDeletingKey !== null && storageDeletingKey !== obj.key}
+                                disabled={storageBusy && storageDeletingKey !== obj.key}
                                 onClick={() => handleDeleteStorageFile(obj.key)}
                               >
                                 Удалить
@@ -2279,10 +2549,12 @@ export function AdministrationPage() {
                             </div>
                           </td>
                         </tr>
-                      ))
+                        )
+                      })
                     )}
                   </tbody>
                 </table>
+              </div>
               </div>
             )}
 

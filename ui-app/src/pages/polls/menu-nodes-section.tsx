@@ -18,6 +18,7 @@ import {
 interface MenuNodesSectionProps {
   modeId: number | null
   modeTitle?: string
+  modeCode?: string
 }
 
 function parentLabel(node: GameMenuNode, nodes: GameMenuNode[]): string {
@@ -30,7 +31,7 @@ function nodeHasChildren(nodeId: number, allNodes: GameMenuNode[]): boolean {
   return allNodes.some((node) => node.parent_id === nodeId)
 }
 
-export function MenuNodesSection({ modeId, modeTitle }: MenuNodesSectionProps) {
+export function MenuNodesSection({ modeId, modeTitle, modeCode }: MenuNodesSectionProps) {
   const [nodes, setNodes] = useState<GameMenuNode[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
@@ -249,6 +250,7 @@ export function MenuNodesSection({ modeId, modeTitle }: MenuNodesSectionProps) {
         <MenuCsvImportSection
           modeId={modeId}
           modeTitle={modeTitle}
+          modeCode={modeCode}
           existingNodes={nodes}
           onImported={async () => {
             if (modeId) await loadNodes(modeId)

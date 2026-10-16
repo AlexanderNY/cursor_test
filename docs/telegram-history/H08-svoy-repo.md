@@ -18,7 +18,7 @@ H08 · История · день git ≠ день рождения продук
 
 30 минут. Откройте https://github.com/AlexanderNY/cursor_test и https://github.com/AlexanderNY/py
 
-Найдите дату создания `cursor_test` и первый коммит `cursor test` в `py` (1 января). Запишите одной строкой: «продукт с …, публичный репо с …».
+Найдите дату создания `cursor_test` и коммит `cursor test` в `py` (1 января 2026). Запишите одной строкой: «CopyParse с января 2026, публичный репо с июня. До января — скрипты, ноутбуки и один бот, не продукт».
 
 Дополнительно: в коммите https://github.com/AlexanderNY/cursor_test/commit/b28dcb1d отметьте файл AI-клиента.
 

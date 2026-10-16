@@ -76,6 +76,33 @@ canonicalUrl: https://9to18.ru/game/learn/py-types-collections
 3. Напишите функцию, которая из списка строк возвращает (а) уникальные в set, (б) частоты в dict.
 4. Сравните `lst.append([1])` и `lst.extend([1])` на одном и том же стартовом списке.
 
+Заготовка для шага 1–2 (запустите в браузере или откройте в [Code](/game/code)):
+
+```python
+coords = (10, 20)
+points = {coords: "A"}
+print("tuple key ok:", points)
+
+try:
+    points[[10, 20]] = "B"
+except TypeError as exc:
+    print("list key TypeError:", type(exc).__name__, "—", exc)
+
+words = ["a", "b", "a", "c", "b"]
+print("unique set:", set(words))
+freq: dict[str, int] = {}
+for word in words:
+    freq[word] = freq.get(word, 0) + 1
+print("freq:", freq)
+
+lst = [0]
+lst.append([1])
+print("after append:", lst)
+lst = [0]
+lst.extend([1])
+print("after extend:", lst)
+```
+
 **В группу:** нарисуйте таблицу «тип → mutable? → hashable? → типичный кейс» на 6 типов.
 
 **Готово, если…**

@@ -3,11 +3,12 @@
 import logging
 from typing import List, Dict, Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
 from services.publish_service import publish_service
 from services.collect_service import collect_service
+from shared.internal_auth_fastapi import require_internal_token
 
 logger = logging.getLogger(__name__)
 
@@ -30,16 +31,11 @@ class ScheduleRequest(BaseModel):
 
 
 @router.post("/schedule")
-async def handle_schedule(request: ScheduleRequest) -> Dict[str, Any]:
-    """
-    Обрабатывает команды от scheduler.
-    
-    Args:
-        request: Запрос с расписаниями
-        
-    Returns:
-        Результаты обработки
-    """
+async def handle_schedule(
+    request: ScheduleRequest,
+    _internal: None = Depends(require_internal_token),
+) -> Dict[str, Any]:
+    """Обрабатывает команды от scheduler (X-Internal-Token)."""
     # Фильтруем расписания по platform="wp"
     wp_schedules = [
         s for s in request.schedules

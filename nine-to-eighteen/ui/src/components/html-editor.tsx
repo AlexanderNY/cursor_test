@@ -15,6 +15,19 @@ function exec(command: string, value?: string): void {
   document.execCommand(command, false, value)
 }
 
+/** Normalize incoming value: keep HTML as HTML, wrap plain text in paragraphs. */
+function valueToEditorHtml(value: string): string {
+  const trimmed = value.trim()
+  if (!trimmed) {
+    return '<p></p>'
+  }
+  // Already markup (cheatsheet from MD / previous edits) — sanitize only.
+  if (/<[a-z][\s\S]*>/i.test(trimmed)) {
+    return sanitizeLearnHtml(trimmed)
+  }
+  return sanitizeLearnHtml(plainTextToHtml(value))
+}
+
 export function HtmlEditor({ label, value, onChange }: HtmlEditorProps) {
   const editorRef = useRef<HTMLDivElement>(null)
   const lastValueRef = useRef<string>('')
@@ -23,7 +36,7 @@ export function HtmlEditor({ label, value, onChange }: HtmlEditorProps) {
     if (!editorRef.current) {
       return
     }
-    const nextHtml = sanitizeLearnHtml(plainTextToHtml(value))
+    const nextHtml = valueToEditorHtml(value)
     if (nextHtml === lastValueRef.current) {
       return
     }
@@ -35,8 +48,9 @@ export function HtmlEditor({ label, value, onChange }: HtmlEditorProps) {
     if (!editorRef.current) {
       return
     }
-    const html = sanitizeLearnHtml(editorRef.current.innerHTML)
-    lastValueRef.current = html
+    const text = (editorRef.current.textContent || '').replace(/\u00a0/g, ' ').trim()
+    const html = text ? sanitizeLearnHtml(editorRef.current.innerHTML) : ''
+    lastValueRef.current = html || '<p></p>'
     onChange(html)
   }
 

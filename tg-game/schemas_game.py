@@ -20,14 +20,28 @@ class GameModeCreate(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     questions_per_game: int = Field(default=10, ge=1, le=300)
     is_active: bool = True
-    mode_type: Literal["quiz", "menu"] = "quiz"
+    mode_type: Literal[
+        "quiz",
+        "menu",
+        "country_training",
+        "country_flags",
+        "country_map",
+    ] = "quiz"
 
 
 class GameModeUpdate(BaseModel):
     title: Optional[str] = Field(default=None, min_length=1, max_length=200)
     is_active: Optional[bool] = None
     questions_per_game: Optional[int] = Field(default=None, ge=1, le=300)
-    mode_type: Optional[Literal["quiz", "menu"]] = None
+    mode_type: Optional[
+        Literal[
+            "quiz",
+            "menu",
+            "country_training",
+            "country_flags",
+            "country_map",
+        ]
+    ] = None
 
 
 class GameModeOut(BaseModel):
@@ -37,7 +51,13 @@ class GameModeOut(BaseModel):
     title: str
     is_active: bool
     questions_per_game: int
-    mode_type: Literal["quiz", "menu"] = "quiz"
+    mode_type: Literal[
+        "quiz",
+        "menu",
+        "country_training",
+        "country_flags",
+        "country_map",
+    ] = "quiz"
 
 
 class GameBotCreate(BaseModel):

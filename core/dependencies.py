@@ -11,12 +11,21 @@ from config import settings
 security = HTTPBearer()
 
 
+def _internal_headers() -> dict[str, str]:
+    token = (getattr(settings, "INTERNAL_API_TOKEN", None) or "").strip()
+    if token:
+        return {"X-Internal-Token": token}
+    return {}
+
+
 async def is_token_blacklisted(token: str) -> bool:
     """Проверяет blacklist через auth-сервис (fail closed при ошибке связи)."""
     url = f"{settings.AUTH_SERVICE_URL.rstrip('/')}/token/blacklist-check"
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
-            response = await client.post(url, json={"token": token})
+            response = await client.post(
+                url, json={"token": token}, headers=_internal_headers()
+            )
         if response.status_code != 200:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -33,23 +42,49 @@ async def is_token_blacklisted(token: str) -> bool:
         ) from error
 
 
+def _iat_as_epoch(iat_value) -> Optional[int]:
+    if iat_value is None:
+        return None
+    if isinstance(iat_value, (int, float)):
+        return int(iat_value)
+    try:
+        return int(iat_value.timestamp())
+    except Exception:
+        return None
+
+
+async def _tokens_valid_after_epoch(user_id: int) -> Optional[int]:
+    from shared.token_blacklist_redis import token_blacklist_redis
+
+    redis_value = await token_blacklist_redis.get_tokens_valid_after(user_id)
+    if redis_value is not None:
+        return redis_value
+    url = f"{settings.AUTH_SERVICE_URL.rstrip('/')}/token/valid-after/{user_id}"
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.get(url, headers=_internal_headers())
+        if response.status_code != 200:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Unable to verify token validity cutoff",
+            )
+        data = response.json()
+        raw = data.get("tokens_valid_after_epoch")
+        return int(raw) if raw is not None else None
+    except HTTPException:
+        raise
+    except Exception as error:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Unable to verify token validity cutoff",
+        ) from error
+
+
 async def get_current_user(
     request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = None
 ) -> Dict:
-    """Получение текущего пользователя из JWT токена.
-    
-    Args:
-        request: FastAPI Request объект
-        credentials: HTTP Authorization credentials
-        
-    Returns:
-        Dict с данными пользователя из токена
-        
-    Raises:
-        HTTPException: Если токен невалидный, отозван или отсутствует
-    """
-    # Пытаемся получить токен из credentials или из заголовков
+    """Получение текущего пользователя из JWT токена."""
     token = None
     if credentials:
         token = credentials.credentials
@@ -65,15 +100,12 @@ async def get_current_user(
         )
     
     try:
-        # Декодируем токен
-        # Используем секретный ключ из auth сервиса (должен быть одинаковый)
         payload = jwt.decode(
             token,
             settings.JWT_SECRET_KEY,
             algorithms=[settings.JWT_ALGORITHM]
         )
         
-        # Проверяем тип токена
         if payload.get("type") != "access":
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -91,6 +123,16 @@ async def get_current_user(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Token has been revoked"
             )
+
+        user_id = payload.get("user_id")
+        if user_id is not None:
+            cutoff = await _tokens_valid_after_epoch(int(user_id))
+            iat_epoch = _iat_as_epoch(payload.get("iat"))
+            if cutoff is not None and (iat_epoch is None or iat_epoch < cutoff):
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Token has been revoked"
+                )
 
         return {
             "user_id": payload.get("user_id"),
@@ -114,18 +156,7 @@ async def get_admin_user(
     request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)
 ) -> Dict:
-    """Получение текущего пользователя с проверкой роли admin.
-    
-    Args:
-        request: FastAPI Request объект
-        credentials: HTTP Authorization credentials
-        
-    Returns:
-        Dict с данными пользователя
-        
-    Raises:
-        HTTPException: Если пользователь не авторизован или не является admin
-    """
+    """Получение текущего пользователя с проверкой роли admin."""
     current_user = await get_current_user(request, credentials)
     
     if current_user.get("role") != "admin":

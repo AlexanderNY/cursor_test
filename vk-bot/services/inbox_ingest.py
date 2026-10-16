@@ -8,6 +8,7 @@ from typing import Optional
 import httpx
 
 from config import settings
+from shared.internal_auth import internal_auth_headers
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,7 @@ async def push_inbox_ingest(
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.post(
                 f"{base}/internal/smm/inbox/ingest",
+                headers=internal_auth_headers(),
                 json={
                     "user_id": user_id,
                     "network": network,

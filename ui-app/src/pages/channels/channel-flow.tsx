@@ -238,7 +238,7 @@ export function ChannelFlowPage() {
         channel.network === 'vk'
           ? 'Collect требует user OAuth VK (VKontakte → Авторизация → Подключить пользователя), затем Recheck на вкладке Auth.'
           : channel.network === 'wp'
-            ? 'Collect требует WordPress site URL + Application Password (WordPress → Profile), затем Recheck на вкладке Auth.'
+            ? 'Collect требует URL сайта WordPress. Application Password нужен для публикации и обновления страницы (WordPress → Profile), затем Recheck на вкладке Auth.'
             : 'Collect требует авторизацию Telegram (Telegram → Auth), затем Recheck на вкладке Auth.',
       )
       return
@@ -1080,8 +1080,8 @@ export function ChannelFlowPage() {
                   <div>
                     <p className="text-sm font-medium">Обновление страницы WordPress</p>
                     <p className="text-xs text-[var(--text-muted)] mt-1">
-                      Если у исходящего поста в extras стоит wp_update_page, wp-bot обновит эту
-                      страницу (page) вместо создания новой записи. Укажите ID или slug.
+                      Если указан ID или slug, wp-bot обновит эту страницу вместо новой записи.
+                      У поста можно принудительно включить или выключить это через extras.wp_update_page.
                     </p>
                   </div>
                   <Input

@@ -4,11 +4,12 @@ import logging
 from datetime import datetime
 from typing import Any, Optional
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
 from schemas import ScheduleRequest, ScheduleUrlItem
 from services.scraping_service import scrape_url_async
+from shared.internal_auth_fastapi import require_internal_token
 
 logger = logging.getLogger(__name__)
 
@@ -59,13 +60,11 @@ def _is_schedule_due(item: ScheduleUrlItem, now: Optional[datetime] = None) -> b
 
 
 @router.post("", response_model=ScheduleResponse)
-async def handle_schedule(request: ScheduleRequest) -> ScheduleResponse:
-    """
-    Обрабатывает команды от scheduler.
-
-    Фильтрует расписания по platform=="url" и collect_enabled, для каждого URL
-    с наступившим schedule_time выполняет скрапинг.
-    """
+async def handle_schedule(
+    request: ScheduleRequest,
+    _internal: None = Depends(require_internal_token),
+) -> ScheduleResponse:
+    """Обрабатывает команды от scheduler (X-Internal-Token)."""
     url_schedules = [
         s for s in request.schedules
         if s.platform == "url" and s.collect_enabled and (s.urls or [])

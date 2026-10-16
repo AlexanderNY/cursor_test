@@ -102,7 +102,10 @@ export function WordPressPage() {
       const publishProfile = await wordpressService.getPublishProfile()
       setSiteUrl(publishProfile.site_url || '')
       setUsername(publishProfile.username || '')
-      setAppPassword(publishProfile.app_password || '')
+      {
+        const pw = publishProfile.app_password || ''
+        setAppPassword(pw && pw !== '***' ? pw : '')
+      }
       setPublishEnabled(publishProfile.publish_enabled ?? false)
       setPublishAllReady(publishProfile.publish_all_ready ?? true)
       setPublishLimit(publishProfile.publish_limit != null ? String(publishProfile.publish_limit) : '')
@@ -224,7 +227,7 @@ export function WordPressPage() {
         time_intervals: timeIntervals,
         site_url: siteUrl || undefined,
         username: username || undefined,
-        app_password: appPassword || undefined,
+        app_password: appPassword && appPassword !== '***' ? appPassword : undefined,
         publish_all_ready: publishAllReady,
         publish_limit: publishAllReady ? undefined : limitNum,
         publish_interval_minutes: publishAllReady ? undefined : publishIntervalMinutes,
@@ -273,7 +276,7 @@ export function WordPressPage() {
           time_intervals: timeIntervals,
           site_url: siteUrl || undefined,
           username: username || undefined,
-          app_password: appPassword || undefined,
+          app_password: appPassword && appPassword !== '***' ? appPassword : undefined,
           publish_all_ready: publishAllReady,
           publish_limit: publishAllReady ? undefined : limitNum,
           publish_interval_minutes: publishAllReady ? undefined : publishIntervalMinutes,

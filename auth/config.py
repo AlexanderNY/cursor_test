@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     # Redis (optional): JWT blacklist hot path for gateway. Empty = Postgres-only.
     REDIS_URL: str = ""
 
+    # Service-to-service token (gateway blacklist-check / tokens_valid_after).
+    INTERNAL_API_TOKEN: str = ""
+
     # JWT Settings (обязательно через env / .env; должен совпадать с JWT_SECRET_KEY gateway/core)
     SECRET_KEY: str = ""
     ALGORITHM: str = "HS256"

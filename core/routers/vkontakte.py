@@ -11,8 +11,9 @@ from typing import Any, List, Optional
 from urllib.parse import urlencode
 
 import httpx
-from fastapi import APIRouter, HTTPException, Header, File, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, Header, File, UploadFile
 from fastapi.responses import FileResponse, PlainTextResponse, Response, RedirectResponse
+from dependencies import get_admin_user
 
 from services.profile_service import profile_service
 from services.post_service import post_service
@@ -1035,12 +1036,9 @@ async def save_vk_profile(
 
 
 @router.get("/profiles")
-async def get_all_vk_profiles():
-    """Получает все профили VKontakte.
-    
-    Returns:
-        Список всех профилей VKontakte
-    """
+async def get_all_vk_profiles(admin_user: dict = Depends(get_admin_user)):
+    """Получает все профили VKontakte (только admin)."""
+    del admin_user
     profiles = await profile_service.get_all_vk_profiles()
     return {"profiles": profiles}
 

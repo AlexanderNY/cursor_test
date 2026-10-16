@@ -45,6 +45,12 @@ CREATE INDEX IF NOT EXISTS idx_users_active_group_id
     ON users(active_group_id) WHERE active_group_id IS NOT NULL;
 """
 
+CREATE_USERS_TOKENS_VALID_AFTER_MIGRATION = """
+DO $$ BEGIN
+  ALTER TABLE users ADD COLUMN tokens_valid_after TIMESTAMPTZ;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+"""
+
 CREATE_GROWTH_EVENTS_TABLE = """
 CREATE TABLE IF NOT EXISTS growth_events (
     id SERIAL PRIMARY KEY,
@@ -266,6 +272,44 @@ CREATE TABLE IF NOT EXISTS promo_codes (
 CREATE INDEX IF NOT EXISTS idx_promo_codes_code ON promo_codes (code);
 """
 
+CREATE_PROMO_GRANT_MIGRATION = """
+DO $$ BEGIN
+  ALTER TABLE promo_codes ADD COLUMN kind VARCHAR(20) NOT NULL DEFAULT 'discount';
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE promo_codes ADD COLUMN grant_days INTEGER NULL;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE promo_codes ADD CONSTRAINT promo_codes_kind_check
+    CHECK (kind IN ('discount', 'grant'));
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE promo_codes ADD CONSTRAINT promo_codes_grant_days_check
+    CHECK (grant_days IS NULL OR (grant_days >= 1 AND grant_days <= 366));
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+"""
+
+CREATE_USER_ENTITLEMENTS_TABLE = """
+CREATE TABLE IF NOT EXISTS user_entitlements (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    tariff VARCHAR(50) NOT NULL CHECK (tariff IN ('standard', 'full')),
+    source VARCHAR(20) NOT NULL CHECK (source IN ('payment', 'promo')),
+    source_ref VARCHAR(80),
+    starts_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at TIMESTAMPTZ NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'active'
+        CHECK (status IN ('active', 'expired', 'revoked')),
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_user_entitlements_active_source
+    ON user_entitlements (user_id, source)
+    WHERE status = 'active';
+CREATE INDEX IF NOT EXISTS idx_user_entitlements_active_expires
+    ON user_entitlements (expires_at)
+    WHERE status = 'active';
+"""
+
 CREATE_BILLING_PLAN_REQUESTS_TABLE = """
 CREATE TABLE IF NOT EXISTS billing_plan_requests (
     id SERIAL PRIMARY KEY,
@@ -358,13 +402,16 @@ ALL_TABLES: list[str] = [
     CREATE_GROUP_INVITES_TABLE,
     GROUP_ROLES_WORKSPACE_MIGRATION,
     CREATE_USERS_ACTIVE_GROUP_MIGRATION,
+    CREATE_USERS_TOKENS_VALID_AFTER_MIGRATION,
     CREATE_PLAN_DEFINITIONS_TABLE,
     CREATE_BILLING_EVENTS_TABLE,
     CREATE_GROWTH_EVENTS_TABLE,
     CREATE_ADMIN_AUDIT_LOG_TABLE,
     CREATE_PROMO_CODES_TABLE,
+    CREATE_PROMO_GRANT_MIGRATION,
     CREATE_BILLING_PLAN_REQUESTS_TABLE,
     CREATE_PROMO_CODE_REDEMPTIONS_TABLE,
+    CREATE_USER_ENTITLEMENTS_TABLE,
     CREATE_USER_APP_SESSIONS_TABLE,
     CREATE_INDEXES,
 ]

@@ -68,6 +68,38 @@ List/dict comprehensions: компактно и быстро для просты
 3. Перепишите filter чётных через comprehension и через `filter`+lambda.
 4. Разберите `for`/`else`: найдите простое число проверкой делителей с `else`.
 
+Заготовка для шагов 2–4:
+
+```python
+def broken_append(value, acc=[]):
+    acc.append(value)
+    return acc
+
+print("broken 1:", broken_append(1))
+print("broken 2:", broken_append(2), "← общий список")
+
+def safe_append(value, acc=None):
+    if acc is None:
+        acc = []
+    acc.append(value)
+    return acc
+
+print("safe 1:", safe_append(1))
+print("safe 2:", safe_append(2))
+
+nums = [1, 2, 3, 4, 5, 6]
+print("comp:", [n for n in nums if n % 2 == 0])
+print("filter:", list(filter(lambda n: n % 2 == 0, nums)))
+
+n = 11
+for d in range(2, int(n**0.5) + 1):
+    if n % d == 0:
+        print(n, "составное")
+        break
+else:
+    print(n, "простое (for/else)")
+```
+
 **В группу:** объясните, когда lambda хуже `def`.
 
 **Готово, если…**

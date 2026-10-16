@@ -1,6 +1,6 @@
 """Роутер для WordPress профилей и постов."""
 
-from fastapi import APIRouter, HTTPException, Header
+from fastapi import APIRouter, Depends, HTTPException, Header
 from typing import Optional
 from services.profile_service import profile_service
 from services.post_service import post_service
@@ -10,6 +10,7 @@ from schemas import (
     WordPressCollectProfileCreate,
     WordPressPost,
 )
+from dependencies import get_admin_user
 
 
 router = APIRouter(prefix="/wp", tags=["WordPress"])
@@ -38,7 +39,8 @@ async def get_wp_profile(x_user_id: Optional[str] = Header(None)):
         "time_intervals": (pub or {}).get("time_intervals") or "",
         "site_url": (pub or {}).get("site_url"),
         "username": (pub or {}).get("username"),
-        "app_password": (pub or {}).get("app_password"),
+        "app_password": None,
+        "has_app_password": bool((pub or {}).get("has_app_password")),
     }
     if coll and coll.get("collect_sites") is not None:
         result["collect_sites"] = coll["collect_sites"]
@@ -91,6 +93,7 @@ async def get_wp_publish_profile(x_user_id: Optional[str] = Header(None)):
         "site_url": None,
         "username": None,
         "app_password": None,
+        "has_app_password": False,
     }
 
 
@@ -130,12 +133,9 @@ async def save_wp_collect_profile(
 
 
 @router.get("/profiles")
-async def get_all_wp_profiles():
-    """Получает все профили WordPress.
-    
-    Returns:
-        Список всех профилей WordPress
-    """
+async def get_all_wp_profiles(admin_user: dict = Depends(get_admin_user)):
+    """Получает все профили WordPress (только admin)."""
+    del admin_user
     profiles = await profile_service.get_all_wp_profiles()
     return {"profiles": profiles}
 

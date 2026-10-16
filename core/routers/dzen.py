@@ -7,7 +7,7 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Optional, List
 
-from fastapi import APIRouter, HTTPException, Header, File, UploadFile, Form, Query
+from fastapi import APIRouter, Depends, HTTPException, Header, File, UploadFile, Form, Query
 from fastapi.responses import Response
 from services.profile_service import profile_service
 from services.post_service import post_service
@@ -17,6 +17,7 @@ from config import settings
 from storage_client import get_storage
 from shared import async_fs
 from upload_limits import enforce_upload_count, read_upload_limited
+from dependencies import get_admin_user
 
 
 router = APIRouter(prefix="/dzen", tags=["Dzen"])
@@ -87,6 +88,7 @@ async def get_dzen_profile(x_user_id: Optional[str] = Header(None)):
         "dzen_studio_url": None,
         "collect_source": "rss",
         "last_auth_error": None,
+        "yandex_session_saved_at": None,
     }
 
 
@@ -102,8 +104,9 @@ async def save_dzen_profile(
 
 
 @router.get("/profiles")
-async def get_all_dzen_profiles():
-    """Получает все профили Дзен."""
+async def get_all_dzen_profiles(admin_user: dict = Depends(get_admin_user)):
+    """Получает все профили Дзен (только admin)."""
+    del admin_user
     profiles = await profile_service.get_all_dzen_profiles()
     return {"profiles": profiles}
 
@@ -335,7 +338,8 @@ async def get_dzen_rss(
     Опционально: ?token=... сверяется с rss_token в профиле.
     """
     profile = await profile_service.get_dzen_profile(user_id)
-    if profile and profile.get("rss_token") and profile.get("rss_token") != token:
+    expected = (profile or {}).get("rss_token") or ""
+    if not expected or not token or expected != token:
         raise HTTPException(status_code=403, detail="Invalid or missing RSS token")
     channel_title = (profile or {}).get("channel_name") or f"Dzen {user_id}"
     base_url = (getattr(settings, "RSS_BASE_URL", None) or "").rstrip("/") or "http://localhost:8002"

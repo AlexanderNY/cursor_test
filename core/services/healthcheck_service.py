@@ -13,6 +13,7 @@ import httpx
 
 from config import settings
 from shared.circuit_breaker import CircuitBreaker
+from shared.container_stats import get_container_stats
 
 
 @dataclass
@@ -36,6 +37,24 @@ _OPTIONAL_SERVICES: Set[str] = {
     "processor",
     "ollama",
 }
+
+
+def _empty_resource_fields() -> Dict:
+    return {
+        "cpu_percent": None,
+        "memory_bytes": None,
+        "memory_limit_bytes": None,
+    }
+
+
+def _resource_fields_from_health(data: object) -> Dict:
+    if not isinstance(data, dict):
+        return _empty_resource_fields()
+    return {
+        "cpu_percent": data.get("cpu_percent"),
+        "memory_bytes": data.get("memory_bytes"),
+        "memory_limit_bytes": data.get("memory_limit_bytes"),
+    }
 
 
 class HealthcheckService:
@@ -89,6 +108,7 @@ class HealthcheckService:
             .isoformat()
             .replace("+00:00", "Z"),
             "optional": False,
+            **get_container_stats(),
         }
 
     async def check_service(self, name: str, url: Optional[str]) -> Dict:
@@ -105,6 +125,7 @@ class HealthcheckService:
                 "error": "Circuit open",
                 "server_time": None,
                 "optional": optional,
+                **_empty_resource_fields(),
             }
 
         try:
@@ -122,6 +143,7 @@ class HealthcheckService:
                     "error": None,
                     "server_time": server_time,
                     "optional": optional,
+                    **_resource_fields_from_health(data),
                 }
 
             circuit.record_failure()
@@ -131,6 +153,7 @@ class HealthcheckService:
                 "error": f"HTTP {response.status_code}",
                 "server_time": None,
                 "optional": optional,
+                **_empty_resource_fields(),
             }
         except httpx.ConnectError:
             circuit.record_failure()
@@ -140,6 +163,7 @@ class HealthcheckService:
                 "error": "Connection refused",
                 "server_time": None,
                 "optional": optional,
+                **_empty_resource_fields(),
             }
         except httpx.TimeoutException:
             circuit.record_failure()
@@ -149,6 +173,7 @@ class HealthcheckService:
                 "error": "Timeout",
                 "server_time": None,
                 "optional": optional,
+                **_empty_resource_fields(),
             }
         except Exception as e:
             circuit.record_failure()
@@ -158,6 +183,7 @@ class HealthcheckService:
                 "error": str(e),
                 "server_time": None,
                 "optional": optional,
+                **_empty_resource_fields(),
             }
 
     async def _fetch_all_services(self) -> List[Dict]:

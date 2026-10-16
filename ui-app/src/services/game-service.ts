@@ -211,6 +211,18 @@ export const gameService = {
     }
   },
 
+  async listQuestionsWithOptions(modeId: number): Promise<GameQuestionDetail[]> {
+    try {
+      const response = await apiClient.get<GameQuestionDetail[]>(
+        `/tg/game/admin/modes/${modeId}/questions`,
+        { params: { with_options: true } },
+      )
+      return response.data
+    } catch (error) {
+      throw new Error(getErrorMessage(error))
+    }
+  },
+
   async getQuestion(questionId: number): Promise<GameQuestionDetail> {
     try {
       const response = await apiClient.get<GameQuestionDetail>(

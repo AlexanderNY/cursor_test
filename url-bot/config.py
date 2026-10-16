@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     PAGE_LOAD_TIMEOUT_SECONDS: int = 30
 
     # Таймаут ожидания элемента по XPath (секунды)
-    ELEMENT_WAIT_TIMEOUT_SECONDS: int = 10
+    ELEMENT_WAIT_TIMEOUT_SECONDS: int = 15
 
     # Лимит параллельных Chrome-сессий (защита RAM/CPU контейнера)
     SELENIUM_MAX_CONCURRENT: int = 2
@@ -24,8 +24,18 @@ class Settings(BaseSettings):
     # Сколько ждать свободный слот Selenium; иначе ошибка busy без нового Chrome
     SELENIUM_ACQUIRE_TIMEOUT_SECONDS: float = 60.0
 
-    # Жёсткий потолок одной сессии (Timer → quit/kill); ≥ page load + element wait + screenshot retries
-    SCRAPE_HARD_TIMEOUT_SECONDS: int = 90
+    # Жёсткий потолок одной сессии (Timer → quit/kill); ≥ page load + CF wait + element + screenshot
+    SCRAPE_HARD_TIMEOUT_SECONDS: int = 150
+
+    # SOCKS/HTTP proxy for Chromium (e.g. socks5://host.docker.internal:10808).
+    # Empty = direct. Auth in URL is best-effort (Chromium SOCKS auth is limited).
+    SCRAPE_PROXY_URL: str = ""
+
+    # Hide typical Selenium fingerprints (webdriver flag, automation switches, UA).
+    SCRAPE_STEALTH_ENABLED: bool = True
+
+    # Wait for Cloudflare / bot interstitial ("Just a moment...") before XPath.
+    CLOUDFLARE_CHALLENGE_WAIT_SECONDS: int = 50
 
     # Оптимизация скриншота: ресайз и JPEG
     SCREENSHOT_MAX_PIXELS: int = 1920  # макс. сторона (длинная)

@@ -173,8 +173,119 @@ def _quit_driver(driver: webdriver.Chrome | None) -> None:
             logger.warning("service.process.kill failed: %s", e)
 
 
+_STEALTH_UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+)
+
+_STEALTH_INIT_SCRIPT = """
+Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en', 'ru'] });
+Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+window.chrome = window.chrome || { runtime: {} };
+const originalQuery = window.navigator.permissions && window.navigator.permissions.query;
+if (originalQuery) {
+  window.navigator.permissions.query = (parameters) => (
+    parameters && parameters.name === 'notifications'
+      ? Promise.resolve({ state: Notification.permission })
+      : originalQuery(parameters)
+  );
+}
+"""
+
+
+def _normalize_proxy_server(proxy_url: str) -> Optional[str]:
+    """Return Chromium --proxy-server value or None if unset/invalid."""
+    raw = (proxy_url or "").strip()
+    if not raw:
+        return None
+    # Chromium wants scheme://host:port (no path). Strip credentials for --proxy-server.
+    from urllib.parse import urlparse
+
+    parsed = urlparse(raw)
+    scheme = (parsed.scheme or "").lower()
+    if scheme in ("socks5h",):
+        scheme = "socks5"
+    if scheme not in ("http", "https", "socks5", "socks4") or not parsed.hostname:
+        logger.warning("Ignoring invalid SCRAPE_PROXY_URL scheme/host: %s", raw)
+        return None
+    port = parsed.port
+    if port is None:
+        port = 1080 if scheme.startswith("socks") else 8080
+    return f"{scheme}://{parsed.hostname}:{port}"
+
+
+def _apply_stealth(driver: webdriver.Chrome) -> None:
+    """Best-effort anti-automation patches via CDP."""
+    try:
+        driver.execute_cdp_cmd(
+            "Page.addScriptToEvaluateOnNewDocument",
+            {"source": _STEALTH_INIT_SCRIPT},
+        )
+    except Exception as exc:
+        logger.debug("Stealth CDP init script failed: %s", exc)
+    try:
+        driver.execute_cdp_cmd(
+            "Network.setUserAgentOverride",
+            {
+                "userAgent": _STEALTH_UA,
+                "acceptLanguage": "en-US,en;q=0.9,ru;q=0.8",
+                "platform": "Windows",
+            },
+        )
+    except Exception as exc:
+        logger.debug("Stealth UA override failed: %s", exc)
+
+
+def _is_challenge_page(driver: webdriver.Chrome) -> bool:
+    title = (driver.title or "").strip().lower()
+    if any(
+        needle in title
+        for needle in (
+            "just a moment",
+            "attention required",
+            "checking your browser",
+            "please wait",
+            "security check",
+        )
+    ):
+        return True
+    try:
+        src = (driver.page_source or "")[:8000].lower()
+    except Exception:
+        return False
+    return (
+        "cdn-cgi/challenge" in src
+        or "cf-browser-verification" in src
+        or "challenges.cloudflare.com" in src
+        or ("just a moment" in src and "cloudflare" in src)
+    )
+
+
+def _wait_out_challenge(driver: webdriver.Chrome, hard_fired: threading.Event) -> bool:
+    """Wait until Cloudflare (or similar) interstitial clears. True if clear."""
+    wait_s = max(0, int(getattr(settings, "CLOUDFLARE_CHALLENGE_WAIT_SECONDS", 0) or 0))
+    if wait_s <= 0 or not _is_challenge_page(driver):
+        return not _is_challenge_page(driver)
+    logger.info(
+        "Bot challenge detected (title=%r); waiting up to %ss",
+        driver.title,
+        wait_s,
+    )
+    deadline = time.time() + wait_s
+    while time.time() < deadline:
+        if hard_fired.is_set():
+            return False
+        if not _is_challenge_page(driver):
+            logger.info("Bot challenge cleared (title=%r)", driver.title)
+            return True
+        time.sleep(1.0)
+    logger.warning("Bot challenge still present after %ss (title=%r)", wait_s, driver.title)
+    return False
+
+
 def _create_driver() -> webdriver.Chrome:
-    """Создаёт headless Chrome/Chromium driver."""
+    """Создаёт headless Chrome/Chromium driver (optional proxy + stealth)."""
     options = Options()
     options.add_argument("--headless=new")
     options.add_argument("--no-sandbox")
@@ -183,8 +294,24 @@ def _create_driver() -> webdriver.Chrome:
     options.add_argument("--window-size=1920,1080")
     options.add_argument("--force-device-scale-factor=1")
     options.add_argument("--hide-scrollbars")
+    options.add_argument("--lang=en-US")
     # normal — дождаться загрузки ресурсов; eager даёт серые placeholder'ы на JS-картах
     options.page_load_strategy = "normal"
+
+    stealth_on = bool(getattr(settings, "SCRAPE_STEALTH_ENABLED", True))
+    if stealth_on:
+        options.add_argument("--disable-blink-features=AutomationControlled")
+        options.add_argument(f"--user-agent={_STEALTH_UA}")
+        options.add_experimental_option("excludeSwitches", ["enable-automation"])
+        options.add_experimental_option("useAutomationExtension", False)
+
+    proxy_server = _normalize_proxy_server(
+        getattr(settings, "SCRAPE_PROXY_URL", "") or ""
+    )
+    if proxy_server:
+        options.add_argument(f"--proxy-server={proxy_server}")
+        logger.info("Chromium proxy: %s", proxy_server)
+
     chrome_bin = os.environ.get("CHROME_BIN")
     if chrome_bin:
         options.binary_location = chrome_bin
@@ -197,6 +324,8 @@ def _create_driver() -> webdriver.Chrome:
     driver.set_page_load_timeout(settings.PAGE_LOAD_TIMEOUT_SECONDS)
     driver.set_script_timeout(settings.PAGE_LOAD_TIMEOUT_SECONDS)
     driver.implicitly_wait(0)
+    if stealth_on:
+        _apply_stealth(driver)
     return driver
 
 
@@ -437,6 +566,20 @@ def scrape_url(
         timer.start()
 
         driver.get(safe_url)
+        if hard_fired.is_set():
+            result["error"] = "Scrape hard timeout"
+            return result
+
+        if not _wait_out_challenge(driver, hard_fired):
+            if hard_fired.is_set():
+                result["error"] = "Scrape hard timeout"
+            else:
+                result["error"] = (
+                    f"Blocked by bot challenge (title={driver.title!r}). "
+                    "Set SCRAPE_PROXY_URL to a residential/SOCKS proxy or raise "
+                    "CLOUDFLARE_CHALLENGE_WAIT_SECONDS."
+                )
+            return result
         if hard_fired.is_set():
             result["error"] = "Scrape hard timeout"
             return result

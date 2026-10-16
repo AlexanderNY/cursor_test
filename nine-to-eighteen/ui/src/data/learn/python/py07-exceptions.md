@@ -82,6 +82,32 @@ class DomainError(Exception):
 3. Покажите разницу: поймали ошибку vs не поймали (traceback).
 4. Добавьте `raise ParseError(...) from exc` при обёртке низкоуровневой ошибки.
 
+Заготовка try / else / finally:
+
+```python
+class ParseError(ValueError):
+    pass
+
+def parse_positive(text: str) -> int:
+    try:
+        value = int(text)
+    except ValueError as exc:
+        raise ParseError(f"not an int: {text!r}") from exc
+    if value <= 0:
+        raise ParseError(f"need > 0, got {value}")
+    return value
+
+for sample in ("12", "0", "x"):
+    try:
+        n = parse_positive(sample)
+    except ParseError as exc:
+        print(f"{sample!r}: caught", exc)
+    else:
+        print(f"{sample!r}: ok", n)
+    finally:
+        print(f"{sample!r}: done")
+```
+
 **В группу:** когда лучше вернуть `None`/Result, а когда raise?
 
 **Готово, если…**

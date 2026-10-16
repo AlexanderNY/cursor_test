@@ -2,7 +2,7 @@
   "save_version": 6,
   "world_scale": 6.0,
   "base_player_radius": 18.0,
-  "player_speed": 3400.0,
+  "player_speed": 1500.0,
   "pickup_radius_min": 6.0,
   "pickup_radius_max": 14.0,
   "enemy_radius_min": 12.0,

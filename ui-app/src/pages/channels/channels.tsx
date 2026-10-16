@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Alert } from '@/components/ui/alert'
 import { DataTable, type DataTableColumn } from '@/components/ui/data-table'
 import { CheckCircleIcon, XCircleIcon } from '@/components/icons'
+import { useAuth } from '@/contexts/auth-context'
 import { useBrand } from '@/contexts/brand-context'
 import { smmService } from '@/services/smm-service'
 import type { BrandChannel, BrandNetwork, ChannelRole, PlatformStatusResponse } from '@/types/smm'
@@ -23,6 +24,7 @@ import {
   networkSetupUrl,
 } from '@/lib/smm-networks'
 import { BrandDigestCard } from '@/pages/channels/brand-digest-card'
+import { formatDateTime } from '@/utils/date'
 
 type ChannelRow = BrandChannel & { brand_name?: string; brand_color?: string }
 
@@ -82,6 +84,8 @@ function FlagStatusIcon({
 }
 
 export function ChannelsPage() {
+  const { user } = useAuth()
+  const isAdmin = user?.role === 'admin'
   const {
     brands,
     selectedBrandId,
@@ -440,223 +444,275 @@ export function ChannelsPage() {
   }
 
   const columns: DataTableColumn<ChannelRow>[] = useMemo(
-    () => [
-      {
-        key: 'network',
-        header: 'Сеть',
-        render: (_v, row) => (
-          <span className="font-semibold uppercase tracking-wide text-[var(--text-primary)]">
-            {networkLabel(row.network)}
-          </span>
-        ),
-      },
-      {
-        key: 'external_id',
-        header: 'ID / URL',
-        render: (_v, row) => {
-          const display =
-            row.network === 'url'
-              ? row.url_config?.url || row.title || row.external_id
-              : row.external_id
-          const copyValue =
-            row.network === 'url'
-              ? row.url_config?.url || row.title || row.external_id
-              : row.external_id
-          const key = `row-${row.id}`
-          return (
-            <div className="flex items-start gap-1.5 max-w-[10rem] sm:max-w-[18rem] lg:max-w-[24rem]">
-              <code className="text-xs text-[var(--text-primary)] break-all flex-1 min-w-0">{display}</code>
-              <button
-                type="button"
-                className="shrink-0 text-xs text-primary-400 hover:underline"
-                title="Скопировать"
-                onClick={() => void copyText(String(copyValue || ''), key)}
-              >
-                {copiedKey === key ? '✓' : 'Copy'}
-              </button>
-            </div>
-          )
-        },
-      },
-      {
-        key: 'title',
-        header: 'Title',
-        render: (_v, row) => (
-          <div className="min-w-[140px]">
-            <div className="text-[var(--text-primary)] font-medium">
-              {row.title || '—'}
-            </div>
-            {row.brand_name && (
-              <div className="text-xs text-[var(--text-muted)] flex items-center gap-1.5 mt-0.5">
-                <span
-                  className="inline-block h-2 w-2 rounded-full shrink-0"
-                  style={{ backgroundColor: row.brand_color || '#64748b' }}
-                />
-                {row.brand_name}
-              </div>
-            )}
-          </div>
-        ),
-      },
-      {
-        key: 'role',
-        header: 'Тип',
-        render: (_v, row) => (
-          <span className="text-xs uppercase tracking-wide text-[var(--text-secondary)]">
-            {row.role}
-          </span>
-        ),
-      },
-      {
-        key: 'auth_status',
-        header: 'Auth',
-        render: (_v, row) => (
-          <div className="flex flex-col gap-1 min-w-[5rem]">
-            <span
-              className={`text-xs font-medium ${
-                row.auth_status === 'connected' || row.auth_status === 'not_required'
-                  ? 'text-emerald-400'
-                  : 'text-amber-400'
-              }`}
-              title={row.auth_error || undefined}
-            >
-              {authStatusLabel(row.auth_status)}
+    () => {
+      const cols: DataTableColumn<ChannelRow>[] = [
+        {
+          key: 'network',
+          header: 'Сеть',
+          render: (_v, row) => (
+            <span className="font-semibold uppercase tracking-wide text-[var(--text-primary)]">
+              {networkLabel(row.network)}
             </span>
-            {row.role !== 'competitor' && row.network !== 'url' && (
-              <button
-                type="button"
-                className="text-xs text-primary-400 hover:underline text-left disabled:opacity-50"
-                disabled={recheckingId === row.id}
-                onClick={(e) => {
-                  e.stopPropagation()
-                  void recheckAuth(row)
-                }}
+          ),
+        },
+        {
+          key: 'external_id',
+          header: 'ID / URL',
+          render: (_v, row) => {
+            const display =
+              row.network === 'url'
+                ? row.url_config?.url || row.title || row.external_id
+                : row.external_id
+            const copyValue =
+              row.network === 'url'
+                ? row.url_config?.url || row.title || row.external_id
+                : row.external_id
+            const key = `row-${row.id}`
+            return (
+              <div className="flex items-start gap-1.5 max-w-[10rem] sm:max-w-[18rem] lg:max-w-[24rem]">
+                <code className="text-xs text-[var(--text-primary)] break-all flex-1 min-w-0">{display}</code>
+                <button
+                  type="button"
+                  className="shrink-0 text-xs text-primary-400 hover:underline"
+                  title="Скопировать"
+                  onClick={() => void copyText(String(copyValue || ''), key)}
+                >
+                  {copiedKey === key ? '✓' : 'Copy'}
+                </button>
+              </div>
+            )
+          },
+        },
+        {
+          key: 'title',
+          header: 'Title',
+          render: (_v, row) => (
+            <div className="min-w-[140px]">
+              <div className="text-[var(--text-primary)] font-medium">
+                {row.title || '—'}
+              </div>
+              {row.brand_name && (
+                <div className="text-xs text-[var(--text-muted)] flex items-center gap-1.5 mt-0.5">
+                  <span
+                    className="inline-block h-2 w-2 rounded-full shrink-0"
+                    style={{ backgroundColor: row.brand_color || '#64748b' }}
+                  />
+                  {row.brand_name}
+                </div>
+              )}
+            </div>
+          ),
+        },
+        {
+          key: 'role',
+          header: 'Тип',
+          render: (_v, row) => (
+            <span className="text-xs uppercase tracking-wide text-[var(--text-secondary)]">
+              {row.role}
+            </span>
+          ),
+        },
+        {
+          key: 'auth_status',
+          header: 'Auth',
+          render: (_v, row) => (
+            <div className="flex flex-col gap-1 min-w-[5rem]">
+              <span
+                className={`text-xs font-medium ${
+                  row.auth_status === 'connected' || row.auth_status === 'not_required'
+                    ? 'text-emerald-400'
+                    : 'text-amber-400'
+                }`}
               >
-                {recheckingId === row.id ? 'Recheck…' : 'Recheck'}
-              </button>
-            )}
-          </div>
-        ),
-      },
-      {
-        key: 'publish_enabled',
-        header: 'Publish',
-        render: (_v, row) => {
-          const ready = publishReady(row)
-          const on = !!row.publish_enabled
-          return (
-            <FlagStatusIcon
-              on={on}
-              warn={on && !ready}
-              label="Publish"
-              na={row.role !== 'own'}
-              title={
-                row.role !== 'own'
-                  ? 'Publish только для own'
-                  : ready
-                    ? 'Готово: Publish + подтверждённый доступ'
+                {authStatusLabel(row.auth_status)}
+              </span>
+              {row.role !== 'competitor' && row.network !== 'url' && (
+                <button
+                  type="button"
+                  className="text-xs text-primary-400 hover:underline text-left disabled:opacity-50"
+                  disabled={recheckingId === row.id}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    void recheckAuth(row)
+                  }}
+                >
+                  {recheckingId === row.id ? 'Recheck…' : 'Recheck'}
+                </button>
+              )}
+            </div>
+          ),
+        },
+        {
+          key: 'publish_enabled',
+          header: 'Publish',
+          render: (_v, row) => {
+            const ready = publishReady(row)
+            const on = !!row.publish_enabled
+            return (
+              <FlagStatusIcon
+                on={on}
+                warn={on && !ready}
+                label="Publish"
+                na={row.role !== 'own'}
+                title={
+                  row.role !== 'own'
+                    ? 'Publish только для own'
+                    : ready
+                      ? 'Готово: Publish + подтверждённый доступ'
+                      : on
+                        ? 'Publish включён, но ownership не подтверждён — Recheck'
+                        : 'Publish выключен — «Настроить» → Публикация'
+                }
+              />
+            )
+          },
+        },
+        {
+          key: 'collect_enabled',
+          header: 'Collect',
+          render: (_v, row) => {
+            const ready = collectReady(row)
+            const on = !!row.collect_enabled
+            const toReview = reviewEnabled(row)
+            const hasTargets = (row.publish_targets || []).length > 0
+            return (
+              <FlagStatusIcon
+                on={on}
+                warn={on && !ready}
+                label="Collect"
+                title={
+                  ready
+                    ? toReview && !hasTargets
+                      ? 'Готово: Collect → Review'
+                      : toReview
+                        ? 'Готово: Collect → targets + Review'
+                        : 'Готово: Collect → publish targets'
                     : on
-                      ? 'Publish включён, но ownership не подтверждён — Recheck'
-                      : 'Publish выключен — «Настроить» → Публикация'
-              }
-            />
-          )
+                      ? !hasTargets && !toReview
+                        ? 'Collect включён: укажите цели публикации или Review'
+                        : 'Collect включён, но нет доступа на чтение — Auth / Recheck'
+                      : 'Collect выключен — «Настроить» → Сбор'
+                }
+              />
+            )
+          },
         },
-      },
-      {
-        key: 'collect_enabled',
-        header: 'Collect',
-        render: (_v, row) => {
-          const ready = collectReady(row)
-          const on = !!row.collect_enabled
-          const toReview = reviewEnabled(row)
-          const hasTargets = (row.publish_targets || []).length > 0
-          return (
-            <FlagStatusIcon
-              on={on}
-              warn={on && !ready}
-              label="Collect"
-              title={
-                ready
-                  ? toReview && !hasTargets
-                    ? 'Готово: Collect → Review'
-                    : toReview
-                      ? 'Готово: Collect → targets + Review'
-                      : 'Готово: Collect → publish targets'
-                  : on
-                    ? !hasTargets && !toReview
-                      ? 'Collect включён: укажите цели публикации или Review'
-                      : 'Collect включён, но нет доступа на чтение — Auth / Recheck'
-                    : 'Collect выключен — «Настроить» → Сбор'
-              }
-            />
-          )
+        {
+          key: 'review',
+          header: 'Review',
+          render: (_v, row) => {
+            const on = reviewEnabled(row)
+            return (
+              <FlagStatusIcon
+                on={on}
+                label="Review"
+                title={
+                  on
+                    ? 'Собранные посты уходят на ручную проверку (status=review)'
+                    : 'Review выключен — «Настроить» → Сбор/Обработка → «На review»'
+                }
+              />
+            )
+          },
         },
-      },
-      {
-        key: 'review',
-        header: 'Review',
-        render: (_v, row) => {
-          const on = reviewEnabled(row)
-          return (
-            <FlagStatusIcon
-              on={on}
-              label="Review"
-              title={
-                on
-                  ? 'Собранные посты уходят на ручную проверку (status=review)'
-                  : 'Review выключен — «Настроить» → Сбор/Обработка → «На review»'
-              }
-            />
-          )
+        {
+          key: 'alert_enabled',
+          header: 'Alert',
+          render: (_v, row) => {
+            const ready = alertReady(row)
+            const on = !!row.alert_enabled
+            return (
+              <FlagStatusIcon
+                on={on}
+                warn={on && !ready}
+                label="Alert"
+                na={row.network !== 'tg' && row.network !== 'vk'}
+                title={
+                  row.network !== 'tg' && row.network !== 'vk'
+                    ? row.network === 'url'
+                      ? 'Алерты недоступны для URL-источников'
+                      : 'Алерты доступны для Telegram и VKontakte'
+                    : ready
+                      ? 'Готово: Alert + канал доставки + правила'
+                      : on
+                        ? 'Alert включён: укажите канал доставки, текст и ключевые слова'
+                        : 'Alert выключен — «Настроить» → Алерты'
+                }
+              />
+            )
+          },
         },
-      },
-      {
-        key: 'alert_enabled',
-        header: 'Alert',
-        render: (_v, row) => {
-          const ready = alertReady(row)
-          const on = !!row.alert_enabled
-          return (
-            <FlagStatusIcon
-              on={on}
-              warn={on && !ready}
-              label="Alert"
-              na={row.network !== 'tg' && row.network !== 'vk'}
-              title={
-                row.network !== 'tg' && row.network !== 'vk'
-                  ? row.network === 'url'
-                    ? 'Алерты недоступны для URL-источников'
-                    : 'Алерты доступны для Telegram и VKontakte'
-                  : ready
-                    ? 'Готово: Alert + канал доставки + правила'
-                    : on
-                      ? 'Alert включён: укажите канал доставки, текст и ключевые слова'
-                      : 'Alert выключен — «Настроить» → Алерты'
-              }
-            />
-          )
+        {
+          key: 'ready',
+          header: 'Ready',
+          render: (_v, row) => {
+            const ready = channelReady(row)
+            return (
+              <FlagStatusIcon
+                on={ready}
+                label="Ready"
+                title={
+                  ready
+                    ? 'Канал готов: Publish и/или Collect(+targets/Review) и/или Alert настроены'
+                    : 'Не готов: нужен Publish (own+auth), либо Collect с targets/Review, либо Alert с доставкой'
+                }
+              />
+            )
+          },
         },
-      },
-      {
-        key: 'ready',
-        header: 'Ready',
-        render: (_v, row) => {
-          const ready = channelReady(row)
-          return (
-            <FlagStatusIcon
-              on={ready}
-              label="Ready"
-              title={
-                ready
-                  ? 'Канал готов: Publish и/или Collect(+targets/Review) и/или Alert настроены'
-                  : 'Не готов: нужен Publish (own+auth), либо Collect с targets/Review, либо Alert с доставкой'
-              }
-            />
-          )
-        },
-      },
-      {
+      ]
+
+      if (isAdmin) {
+        cols.push({
+          key: 'diagnostics',
+          header: 'Диагностика',
+          render: (_v, row) => {
+            const d = row.diagnostics
+            const caps = d?.auth_capabilities
+            const err = (d?.auth_error || '').trim()
+            const errShort =
+              err.length > 48 ? `${err.slice(0, 48)}…` : err || '—'
+            const checked = d?.auth_checked_at
+              ? formatDateTime(d.auth_checked_at)
+              : '—'
+            const collectDay = d?.last_collect_day || '—'
+            const publishDay = d?.last_publish_day || '—'
+            const received = d?.received_total ?? 0
+            const sent = d?.sent_total ?? 0
+            const failed = d?.failed_total ?? 0
+            return (
+              <div className="min-w-[11rem] max-w-[16rem] text-xs leading-snug space-y-0.5 text-[var(--text-secondary)]">
+                <div title={err || undefined}>
+                  <span className="text-[var(--text-muted)]">err:</span>{' '}
+                  <span className={err ? 'text-amber-400' : ''}>{errShort}</span>
+                </div>
+                <div>
+                  <span className="text-[var(--text-muted)]">checked:</span> {checked}
+                </div>
+                <div>
+                  <span className="text-[var(--text-muted)]">caps:</span>{' '}
+                  c={caps?.can_collect ? 'да' : 'нет'} · p=
+                  {caps?.can_publish_text ? 'да' : 'нет'} · a=
+                  {caps?.can_alert ? 'да' : 'нет'}
+                </div>
+                <div>
+                  <span className="text-[var(--text-muted)]">collect:</span>{' '}
+                  {collectDay}
+                  {received ? ` · ${received} recv` : ''}
+                </div>
+                <div>
+                  <span className="text-[var(--text-muted)]">publish:</span>{' '}
+                  {publishDay}
+                  {sent ? ` · ${sent} sent` : ''}
+                  {failed > 0 ? ` · ${failed} fail` : ''}
+                </div>
+              </div>
+            )
+          },
+        })
+      }
+
+      cols.push({
         key: 'actions',
         header: '',
         render: (_v, row) => (
@@ -671,9 +727,11 @@ export function ChannelsPage() {
             </Button>
           </div>
         ),
-      },
-    ],
-    [channels, copiedKey, recheckingId],
+      })
+
+      return cols
+    },
+    [channels, copiedKey, recheckingId, isAdmin],
   )
 
   return (
@@ -682,11 +740,6 @@ export function ChannelsPage() {
         title="Channels"
         description="Единый хаб каналов · Brand → Channels → поток → Analytics"
       />
-      {error && (
-        <div className="mb-4" role="alert">
-          <Alert variant="error">{error}</Alert>
-        </div>
-      )}
       {success && (
         <div className="mb-4" role="status">
           <Alert variant="success">{success}</Alert>
@@ -929,6 +982,11 @@ export function ChannelsPage() {
                   </Link>
                   {' → '}затем Recheck / Bind в карточке канала.
                 </p>
+              )}
+              {error && (
+                <div className="mt-3" role="alert">
+                  <Alert variant="error">{error}</Alert>
+                </div>
               )}
             </CardContent>
           </Card>

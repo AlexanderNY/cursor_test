@@ -4,7 +4,7 @@
 
 H04 · История · одна публикация до статуса в БД
 
-С конца января WordPress перестаёт быть только роутом шлюза: меняется сервис wp, появляются новые функции публикации, правки в `core` (wordpress, notifications, post_service). 6 февраля (`b8ecc340`) Telegram получает свой контур: `tg-bot/config.py`, `database.py`, роутеры — рядом с обновлениями `core/routers/telegram.py`.
+С конца января WordPress перестаёт быть только роутом шлюза: меняется сервис wp, появляются новые функции публикации, правки в `core` (wordpress, notifications, post_service). 6 февраля (`b8ecc340`) у CopyParse появляется сервис `tg-bot`: `config.py`, `database.py`, роутеры — рядом с `core/routers/telegram.py`. Это уже не одиночный Telethon-скрипт из `py/bot`: у сервиса своя БД и место за шлюзом.
 
 8 февраля (`89b1c9e8`) добавляется `url-bot` и файл `SERVICES_OVERVIEW.md`. Третья площадка появляется после того, как в дереве уже есть живые WP и TG, а не одновременно с первой кнопкой в UI.
 

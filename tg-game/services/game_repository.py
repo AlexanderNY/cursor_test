@@ -68,6 +68,37 @@ class GameSessionRow:
     current_step: int
 
 
+@dataclass(slots=True)
+class GameCountryRow:
+    id: int
+    iso2: str
+    name_ru: str
+    capital_ru: str
+    area_km2: Optional[float]
+    population: Optional[int]
+    flag_image_url: Optional[str]
+    flag_image_file_id: Optional[str]
+    map_image_url: Optional[str]
+    map_image_file_id: Optional[str]
+
+
+@dataclass(slots=True)
+class GameCountryStepRow:
+    session_id: int
+    step_index: int
+    country_id: int
+    option_country_ids: list[int]
+
+
+COUNTRY_MODE_DEFS: tuple[tuple[str, str, str, int], ...] = (
+    ("country_training", "Тренировка", "country_training", 300),
+    ("country_flags", "Флаги", "country_flags", 10),
+    ("country_map", "Страна на карте", "country_map", 10),
+)
+
+SCORED_MODE_TYPES: tuple[str, ...] = ("quiz", "country_flags", "country_map")
+
+
 class GameRepository:
     """Репозиторий игровых сущностей."""
 
@@ -620,7 +651,9 @@ class GameRepository:
                                     gs.finished_at ASC NULLS LAST
                             ) AS rn
                         FROM game_sessions gs
+                        JOIN game_modes m ON m.id = gs.mode_id
                         WHERE gs.status = 'completed'
+                          AND m.mode_type = ANY(%s)
                     )
                     SELECT p.telegram_user_id, p.username, rs.score, rs.correct_count,
                            rs.total_questions, rs.duration_sec, rs.finished_at
@@ -630,7 +663,7 @@ class GameRepository:
                     ORDER BY rs.score DESC, rs.duration_sec ASC NULLS LAST, rs.finished_at ASC NULLS LAST
                     LIMIT %s
                     """,
-                    (limit,),
+                    (list(SCORED_MODE_TYPES), limit),
                 )
                 rows = await cur.fetchall()
                 result = [
@@ -1037,7 +1070,9 @@ class GameRepository:
         finally:
             await release_db_connection(conn)
 
-    async def admin_list_questions(self, mode_id: int) -> list[dict[str, Any]]:
+    async def admin_list_questions(
+        self, mode_id: int, *, with_options: bool = False
+    ) -> list[dict[str, Any]]:
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
@@ -1060,6 +1095,33 @@ class GameRepository:
                     }
                     for r in rows
                 ]
+                if with_options and result:
+                    question_ids = [item["id"] for item in result]
+                    await cur.execute(
+                        """
+                        SELECT id, question_id, option_index, option_text, is_correct
+                        FROM game_question_options
+                        WHERE question_id = ANY(%s)
+                        ORDER BY question_id, option_index
+                        """,
+                        (question_ids,),
+                    )
+                    option_rows = await cur.fetchall()
+                    options_by_question: dict[int, list[dict[str, Any]]] = {
+                        qid: [] for qid in question_ids
+                    }
+                    for opt in option_rows:
+                        qid = int(opt[1])
+                        options_by_question.setdefault(qid, []).append(
+                            {
+                                "id": int(opt[0]),
+                                "option_index": int(opt[2]),
+                                "option_text": str(opt[3]),
+                                "is_correct": bool(opt[4]),
+                            }
+                        )
+                    for item in result:
+                        item["options"] = options_by_question.get(item["id"], [])
                 await commit_connection(conn)
                 return result
         finally:
@@ -1237,6 +1299,527 @@ class GameRepository:
             raise
         finally:
             await release_db_connection(conn)
+
+    # --- Countries quiz ---
+
+    async def ensure_country_modes(self, bot_id: int) -> None:
+        """Создаёт режимы стран для бота, если кодов ещё нет."""
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                for code, title, mode_type, questions_per_game in COUNTRY_MODE_DEFS:
+                    await cur.execute(
+                        """
+                        INSERT INTO game_modes (
+                            bot_id, code, title, is_active, questions_per_game, mode_type
+                        )
+                        SELECT %s, %s, %s, TRUE, %s, %s
+                        WHERE NOT EXISTS (
+                            SELECT 1 FROM game_modes
+                            WHERE bot_id = %s AND code = %s
+                        )
+                        """,
+                        (
+                            bot_id,
+                            code,
+                            title,
+                            questions_per_game,
+                            mode_type,
+                            bot_id,
+                            code,
+                        ),
+                    )
+                await commit_connection(conn)
+        except Exception:
+            await rollback_connection(conn)
+            raise
+        finally:
+            await release_db_connection(conn)
+
+    async def list_ready_countries(self) -> list[GameCountryRow]:
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT id, iso2, name_ru, capital_ru, area_km2, population,
+                           flag_image_url, flag_image_file_id,
+                           map_image_url, map_image_file_id
+                    FROM game_countries
+                    WHERE is_active = TRUE
+                      AND flag_image_url IS NOT NULL
+                      AND map_image_url IS NOT NULL
+                    ORDER BY id
+                    """
+                )
+                rows = await cur.fetchall()
+                result = [_country_row_from_db(r) for r in rows]
+                await commit_connection(conn)
+                return result
+        finally:
+            await release_db_connection(conn)
+
+    async def count_ready_countries(self) -> int:
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT COUNT(*) FROM game_countries
+                    WHERE is_active = TRUE
+                      AND flag_image_url IS NOT NULL
+                      AND map_image_url IS NOT NULL
+                    """
+                )
+                row = await cur.fetchone()
+                await commit_connection(conn)
+                return int(row[0]) if row else 0
+        finally:
+            await release_db_connection(conn)
+
+    async def get_country(self, country_id: int) -> Optional[GameCountryRow]:
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT id, iso2, name_ru, capital_ru, area_km2, population,
+                           flag_image_url, flag_image_file_id,
+                           map_image_url, map_image_file_id
+                    FROM game_countries WHERE id = %s
+                    """,
+                    (country_id,),
+                )
+                r = await cur.fetchone()
+                await commit_connection(conn)
+                return _country_row_from_db(r) if r else None
+        finally:
+            await release_db_connection(conn)
+
+    async def get_countries_by_ids(
+        self, country_ids: list[int]
+    ) -> dict[int, GameCountryRow]:
+        if not country_ids:
+            return {}
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT id, iso2, name_ru, capital_ru, area_km2, population,
+                           flag_image_url, flag_image_file_id,
+                           map_image_url, map_image_file_id
+                    FROM game_countries WHERE id = ANY(%s)
+                    """,
+                    (list(country_ids),),
+                )
+                rows = await cur.fetchall()
+                result: dict[int, GameCountryRow] = {}
+                for r in rows:
+                    country = _country_row_from_db(r)
+                    result[country.id] = country
+                await commit_connection(conn)
+                return result
+        finally:
+            await release_db_connection(conn)
+
+    async def set_country_flag_file_id(self, country_id: int, file_id: str) -> None:
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    UPDATE game_countries
+                    SET flag_image_file_id = %s
+                    WHERE id = %s AND (
+                        flag_image_file_id IS NULL OR flag_image_file_id = ''
+                    )
+                    """,
+                    (file_id, country_id),
+                )
+                await commit_connection(conn)
+        except Exception:
+            await rollback_connection(conn)
+            raise
+        finally:
+            await release_db_connection(conn)
+
+    async def set_country_map_file_id(self, country_id: int, file_id: str) -> None:
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    UPDATE game_countries
+                    SET map_image_file_id = %s
+                    WHERE id = %s AND (
+                        map_image_file_id IS NULL OR map_image_file_id = ''
+                    )
+                    """,
+                    (file_id, country_id),
+                )
+                await commit_connection(conn)
+        except Exception:
+            await rollback_connection(conn)
+            raise
+        finally:
+            await release_db_connection(conn)
+
+    async def create_country_session_with_steps(
+        self,
+        *,
+        player_id: int,
+        mode_id: int,
+        steps: list[tuple[int, list[int]]],
+    ) -> int:
+        """
+        steps: список (country_id, option_country_ids).
+        Для тренировки option_country_ids — пустой список.
+        """
+        if not steps:
+            raise ValueError("steps must not be empty")
+
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    UPDATE game_sessions
+                    SET status = 'aborted', finished_at = NOW()
+                    WHERE player_id = %s AND status = 'in_progress'
+                    """,
+                    (player_id,),
+                )
+                await cur.execute(
+                    """
+                    INSERT INTO game_sessions (
+                        player_id, mode_id, status, score, correct_count,
+                        total_questions, current_step
+                    )
+                    VALUES (%s, %s, 'in_progress', 0, 0, %s, 0)
+                    RETURNING id
+                    """,
+                    (player_id, mode_id, len(steps)),
+                )
+                row = await cur.fetchone()
+                session_id = int(row[0])
+
+                for step_index, (country_id, option_ids) in enumerate(steps):
+                    await cur.execute(
+                        """
+                        INSERT INTO game_country_steps (
+                            session_id, step_index, country_id, option_country_ids
+                        )
+                        VALUES (%s, %s, %s, %s)
+                        """,
+                        (session_id, step_index, country_id, list(option_ids)),
+                    )
+                await commit_connection(conn)
+                return session_id
+        except Exception:
+            await rollback_connection(conn)
+            raise
+        finally:
+            await release_db_connection(conn)
+
+    async def get_country_step(
+        self, session_id: int, step_index: int
+    ) -> Optional[GameCountryStepRow]:
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT session_id, step_index, country_id, option_country_ids
+                    FROM game_country_steps
+                    WHERE session_id = %s AND step_index = %s
+                    """,
+                    (session_id, step_index),
+                )
+                r = await cur.fetchone()
+                await commit_connection(conn)
+                if not r:
+                    return None
+                option_ids = list(r[3]) if r[3] is not None else []
+                return GameCountryStepRow(
+                    session_id=int(r[0]),
+                    step_index=int(r[1]),
+                    country_id=int(r[2]),
+                    option_country_ids=[int(x) for x in option_ids],
+                )
+        finally:
+            await release_db_connection(conn)
+
+    async def advance_country_training_step(self, session_id: int) -> dict[str, Any]:
+        """Переход на следующую карточку тренировки без очков."""
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT id, status, total_questions, current_step, started_at
+                    FROM game_sessions WHERE id = %s FOR UPDATE
+                    """,
+                    (session_id,),
+                )
+                srow = await cur.fetchone()
+                if not srow:
+                    await rollback_connection(conn)
+                    return {"error": "session_not_found"}
+
+                _sid, status, total_questions, current_step, started_at = srow
+                if status != "in_progress":
+                    await rollback_connection(conn)
+                    return {"error": "session_not_in_progress", "status": status}
+
+                new_step = int(current_step) + 1
+                completed = new_step >= int(total_questions)
+                if completed:
+                    finished_at = datetime.now(timezone.utc)
+                    duration_sec = None
+                    if started_at is not None:
+                        started = started_at
+                        if started.tzinfo is None:
+                            started = started.replace(tzinfo=timezone.utc)
+                        duration_sec = int((finished_at - started).total_seconds())
+                    await cur.execute(
+                        """
+                        UPDATE game_sessions
+                        SET current_step = %s, status = 'completed',
+                            finished_at = %s, duration_sec = %s
+                        WHERE id = %s
+                        """,
+                        (new_step, finished_at, duration_sec, session_id),
+                    )
+                else:
+                    await cur.execute(
+                        """
+                        UPDATE game_sessions SET current_step = %s WHERE id = %s
+                        """,
+                        (new_step, session_id),
+                    )
+                await commit_connection(conn)
+                return {
+                    "session_completed": completed,
+                    "current_step": new_step,
+                    "total_questions": int(total_questions),
+                }
+        except Exception:
+            await rollback_connection(conn)
+            raise
+        finally:
+            await release_db_connection(conn)
+
+    async def submit_country_answer_and_advance(
+        self,
+        *,
+        session_id: int,
+        step_index: int,
+        selected_country_id: int,
+        points_per_correct: int = 1,
+    ) -> dict[str, Any]:
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "SELECT id, status, score, correct_count, total_questions, current_step, started_at "
+                    "FROM game_sessions WHERE id = %s FOR UPDATE",
+                    (session_id,),
+                )
+                srow = await cur.fetchone()
+                if not srow:
+                    await rollback_connection(conn)
+                    return {"error": "session_not_found"}
+
+                _sid, status, score, correct_count, total_questions, current_step, started_at = srow
+                if status != "in_progress":
+                    await rollback_connection(conn)
+                    return {"error": "session_not_in_progress", "status": status}
+
+                if int(current_step) != step_index:
+                    await rollback_connection(conn)
+                    return {"error": "wrong_step"}
+
+                await cur.execute(
+                    """
+                    SELECT country_id FROM game_country_steps
+                    WHERE session_id = %s AND step_index = %s
+                    """,
+                    (session_id, step_index),
+                )
+                step_row = await cur.fetchone()
+                if not step_row:
+                    await rollback_connection(conn)
+                    return {"error": "step_not_found"}
+
+                correct_country_id = int(step_row[0])
+                is_correct = selected_country_id == correct_country_id
+
+                await cur.execute(
+                    """
+                    INSERT INTO game_country_answers (
+                        session_id, step_index, selected_country_id, is_correct
+                    )
+                    VALUES (%s, %s, %s, %s)
+                    ON CONFLICT (session_id, step_index) DO NOTHING
+                    RETURNING id
+                    """,
+                    (session_id, step_index, selected_country_id, is_correct),
+                )
+                inserted = await cur.fetchone()
+                if not inserted:
+                    await cur.execute(
+                        """
+                        SELECT is_correct FROM game_country_answers
+                        WHERE session_id = %s AND step_index = %s
+                        """,
+                        (session_id, step_index),
+                    )
+                    existing = await cur.fetchone()
+                    await commit_connection(conn)
+                    return {
+                        "duplicate": True,
+                        "inserted": False,
+                        "is_correct": bool(existing[0]) if existing else False,
+                        "session_completed": False,
+                        "score": int(score),
+                        "correct_count": int(correct_count),
+                        "current_step": int(current_step),
+                        "total_questions": int(total_questions),
+                        "correct_country_id": correct_country_id,
+                    }
+
+                new_score = int(score) + (points_per_correct if is_correct else 0)
+                new_correct = int(correct_count) + (1 if is_correct else 0)
+                new_step = int(current_step) + 1
+                completed = new_step >= int(total_questions)
+
+                if completed:
+                    finished_at = datetime.now(timezone.utc)
+                    duration_sec = None
+                    if started_at is not None:
+                        started = started_at
+                        if started.tzinfo is None:
+                            started = started.replace(tzinfo=timezone.utc)
+                        duration_sec = int((finished_at - started).total_seconds())
+                    await cur.execute(
+                        """
+                        UPDATE game_sessions
+                        SET score = %s, correct_count = %s, current_step = %s,
+                            status = 'completed', finished_at = %s, duration_sec = %s
+                        WHERE id = %s
+                        """,
+                        (
+                            new_score,
+                            new_correct,
+                            new_step,
+                            finished_at,
+                            duration_sec,
+                            session_id,
+                        ),
+                    )
+                else:
+                    await cur.execute(
+                        """
+                        UPDATE game_sessions
+                        SET score = %s, correct_count = %s, current_step = %s
+                        WHERE id = %s
+                        """,
+                        (new_score, new_correct, new_step, session_id),
+                    )
+
+                await commit_connection(conn)
+                return {
+                    "inserted": True,
+                    "is_correct": is_correct,
+                    "duplicate": False,
+                    "session_completed": completed,
+                    "score": new_score,
+                    "correct_count": new_correct,
+                    "current_step": new_step,
+                    "total_questions": int(total_questions),
+                    "correct_country_id": correct_country_id,
+                }
+        except Exception as e:
+            logger.exception("submit_country_answer_and_advance failed: %s", e)
+            try:
+                await rollback_connection(conn)
+            except Exception:
+                pass
+            raise
+        finally:
+            await release_db_connection(conn)
+
+    async def upsert_country(
+        self,
+        *,
+        iso2: str,
+        name_ru: str,
+        capital_ru: str,
+        area_km2: Optional[float],
+        population: Optional[int],
+        flag_image_url: Optional[str],
+        map_image_url: Optional[str],
+        is_active: bool = True,
+    ) -> int:
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    INSERT INTO game_countries (
+                        iso2, name_ru, capital_ru, area_km2, population,
+                        flag_image_url, map_image_url, is_active
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (iso2) DO UPDATE SET
+                        name_ru = EXCLUDED.name_ru,
+                        capital_ru = EXCLUDED.capital_ru,
+                        area_km2 = EXCLUDED.area_km2,
+                        population = EXCLUDED.population,
+                        flag_image_url = COALESCE(
+                            EXCLUDED.flag_image_url, game_countries.flag_image_url
+                        ),
+                        map_image_url = COALESCE(
+                            EXCLUDED.map_image_url, game_countries.map_image_url
+                        ),
+                        is_active = EXCLUDED.is_active
+                    RETURNING id
+                    """,
+                    (
+                        iso2.upper(),
+                        name_ru,
+                        capital_ru,
+                        area_km2,
+                        population,
+                        flag_image_url,
+                        map_image_url,
+                        is_active,
+                    ),
+                )
+                row = await cur.fetchone()
+                await commit_connection(conn)
+                return int(row[0])
+        except Exception:
+            await rollback_connection(conn)
+            raise
+        finally:
+            await release_db_connection(conn)
+
+
+def _country_row_from_db(r: Any) -> GameCountryRow:
+    return GameCountryRow(
+        id=int(r[0]),
+        iso2=str(r[1]).strip().upper(),
+        name_ru=str(r[2]),
+        capital_ru=str(r[3] or ""),
+        area_km2=float(r[4]) if r[4] is not None else None,
+        population=int(r[5]) if r[5] is not None else None,
+        flag_image_url=resolve_public_media_url(r[6]),
+        flag_image_file_id=r[7],
+        map_image_url=resolve_public_media_url(r[8]),
+        map_image_file_id=r[9],
+    )
 
 
 game_repository = GameRepository()

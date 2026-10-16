@@ -1,6 +1,7 @@
 import { apiClient, getErrorMessage } from './api-client'
 import type {
   UserStatisticsResponse,
+  PipelineEffectivenessResponse,
   ScheduleResponse,
   ServicesStatusResponse,
   PostsTablesResponse,
@@ -9,8 +10,10 @@ import type {
   PipelineEventsResponse,
   ProcessorRunResponse,
   PostingDiagnosticsResponse,
+  PostTraceResponse,
   StorageFilesResponse,
   StorageDeleteResponse,
+  StorageBulkDeleteResponse,
   StoragePresignedUrlResponse,
   RuntimeLocationResponse,
   AiCheckResponse,
@@ -22,6 +25,17 @@ export const coreService = {
   async getUsersStatistics(): Promise<UserStatisticsResponse> {
     try {
       const response = await apiClient.get<UserStatisticsResponse>('/core/users-statistics')
+      return response.data
+    } catch (error) {
+      throw new Error(getErrorMessage(error))
+    }
+  },
+
+  async getPipelineEffectiveness(days = 30): Promise<PipelineEffectivenessResponse> {
+    try {
+      const response = await apiClient.get<PipelineEffectivenessResponse>('/core/pipeline-effectiveness', {
+        params: { days },
+      })
       return response.data
     } catch (error) {
       throw new Error(getErrorMessage(error))
@@ -185,6 +199,15 @@ export const coreService = {
     }
   },
 
+  async getPostTrace(postId: number): Promise<PostTraceResponse> {
+    try {
+      const response = await apiClient.get<PostTraceResponse>(`/core/admin/posts/${postId}/trace`)
+      return response.data
+    } catch (error) {
+      throw new Error(getErrorMessage(error))
+    }
+  },
+
   async getStorageFiles(params?: {
     prefix?: string
     limit?: number
@@ -217,6 +240,18 @@ export const coreService = {
       const response = await apiClient.delete<StorageDeleteResponse>('/core/admin/storage/files', {
         params: { key },
       })
+      return response.data
+    } catch (error) {
+      throw new Error(getErrorMessage(error))
+    }
+  },
+
+  async deleteStorageFiles(keys: string[]): Promise<StorageBulkDeleteResponse> {
+    try {
+      const response = await apiClient.post<StorageBulkDeleteResponse>(
+        '/core/admin/storage/files/delete',
+        { keys },
+      )
       return response.data
     } catch (error) {
       throw new Error(getErrorMessage(error))

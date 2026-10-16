@@ -64,6 +64,46 @@ Python — ООП-язык с множественным наследовани�
 3. `@classmethod from_str` для Rectangle из строки `"3x4"`.
 4. Property `width` с валидацией > 0.
 
+Заготовка `Rectangle` + `from_str`:
+
+```python
+class Rectangle:
+    def __init__(self, width: float, height: float) -> None:
+        self.width = width
+        self.height = height
+
+    @property
+    def width(self) -> float:
+        return self._width
+
+    @width.setter
+    def width(self, value: float) -> None:
+        if value <= 0:
+            raise ValueError("width must be > 0")
+        self._width = value
+
+    @property
+    def height(self) -> float:
+        return self._height
+
+    @height.setter
+    def height(self, value: float) -> None:
+        if value <= 0:
+            raise ValueError("height must be > 0")
+        self._height = value
+
+    def area(self) -> float:
+        return self.width * self.height
+
+    @classmethod
+    def from_str(cls, text: str) -> "Rectangle":
+        w, h = text.lower().split("x", 1)
+        return cls(float(w), float(h))
+
+r = Rectangle.from_str("3x4")
+print("area:", r.area(), "isinstance:", isinstance(r, Rectangle))
+```
+
 **В группу:** когда staticmethod лучше вынести в модульную функцию?
 
 **Готово, если…**

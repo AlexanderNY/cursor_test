@@ -22,7 +22,7 @@ export function GameOverScreen({
         <p className="bowl-subtitle">
           {victory
             ? 'Вы прошли все пять сеттингов — от унитаза до моря.'
-            : 'Вес упал до нуля. Попробуйте ещё раз.'}
+            : 'Вас коснулся более крупный враг. Вырастите или убегайте.'}
         </p>
         <p className="bowl-subtitle">
           Очки: {score}

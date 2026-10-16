@@ -7,6 +7,7 @@ import logging
 import httpx
 
 from config import settings
+from shared.internal_auth import internal_auth_headers
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +21,7 @@ async def notify_platform_recheck(user_id: int) -> None:
             await client.post(
                 f"{base}/internal/smm/platform/recheck",
                 params={"user_id": user_id},
+                headers=internal_auth_headers(),
             )
     except Exception as exc:
         logger.debug("platform recheck notify failed user=%s: %s", user_id, exc)

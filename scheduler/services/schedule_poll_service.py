@@ -16,6 +16,7 @@ import httpx
 
 from config import settings
 from database import get_db_connection
+from shared.internal_auth import internal_auth_headers
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +67,7 @@ async def _fetch_schedules() -> list[dict[str, Any]]:
         raise RuntimeError("CORE_SERVICE_URL is not configured")
     url = f"{base}/schedules"
     async with httpx.AsyncClient(timeout=30.0) as client:
-        resp = await client.get(url)
+        resp = await client.get(url, headers=internal_auth_headers())
     resp.raise_for_status()
     data = resp.json()
     return data.get("schedules") or []
@@ -237,7 +238,7 @@ async def _notify_bot(
     if not schedules and platform != "url":
         return None
     url = f"{base}/schedule"
-    headers = {"Content-Type": "application/json"}
+    headers = {"Content-Type": "application/json", **internal_auth_headers()}
     payload = {"schedules": schedules}
     try:
         async with httpx.AsyncClient(timeout=timeout_seconds) as client:
@@ -335,7 +336,11 @@ async def _recheck_stale_channel_auth() -> None:
     url = f"{base}/internal/smm/channels/auth/recheck-stale"
     try:
         async with httpx.AsyncClient(timeout=120.0) as client:
-            resp = await client.post(url, params={"max_age_hours": 24})
+            resp = await client.post(
+                url,
+                params={"max_age_hours": 24},
+                headers=internal_auth_headers(),
+            )
         if resp.status_code >= 400:
             logger.warning("Channel auth recheck failed: %s %s", resp.status_code, resp.text)
         else:
@@ -356,7 +361,9 @@ async def _run_smm_jobs() -> None:
     url = f"{base}/internal/smm/jobs/run"
     try:
         async with httpx.AsyncClient(timeout=60.0) as client:
-            resp = await client.post(url, params={"limit": 50})
+            resp = await client.post(
+                url, params={"limit": 50}, headers=internal_auth_headers()
+            )
         if resp.status_code >= 400:
             logger.warning("SMM jobs run failed: %s %s", resp.status_code, resp.text)
         else:
@@ -373,7 +380,7 @@ async def _sync_competitor_snapshots() -> None:
     url = f"{base}/internal/smm/competitors/sync"
     try:
         async with httpx.AsyncClient(timeout=120.0) as client:
-            resp = await client.post(url)
+            resp = await client.post(url, headers=internal_auth_headers())
         if resp.status_code >= 400:
             logger.warning("Competitor sync failed: %s %s", resp.status_code, resp.text)
         else:

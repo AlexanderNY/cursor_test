@@ -1,8 +1,8 @@
 """Роутер для получения статистики."""
 
-from fastapi import APIRouter, Request, Depends, HTTPException, status
+from fastapi import APIRouter, Query, Request, Depends, HTTPException, status
 from services.statistics_service import statistics_service
-from schemas import StatisticsResponse, UserStatisticsResponse
+from schemas import PipelineEffectivenessResponse, StatisticsResponse, UserStatisticsResponse
 from dependencies import get_current_user, get_admin_user
 from typing import Dict, List
 import httpx
@@ -43,6 +43,17 @@ def _merge_users_with_stats(
             "published_posts": stat["published_posts"]
         })
     return result
+
+
+@router.get("/pipeline-effectiveness", response_model=PipelineEffectivenessResponse)
+async def get_pipeline_effectiveness(
+    days: int = Query(30, description="Окно в днях: 7, 30 или 90"),
+    admin_user: Dict = Depends(get_admin_user),
+):
+    """Успех публикации, ошибки, время сбора→публикации и застрявшие очереди."""
+    del admin_user
+    data = await statistics_service.get_pipeline_effectiveness(days)
+    return PipelineEffectivenessResponse(**data)
 
 
 @router.get("/users-statistics", response_model=UserStatisticsResponse)

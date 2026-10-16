@@ -1,5 +1,6 @@
 """Клиент для работы с WordPress REST API."""
 
+import logging
 from io import BytesIO
 from pathlib import Path
 from typing import Optional, Dict, Any, Tuple
@@ -7,6 +8,13 @@ from typing import Optional, Dict, Any, Tuple
 import httpx
 
 from shared import async_fs
+
+logger = logging.getLogger(__name__)
+
+
+def normalize_app_password(value: Optional[str]) -> str:
+    """Application Password is shown in groups; spaces are not part of the secret."""
+    return "".join((value or "").split())
 
 
 class WordPressClient:
@@ -28,7 +36,7 @@ class WordPressClient:
         """
         self.site_url = site_url.rstrip("/")
         self.username = (username or "").strip()
-        self.app_password = (app_password or "").strip()
+        self.app_password = normalize_app_password(app_password)
         self.base_url = f"{self.site_url}/wp-json/wp/v2"
 
     @property
@@ -140,6 +148,7 @@ class WordPressClient:
         orderby: str = "date",
         order: str = "desc",
         fields: Optional[str] = None,
+        context: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Получает список постов из WordPress.
@@ -152,6 +161,7 @@ class WordPressClient:
             orderby: Поле сортировки
             order: asc | desc
             fields: WP REST `_fields` comma-separated list
+            context: `edit` returns title/content.raw when Application Password is valid
 
         Returns:
             Словарь с данными постов и пагинацией
@@ -169,32 +179,64 @@ class WordPressClient:
             params["after"] = after
         if fields:
             params["_fields"] = fields
+        if context:
+            params["context"] = context
 
+        auth = self._auth()
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.get(
-                    f"{self.base_url}/posts",
-                    params=params,
-                    auth=self._auth(),
-                )
-                response.raise_for_status()
-
-                total_posts = int(response.headers.get("X-WP-Total", 0))
-                total_pages = int(response.headers.get("X-WP-TotalPages", 0))
-
-                return {
-                    "posts": response.json(),
-                    "total": total_posts,
-                    "total_pages": total_pages,
-                    "page": page,
-                    "per_page": per_page,
-                }
+            return await self._fetch_posts(params, auth, page=page, per_page=per_page)
         except httpx.HTTPStatusError as e:
+            if e.response.status_code == 401 and auth is not None:
+                logger.warning(
+                    "WordPress get_posts auth failed for %s, retrying public REST",
+                    self.site_url,
+                )
+                public_params = dict(params)
+                public_params.pop("context", None)
+                try:
+                    return await self._fetch_posts(
+                        public_params, None, page=page, per_page=per_page
+                    )
+                except httpx.HTTPStatusError as retry_error:
+                    raise Exception(
+                        "WordPress API error "
+                        f"({retry_error.response.status_code}): Failed to get posts"
+                    ) from retry_error
+                except httpx.RequestError as retry_error:
+                    raise Exception(
+                        f"Request to WordPress failed: {retry_error}"
+                    ) from retry_error
             raise Exception(
                 f"WordPress API error ({e.response.status_code}): Failed to get posts"
-            )
+            ) from e
         except httpx.RequestError as e:
-            raise Exception(f"Request to WordPress failed: {str(e)}")
+            raise Exception(f"Request to WordPress failed: {str(e)}") from e
+
+    async def _fetch_posts(
+        self,
+        params: Dict[str, Any],
+        auth: Optional[Tuple[str, str]],
+        *,
+        page: int,
+        per_page: int,
+    ) -> Dict[str, Any]:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(
+                f"{self.base_url}/posts",
+                params=params,
+                auth=auth,
+            )
+            response.raise_for_status()
+
+        total_posts = int(response.headers.get("X-WP-Total", 0))
+        total_pages = int(response.headers.get("X-WP-TotalPages", 0))
+        return {
+            "posts": response.json(),
+            "total": total_posts,
+            "total_pages": total_pages,
+            "page": page,
+            "per_page": per_page,
+        }
 
     async def get_page(self, page_id: int) -> Dict[str, Any]:
         """GET /wp/v2/pages/{id}."""

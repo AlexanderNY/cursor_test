@@ -65,7 +65,7 @@ pytest -n 4 -m smoke --alluredir=allure-results
 
 **Git для QA.** `clone` → ветка `feature/qa-...` → `add` / `commit` / `push` → Merge Request. Смотрите `diff`, не коммитьте секреты, `__pycache__`, локальные отчёты. Конфликты в локаторах — норма; решайте с автором UI.
 
-Минимум команд: `status`, `diff`, `branch`, `checkout -b`, `pull`, `log`, `stash` (временно убрать локальные правки).
+Минимум команд: `status`, `diff`, `branch`, `checkout -b`, `pull`, `log`, `stash` (временно убрать локальные правки). Практика stash/веток без диска: [/game/git](/game/git), дальше [GIT03](/game/learn/git-stash-reset-rm).
 
 **CI integration.** Job: checkout → Python + deps → сервисы (БД/mock) → `pytest` → публикация отчёта → артефакты скриншотов при fail. Падение тестов валит пайплайн (или отдельный quality-gate nightly).
 
@@ -121,6 +121,8 @@ test_smoke:
 - [ ] Объясняете роль runner одной фразой
 - [ ] Параллель без шаринга состояния
 - [ ] Называете 5 артефактов хорошего отчёта
+
+**Тренажёр Git:** [stash-roundtrip](/game/git?task=stash-roundtrip) · [GIT03](/game/learn/git-stash-reset-rm).
 
 ## Схема: CI с автотестами
 

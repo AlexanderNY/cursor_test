@@ -123,10 +123,13 @@ async def root():
 @app.get("/health")
 async def health_check():
     """Проверка здоровья сервиса."""
+    from shared.container_stats import get_container_stats
+
     return {
         "status": "healthy",
         "service": "core",
         "server_time": datetime.utcnow().isoformat() + "Z",
+        **get_container_stats(),
     }
 
 

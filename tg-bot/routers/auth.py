@@ -26,16 +26,27 @@ def set_client_manager(manager: TelegramClientManager) -> None:
     client_manager = manager
 
 
+def _assert_header_matches_user(
+    x_user_id: Optional[str],
+    body_user_id: int,
+) -> None:
+    if not x_user_id or not str(x_user_id).strip():
+        raise HTTPException(status_code=401, detail="X-User-Id header required")
+    try:
+        header_uid = int(x_user_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid X-User-Id") from exc
+    if header_uid != int(body_user_id):
+        raise HTTPException(status_code=403, detail="Access denied for this user_id")
+
+
 @router.post("/code", response_model=AuthResponse)
-async def submit_phone_code(request: PhoneCodeRequest):
-    """Обрабатывает код подтверждения от пользователя.
-    
-    Args:
-        request: Запрос с кодом подтверждения
-        
-    Returns:
-        Результат авторизации
-    """
+async def submit_phone_code(
+    request: PhoneCodeRequest,
+    x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
+):
+    """Обрабатывает код подтверждения от пользователя."""
+    _assert_header_matches_user(x_user_id, request.user_id)
     if not client_manager:
         raise HTTPException(status_code=503, detail="Client manager not initialized")
     
@@ -77,15 +88,12 @@ async def resend_phone_code(user_id: int):
 
 
 @router.post("/password", response_model=AuthResponse)
-async def submit_password(request: PasswordRequest):
-    """Обрабатывает 2FA пароль от пользователя.
-    
-    Args:
-        request: Запрос с паролем
-        
-    Returns:
-        Результат авторизации
-    """
+async def submit_password(
+    request: PasswordRequest,
+    x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
+):
+    """Обрабатывает 2FA пароль от пользователя."""
+    _assert_header_matches_user(x_user_id, request.user_id)
     if not client_manager:
         raise HTTPException(status_code=503, detail="Client manager not initialized")
     
