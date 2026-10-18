@@ -9,6 +9,56 @@ import type { BrandChannel, DigestJob, DigestPreviewItem } from '@/types/smm'
 import { getErrorMessage } from '@/services/api-client'
 import { formatDateTime } from '@/utils/date'
 
+const RUN_MATCH_MS = 5 * 60 * 1000
+
+function closestDigestPreview(
+  lastRunAt: string,
+  previews: DigestPreviewItem[],
+): DigestPreviewItem | null {
+  const runAt = new Date(lastRunAt).getTime()
+  if (Number.isNaN(runAt)) return null
+  let match: DigestPreviewItem | null = null
+  let bestDelta = RUN_MATCH_MS
+  for (const item of previews) {
+    if (!item.created_at) continue
+    const createdAt = new Date(item.created_at).getTime()
+    if (Number.isNaN(createdAt)) continue
+    const delta = Math.abs(createdAt - runAt)
+    if (delta > bestDelta) continue
+    match = item
+    bestDelta = delta
+  }
+  return match
+}
+
+function nextDigestRunLabel(job: DigestJob): string {
+  if (!job.enabled) return 'не запланирован — сводка выключена'
+  if (!job.source_channel_ids?.length) return 'не запланирован — не выбраны каналы-источники'
+  if (job.publish_channel_id == null) return 'не запланирован — не выбран канал публикации'
+  if (!job.last_run_at) return 'в ближайшую минуту, если уже есть накопленный текст'
+  const lastRun = new Date(job.last_run_at).getTime()
+  if (Number.isNaN(lastRun)) return 'в ближайшую минуту'
+  const nextRun = lastRun + (job.interval_min || 60) * 60 * 1000
+  if (nextRun <= Date.now()) return 'в ближайшую минуту'
+  return formatDateTime(new Date(nextRun))
+}
+
+function lastDigestRunDetail(job: DigestJob, previews: DigestPreviewItem[]): string {
+  if (!job.last_run_at) return 'Цикл ещё ни разу не обрабатывал эту сводку.'
+  const preview = closestDigestPreview(job.last_run_at, previews)
+  if (!preview) {
+    return 'Сводка не создана: к моменту запуска не было накопленных сообщений.'
+  }
+  const missAt = job.last_cover_miss_at ? new Date(job.last_cover_miss_at).getTime() : NaN
+  const runAt = new Date(job.last_run_at).getTime()
+  const missedCover =
+    !Number.isNaN(missAt) && !Number.isNaN(runAt) && Math.abs(missAt - runAt) <= RUN_MATCH_MS
+  const coverNote = missedCover
+    ? ` Картинка не подобрана${job.last_cover_miss_theme ? `: ${job.last_cover_miss_theme}` : ''}.`
+    : ''
+  return `Опубликована сводка из ${preview.message_count} сообщ.${coverNote}`
+}
+
 interface BrandDigestCardProps {
   brandId: number
   channels: BrandChannel[]
@@ -129,6 +179,17 @@ export function BrandDigestCard({ brandId, channels }: BrandDigestCardProps) {
             <p className="text-sm text-[var(--text-muted)]">Загрузка…</p>
           ) : (
             <>
+              {job && (
+                <div className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)]/40 p-3 space-y-1 text-xs">
+                  <p className="text-sm font-semibold text-[var(--text-primary)]">Последний запуск</p>
+                  <p className="text-[var(--text-secondary)]">
+                    Время: {job.last_run_at ? formatDateTime(job.last_run_at) : 'ещё не было'}
+                  </p>
+                  <p className="text-[var(--text-secondary)]">{lastDigestRunDetail(job, previews)}</p>
+                  <p className="text-[var(--text-muted)]">Следующий: {nextDigestRunLabel(job)}</p>
+                </div>
+              )}
+
               <label className="flex items-center gap-2 text-sm font-medium">
                 <input
                   type="checkbox"
@@ -250,12 +311,6 @@ export function BrandDigestCard({ brandId, channels }: BrandDigestCardProps) {
                   placeholder="Краткая сводка тем и фактов…"
                 />
               </div>
-
-              {job?.last_run_at && (
-                <p className="text-xs text-[var(--text-muted)]">
-                  Последний запуск: {formatDateTime(job.last_run_at)}
-                </p>
-              )}
 
               <div className="rounded-lg border border-[var(--border-color)] p-3 space-y-2">
                 <p className="text-xs font-semibold">Последние сводки</p>

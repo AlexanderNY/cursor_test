@@ -17,6 +17,7 @@ export interface CreatePostProfile {
     instagram?: boolean
     dzen?: boolean
   }
+  channel_ids?: number[]
 }
 
 /** Backend profile response uses default_platforms */
@@ -26,6 +27,10 @@ interface CpostProfileResponse {
     tw?: boolean
     wp?: boolean
     vk?: boolean
+    threads?: boolean
+    instagram?: boolean
+    dzen?: boolean
+    channel_ids?: number[]
   }
 }
 
@@ -66,6 +71,7 @@ export const createPostService = {
       if (!data) return null
       const platforms = 'default_platforms' in data ? data.default_platforms : (data as CreatePostProfile).social_networks
       const sn = platforms ?? { tg: false, tw: false, vk: false, wp: false, threads: false, instagram: false, dzen: false }
+      const rawIds = 'channel_ids' in sn && Array.isArray(sn.channel_ids) ? sn.channel_ids : []
       return {
         social_networks: {
           tg: sn.tg ?? false,
@@ -76,6 +82,7 @@ export const createPostService = {
           instagram: sn.instagram ?? false,
           dzen: sn.dzen ?? false,
         },
+        channel_ids: rawIds.filter((id) => Number.isInteger(id)),
       }
     } catch (error) {
       if (axios.isAxiosError(error) && error.response?.status === 404) {
@@ -96,6 +103,7 @@ export const createPostService = {
           threads: profile.social_networks.threads ?? false,
           instagram: profile.social_networks.instagram ?? false,
           dzen: profile.social_networks.dzen ?? false,
+          channel_ids: profile.channel_ids ?? [],
         },
       })
     } catch (error) {

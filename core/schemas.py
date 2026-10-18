@@ -1037,6 +1037,7 @@ class DefaultPlatforms(BaseModel):
     threads: bool = False
     dzen: bool = False
     instagram: bool = False
+    channel_ids: List[int] = Field(default_factory=list)
 
 
 class CpostProfileBase(BaseModel):

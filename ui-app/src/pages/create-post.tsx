@@ -1,4 +1,4 @@
-import { useState, FormEvent, useEffect, type ReactNode } from 'react'
+import { useState, FormEvent, useEffect, useMemo, type ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -16,11 +16,14 @@ import {
   TargetSocialNetworksWidget,
   EMPTY_TARGET_SOCIAL_NETWORKS,
   EMPTY_SELECTED_BRAND_CHANNELS,
+  TARGET_SOCIAL_LABELS,
+  TARGET_SOCIAL_NETWORK_ORDER,
   type TargetSocialNetworks,
+  type TargetSocialNetworkKey,
   type SelectedBrandChannels,
 } from '@/components/target-social-networks'
 import type { PostRow } from '@/types/core'
-import type { PublishJob } from '@/types/smm'
+import type { PlatformStatusResponse, PublishJob } from '@/types/smm'
 import { formatDateTime } from '@/utils/date'
 import { getErrorMessage } from '@/services/api-client'
 import { JobCollabPanel } from '@/components/smm/job-collab-panel'
@@ -95,7 +98,8 @@ function fromDatetimeLocal(value: string): string {
 type TabId = 'create' | 'posts' | 'posts-review' | 'profile'
 
 export function CreatePostPage() {
-  const { selectedBrandId, selectedBrand, connectedPublishChannels, ownChannels } = useBrand()
+  const { selectedBrandId, selectedBrand, ownChannels } = useBrand()
+  const [platformStatus, setPlatformStatus] = useState<PlatformStatusResponse | null>(null)
   const [searchParams] = useSearchParams()
   const [activeTab, setActiveTab] = useState<TabId>('create')
 
@@ -105,6 +109,8 @@ export function CreatePostPage() {
   const [selectedChannels, setSelectedChannels] = useState<SelectedBrandChannels>({
     ...EMPTY_SELECTED_BRAND_CHANNELS,
   })
+  const [profileChannelIds, setProfileChannelIds] = useState<number[]>([])
+  const [legacyProfileNetworks, setLegacyProfileNetworks] = useState<TargetSocialNetworks | null>(null)
   const [postTitle, setPostTitle] = useState('')
   const [postContent, setPostContent] = useState('')
   const [domain, setDomain] = useState('')
@@ -122,6 +128,28 @@ export function CreatePostPage() {
   const [isAd, setIsAd] = useState(false)
   const [status, setStatus] = useState('collected')
   const [selectedChannelId, setSelectedChannelId] = useState<number | null>(null)
+
+  useEffect(() => {
+    void smmService.platformStatus().then(setPlatformStatus).catch(() => setPlatformStatus(null))
+  }, [])
+
+  const publishChannels = useMemo(() => {
+    return ownChannels.filter((channel) => {
+      if (channel.role !== 'own' || channel.network === 'url') return false
+      if (String(channel.external_id || '').startsWith('demo-')) return false
+      if (channel.auth_status === 'connected') return true
+      const status = platformStatus?.[channel.network as keyof PlatformStatusResponse]
+      return Boolean(status?.can_publish_text || status?.connected)
+    })
+  }, [ownChannels, platformStatus])
+
+  const authorizedNetworksWithoutChannel = useMemo(() => {
+    return TARGET_SOCIAL_NETWORK_ORDER.filter((network) => {
+      const status = platformStatus?.[network]
+      if (!status?.can_publish_text && !status?.connected) return false
+      return !publishChannels.some((channel) => channel.network === network)
+    })
+  }, [platformStatus, publishChannels])
   const [smmPublishAt, setSmmPublishAt] = useState('')
   const [aiBusy, setAiBusy] = useState(false)
   const [csvResult, setCsvResult] = useState('')
@@ -160,15 +188,15 @@ export function CreatePostPage() {
 
   useEffect(() => {
     const fromQuery = Number(searchParams.get('channelId') || '')
-    if (fromQuery && connectedPublishChannels.some((c) => c.id === fromQuery)) {
+    if (fromQuery && publishChannels.some((c) => c.id === fromQuery)) {
       setSelectedChannelId(fromQuery)
       return
     }
     setSelectedChannelId((prev) => {
-      if (prev != null && connectedPublishChannels.some((c) => c.id === prev)) return prev
-      return connectedPublishChannels[0]?.id ?? null
+      if (prev != null && publishChannels.some((c) => c.id === prev)) return prev
+      return publishChannels[0]?.id ?? null
     })
-  }, [connectedPublishChannels, searchParams])
+  }, [publishChannels, searchParams])
 
   useEffect(() => {
     const draft = searchParams.get('draft')
@@ -193,7 +221,7 @@ export function CreatePostPage() {
       try {
         const profile = await createPostService.getProfile()
         if (profile) {
-          setSocialNetworks({
+          const networks: TargetSocialNetworks = {
             ...EMPTY_TARGET_SOCIAL_NETWORKS,
             tg: profile.social_networks.tg ?? false,
             tw: profile.social_networks.tw ?? false,
@@ -202,7 +230,15 @@ export function CreatePostPage() {
             threads: profile.social_networks.threads ?? false,
             instagram: profile.social_networks.instagram ?? false,
             dzen: profile.social_networks.dzen ?? false,
-          })
+          }
+          setSocialNetworks(networks)
+          const savedIds = profile.channel_ids ?? []
+          if (savedIds.length > 0) {
+            setProfileChannelIds(savedIds)
+            setLegacyProfileNetworks(null)
+          } else {
+            setLegacyProfileNetworks(networks)
+          }
         }
       } catch (err) {
         console.error('Failed to load profile:', err)
@@ -212,6 +248,16 @@ export function CreatePostPage() {
     }
     loadProfile()
   }, [])
+
+  useEffect(() => {
+    if (!legacyProfileNetworks || publishChannels.length === 0) return
+    setProfileChannelIds(
+      publishChannels
+        .filter((channel) => legacyProfileNetworks[channel.network as TargetSocialNetworkKey])
+        .map((channel) => channel.id),
+    )
+    setLegacyProfileNetworks(null)
+  }, [legacyProfileNetworks, publishChannels])
 
   useEffect(() => {
     if (activeTab === 'posts') {
@@ -362,8 +408,30 @@ export function CreatePostPage() {
     setError('')
     setSuccess('')
     try {
+      const visibleIds = new Set(publishChannels.map((channel) => channel.id))
+      const picked = publishChannels.filter((channel) =>
+        profileChannelIds.includes(channel.id),
+      )
+      const channelIds = [
+        ...profileChannelIds.filter((id) => !visibleIds.has(id)),
+        ...picked.map((channel) => channel.id),
+      ]
+      const networks: TargetSocialNetworks = { ...socialNetworks }
+      const visibleNetworks = new Set(publishChannels.map((channel) => channel.network))
+      for (const network of visibleNetworks) {
+        const key = network as TargetSocialNetworkKey
+        if (!(key in networks)) continue
+        networks[key] = picked.some((channel) => channel.network === network)
+      }
+      setSocialNetworks(networks)
+      setSelectedChannels({
+        tg: picked.filter((channel) => channel.network === 'tg').map((channel) => channel.external_id),
+        vk: picked.filter((channel) => channel.network === 'vk').map((channel) => channel.external_id),
+      })
+      setProfileChannelIds(channelIds)
       await createPostService.saveProfile({
-        social_networks: socialNetworks,
+        social_networks: networks,
+        channel_ids: channelIds,
       })
       setSuccess('Profile settings saved successfully')
     } catch (err) {
@@ -466,10 +534,10 @@ export function CreatePostPage() {
           setIsCreating(false)
           return
         }
-        const channel = connectedPublishChannels.find((c) => c.id === selectedChannelId)
+        const channel = publishChannels.find((c) => c.id === selectedChannelId)
         if (!channel) {
           setError(
-            'Выберите один канал с подтверждёнными правами (Channels → Recheck / Connect)',
+            'Выберите канал сети с авторизацией для публикации',
           )
           setIsCreating(false)
           return
@@ -534,7 +602,7 @@ export function CreatePostPage() {
     <PageContainer maxWidth="wide">
       <PageHeader
         title="Posts"
-        description="Создайте пост и отправьте в один канал с подтверждёнными правами"
+        description="Создайте пост и отправьте в канал сети, где есть авторизация для публикации"
       />
 
       {error && (
@@ -630,13 +698,13 @@ export function CreatePostPage() {
       </div>
 
       {/* Tab: Create Post */}
-      {activeTab === 'create' && connectedPublishChannels.length === 0 && editingPostId === null && (
+      {activeTab === 'create' && publishChannels.length === 0 && editingPostId === null && (
         <Alert variant="info" className="mb-4">
-          Нет каналов с подтверждёнными правами публикации. Подключите канал в{' '}
+          Нет каналов для публикации. Авторизуйте сеть и добавьте канал в{' '}
           <Link to="/channels" className="underline">
             Channels
-          </Link>{' '}
-          и нажмите Recheck / Connect.
+          </Link>
+          .
         </Alert>
       )}
       {activeTab === 'create' && (
@@ -794,7 +862,7 @@ export function CreatePostPage() {
                       setAiBusy(true)
                       setError('')
                       try {
-                        const channel = connectedPublishChannels.find(
+                        const channel = publishChannels.find(
                           (c) => c.id === selectedChannelId,
                         )
                         const targets = channel ? [channel.network] : ['tg']
@@ -879,10 +947,10 @@ export function CreatePostPage() {
 
                 <div>
                   <p className="text-sm text-[var(--text-secondary)] mb-2">
-                    Выберите один канал (только connected)
+                    Выберите канал сети с авторизацией для публикации
                   </p>
                   <div className="space-y-1 max-h-48 overflow-y-auto">
-                    {connectedPublishChannels.map((c) => (
+                    {publishChannels.map((c) => (
                       <label key={c.id} className="flex items-center gap-2 text-sm cursor-pointer">
                         <input
                           type="radio"
@@ -894,19 +962,24 @@ export function CreatePostPage() {
                           className="h-2 w-2 rounded-full"
                           style={{ backgroundColor: selectedBrand?.color ?? '#3B82F6' }}
                         />
-                        <span className="uppercase text-[var(--text-muted)]">{c.network}</span>
+                        <span className="uppercase text-[var(--text-muted)]">
+                          {TARGET_SOCIAL_LABELS[c.network as TargetSocialNetworkKey] ?? c.network}
+                        </span>
                         {c.title || c.external_id}
                       </label>
                     ))}
-                    {connectedPublishChannels.length === 0 && (
+                    {publishChannels.length === 0 && (
                       <p className="text-xs text-[var(--text-muted)]">
-                        Нет подтверждённых каналов —{' '}
+                        Нет канала для отправки.{' '}
+                        {authorizedNetworksWithoutChannel.length > 0
+                          ? `Авторизация есть: ${authorizedNetworksWithoutChannel
+                              .map((network) => TARGET_SOCIAL_LABELS[network])
+                              .join(', ')}. Добавьте канал в `
+                          : 'Подключите сеть и канал в '}
                         <Link to="/channels" className="text-primary-400 hover:underline">
                           Channels
                         </Link>
-                        {ownChannels.length > 0
-                          ? ` (${ownChannels.length} own без confirmed access)`
-                          : ''}
+                        .
                       </p>
                     )}
                   </div>
@@ -1187,7 +1260,7 @@ export function CreatePostPage() {
                   className="w-full sm:w-auto"
                   disabled={
                     editingPostId === null &&
-                    (selectedChannelId == null || connectedPublishChannels.length === 0)
+                    (selectedChannelId == null || publishChannels.length === 0)
                   }
                 >
                   {editingPostId !== null ? (
@@ -1432,29 +1505,91 @@ export function CreatePostPage() {
         <Card className="animate-slide-up">
           <CardHeader>
             <CardTitle>Profile Settings</CardTitle>
-            <CardDescription>Select default target social networks for posts</CardDescription>
+            <CardDescription>
+              Все сети с авторизацией для публикации и каналы бренда, куда можно отправлять посты
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSaveProfile} className="space-y-6">
-              <TargetSocialNetworksWidget
-                value={socialNetworks}
-                onChange={setSocialNetworks}
-                disabled={
-                  isLoadingProfile
-                    ? {
-                        tg: true,
-                        vk: true,
-                        instagram: true,
-                        threads: true,
-                        wp: true,
-                        dzen: true,
-                        tw: true,
-                      }
-                    : {}
-                }
-              />
+              {isLoadingProfile ? (
+                <p className="text-sm text-[var(--text-muted)]">Загрузка…</p>
+              ) : publishChannels.length === 0 && authorizedNetworksWithoutChannel.length === 0 ? (
+                <p className="text-sm text-[var(--text-muted)]">
+                  Нет сетей с авторизацией для публикации. Подключите аккаунт сети или канал в{' '}
+                  <Link to="/channels" className="text-primary-400 hover:underline">
+                    Channels
+                  </Link>
+                  .
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-[var(--text-secondary)]">
+                    Куда публиковать по умолчанию
+                  </p>
+                  {publishChannels.map((channel) => (
+                    <label
+                      key={channel.id}
+                      className="flex items-center gap-2 text-sm cursor-pointer"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={profileChannelIds.includes(channel.id)}
+                        onChange={() =>
+                          setProfileChannelIds((prev) =>
+                            prev.includes(channel.id)
+                              ? prev.filter((id) => id !== channel.id)
+                              : [...prev, channel.id],
+                          )
+                        }
+                      />
+                      <span
+                        className="h-2 w-2 rounded-full shrink-0"
+                        style={{ backgroundColor: selectedBrand?.color ?? '#3B82F6' }}
+                      />
+                      <span className="uppercase text-[var(--text-muted)]">
+                        {TARGET_SOCIAL_LABELS[channel.network as TargetSocialNetworkKey] ??
+                          channel.network}
+                      </span>
+                      <span className="text-[var(--text-primary)]">
+                        {channel.title || channel.external_id}
+                      </span>
+                      {channel.publish_enabled === false && (
+                        <span className="text-xs text-[var(--text-muted)]">публикация выключена</span>
+                      )}
+                    </label>
+                  ))}
+                  {authorizedNetworksWithoutChannel.map((network) => (
+                    <label
+                      key={network}
+                      className="flex items-center gap-2 text-sm cursor-pointer"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={socialNetworks[network]}
+                        onChange={() =>
+                          setSocialNetworks((prev) => ({ ...prev, [network]: !prev[network] }))
+                        }
+                      />
+                      <span className="uppercase text-[var(--text-muted)]">
+                        {TARGET_SOCIAL_LABELS[network]}
+                      </span>
+                      <span className="text-[var(--text-primary)]">аккаунт авторизован</span>
+                      <Link to="/channels" className="text-xs text-primary-400 hover:underline">
+                        добавить канал
+                      </Link>
+                    </label>
+                  ))}
+                </div>
+              )}
               <CardFooter className="px-0">
-                <Button type="submit" className="w-full">
+                <Button
+                  type="submit"
+                  className="w-full"
+                  disabled={
+                    isLoadingProfile ||
+                    (publishChannels.length === 0 && authorizedNetworksWithoutChannel.length === 0)
+                  }
+                >
                   Save Profile Settings
                 </Button>
               </CardFooter>

@@ -8,18 +8,13 @@ import { Alert } from '@/components/ui/alert'
 import { LearnModeBanner } from '@/components/smm/learn-mode-banner'
 import { useBrand } from '@/contexts/brand-context'
 import { smmService } from '@/services/smm-service'
-import { BRAND_PALETTE, type Brand, type BrandChannel, type BrandPromptSnippet } from '@/types/smm'
+import { BRAND_PALETTE, type Brand, type BrandChannel } from '@/types/smm'
+import { hasBrandVoice } from '@/components/ai/brand-voice-editor'
 import { getErrorMessage } from '@/services/api-client'
 import { parseQuotaError, type QuotaErrorDetail } from '@/lib/quota'
 import { QuotaUpgradeModal } from '@/components/billing/QuotaUpgradeModal'
 import { QuotaBanner } from '@/components/billing/QuotaBanner'
 import type { UsageSummary } from '@/types/smm'
-
-const MAX_SNIPPETS = 5
-
-function emptySnippet(): BrandPromptSnippet {
-  return { title: '', text: '' }
-}
 
 export function BrandsPage() {
   const { brands, selectedBrandId, setSelectedBrandId, refreshBrands } = useBrand()
@@ -31,10 +26,6 @@ export function BrandsPage() {
   const [channels, setChannels] = useState<BrandChannel[]>([])
   const [activeBrandId, setActiveBrandId] = useState<number | null>(null)
 
-  const [editTone, setEditTone] = useState('')
-  const [editNotes, setEditNotes] = useState('')
-  const [editSnippets, setEditSnippets] = useState<BrandPromptSnippet[]>([])
-  const [isSavingVoice, setIsSavingVoice] = useState(false)
   const [editingBrandId, setEditingBrandId] = useState<number | null>(null)
   const [editBrandName, setEditBrandName] = useState('')
   const [isRenamingBrand, setIsRenamingBrand] = useState(false)
@@ -60,38 +51,13 @@ export function BrandsPage() {
   useEffect(() => {
     if (!activeBrandId) {
       setChannels([])
-      setEditTone('')
-      setEditNotes('')
-      setEditSnippets([])
       return
     }
     void smmService
       .listChannels(activeBrandId)
       .then(setChannels)
       .catch(() => setChannels([]))
-
-    const brand = brands.find((b) => b.id === activeBrandId)
-    if (brand) {
-      applyBrandVoice(brand)
-    } else {
-      void smmService
-        .listBrands()
-        .then((list) => {
-          const found = list.find((b) => b.id === activeBrandId)
-          if (found) applyBrandVoice(found)
-        })
-        .catch(() => undefined)
-    }
-  }, [activeBrandId, brands])
-
-  function applyBrandVoice(brand: Brand) {
-    setEditTone(brand.tone_of_voice || '')
-    setEditNotes(brand.style_notes || '')
-    const snippets = brand.prompt_snippets?.length
-      ? brand.prompt_snippets.map((s) => ({ title: s.title || '', text: s.text || '' }))
-      : []
-    setEditSnippets(snippets)
-  }
+  }, [activeBrandId])
 
   async function handleCreateBrand(e: FormEvent) {
     e.preventDefault()
@@ -163,39 +129,13 @@ export function BrandsPage() {
     }
   }
 
-  async function handleSaveVoice(e: FormEvent) {
-    e.preventDefault()
-    if (!activeBrandId) return
-    setIsSavingVoice(true)
-    setError('')
-    setSuccess('')
-    try {
-      const snippets = editSnippets
-        .map((s) => ({
-          title: s.title.trim().slice(0, 80),
-          text: s.text.trim().slice(0, 500),
-        }))
-        .filter((s) => s.title || s.text)
-        .slice(0, MAX_SNIPPETS)
-      await smmService.updateBrand(activeBrandId, {
-        tone_of_voice: editTone.trim() || null,
-        style_notes: editNotes.trim() || null,
-        prompt_snippets: snippets,
-      })
-      await refreshBrands()
-      setSuccess('Голос бренда сохранён')
-    } catch (err) {
-      setError(getErrorMessage(err))
-    } finally {
-      setIsSavingVoice(false)
-    }
-  }
+  const activeBrand = brands.find((brand) => brand.id === activeBrandId) ?? null
 
   return (
     <PageContainer>
       <PageHeader
         title="Brands"
-        description="Шаг 1: создайте бренд → голос бренда → Channels → аналитика"
+        description="Создайте бренд и подключите каналы. Голос для AI задаётся в помощнике на странице поста."
       />
       <LearnModeBanner visible={learnMode} />
       <p className="mb-4 text-sm flex flex-wrap gap-3">
@@ -249,7 +189,9 @@ export function BrandsPage() {
         <Card>
           <CardHeader>
             <CardTitle>Ваши бренды</CardTitle>
-            <CardDescription>Выберите бренд для Header switcher</CardDescription>
+            <CardDescription>
+              Выберите бренд для шапки. Голос для AI — в помощнике при написании поста.
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
             {brands.length === 0 && (
@@ -280,9 +222,9 @@ export function BrandsPage() {
                           Demo S01
                         </span>
                       )}
-                      {b.tone_of_voice && (
+                      {hasBrandVoice(b) && (
                         <span className="text-[10px] uppercase tracking-wide text-[var(--text-muted)]">
-                          TOV
+                          Голос
                         </span>
                       )}
                     </button>
@@ -341,107 +283,17 @@ export function BrandsPage() {
         </Card>
       </div>
 
-      {activeBrandId && (
-        <Card className="mt-6">
-          <CardHeader>
-            <CardTitle>Голос бренда</CardTitle>
-            <CardDescription>
-              Tone-of-voice подставляется в AI rewrite/adapt, если тон не задан вручную. До 5
-              prompt-snippet для AI-помощника.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSaveVoice} className="space-y-4">
-              <div>
-                <label className="text-sm text-[var(--text-secondary)]">
-                  Tone of voice ({editTone.length}/500)
-                </label>
-                <textarea
-                  className="mt-1 w-full rounded-md border border-[var(--border-color)] bg-[var(--bg-primary)] p-2 text-sm min-h-[72px]"
-                  value={editTone}
-                  maxLength={500}
-                  placeholder="Например: дружелюбный, экспертный, без канцелярита"
-                  onChange={(e) => setEditTone(e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="text-sm text-[var(--text-secondary)]">
-                  Style notes ({editNotes.length}/1000)
-                </label>
-                <textarea
-                  className="mt-1 w-full rounded-md border border-[var(--border-color)] bg-[var(--bg-primary)] p-2 text-sm min-h-[56px]"
-                  value={editNotes}
-                  maxLength={1000}
-                  placeholder="Не используем эмодзи; обращение на «вы»; CTA в конце"
-                  onChange={(e) => setEditNotes(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-sm text-[var(--text-secondary)]">
-                    Prompt snippets ({editSnippets.length}/{MAX_SNIPPETS})
-                  </p>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="secondary"
-                    disabled={editSnippets.length >= MAX_SNIPPETS}
-                    onClick={() => setEditSnippets((prev) => [...prev, emptySnippet()])}
-                  >
-                    + Snippet
-                  </Button>
-                </div>
-                {editSnippets.map((s, idx) => (
-                  <div
-                    key={idx}
-                    className="rounded-lg border border-[var(--border-color)] p-3 space-y-2"
-                  >
-                    <div className="flex gap-2">
-                      <Input
-                        label="Название"
-                        value={s.title}
-                        onChange={(e) =>
-                          setEditSnippets((prev) =>
-                            prev.map((item, i) =>
-                              i === idx ? { ...item, title: e.target.value } : item,
-                            ),
-                          )
-                        }
-                      />
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="ghost"
-                        className="self-end"
-                        onClick={() =>
-                          setEditSnippets((prev) => prev.filter((_, i) => i !== idx))
-                        }
-                      >
-                        Удалить
-                      </Button>
-                    </div>
-                    <textarea
-                      className="w-full rounded-md border border-[var(--border-color)] bg-[var(--bg-primary)] p-2 text-sm min-h-[48px]"
-                      value={s.text}
-                      maxLength={500}
-                      placeholder="Текст уточнения для AI…"
-                      onChange={(e) =>
-                        setEditSnippets((prev) =>
-                          prev.map((item, i) =>
-                            i === idx ? { ...item, text: e.target.value } : item,
-                          ),
-                        )
-                      }
-                    />
-                  </div>
-                ))}
-              </div>
-              <Button type="submit" disabled={isSavingVoice}>
-                {isSavingVoice ? 'Saving…' : 'Сохранить голос'}
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
+      {activeBrand && (
+        <p className="mt-6 text-sm text-[var(--text-muted)]">
+          Голос «{activeBrand.name}» {hasBrandVoice(activeBrand) ? 'задан' : 'не задан'}.{' '}
+          <Link to="/posts" className="text-primary-400 hover:underline">
+            Настроить в AI-помощнике на странице поста
+          </Link>
+          {' · '}
+          <Link to="/inbox" className="text-primary-400 hover:underline">
+            во входящих
+          </Link>
+        </p>
       )}
 
       {activeBrandId && (

@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from typing import Dict, List, Set
+from typing import Any, Dict, List, Set
 
 from telethon import events
 from telethon.client import TelegramClient
@@ -75,6 +75,8 @@ class TelegramBotService:
         self._discussion_map: Dict[str, List[dict]] = {}
         self._brand_channels: List[dict] = []
         self._digest_source_ids: Set[int] = set()
+        self._message_handlers: Dict[int, Any] = {}
+        self._monitored_chat_keys: Dict[int, tuple] = {}
 
     async def start(self) -> None:
         if self._running:
@@ -88,22 +90,7 @@ class TelegramBotService:
         logger.info("Starting Telegram Bot Service...")
         await self.client_manager.start_all_clients()
         await self._refresh_flow_maps()
-
-        clients = self.client_manager.get_all_clients()
-        for user_id, client in clients.items():
-            profile = self.client_manager.get_profile(user_id)
-            if not profile:
-                continue
-
-            ensure_rule_ids(profile)
-            chats = self._collect_monitored_chats(profile, user_id)
-            if chats:
-                self._register_unified_handler(client, user_id, profile, chats)
-                _log_action(
-                    "Registered unified handler for user %s with %d chats",
-                    user_id,
-                    len(chats),
-                )
+        await self._sync_message_handlers()
 
         self.post_publisher = PostPublisher(self.client_manager)
         self.engagement_service = EngagementService(self.client_manager)
@@ -145,6 +132,7 @@ class TelegramBotService:
                 if not self._running:
                     break
                 await self._refresh_flow_maps()
+                await self._sync_message_handlers()
             except asyncio.CancelledError:
                 break
             except Exception as e:
@@ -179,6 +167,51 @@ class TelegramBotService:
                 chats.add(disc_id)
 
         return self.message_handler.get_chats_list(list(chats))
+
+    @staticmethod
+    def _chat_signature(chats: list) -> tuple:
+        return tuple(sorted(str(chat) for chat in chats))
+
+    async def _sync_message_handlers(self) -> None:
+        """Rebind NewMessage handlers when monitored chats change."""
+        if not self.client_manager:
+            return
+        clients = self.client_manager.get_all_clients()
+        live_users = set(clients)
+        for user_id in list(self._message_handlers):
+            if user_id not in live_users:
+                self._message_handlers.pop(user_id, None)
+                self._monitored_chat_keys.pop(user_id, None)
+        for user_id, client in clients.items():
+            profile = self.client_manager.get_profile(user_id)
+            if not profile:
+                continue
+            ensure_rule_ids(profile)
+            chats = self._collect_monitored_chats(profile, user_id)
+            signature = self._chat_signature(chats)
+            if (
+                self._monitored_chat_keys.get(user_id) == signature
+                and user_id in self._message_handlers
+            ):
+                continue
+            previous = self._message_handlers.pop(user_id, None)
+            if previous is not None:
+                try:
+                    client.remove_event_handler(previous)
+                except Exception as exc:
+                    logger.debug("remove message handler user=%s: %s", user_id, exc)
+            self._monitored_chat_keys[user_id] = signature
+            if not chats:
+                _log_action("Cleared message handler for user %s", user_id)
+                continue
+            self._message_handlers[user_id] = self._register_unified_handler(
+                client, user_id, profile, chats
+            )
+            _log_action(
+                "Registered unified handler for user %s with %d chats",
+                user_id,
+                len(chats),
+            )
 
     async def _publisher_loop(self) -> None:
         interval = settings.PUBLISH_INTERVAL_SEC
@@ -472,6 +505,8 @@ class TelegramBotService:
 
             except Exception as e:
                 logger.error("Error handling message for user %s: %s", user_id, e, exc_info=True)
+
+        return handle_new_message
 
     async def _maybe_ingest_discussion_comment(
         self, user_id: int, event: events.NewMessage.Event

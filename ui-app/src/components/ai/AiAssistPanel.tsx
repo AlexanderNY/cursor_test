@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
 import { LibraryPicker } from '@/components/library/LibraryPicker'
+import { BrandVoiceEditor } from '@/components/ai/brand-voice-editor'
 import { smmService } from '@/services/smm-service'
 import { getErrorMessage } from '@/services/api-client'
 import { parseQuotaError, type QuotaErrorDetail } from '@/lib/quota'
@@ -243,6 +244,8 @@ export function AiAssistPanel({
           )}
         </div>
       </div>
+
+      {brandId != null && <BrandVoiceEditor brandId={brandId} />}
 
       <div className="flex flex-wrap gap-1.5">
         {actions.map((a) => (

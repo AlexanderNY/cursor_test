@@ -5,6 +5,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
 import { AiAssistPanel } from '@/components/ai/AiAssistPanel'
+import { CommentSourcesCard } from '@/pages/inbox/comment-sources-card'
 import { useBrand } from '@/contexts/brand-context'
 import { smmService } from '@/services/smm-service'
 import type { InboxItem, InboxStatus } from '@/types/smm'
@@ -274,15 +275,16 @@ export function InboxPage() {
         title={isCommentsMode ? 'Inbox · Comments' : 'Inbox'}
         description={
           isCommentsMode
-            ? `Быстрые ответы в discussion · poll ${COMMENTS_POLL_MS / 1000}s${
+            ? `Ответы в чат обсуждения канала${
                 selectedBrand ? ` · ${selectedBrand.name}` : ''
-              }`
+              }. Сбор включается в блоке ниже.`
             : selectedBrand
               ? `DM / comments / reactions · ${selectedBrand.name}`
               : 'Единая лента TG + VK'
         }
       />
       {error && <Alert variant="error">{error}</Alert>}
+      {isCommentsMode && <CommentSourcesCard />}
 
       <div className="flex flex-wrap gap-2 mb-4 items-center">
         <div className="flex rounded-md border border-[var(--border-color)] overflow-hidden text-sm">
@@ -350,7 +352,7 @@ export function InboxPage() {
                 {loading
                   ? 'Loading…'
                   : isCommentsMode
-                    ? 'Нет комментариев. Привяжите Discussion chat в Channels.'
+                    ? 'Пока нет комментариев. Включите сбор у канала выше — новые сообщения из чата обсуждения появятся здесь.'
                     : 'Inbox пуст.'}
               </p>
             )}
