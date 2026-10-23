@@ -56,6 +56,14 @@ type AccountNavMeta = {
   hint?: string
 }
 
+/** Reachable by URL, but not listed in the sidebar — launchers and password. */
+const ACCOUNT_EXTRA_SECTIONS: AccountNavMeta[] = [
+  { id: 'learning-map', label: 'Карта обучения', hint: 'Mind map · собеседование' },
+  { id: 'hh-resume', label: 'Резюме', hint: 'Плашка сервиса на главной' },
+  { id: 'portfolio', label: 'Портфолио', hint: 'Публичная страница кейсов' },
+  { id: 'password', label: 'Смена пароля', hint: 'Безопасность аккаунта' },
+]
+
 function accountHref(id: AccountSectionId): string {
   return id === 'profile' ? '/account' : `/account?section=${encodeURIComponent(id)}`
 }
@@ -211,11 +219,7 @@ export function SiteAccountPage() {
       { id: 'profile', label: 'Профиль', hint: 'Анкета и роль' },
       { id: 'study', label: 'Учёба', hint: 'Тесты и anki' },
       { id: 'learn', label: 'Learn', hint: 'Теория и прогресс' },
-      { id: 'learning-map', label: 'Карта обучения', hint: 'Mind map · собеседование' },
-      { id: 'hh-resume', label: 'Резюме', hint: 'Плашка сервиса на главной' },
-      { id: 'portfolio', label: 'Портфолио', hint: 'Публичная страница кейсов' },
       { id: 'contact', label: 'Форма связи', hint: 'Написать команде' },
-      { id: 'password', label: 'Смена пароля', hint: 'Безопасность аккаунта' },
     ]
     const serviceMeta: AccountNavMeta[] = managed.map((slug) => ({
       id: `app:${slug}`,
@@ -249,32 +253,31 @@ export function SiteAccountPage() {
     return groups
   }, [session, managed])
 
-  const allMeta = useMemo(
-    () =>
-      accountGroups.flatMap((group) =>
-        group.items.map((item) => {
-          const id = item.id as AccountSectionId
-          const hintById: Partial<Record<AccountSectionId, string>> = {
-            profile: 'Анкета и фото',
-            study: 'Тесты и anki',
-            learn: 'Теория и прогресс',
-            'learning-map': 'Mind map · собеседование',
-            'hh-resume': 'Плашка сервиса на главной',
-            portfolio: 'Публичная страница кейсов',
-            contact: 'Написать команде',
-            password: 'Безопасность аккаунта',
-            'site-admin': 'Витрина и пользователи',
-            'learn-cms': 'Супер-админ · Learn CMS',
-          }
-          return {
-            id,
-            label: item.label,
-            hint: id.startsWith('app:') ? 'Плашка и блог' : hintById[id],
-          } satisfies AccountNavMeta
-        }),
-      ),
-    [accountGroups],
-  )
+  const allMeta = useMemo(() => {
+    const fromGroups = accountGroups.flatMap((group) =>
+      group.items.map((item) => {
+        const id = item.id as AccountSectionId
+        const hintById: Partial<Record<AccountSectionId, string>> = {
+          profile: 'Анкета и фото',
+          study: 'Тесты и anki',
+          learn: 'Теория и прогресс',
+          contact: 'Написать команде',
+          'site-admin': 'Витрина и пользователи',
+          'learn-cms': 'Супер-админ · Learn CMS',
+        }
+        return {
+          id,
+          label: item.label,
+          hint: id.startsWith('app:') ? 'Плашка и блог' : hintById[id],
+        } satisfies AccountNavMeta
+      }),
+    )
+    const present = new Set(fromGroups.map((item) => item.id))
+    return [
+      ...fromGroups,
+      ...ACCOUNT_EXTRA_SECTIONS.filter((item) => !present.has(item.id)),
+    ]
+  }, [accountGroups])
 
   const sectionParam = searchParams.get('section') || 'profile'
   const appSectionSlug = sectionParam.startsWith('app:') ? sectionParam.slice(4) : ''
@@ -557,8 +560,17 @@ export function SiteAccountPage() {
                     >
                       Сохранить анкету
                     </button>
+                    <Link to="/account?section=password" className="learn-admin-btn">
+                      Сменить пароль
+                    </Link>
                     <Link to="/game/hh-resume" className="learn-admin-btn">
-                      Открыть HH-резюме
+                      Резюме
+                    </Link>
+                    <Link to="/game/portfolio" className="learn-admin-btn">
+                      Портфолио
+                    </Link>
+                    <Link to="/game/learning-map" className="learn-admin-btn">
+                      Карта
                     </Link>
                   </div>
                 </form>

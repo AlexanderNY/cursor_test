@@ -527,15 +527,9 @@ export function LearnAdminEditPage({
       <AdminJumpNav
         items={[
           { id: 'edit-meta', label: 'Мета' },
-          { id: 'edit-labels', label: 'Лейблы' },
-          { id: 'edit-seo', label: 'SEO' },
           { id: 'edit-theory', label: 'Теория' },
           { id: 'edit-lab', label: 'Лаба' },
-          { id: 'edit-diagrams', label: 'Схемы' },
           { id: 'edit-quiz', label: 'Тест' },
-          { id: 'edit-cheatsheet', label: 'Шпаргалка' },
-          { id: 'edit-anki', label: 'Anki' },
-          { id: 'edit-links', label: 'Ссылки' },
           { id: 'edit-save', label: 'Сохранить' },
         ]}
       />

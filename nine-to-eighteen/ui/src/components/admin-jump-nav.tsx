@@ -15,15 +15,12 @@ export type AdminNavGroup = {
   items: AdminNavItem[]
 }
 
-/** Always-visible destinations for any admin screen. */
+/** Admin homes. Public pages and one-off actions stay on their own screens. */
 export const ADMIN_GLOBAL_MENU: AdminNavItem[] = [
-  { id: 'nav-site-admin', label: 'Админка сайта', href: '/admin' },
-  { id: 'nav-learn-cms', label: 'Learn CMS', href: '/game/learn/admin' },
-  { id: 'nav-resume-admin', label: 'Резюме · настройки', href: '/game/hh-resume/admin' },
-  { id: 'nav-learn-new', label: 'Новая запись', href: '/game/learn/admin/new' },
-  { id: 'nav-learning-map', label: 'Карта обучения', href: '/game/learning-map' },
-  { id: 'nav-learn-public', label: 'Каталог Learn', href: '/game/learn' },
   { id: 'nav-account', label: 'Кабинет', href: '/account' },
+  { id: 'nav-site-admin', label: 'Сайт', href: '/admin' },
+  { id: 'nav-learn-cms', label: 'Learn', href: '/game/learn/admin' },
+  { id: 'nav-resume-admin', label: 'Резюме', href: '/game/hh-resume/admin' },
 ]
 
 type AdminJumpNavProps = {
@@ -52,14 +49,14 @@ function isPathActive(pathname: string, search: string, href: string): boolean {
   if (target.pathname === '/admin') {
     return pathname === '/admin' || pathname.startsWith('/admin/')
   }
-  if (target.pathname === '/game/learn/admin/new') {
-    return pathname === '/game/learn/admin/new'
-  }
   if (target.pathname === '/game/learn/admin') {
     if (pathname === '/game/learn/admin') {
       return true
     }
-    return /^\/game\/learn\/admin\/(?!login$|new$)[a-z0-9-]+$/i.test(pathname)
+    return /^\/game\/learn\/admin\/(?!login$)[a-z0-9-]+$/i.test(pathname)
+  }
+  if (target.pathname === '/game/hh-resume') {
+    return pathname === '/game/hh-resume'
   }
   if (target.pathname === '/account') {
     if (pathname !== '/account') {

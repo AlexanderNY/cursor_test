@@ -116,7 +116,7 @@ export function HhResumeAdminPage() {
           { id: 'admin-resume-strength', label: 'Сила резюме' },
           { id: 'admin-resume-features', label: 'Фичи' },
         ]}
-        serviceItems={[{ id: 'nav-hh-resume', label: 'Резюме', href: '/game/hh-resume' }]}
+        serviceItems={[{ id: 'nav-hh-resume', label: 'Открыть сервис', href: '/game/hh-resume' }]}
       />
 
       <header className="learn-header">

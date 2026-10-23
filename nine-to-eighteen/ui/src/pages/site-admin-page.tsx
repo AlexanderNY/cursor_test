@@ -33,7 +33,7 @@ import {
   isSuperAdmin,
   refreshSiteAuthSession,
 } from '@/data/site/site-auth'
-import { blogHref, blogPostHref, serviceOpenTarget } from '@/data/sections'
+import { blogHref, blogPostHref } from '@/data/sections'
 import {
   downloadSitePostFile,
   parseSitePostFile,
@@ -387,15 +387,6 @@ export function SiteAdminPage({ embedded = false, onOpenApp }: SiteAdminPageProp
       <AdminJumpNav
         showGlobal={!embedded}
         className={embedded ? 'admin-jump-nav--embed' : undefined}
-        serviceItems={apps.map((app) => ({
-          id: `svc-${app.slug}`,
-          label: app.emoji ? `${app.emoji} ${app.title}` : app.title,
-          href: embedded ? undefined : `/admin/apps/${app.slug}`,
-          onClick:
-            embedded && onOpenApp
-              ? () => onOpenApp(app.slug)
-              : undefined,
-        }))}
         items={[
           { id: 'admin-tiles', label: 'Плашки' },
           { id: 'admin-promo', label: 'Спотлайт' },
@@ -985,31 +976,9 @@ export function AppAdminPage({
 
       {embedded ? null : (
         <AdminJumpNav
-          serviceItems={Array.from(
-            new Set([...(session.appAdmin || []), slug]),
-          ).map((appSlug) => ({
-            id: `svc-${appSlug}`,
-            label: appSlug === slug && app?.title ? app.title : appSlug,
-            href: `/admin/apps/${appSlug}`,
-          }))}
           items={[
             { id: 'app-tile', label: 'Описание' },
             { id: 'app-posts', label: 'Блог' },
-            { id: 'app-blog', label: 'Открыть блог', href: blogHref(slug) },
-            ...(appPath.trim() || externalHref.trim()
-              ? [
-                  {
-                    id: 'app-public',
-                    label: 'Открыть сервис',
-                    href: serviceOpenTarget({
-                      slug,
-                      appPath,
-                      href: externalHref,
-                    }).href,
-                  },
-                ]
-              : []),
-            { id: 'app-account', label: 'Раздел в кабинете', href: `/account?section=app:${slug}` },
           ]}
         />
       )}
