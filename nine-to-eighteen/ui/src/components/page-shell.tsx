@@ -12,6 +12,46 @@ interface PageShellProps {
   content?: 'default' | 'article'
 }
 
+interface SiteNavItem {
+  label: string
+  to: string
+  isActive: (pathname: string, hash: string) => boolean
+}
+
+const SITE_NAV: SiteNavItem[] = [
+  {
+    label: 'О нас',
+    to: '/#about',
+    isActive: (pathname, hash) => pathname === '/' && hash === '#about',
+  },
+  {
+    label: 'Контакты',
+    to: '/#contacts',
+    isActive: (pathname, hash) => pathname === '/' && hash === '#contacts',
+  },
+  {
+    label: 'Лекции',
+    to: '/game/learn',
+    isActive: (pathname) => pathname === '/game/learn' || pathname.startsWith('/game/learn/'),
+  },
+  {
+    label: 'Карта',
+    to: '/game/learning-map',
+    isActive: (pathname) =>
+      pathname === '/game/learning-map' || pathname.startsWith('/game/learning-map/'),
+  },
+]
+
+function MenuIcon({ isOpen }: { isOpen: boolean }) {
+  return (
+    <span className={`site-nav-toggle-icon${isOpen ? ' is-open' : ''}`} aria-hidden>
+      <span />
+      <span />
+      <span />
+    </span>
+  )
+}
+
 export function PageShell({
   children,
   showBrandLink = true,
@@ -26,23 +66,26 @@ export function PageShell({
     setIsNavOpen(false)
   }, [location.pathname, location.search, location.hash])
 
-  const navItems = [
-    { label: 'О нас', to: '/#about' },
-    { label: 'Контакты', to: '/#contacts' },
-    { label: 'Лекции', to: '/game/learn' },
-    { label: 'Карта', to: '/game/learning-map' },
-    ...(session
-      ? [{ label: session.username, to: '/account', isLogin: true as const }]
-      : [
-          { label: 'Регистрация', to: '/register', isLogin: true as const },
-          { label: 'Войти', to: '/login', isLogin: true as const },
-        ]),
-  ]
+  useEffect(() => {
+    if (!isNavOpen) {
+      return
+    }
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setIsNavOpen(false)
+      }
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [isNavOpen])
 
   const brand = (
     <>
       <span className="brand-mark">9–18</span>
-      <span className="brand-domain">9to18.ru</span>
+      <span className="brand-text">
+        <span className="brand-domain">9to18.ru</span>
+        <span className="brand-tag">проекты и учёба</span>
+      </span>
     </>
   )
 
@@ -54,6 +97,10 @@ export function PageShell({
     .filter(Boolean)
     .join(' ')
 
+  const isLoginActive = location.pathname === '/login'
+  const isRegisterActive = location.pathname === '/register'
+  const isAccountActive = location.pathname === '/account' || location.pathname.startsWith('/account/')
+
   return (
     <div className={pageClass}>
       <div className="page-glows" aria-hidden>
@@ -61,8 +108,17 @@ export function PageShell({
         <div className="glow glow-b" />
       </div>
 
-      <div className="page-inner">
-        <header className="site-header">
+      {isNavOpen ? (
+        <button
+          type="button"
+          className="site-nav-backdrop"
+          aria-label="Закрыть меню"
+          onClick={() => setIsNavOpen(false)}
+        />
+      ) : null}
+
+      <header className="site-header">
+        <div className="site-header-bar">
           {showBrandLink ? (
             <Link to="/" className="brand brand-link">
               {brand}
@@ -76,31 +132,61 @@ export function PageShell({
             className="site-nav-toggle"
             aria-expanded={isNavOpen}
             aria-controls="site-nav"
+            aria-label={isNavOpen ? 'Закрыть меню' : 'Открыть меню'}
             onClick={() => setIsNavOpen((open) => !open)}
           >
-            {isNavOpen ? 'Закрыть' : 'Меню'}
+            <MenuIcon isOpen={isNavOpen} />
           </button>
 
-          <div className={`site-header-actions${isNavOpen ? ' is-open' : ''}`}>
-            <nav id="site-nav" className="site-nav" aria-label="Основное меню">
-              {navItems.map((item) => (
-                <Link
-                  key={item.to + item.label}
-                  to={item.to}
-                  className={
-                    'isLogin' in item && item.isLogin
-                      ? 'site-nav-link site-nav-link-login'
-                      : 'site-nav-link'
-                  }
-                >
-                  {item.label}
-                </Link>
-              ))}
+          <div id="site-nav" className={`site-header-actions${isNavOpen ? ' is-open' : ''}`}>
+            <nav className="site-nav" aria-label="Основное меню">
+              {SITE_NAV.map((item) => {
+                const isActive = item.isActive(location.pathname, location.hash)
+                return (
+                  <Link
+                    key={item.to}
+                    to={item.to}
+                    className={isActive ? 'site-nav-link is-active' : 'site-nav-link'}
+                    aria-current={isActive ? 'page' : undefined}
+                  >
+                    {item.label}
+                  </Link>
+                )
+              })}
             </nav>
-            <ThemeToggle />
+            <div className="site-header-tools">
+              <ThemeToggle />
+              {session ? (
+                <Link
+                  to="/account"
+                  className={isAccountActive ? 'site-nav-account is-active' : 'site-nav-account'}
+                  aria-current={isAccountActive ? 'page' : undefined}
+                >
+                  {session.username}
+                </Link>
+              ) : (
+                <>
+                  <Link
+                    to="/login"
+                    className={isLoginActive ? 'site-nav-login is-active' : 'site-nav-login'}
+                    aria-current={isLoginActive ? 'page' : undefined}
+                  >
+                    Войти
+                  </Link>
+                  <Link
+                    to="/register"
+                    className={isRegisterActive ? 'site-nav-cta is-active' : 'site-nav-cta'}
+                  >
+                    Регистрация
+                  </Link>
+                </>
+              )}
+            </div>
           </div>
-        </header>
+        </div>
+      </header>
 
+      <div className="page-inner">
         <main className="page-main">{children}</main>
 
         <footer className="site-footer">

@@ -13,6 +13,10 @@ CREATE TABLE IF NOT EXISTS threads_profiles (
     token_expires_at TIMESTAMPTZ,
     threads_user_id VARCHAR(100),
     instagram_handle VARCHAR(255),
+    meta_login VARCHAR(255),
+    meta_password VARCHAR(255),
+    session_cookies TEXT,
+    take_screenshot_collect BOOLEAN DEFAULT FALSE,
     process_enabled BOOLEAN DEFAULT FALSE,
     processing_description TEXT,
     remove_emojis BOOLEAN DEFAULT FALSE,
@@ -25,6 +29,21 @@ CREATE TABLE IF NOT EXISTS threads_profiles (
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
+"""
+
+THREADS_PROFILES_BROWSER_MIGRATION = """
+DO $$ BEGIN
+  ALTER TABLE threads_profiles ADD COLUMN meta_login VARCHAR(255);
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE threads_profiles ADD COLUMN meta_password VARCHAR(255);
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE threads_profiles ADD COLUMN session_cookies TEXT;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE threads_profiles ADD COLUMN take_screenshot_collect BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
 """
 
 THREADS_SELENIUM_SESSIONS_TABLE = """
@@ -43,5 +62,6 @@ CREATE INDEX IF NOT EXISTS idx_threads_selenium_sessions_created_at
 
 ALL_TABLES: list[str] = [
     THREADS_PROFILES_TABLE,
+    THREADS_PROFILES_BROWSER_MIGRATION,
     THREADS_SELENIUM_SESSIONS_TABLE,
 ]

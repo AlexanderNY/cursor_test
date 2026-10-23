@@ -6,6 +6,7 @@ import type {
   TargetSocialNetworks,
 } from './types'
 import { EMPTY_SELECTED_BRAND_CHANNELS, TARGET_SOCIAL_LABELS, TARGET_SOCIAL_NETWORK_ORDER } from './types'
+import { Switch } from '@/components/ui/switch'
 
 export interface TargetSocialNetworksWidgetProps {
   value: TargetSocialNetworks
@@ -92,12 +93,10 @@ export function TargetSocialNetworksWidget({
                 disabled[network] ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
               }`}
             >
-              <input
-                type="checkbox"
+              <Switch
                 checked={selectedChannels[network].includes(id)}
                 disabled={disabled[network]}
                 onChange={() => toggleChannel(network, id)}
-                className="w-3.5 h-3.5 rounded border-[var(--border-color)] text-primary-500 focus:ring-primary-500/50"
               />
               <span className="text-[var(--text-primary)]">{ch.title || id}</span>
               <span className="font-mono text-xs text-[var(--text-muted)]">{id}</span>
@@ -121,12 +120,10 @@ export function TargetSocialNetworksWidget({
                 disabled[key] ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
               }`}
             >
-              <input
-                type="checkbox"
+              <Switch
                 checked={value[key]}
                 disabled={disabled[key]}
                 onChange={() => toggle(key)}
-                className="w-4 h-4 rounded border-[var(--border-color)] text-primary-500 focus:ring-primary-500/50"
               />
               <span className="text-sm text-[var(--text-primary)]">{TARGET_SOCIAL_LABELS[key]}</span>
             </label>

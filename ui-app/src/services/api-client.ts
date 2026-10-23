@@ -47,8 +47,6 @@ apiClient.interceptors.request.use(
     if (token && config.headers) {
       config.headers.Authorization = `Bearer ${token}`
     }
-    // Debug: проверка отправки токена
-    console.log('[API] Request:', config.url, 'Token:', token ? 'present' : 'missing')
     return config
   },
   (error) => Promise.reject(error)
@@ -109,7 +107,16 @@ export interface ApiError {
 export function getErrorMessage(error: unknown): string {
   if (axios.isAxiosError(error)) {
     const axiosError = error as AxiosError<ApiError>
-    const detail = normalizeErrorDetail(axiosError.response?.data?.detail)
+    const raw = axiosError.response?.data?.detail
+    if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+      const d = raw as Record<string, unknown>
+      if (typeof d.message === 'string' && d.message.trim()) {
+        const upgrade =
+          typeof d.upgrade_url === 'string' && d.upgrade_url ? ` → ${d.upgrade_url}` : ''
+        return `${d.message}${upgrade}`
+      }
+    }
+    const detail = normalizeErrorDetail(raw)
     if (detail) return detail
     return axiosError.message || 'An error occurred'
   }

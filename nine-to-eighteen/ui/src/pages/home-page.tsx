@@ -13,7 +13,12 @@ import {
   type SiteLatestPost,
 } from '@/data/site/site-api'
 import { DEFAULT_SITE_PROMO, normalizeSitePromo, type SitePromo } from '@/data/promo'
-import { sections as fallbackSections, type Section } from '@/data/sections'
+import {
+  blogHref,
+  sections as fallbackSections,
+  serviceOpenTarget,
+  type Section,
+} from '@/data/sections'
 
 function appToSection(app: SiteApp): Section {
   return {
@@ -28,12 +33,33 @@ function appToSection(app: SiteApp): Section {
   }
 }
 
+function ServiceTitleLink({ section }: { section: Section }) {
+  const target = serviceOpenTarget(section)
+  if (target.external) {
+    return (
+      <a href={target.href} target="_blank" rel="noopener noreferrer">
+        {section.title}
+      </a>
+    )
+  }
+  return <Link to={target.href}>{section.title}</Link>
+}
+
 /** Keep local product tiles (e.g. mnemonics) visible even if site API seed is older. */
 function mergeFallbackTiles(apiTiles: Section[]): Section[] {
   const bySlug = new Map(apiTiles.map((tile) => [tile.slug, tile]))
   for (const fallback of fallbackSections) {
-    if (!bySlug.has(fallback.slug)) {
+    const current = bySlug.get(fallback.slug)
+    if (!current) {
       bySlug.set(fallback.slug, fallback)
+      continue
+    }
+    if (!current.appPath && !current.href && (fallback.appPath || fallback.href)) {
+      bySlug.set(fallback.slug, {
+        ...current,
+        href: fallback.href,
+        appPath: fallback.appPath,
+      })
     }
   }
   const order = fallbackSections.map((tile) => tile.slug)
@@ -104,9 +130,8 @@ export function HomePage() {
         <div className="info-section-body">
           <p>
             <strong>9to18.ru</strong> — площадка взаимного продвижения и обучения. Роли:{' '}
-            <em>пользователь</em> (чтение всех сервисов), <em>админ сервиса</em> (своя плашка,
-            страница и блог), <em>супер-админ</em> (редактирование всего сайта и назначение
-            админов).
+            <em>пользователь</em> (сервисы и их блоги), <em>админ сервиса</em> (своя плашка и
+            отдельный блог), <em>супер-админ</em> (редактирование всего сайта и назначение админов).
           </p>
         </div>
       </section>
@@ -114,8 +139,8 @@ export function HomePage() {
       <header className="home-header">
         <h1 className="home-title">Взаимное продвижение проектов</h1>
         <p className="home-subtitle">
-          9to18 — площадка, где сервисы поддерживают друг друга. У каждого приложения свой блог;
-          пользователи читают материалы и пишут разработчикам.
+          9to18 — площадка, где сервисы поддерживают друг друга. Плашка открывает сам сервис;
+          блог каждого сервиса ведётся отдельно.
         </p>
       </header>
 
@@ -134,8 +159,8 @@ export function HomePage() {
           О сервисах
         </h2>
         <p className="section-block-lead">
-          Краткое описание разделов. Плашка ведёт на страницу сервиса с описанием и блогом;
-          приложение и внешние ссылки открываются уже оттуда.
+          Краткое описание разделов. Плашка и название открывают сервис. Блог — отдельная
+          страница.
         </p>
         <dl className="services-overview-list">
           {tiles.map((section) => (
@@ -146,7 +171,10 @@ export function HomePage() {
                     {section.emoji}
                   </span>
                 )}
-                <Link to={`/app/${section.slug}`}>{section.title}</Link>
+                <ServiceTitleLink section={section} />
+                <Link to={blogHref(section.slug)} className="services-overview-blog">
+                  Блог
+                </Link>
               </dt>
               <dd className="services-overview-desc">{section.description}</dd>
             </div>

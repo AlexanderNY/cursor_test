@@ -22,6 +22,12 @@ class Settings(BaseSettings):
 
     # Core (для опроса расписания при необходимости)
     CORE_SERVICE_URL: str = "http://localhost:8002"
+    PROCESSOR_SERVICE_URL: str = "http://processor:8010"
+
+    LOG_BOT_ACTIONS: bool = False
+    FEED_COLLECT_INTERVAL_SEC: int = 300
+    THREADS_FEED_MAX_SCROLL: int = 4
+    THREADS_FEED_MAX_POSTS: int = 30
 
     # Signed OAuth state (same secret as gateway/core JWT)
     JWT_SECRET_KEY: str = ""

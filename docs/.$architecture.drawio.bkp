@@ -1,0 +1,253 @@
+<mxfile host="app.diagrams.net" agent="Cursor" version="22.1.0">
+  <diagram id="copyparse-architecture" name="CopyParse · 9to18 · ui-edge">
+    <mxGraphModel adaptiveColors="auto" dx="1200" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1160" pageHeight="760" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="title" value="CopyParse · 9to18 · ui-edge" style="text;html=1;fontSize=20;fontStyle=1;align=center;verticalAlign=middle;strokeColor=none;fillColor=none;fontColor=#0F172A;" vertex="1" parent="1">
+          <mxGeometry x="320" y="8" width="480" height="28" as="geometry"/>
+        </mxCell>
+        <mxCell id="net" value="Internet" style="ellipse;whiteSpace=wrap;html=1;fontSize=14;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+          <mxGeometry x="490" y="44" width="120" height="44" as="geometry"/>
+        </mxCell>
+        <mxCell id="edge" value="ui-edge nginx&lt;br&gt;&lt;small&gt;:80 / :443 · edge_net&lt;/small&gt;" style="rounded=1;whiteSpace=wrap;html=1;fontSize=14;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1">
+          <mxGeometry x="80" y="110" width="940" height="44" as="geometry"/>
+        </mxCell>
+        <mxCell id="cp" value="copyparse" style="swimlane;startSize=26;html=1;fontSize=14;fontStyle=1;fillColor=#e8f4f8;strokeColor=#6c8ebf;pointerEvents=0;" vertex="1" parent="1">
+          <mxGeometry x="20" y="180" width="700" height="420" as="geometry"/>
+        </mxCell>
+        <mxCell id="ui" value="ui&lt;br&gt;&lt;small&gt;:8100&lt;/small&gt;" style="rounded=1;whiteSpace=wrap;html=1;fontSize=12;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="cp">
+          <mxGeometry x="20" y="40" width="100" height="48" as="geometry"/>
+        </mxCell>
+        <mxCell id="gw" value="gateway&lt;br&gt;&lt;small&gt;:8000 JWT&lt;/small&gt;" style="rounded=1;whiteSpace=wrap;html=1;fontSize=12;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="cp">
+          <mxGeometry x="160" y="40" width="110" height="48" as="geometry"/>
+        </mxCell>
+        <mxCell id="auth" value="auth&lt;br&gt;&lt;small&gt;:8001&lt;/small&gt;" style="rounded=1;whiteSpace=wrap;html=1;fontSize=12;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="cp">
+          <mxGeometry x="20" y="120" width="90" height="48" as="geometry"/>
+        </mxCell>
+        <mxCell id="core" value="core&lt;br&gt;&lt;small&gt;:8002&lt;/small&gt;" style="rounded=1;whiteSpace=wrap;html=1;fontSize=12;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="cp">
+          <mxGeometry x="130" y="120" width="90" height="48" as="geometry"/>
+        </mxCell>
+        <mxCell id="sched" value="scheduler&lt;br&gt;&lt;small&gt;:8003&lt;/small&gt;" style="rounded=1;whiteSpace=wrap;html=1;fontSize=12;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="cp">
+          <mxGeometry x="240" y="120" width="100" height="48" as="geometry"/>
+        </mxCell>
+        <mxCell id="coll" value="collector&lt;br&gt;&lt;small&gt;:8009&lt;/small&gt;" style="rounded=1;whiteSpace=wrap;html=1;fontSize=12;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="cp">
+          <mxGeometry x="360" y="120" width="100" height="48" as="geometry"/>
+        </mxCell>
+        <mxCell id="proc" value="processor&lt;br&gt;&lt;small&gt;:8010&lt;/small&gt;" style="rounded=1;whiteSpace=wrap;html=1;fontSize=12;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="cp">
+          <mxGeometry x="480" y="120" width="100" height="48" as="geometry"/>
+        </mxCell>
+        <mxCell id="tg" value="tg-bot&lt;br&gt;&lt;small&gt;:8004&lt;/small&gt;" style="rounded=1;whiteSpace=wrap;html=1;fontSize=12;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="cp">
+          <mxGeometry x="20" y="210" width="90" height="48" as="geometry"/>
+        </mxCell>
+        <mxCell id="vk" value="vk-bot&lt;br&gt;&lt;small&gt;:8005&lt;/small&gt;" style="rounded=1;whiteSpace=wrap;html=1;fontSize=12;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="cp">
+          <mxGeometry x="120" y="210" width="90" height="48" as="geometry"/>
+        </mxCell>
+        <mxCell id="wp" value="wp-bot&lt;br&gt;&lt;small&gt;:8006&lt;/small&gt;" style="rounded=1;whiteSpace=wrap;html=1;fontSize=12;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="cp">
+          <mxGeometry x="220" y="210" width="90" height="48" as="geometry"/>
+        </mxCell>
+        <mxCell id="url" value="url-bot&lt;br&gt;&lt;small&gt;:8007&lt;/small&gt;" style="rounded=1;whiteSpace=wrap;html=1;fontSize=12;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="cp">
+          <mxGeometry x="320" y="210" width="90" height="48" as="geometry"/>
+        </mxCell>
+        <mxCell id="ig" value="instagram&lt;br&gt;&lt;small&gt;:8011&lt;/small&gt;" style="rounded=1;whiteSpace=wrap;html=1;fontSize=12;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="cp">
+          <mxGeometry x="420" y="210" width="90" height="48" as="geometry"/>
+        </mxCell>
+        <mxCell id="dzen" value="dzen-bot&lt;br&gt;&lt;small&gt;:8012&lt;/small&gt;" style="rounded=1;whiteSpace=wrap;html=1;fontSize=12;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="cp">
+          <mxGeometry x="520" y="210" width="90" height="48" as="geometry"/>
+        </mxCell>
+        <mxCell id="th" value="th-bot&lt;br&gt;&lt;small&gt;:8013&lt;/small&gt;" style="rounded=1;whiteSpace=wrap;html=1;fontSize=12;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="cp">
+          <mxGeometry x="120" y="280" width="90" height="48" as="geometry"/>
+        </mxCell>
+        <mxCell id="tw" value="tw-bot&lt;br&gt;&lt;small&gt;:8014&lt;/small&gt;" style="rounded=1;whiteSpace=wrap;html=1;fontSize=12;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="cp">
+          <mxGeometry x="220" y="280" width="90" height="48" as="geometry"/>
+        </mxCell>
+        <mxCell id="game" value="tg-game&lt;br&gt;&lt;small&gt;:8015&lt;/small&gt;" style="rounded=1;whiteSpace=wrap;html=1;fontSize=12;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="cp">
+          <mxGeometry x="320" y="280" width="90" height="48" as="geometry"/>
+        </mxCell>
+        <mxCell id="dbbot" value="db_bot&lt;br&gt;&lt;small&gt;PostgreSQL&lt;/small&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;fontSize=12;fillColor=#d5e8d4;strokeColor=#82b366;size=10;" vertex="1" parent="cp">
+          <mxGeometry x="480" y="300" width="100" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="redis" value="Redis&lt;br&gt;&lt;small&gt;JWT bl&lt;/small&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;fontSize=12;fillColor=#d5e8d4;strokeColor=#82b366;size=10;" vertex="1" parent="cp">
+          <mxGeometry x="600" y="40" width="80" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="nine" value="nine-to-eighteen" style="swimlane;startSize=26;html=1;fontSize=14;fontStyle=1;fillColor=#fff0e6;strokeColor=#d79b00;pointerEvents=0;" vertex="1" parent="1">
+          <mxGeometry x="740" y="180" width="320" height="420" as="geometry"/>
+        </mxCell>
+        <mxCell id="ui9" value="ui-9to18&lt;br&gt;&lt;small&gt;:8200&lt;/small&gt;" style="rounded=1;whiteSpace=wrap;html=1;fontSize=12;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="nine">
+          <mxGeometry x="90" y="40" width="140" height="48" as="geometry"/>
+        </mxCell>
+        <mxCell id="site" value="site-api&lt;br&gt;&lt;small&gt;:8020 site/learn&lt;/small&gt;" style="rounded=1;whiteSpace=wrap;html=1;fontSize=12;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="nine">
+          <mxGeometry x="20" y="120" width="130" height="52" as="geometry"/>
+        </mxCell>
+        <mxCell id="resume" value="resume-api&lt;br&gt;&lt;small&gt;:8021&lt;/small&gt;" style="rounded=1;whiteSpace=wrap;html=1;fontSize=12;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="nine">
+          <mxGeometry x="170" y="120" width="120" height="52" as="geometry"/>
+        </mxCell>
+        <mxCell id="portf" value="portfolio-api&lt;br&gt;&lt;small&gt;:8022&lt;/small&gt;" style="rounded=1;whiteSpace=wrap;html=1;fontSize=12;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="nine">
+          <mxGeometry x="90" y="210" width="140" height="48" as="geometry"/>
+        </mxCell>
+        <mxCell id="db9" value="db_9to18&lt;br&gt;&lt;small&gt;PostgreSQL&lt;/small&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;fontSize=12;fillColor=#d5e8d4;strokeColor=#82b366;size=10;" vertex="1" parent="nine">
+          <mxGeometry x="100" y="300" width="110" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="minio" value="MinIO S3&lt;br&gt;&lt;small&gt;:9000&lt;/small&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;fontSize=12;fillColor=#d5e8d4;strokeColor=#82b366;size=10;" vertex="1" parent="1">
+          <mxGeometry x="300" y="630" width="110" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="ollama" value="Ollama&lt;br&gt;&lt;small&gt;:11434&lt;/small&gt;" style="rounded=1;whiteSpace=wrap;html=1;fontSize=12;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="500" y="635" width="110" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="legend" value="Синий — platform · Жёлтый — bots · Зелёный — data · Пунктир — DB / S3 / AI" style="text;html=1;fontSize=11;align=left;strokeColor=none;fillColor=none;fontColor=#64748B;" vertex="1" parent="1">
+          <mxGeometry x="20" y="710" width="620" height="22" as="geometry"/>
+        </mxCell>
+        <mxCell id="e1" value="HTTPS" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=11;labelBackgroundColor=default;defaultLabelBackgroundColor=gap;" edge="1" parent="1" source="net" target="edge">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e2" value="copyparse.ru" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=11;labelBackgroundColor=default;defaultLabelBackgroundColor=gap;" edge="1" parent="1" source="edge" target="ui">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e3" value="tg/vk" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=11;labelBackgroundColor=default;defaultLabelBackgroundColor=gap;" edge="1" parent="1" source="edge" target="gw">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e4" value="9to18.ru" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=11;labelBackgroundColor=default;defaultLabelBackgroundColor=gap;" edge="1" parent="1" source="edge" target="ui9">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e5" value="/api/site|learn" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=11;labelBackgroundColor=default;defaultLabelBackgroundColor=gap;" edge="1" parent="1" source="edge" target="site">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e6" value="/api/resume" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=11;labelBackgroundColor=default;defaultLabelBackgroundColor=gap;" edge="1" parent="1" source="edge" target="resume">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e7" value="/api/portfolio" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=11;labelBackgroundColor=default;defaultLabelBackgroundColor=gap;" edge="1" parent="1" source="edge" target="portf">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e8" value="/api" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=11;labelBackgroundColor=default;defaultLabelBackgroundColor=gap;" edge="1" parent="cp" source="ui" target="gw">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e9" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;labelBackgroundColor=default;defaultLabelBackgroundColor=gap;" edge="1" parent="cp" source="gw" target="auth">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e10" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;labelBackgroundColor=default;defaultLabelBackgroundColor=gap;" edge="1" parent="cp" source="gw" target="core">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e11" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;labelBackgroundColor=default;defaultLabelBackgroundColor=gap;" edge="1" parent="cp" source="gw" target="sched">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e12" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;labelBackgroundColor=default;defaultLabelBackgroundColor=gap;" edge="1" parent="cp" source="gw" target="tg">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e13" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;labelBackgroundColor=default;defaultLabelBackgroundColor=gap;" edge="1" parent="cp" source="gw" target="vk">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e14" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;labelBackgroundColor=default;defaultLabelBackgroundColor=gap;" edge="1" parent="cp" source="gw" target="wp">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e15" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;labelBackgroundColor=default;defaultLabelBackgroundColor=gap;" edge="1" parent="cp" source="gw" target="url">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e16" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;labelBackgroundColor=default;defaultLabelBackgroundColor=gap;" edge="1" parent="cp" source="gw" target="ig">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e17" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;labelBackgroundColor=default;defaultLabelBackgroundColor=gap;" edge="1" parent="cp" source="gw" target="dzen">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e18" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;labelBackgroundColor=default;defaultLabelBackgroundColor=gap;" edge="1" parent="cp" source="gw" target="th">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e19" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;labelBackgroundColor=default;defaultLabelBackgroundColor=gap;" edge="1" parent="cp" source="gw" target="tw">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e20" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;labelBackgroundColor=default;defaultLabelBackgroundColor=gap;" edge="1" parent="cp" source="gw" target="game">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e21" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;dashed=1;labelBackgroundColor=default;defaultLabelBackgroundColor=gap;" edge="1" parent="cp" source="gw" target="redis">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="d1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;dashed=1;strokeColor=#82b366;labelBackgroundColor=default;defaultLabelBackgroundColor=gap;" edge="1" parent="cp" source="auth" target="dbbot">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="d2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;dashed=1;strokeColor=#82b366;labelBackgroundColor=default;defaultLabelBackgroundColor=gap;" edge="1" parent="cp" source="core" target="dbbot">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="d3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;dashed=1;strokeColor=#82b366;labelBackgroundColor=default;defaultLabelBackgroundColor=gap;" edge="1" parent="cp" source="sched" target="dbbot">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="d4" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;dashed=1;strokeColor=#82b366;labelBackgroundColor=default;defaultLabelBackgroundColor=gap;" edge="1" parent="cp" source="coll" target="dbbot">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="d5" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;dashed=1;strokeColor=#82b366;labelBackgroundColor=default;defaultLabelBackgroundColor=gap;" edge="1" parent="cp" source="proc" target="dbbot">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="d6" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;dashed=1;strokeColor=#82b366;labelBackgroundColor=default;defaultLabelBackgroundColor=gap;" edge="1" parent="cp" source="tg" target="dbbot">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="d7" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;dashed=1;strokeColor=#82b366;labelBackgroundColor=default;defaultLabelBackgroundColor=gap;" edge="1" parent="cp" source="vk" target="dbbot">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="d8" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;dashed=1;strokeColor=#82b366;labelBackgroundColor=default;defaultLabelBackgroundColor=gap;" edge="1" parent="cp" source="wp" target="dbbot">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="d9" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;dashed=1;strokeColor=#82b366;labelBackgroundColor=default;defaultLabelBackgroundColor=gap;" edge="1" parent="cp" source="url" target="dbbot">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="d10" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;dashed=1;strokeColor=#82b366;labelBackgroundColor=default;defaultLabelBackgroundColor=gap;" edge="1" parent="cp" source="ig" target="dbbot">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="d11" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;dashed=1;strokeColor=#82b366;labelBackgroundColor=default;defaultLabelBackgroundColor=gap;" edge="1" parent="cp" source="dzen" target="dbbot">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="d12" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;dashed=1;strokeColor=#82b366;labelBackgroundColor=default;defaultLabelBackgroundColor=gap;" edge="1" parent="cp" source="th" target="dbbot">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="d13" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;dashed=1;strokeColor=#82b366;labelBackgroundColor=default;defaultLabelBackgroundColor=gap;" edge="1" parent="cp" source="tw" target="dbbot">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="d14" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;dashed=1;strokeColor=#82b366;labelBackgroundColor=default;defaultLabelBackgroundColor=gap;" edge="1" parent="cp" source="game" target="dbbot">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="d15" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;dashed=1;strokeColor=#82b366;labelBackgroundColor=default;defaultLabelBackgroundColor=gap;" edge="1" parent="nine" source="site" target="db9">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="d16" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;dashed=1;strokeColor=#82b366;labelBackgroundColor=default;defaultLabelBackgroundColor=gap;" edge="1" parent="nine" source="resume" target="db9">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="d17" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;dashed=1;strokeColor=#82b366;labelBackgroundColor=default;defaultLabelBackgroundColor=gap;" edge="1" parent="nine" source="portf" target="db9">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="s1" value="S3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=11;dashed=1;labelBackgroundColor=default;defaultLabelBackgroundColor=gap;" edge="1" parent="1" source="core" target="minio">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="s2" value="S3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=11;dashed=1;labelBackgroundColor=default;defaultLabelBackgroundColor=gap;" edge="1" parent="1" source="tg" target="minio">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="s3" value="S3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=11;dashed=1;labelBackgroundColor=default;defaultLabelBackgroundColor=gap;" edge="1" parent="1" source="vk" target="minio">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="s4" value="S3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=11;dashed=1;labelBackgroundColor=default;defaultLabelBackgroundColor=gap;" edge="1" parent="1" source="ig" target="minio">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="s5" value="S3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=11;dashed=1;labelBackgroundColor=default;defaultLabelBackgroundColor=gap;" edge="1" parent="1" source="dzen" target="minio">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="s6" value="S3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=11;dashed=1;labelBackgroundColor=default;defaultLabelBackgroundColor=gap;" edge="1" parent="1" source="th" target="minio">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="s7" value="S3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=11;dashed=1;labelBackgroundColor=default;defaultLabelBackgroundColor=gap;" edge="1" parent="1" source="tw" target="minio">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="s8" value="S3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=11;dashed=1;labelBackgroundColor=default;defaultLabelBackgroundColor=gap;" edge="1" parent="1" source="game" target="minio">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="s9" value="S3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=11;dashed=1;labelBackgroundColor=default;defaultLabelBackgroundColor=gap;" edge="1" parent="1" source="resume" target="minio">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="a1" value="AI" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=11;dashed=1;labelBackgroundColor=default;defaultLabelBackgroundColor=gap;" edge="1" parent="1" source="core" target="ollama">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="a2" value="AI" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=11;dashed=1;labelBackgroundColor=default;defaultLabelBackgroundColor=gap;" edge="1" parent="1" source="proc" target="ollama">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="a3" value="AI" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=11;dashed=1;labelBackgroundColor=default;defaultLabelBackgroundColor=gap;" edge="1" parent="1" source="resume" target="ollama">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

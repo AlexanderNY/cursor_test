@@ -1,12 +1,18 @@
 #!/usr/bin/env python3
-"""Append map-* Learn articles for learning-map leaves into learn_seed.json."""
+"""Drop map-* stub articles from learn_seed.json. Full series own those topics."""
 from __future__ import annotations
 
 import json
+import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-SEED = Path(__file__).resolve().parents[1] / "data" / "learn_seed.json"
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from map_interview_enrich import MAP_ENRICH  # noqa: E402
+
+ROOT = Path(__file__).resolve().parents[2]
+SEED = ROOT / "core" / "data" / "learn_seed.json"
+SITE_SEED = ROOT / "nine-to-eighteen" / "api" / "data" / "learn_seed.json"
 START = datetime(2026, 9, 15, 10, 0, tzinfo=timezone.utc)
 
 
@@ -536,21 +542,55 @@ ARTICLES = [
 ]
 
 
+def _rebuild_theory(item: dict) -> None:
+    structured = item["structured"]
+    parts = [str(structured.get("intro") or "").strip()]
+    for section in structured.get("sections") or []:
+        heading = str(section.get("heading") or "").strip()
+        body = str(section.get("body") or "").strip()
+        if heading:
+            parts.append(f"## {heading}")
+        if body:
+            parts.append(body)
+    item["theory"] = "\n\n".join(part for part in parts if part)
+
+
+def _apply_map_enrich(item: dict) -> None:
+    extra = MAP_ENRICH.get(item["slug"])
+    if not extra:
+        return
+    sections = item["structured"]["sections"]
+    for heading, key in (
+        ("Куда идти дальше", "next"),
+        ("Ответ вслух", "spoken"),
+        ("Плохой ответ", "bad"),
+        ("Термины", "terms"),
+    ):
+        body = str(extra.get(key) or "").strip()
+        if not body:
+            continue
+        sections.append({"heading": heading, "body": body})
+    if extra.get("anki"):
+        item["structured"]["anki"] = extra["anki"]
+    if extra.get("quiz"):
+        item["structured"]["quiz"] = extra["quiz"]
+    _rebuild_theory(item)
+
+
+def _keep_meta(item: dict, old: dict) -> None:
+    for key in ("profiles", "level", "tags", "prerequisites", "durationMin", "excerpt"):
+        if old.get(key) and not item.get(key):
+            item[key] = old[key]
+
+
 def main() -> None:
     data = json.loads(SEED.read_text(encoding="utf-8"))
-    by_slug = {item["slug"]: item for item in data if isinstance(item, dict)}
-    added = 0
-    for item in ARTICLES:
-        if item["slug"] in by_slug:
-            # replace to keep content fresh
-            idx = next(i for i, row in enumerate(data) if row.get("slug") == item["slug"])
-            data[idx] = item
-        else:
-            data.append(item)
-            added += 1
-        print(f"OK {item['slug']} anki={len(item['structured']['anki'])}")
-    SEED.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print(f"Seed size={len(data)} added_new={added}")
+    kept = [item for item in data if not str(item.get("slug") or "").startswith("map-")]
+    removed = len(data) - len(kept)
+    dumped = json.dumps(kept, ensure_ascii=False, indent=2) + "\n"
+    SEED.write_text(dumped, encoding="utf-8")
+    SITE_SEED.write_text(dumped, encoding="utf-8")
+    print(f"Seed size={len(kept)} removed_map={removed}")
 
 
 if __name__ == "__main__":

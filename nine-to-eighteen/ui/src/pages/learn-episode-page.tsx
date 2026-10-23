@@ -12,6 +12,7 @@ import { LearnPostBadges } from '@/components/learn-post-badges'
 import { PageShell } from '@/components/page-shell'
 import { StructuredPostView } from '@/components/structured-post-view'
 import { levelLabel, profileLabel } from '@/data/learn/labels'
+import { safeHref, safeImageSrc } from '@/data/safe-url'
 import { formatPublishDate, isPostPublished } from '@/data/learn/learn-store'
 import { usePageSeo } from '@/data/learn/use-page-seo'
 import {
@@ -154,9 +155,9 @@ export function LearnEpisodePage() {
       </Link>
 
       <header className="learn-episode-header">
-        {episode.coverUrl?.trim() ? (
+        {safeImageSrc(episode.coverUrl) ? (
           <div className="learn-cover">
-            <img src={episode.coverUrl.trim()} alt="" />
+            <img src={safeImageSrc(episode.coverUrl) || undefined} alt="" />
           </div>
         ) : null}
         <p className="learn-eyebrow">
@@ -173,8 +174,8 @@ export function LearnEpisodePage() {
         {episode.author?.trim() ? (
           <p className="learn-section-note learn-author">
             Автор:{' '}
-            {episode.authorUrl?.trim() ? (
-              <a href={episode.authorUrl.trim()} target="_blank" rel="noreferrer">
+            {safeHref(episode.authorUrl) ? (
+              <a href={safeHref(episode.authorUrl) || undefined} target="_blank" rel="noreferrer">
                 {episode.author.trim()}
               </a>
             ) : (
@@ -277,21 +278,21 @@ export function LearnEpisodePage() {
                     {episode.links
                       .filter((link) => link.href !== '#')
                       .map((link) => {
-                        const isInternal =
-                          link.href.startsWith('/') && !link.href.startsWith('//')
-                        const isExternal = link.href.startsWith('http')
+                        const href = safeHref(link.href)
+                        const isInternal = Boolean(href?.startsWith('/') && !href.startsWith('//'))
+                        const isExternal = Boolean(
+                          href?.startsWith('http://') || href?.startsWith('https://'),
+                        )
                         return (
                           <li key={link.href + link.label}>
-                            {isInternal ? (
-                              <Link to={link.href}>{link.label}</Link>
-                            ) : (
-                              <a
-                                href={link.href}
-                                target={isExternal ? '_blank' : undefined}
-                                rel={isExternal ? 'noreferrer' : undefined}
-                              >
+                            {href && isInternal ? (
+                              <Link to={href}>{link.label}</Link>
+                            ) : href && isExternal ? (
+                              <a href={href} target="_blank" rel="noreferrer">
                                 {link.label}
                               </a>
+                            ) : (
+                              <span>{link.label}</span>
                             )}
                           </li>
                         )

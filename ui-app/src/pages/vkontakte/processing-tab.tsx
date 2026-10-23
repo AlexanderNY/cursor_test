@@ -1,6 +1,7 @@
 import { FormEvent } from 'react'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Switch } from '@/components/ui/switch'
 
 export interface ProcessingTabProps {
   isLoadingProfile: boolean
@@ -75,16 +76,10 @@ export function ProcessingTab(props: ProcessingTabProps) {
         ) : (
           <form onSubmit={onSubmit} className="space-y-6">
             <label className="flex items-center gap-3 cursor-pointer group">
-              <div className="relative">
-                <input
-                  type="checkbox"
+              <Switch
                   checked={processEnabled}
                   onChange={(e) => onProcessEnabledChange(e.target.checked)}
-                  className="sr-only peer"
                 />
-                <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors" />
-                <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
-              </div>
               <span className="text-[var(--text-primary)]">Обрабатывать перед публикацией</span>
             </label>
             {processEnabled && (
@@ -102,42 +97,24 @@ export function ProcessingTab(props: ProcessingTabProps) {
               </div>
             )}
             <label className="flex items-center gap-3 cursor-pointer group">
-              <div className="relative">
-                <input
-                  type="checkbox"
+              <Switch
                   checked={removeEmojis}
                   onChange={(e) => onRemoveEmojisChange(e.target.checked)}
-                  className="sr-only peer"
                 />
-                <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors" />
-                <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
-              </div>
               <span className="text-[var(--text-primary)]">Удалить смайлики/эмодзи</span>
             </label>
             <label className="flex items-center gap-3 cursor-pointer group">
-              <div className="relative">
-                <input
-                  type="checkbox"
+              <Switch
                   checked={removeImages}
                   onChange={(e) => onRemoveImagesChange(e.target.checked)}
-                  className="sr-only peer"
                 />
-                <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors" />
-                <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
-              </div>
               <span className="text-[var(--text-primary)]">Удалить картинки</span>
             </label>
             <label className="flex items-center gap-3 cursor-pointer group">
-              <div className="relative">
-                <input
-                  type="checkbox"
+              <Switch
                   checked={cleanHtml}
                   onChange={(e) => onCleanHtmlChange(e.target.checked)}
-                  className="sr-only peer"
                 />
-                <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors" />
-                <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
-              </div>
               <span className="text-[var(--text-primary)]">Очистить HTML</span>
             </label>
             <div className="space-y-3">
@@ -147,8 +124,7 @@ export function ProcessingTab(props: ProcessingTabProps) {
               <div className="flex flex-wrap gap-4">
                 {(['wordpress', 'telegram', 'twitter', 'vkontakte'] as const).map((name) => (
                   <label key={name} className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
+                    <Switch
                       checked={
                         name === 'wordpress'
                           ? processServiceWordpress
@@ -164,7 +140,6 @@ export function ProcessingTab(props: ProcessingTabProps) {
                         else if (name === 'twitter') onProcessServiceTwitterChange(e.target.checked)
                         else onProcessServiceVkontakteChange(e.target.checked)
                       }}
-                      className="w-4 h-4 text-primary-500 rounded"
                     />
                     <span className="text-[var(--text-primary)]">
                       {name === 'vkontakte' ? 'VKontakte' : name.charAt(0).toUpperCase() + name.slice(1)}
@@ -174,29 +149,17 @@ export function ProcessingTab(props: ProcessingTabProps) {
               </div>
             </div>
             <label className="flex items-center gap-3 cursor-pointer group">
-              <div className="relative">
-                <input
-                  type="checkbox"
+              <Switch
                   checked={statusReviewAfterProcess}
                   onChange={(e) => onStatusReviewAfterProcessChange(e.target.checked)}
-                  className="sr-only peer"
                 />
-                <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors" />
-                <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
-              </div>
               <span className="text-[var(--text-primary)]">Перевести пост в статус review после обработки</span>
             </label>
             <label className="flex items-center gap-3 cursor-pointer group">
-              <div className="relative">
-                <input
-                  type="checkbox"
+              <Switch
                   checked={addStaticHtml}
                   onChange={(e) => onAddStaticHtmlChange(e.target.checked)}
-                  className="sr-only peer"
                 />
-                <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors" />
-                <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
-              </div>
               <span className="text-[var(--text-primary)]">Добавлять в посты статичный HTML</span>
             </label>
             {addStaticHtml && (

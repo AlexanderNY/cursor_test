@@ -13,6 +13,21 @@ from services.media_storage import delete_media_file, upload_media_file
 
 router = APIRouter(prefix="/admin", tags=["Game Media Admin"])
 
+_MAX_MEDIA_BYTES = 8 * 1024 * 1024
+_READ_CHUNK = 64 * 1024
+
+
+async def _read_media_limited(upload: UploadFile) -> bytes:
+    buf = bytearray()
+    while True:
+        chunk = await upload.read(_READ_CHUNK)
+        if not chunk:
+            break
+        buf.extend(chunk)
+        if len(buf) > _MAX_MEDIA_BYTES:
+            raise HTTPException(status_code=413, detail="File too large (max 8 MB)")
+    return bytes(buf)
+
 
 @router.get("/media", response_model=list[GameMediaOut], dependencies=[Depends(verify_game_admin_token)])
 async def list_media() -> list[GameMediaOut]:
@@ -26,7 +41,7 @@ async def upload_media(
     title: str = Form(""),
     description: str = Form(""),
 ) -> GameMediaOut:
-    body = await file.read()
+    body = await _read_media_limited(file)
     original = file.filename
     try:
         stored_name, s3_key, content_type, _public_url = await upload_media_file(

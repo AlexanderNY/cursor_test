@@ -93,8 +93,8 @@ async def upload_media_file(
 ) -> tuple[str, str, str, str]:
     if not body:
         raise ValueError("Empty file")
-    if len(body) > 10 * 1024 * 1024:
-        raise ValueError("File too large (max 10 MB)")
+    if len(body) > 8 * 1024 * 1024:
+        raise ValueError("File too large (max 8 MB)")
 
     storage = get_media_storage()
     if not storage:

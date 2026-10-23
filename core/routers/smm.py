@@ -837,6 +837,20 @@ async def create_job(body: JobCreate, x_user_id: Optional[str] = Header(None)):
         raise HTTPException(status_code=422, detail=str(exc))
 
 
+@router.post("/jobs/{job_id}/retry")
+async def retry_job(job_id: int, x_user_id: Optional[str] = Header(None)):
+    """Re-queue a failed/partial publish job and run it when due."""
+    user_id = get_user_id(x_user_id)
+    try:
+        return await smm_service.retry_job(user_id, job_id)
+    except QuotaExceededError as exc:
+        raise _http_quota(exc)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+
 @router.post("/jobs/{job_id}/approve")
 async def approve_job(job_id: int, x_user_id: Optional[str] = Header(None)):
     user_id = get_user_id(x_user_id)
@@ -1173,13 +1187,30 @@ async def delete_automation(automation_id: int, x_user_id: Optional[str] = Heade
     return {"ok": True}
 
 
+@router.get("/automations/{automation_id}/preview")
+async def preview_automation(
+    automation_id: int,
+    limit: int = Query(5, ge=1, le=20),
+    x_user_id: Optional[str] = Header(None),
+):
+    """Dry-run preview of texts that would become jobs (rss / tg_repost)."""
+    user_id = get_user_id(x_user_id)
+    try:
+        return await smm_service.preview_automation(user_id, automation_id, limit=limit)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    except Exception as exc:
+        logger.exception("Automation preview failed")
+        raise HTTPException(status_code=502, detail=f"Preview failed: {exc}") from exc
+
+
 @router.post("/automations/{automation_id}/run")
 async def run_automation(
     automation_id: int,
     limit: int = Query(10, ge=1, le=50),
     x_user_id: Optional[str] = Header(None),
 ):
-    """Pull RSS items into SMM jobs (pending_approval when approval_workflow is on)."""
+    """Pull RSS / tg_repost items into SMM jobs (pending_approval when approval_workflow is on)."""
     user_id = get_user_id(x_user_id)
     try:
         return await smm_service.run_automation(user_id, automation_id, limit=limit)
@@ -1188,8 +1219,8 @@ async def run_automation(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     except Exception as exc:
-        logger.exception("RSS automation run failed")
-        raise HTTPException(status_code=502, detail=f"Feed fetch failed: {exc}") from exc
+        logger.exception("Automation run failed")
+        raise HTTPException(status_code=502, detail=f"Automation run failed: {exc}") from exc
 
 
 # ---------- Analytics ----------

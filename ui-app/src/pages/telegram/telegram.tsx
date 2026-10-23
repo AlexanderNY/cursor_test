@@ -12,6 +12,7 @@ import {
   type TargetSocialNetworks,
 } from '@/components/target-social-networks'
 import { useAuth } from '@/contexts/auth-context'
+import { fileTooLargeMessage, isFileWithinLimit, MAX_IMAGE_BYTES } from '@/utils/read-file'
 import { useBrand } from '@/contexts/brand-context'
 import type {
   PublishScheduleType,
@@ -727,6 +728,11 @@ export function TelegramPage() {
   function handleImageChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (file) {
+      if (!isFileWithinLimit(file, MAX_IMAGE_BYTES)) {
+        setError(fileTooLargeMessage(MAX_IMAGE_BYTES))
+        e.target.value = ''
+        return
+      }
       if (imagePreview?.startsWith('blob:')) {
         URL.revokeObjectURL(imagePreview)
       }

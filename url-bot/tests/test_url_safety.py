@@ -54,7 +54,7 @@ def test_rejects_host_resolving_to_private() -> None:
     fake = [
         (None, None, None, None, ("10.1.2.3", 0)),
     ]
-    with patch("services.url_safety.socket.getaddrinfo", return_value=fake):
+    with patch("shared.url_safety.socket.getaddrinfo", return_value=fake):
         with pytest.raises(UnsafeUrlError, match="private"):
             validate_public_http_url("https://evil.example/")
 
@@ -66,7 +66,7 @@ def test_allows_public_literal_and_host() -> None:
     fake = [
         (None, None, None, None, ("93.184.216.34", 0)),
     ]
-    with patch("services.url_safety.socket.getaddrinfo", return_value=fake):
+    with patch("shared.url_safety.socket.getaddrinfo", return_value=fake):
         out = validate_public_http_url("https://Example.COM/foo?q=1#frag")
         assert out == "https://example.com/foo?q=1"
         assert "#frag" not in out

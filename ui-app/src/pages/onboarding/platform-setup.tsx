@@ -41,14 +41,14 @@ export function PlatformSetupPage() {
 
   useEffect(() => {
     if (!loading && state?.completed) {
-      navigate('/channels', { replace: true })
+      navigate('/posts', { replace: true })
     }
   }, [loading, state, navigate])
 
   async function handleSkip() {
     try {
       await smmService.skipOnboarding()
-      navigate('/channels', { replace: true })
+      navigate('/posts', { replace: true })
     } catch (err) {
       setError(getErrorMessage(err))
     }
@@ -103,7 +103,7 @@ export function PlatformSetupPage() {
       setChannelTitle('')
       await refreshChannels()
       const next = await smmService.onboardingState()
-      if (next.completed) navigate('/channels', { replace: true })
+      if (next.completed) navigate('/posts', { replace: true })
     } catch (err) {
       setError(getErrorMessage(err))
     } finally {
@@ -123,8 +123,8 @@ export function PlatformSetupPage() {
   return (
     <PageContainer>
       <PageHeader
-        title="Platform setup"
-        description="Подключите любую сеть пайплайна и добавьте own-канал бренда"
+        title="Подключите Telegram и отправьте первый пост"
+        description="Сначала TG (или другая сеть) → бренд → own-канал → Create Post"
       />
       <LearnModeBanner visible={Boolean(state?.learn_mode)} />
       {error && <Alert variant="error">{error}</Alert>}
@@ -152,16 +152,24 @@ export function PlatformSetupPage() {
           <CardHeader>
             <CardTitle>1–2. Connect platforms</CardTitle>
             <CardDescription>
-              Достаточно одной сети. TG/VK и Selenium/OAuth-платформы равноправны.
+              Рекомендуем начать с Telegram — дальше тот же цикл на других сетях.
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-wrap gap-2">
             {ONBOARDING_NETWORKS.map((net) => {
               const ready = platformReady(net)
+              const isPrimary = net === 'tg'
               return (
                 <Link key={net} to={NETWORK_SETUP_URLS[net]}>
-                  <Button variant={ready ? 'secondary' : 'primary'} size="sm">
-                    {ready ? `${NETWORK_LABELS[net]} ✓` : `Connect ${NETWORK_LABELS[net]}`}
+                  <Button
+                    variant={ready ? 'secondary' : isPrimary ? 'primary' : 'secondary'}
+                    size="sm"
+                  >
+                    {ready
+                      ? `${NETWORK_LABELS[net]} ✓`
+                      : isPrimary
+                        ? `Connect ${NETWORK_LABELS[net]} (старт)`
+                        : `Connect ${NETWORK_LABELS[net]}`}
                   </Button>
                 </Link>
               )

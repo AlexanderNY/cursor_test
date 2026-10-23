@@ -2,6 +2,7 @@ import { FormEvent } from 'react'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
+import { Switch } from '@/components/ui/switch'
 
 export interface ProcessingTabProps {
   isLoadingProfile: boolean
@@ -101,11 +102,7 @@ export function ProcessingTab(props: ProcessingTabProps) {
         ) : (
           <form onSubmit={onSubmit} className="space-y-6">
             <label className="flex items-center gap-3 cursor-pointer group">
-              <div className="relative">
-                <input type="checkbox" checked={processEnabled} onChange={(e) => onProcessEnabledChange(e.target.checked)} className="sr-only peer" />
-                <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors"></div>
-                <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></div>
-              </div>
+              <Switch checked={processEnabled} onChange={(e) => onProcessEnabledChange(e.target.checked)} />
               <span className="text-[var(--text-primary)] group-hover:text-primary-400 transition-colors">Обрабатывать перед публикацией</span>
             </label>
 
@@ -117,29 +114,17 @@ export function ProcessingTab(props: ProcessingTabProps) {
             )}
 
             <label className="flex items-center gap-3 cursor-pointer group">
-              <div className="relative">
-                <input type="checkbox" checked={removeEmojis} onChange={(e) => onRemoveEmojisChange(e.target.checked)} className="sr-only peer" />
-                <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors"></div>
-                <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></div>
-              </div>
+              <Switch checked={removeEmojis} onChange={(e) => onRemoveEmojisChange(e.target.checked)} />
               <span className="text-[var(--text-primary)] group-hover:text-primary-400 transition-colors">Удалить смайлики/эмодзи</span>
             </label>
 
             <label className="flex items-center gap-3 cursor-pointer group">
-              <div className="relative">
-                <input type="checkbox" checked={removeImages} onChange={(e) => onRemoveImagesChange(e.target.checked)} className="sr-only peer" />
-                <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors"></div>
-                <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></div>
-              </div>
+              <Switch checked={removeImages} onChange={(e) => onRemoveImagesChange(e.target.checked)} />
               <span className="text-[var(--text-primary)] group-hover:text-primary-400 transition-colors">Удалить картинки</span>
             </label>
 
             <label className="flex items-center gap-3 cursor-pointer group">
-              <div className="relative">
-                <input type="checkbox" checked={cleanHtml} onChange={(e) => onCleanHtmlChange(e.target.checked)} className="sr-only peer" />
-                <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors"></div>
-                <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></div>
-              </div>
+              <Switch checked={cleanHtml} onChange={(e) => onCleanHtmlChange(e.target.checked)} />
               <span className="text-[var(--text-primary)] group-hover:text-primary-400 transition-colors">Очистить HTML</span>
             </label>
 
@@ -147,39 +132,31 @@ export function ProcessingTab(props: ProcessingTabProps) {
               <span className="text-sm font-medium text-[var(--text-secondary)] block">Для каких сервисов подготовить обработку</span>
               <div className="flex flex-wrap gap-4">
                 <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" checked={processServiceWordpress} onChange={(e) => onProcessServiceWordpressChange(e.target.checked)} className="w-4 h-4 text-primary-500 rounded" />
+                  <Switch checked={processServiceWordpress} onChange={(e) => onProcessServiceWordpressChange(e.target.checked)} />
                   <span className="text-[var(--text-primary)]">WordPress</span>
                 </label>
                 <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" checked={processServiceTelegram} onChange={(e) => onProcessServiceTelegramChange(e.target.checked)} className="w-4 h-4 text-primary-500 rounded" />
+                  <Switch checked={processServiceTelegram} onChange={(e) => onProcessServiceTelegramChange(e.target.checked)} />
                   <span className="text-[var(--text-primary)]">Telegram</span>
                 </label>
                 <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" checked={processServiceTwitter} onChange={(e) => onProcessServiceTwitterChange(e.target.checked)} className="w-4 h-4 text-primary-500 rounded" />
+                  <Switch checked={processServiceTwitter} onChange={(e) => onProcessServiceTwitterChange(e.target.checked)} />
                   <span className="text-[var(--text-primary)]">Twitter</span>
                 </label>
                 <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" checked={processServiceVkontakte} onChange={(e) => onProcessServiceVkontakteChange(e.target.checked)} className="w-4 h-4 text-primary-500 rounded" />
+                  <Switch checked={processServiceVkontakte} onChange={(e) => onProcessServiceVkontakteChange(e.target.checked)} />
                   <span className="text-[var(--text-primary)]">VKontakte</span>
                 </label>
               </div>
             </div>
 
             <label className="flex items-center gap-3 cursor-pointer group">
-              <div className="relative">
-                <input type="checkbox" checked={statusReviewAfterProcess} onChange={(e) => onStatusReviewAfterProcessChange(e.target.checked)} className="sr-only peer" />
-                <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors"></div>
-                <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></div>
-              </div>
+              <Switch checked={statusReviewAfterProcess} onChange={(e) => onStatusReviewAfterProcessChange(e.target.checked)} />
               <span className="text-[var(--text-primary)] group-hover:text-primary-400 transition-colors">Перевести пост в статус review после обработки</span>
             </label>
 
             <label className="flex items-center gap-3 cursor-pointer group">
-              <div className="relative">
-                <input type="checkbox" checked={addStaticHtml} onChange={(e) => onAddStaticHtmlChange(e.target.checked)} className="sr-only peer" />
-                <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors"></div>
-                <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></div>
-              </div>
+              <Switch checked={addStaticHtml} onChange={(e) => onAddStaticHtmlChange(e.target.checked)} />
               <span className="text-[var(--text-primary)] group-hover:text-primary-400 transition-colors">Добавлять в посты статичный HTML</span>
             </label>
 
@@ -194,7 +171,7 @@ export function ProcessingTab(props: ProcessingTabProps) {
             <div className="pt-4 border-t border-[var(--border-color)] space-y-4">
               <h3 className="text-sm font-semibold text-[var(--text-primary)]">AI настройки</h3>
               <label className="flex items-center gap-3 cursor-pointer group">
-                <input type="checkbox" checked={summarizeEnabled} onChange={(e) => onSummarizeEnabledChange(e.target.checked)} className="w-4 h-4" />
+                <Switch checked={summarizeEnabled} onChange={(e) => onSummarizeEnabledChange(e.target.checked)} />
                 <span className="text-[var(--text-primary)]">Суммаризация длинных постов</span>
               </label>
               {summarizeEnabled && (
@@ -206,18 +183,16 @@ export function ProcessingTab(props: ProcessingTabProps) {
                 </div>
               )}
               <label className="flex items-center gap-3 cursor-pointer group">
-                <input type="checkbox" checked={classificationEnabled} onChange={(e) => onClassificationEnabledChange(e.target.checked)} className="w-4 h-4" />
+                <Switch checked={classificationEnabled} onChange={(e) => onClassificationEnabledChange(e.target.checked)} />
                 <span className="text-[var(--text-primary)]">AI-классификация сообщений</span>
               </label>
               {classificationEnabled && (
                 <div className="space-y-3">
                   <Input label="Categories (comma-separated)" value={classificationCategories} onChange={(e) => onClassificationCategoriesChange(e.target.value)} />
                   <label className="flex items-center gap-3 cursor-pointer group">
-                    <input
-                      type="checkbox"
+                    <Switch
                       checked={batchEnrichmentEnabled}
                       onChange={(e) => onBatchEnrichmentEnabledChange(e.target.checked)}
-                      className="w-4 h-4"
                     />
                     <span className="text-[var(--text-primary)]">
                       Batch enrichment (offline classify+sentiment, не блокирует сбор)

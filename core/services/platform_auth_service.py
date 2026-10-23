@@ -178,24 +178,29 @@ class PlatformAuthService:
             return self._missing_status("instagram", "Instagram profile not configured")
         connected = bool(profile.get("has_instagram_session"))
         pending = bool(profile.get("instagram_verification_pending"))
+        username = (profile.get("username") or "").strip()
+        # Password masked as "***" when set.
+        has_password = bool(profile.get("password"))
+        can_collect = bool(username and (connected or has_password))
+        if connected:
+            message = "Instagram session connected"
+        elif pending:
+            message = "Instagram verification pending (enter 2FA code)"
+        elif username and has_password:
+            message = "Credentials saved — run login test to establish session"
+        else:
+            message = "Save Instagram username/password and verify login"
         return {
-            "connected": connected,
-            "state": "pending" if pending else ("authorized" if connected else "missing"),
+            "connected": connected or can_collect,
+            "state": "pending" if pending else ("authorized" if (connected or can_collect) else "missing"),
             "pending": pending,
-            "username": profile.get("username"),
-            "message": (
-                "Instagram connected"
-                if connected
-                else (
-                    "Instagram verification pending"
-                    if pending
-                    else "Connect Instagram session"
-                )
-            ),
-            "can_collect": connected,
+            "username": username or profile.get("username"),
+            "message": message,
+            "can_collect": can_collect,
             "can_publish_text": connected,
             "can_publish_media": connected,
             "setup_url": SETUP_URLS["instagram"],
+            "session_connected": connected,
         }
 
     async def get_threads_status(self, user_id: int) -> dict[str, Any]:
@@ -203,15 +208,38 @@ class PlatformAuthService:
         if not profile:
             return self._missing_status("threads", "Threads profile not configured")
         connected = bool(profile.get("threads_connected") or profile.get("access_token"))
+        meta_login = (profile.get("meta_login") or "").strip()
+        has_browser = bool(
+            (meta_login and profile.get("has_meta_password"))
+            or (meta_login and profile.get("meta_password"))
+        )
+        # Instagram creds for same user also enable browser collect (JOIN in th-bot).
+        if not has_browser:
+            try:
+                ig = await profile_service.get_instagram_profile(user_id)
+                if ig and (ig.get("username") or "").strip() and ig.get("password"):
+                    has_browser = True
+            except Exception:
+                pass
+        can_collect = connected or has_browser
+        if connected:
+            message = "Threads OAuth connected"
+        elif has_browser:
+            message = "Browser login available (Instagram/Meta); OAuth needed to publish via API"
+        else:
+            message = "Connect Threads OAuth and/or save Meta/Instagram login for browser collect"
         return {
-            "connected": connected,
-            "state": "authorized" if connected else "missing",
+            "connected": connected or has_browser,
+            "state": "authorized" if (connected or has_browser) else "missing",
             "threads_user_id": profile.get("threads_user_id"),
-            "message": "Threads connected" if connected else "Connect Threads OAuth",
-            "can_collect": connected,
+            "username": profile.get("instagram_handle") or meta_login,
+            "message": message,
+            "can_collect": can_collect,
             "can_publish_text": connected,
             "can_publish_media": connected,
             "setup_url": SETUP_URLS["threads"],
+            "oauth_connected": connected,
+            "browser_session": has_browser,
         }
 
     async def get_tw_status(self, user_id: int) -> dict[str, Any]:
@@ -219,15 +247,27 @@ class PlatformAuthService:
         if not profile:
             return self._missing_status("tw", "Twitter profile not configured")
         connected = bool(profile.get("twitter_connected"))
+        username = (profile.get("twitter_username") or "").strip()
+        # Password is masked as "***" when set; empty means not stored.
+        has_browser = bool(username and profile.get("twitter_password"))
+        can_collect = connected or has_browser
+        if connected:
+            message = "Twitter OAuth connected"
+        elif has_browser:
+            message = "X login saved (browser collect); OAuth needed to publish via API"
+        else:
+            message = "Connect Twitter OAuth and/or save X login for browser collect"
         return {
-            "connected": connected,
-            "state": "authorized" if connected else "missing",
-            "username": profile.get("twitter_username"),
-            "message": "Twitter connected" if connected else "Connect Twitter OAuth",
-            "can_collect": connected,
+            "connected": connected or has_browser,
+            "state": "authorized" if (connected or has_browser) else "missing",
+            "username": username or profile.get("twitter_username"),
+            "message": message,
+            "can_collect": can_collect,
             "can_publish_text": connected,
             "can_publish_media": connected,
             "setup_url": SETUP_URLS["tw"],
+            "oauth_connected": connected,
+            "browser_session": has_browser,
         }
 
     async def get_dzen_status(self, user_id: int) -> dict[str, Any]:

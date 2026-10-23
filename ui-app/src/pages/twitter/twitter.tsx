@@ -1,34 +1,102 @@
 import { useState, FormEvent, useEffect, useCallback } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams, useNavigate } from 'react-router-dom'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
 import { PageHeader, PageContainer } from '@/components/ui'
-import { apiClient } from '@/services/api-client'
 import { twitterService } from '@/services/twitter-service'
-import type { TwitterProfile, TwitterScheduleType, TwPostRow, TwitterFollowingUser } from '@/types/twitter'
-import { formatDateTime } from '@/utils/date'
+import type { TwitterProfile, TwitterScheduleType, TwitterFollowingUser } from '@/types/twitter'
 import { useAuth } from '@/contexts/auth-context'
+import { useBrand } from '@/contexts/brand-context'
 import { canManagePlatformAuth } from '@/types/smm'
+import { Switch } from '@/components/ui/switch'
+import { allowedOAuthUrl } from '@/utils/safe-url'
 
 function generateId(): string {
   return Math.random().toString(36).substring(2, 9)
 }
 
-function screenshotUrl(path: string): string {
-  if (path.startsWith('http')) return path
-  const base = apiClient.defaults.baseURL ?? '/api'
-  const origin = typeof window !== 'undefined' ? window.location.origin : ''
-  return `${origin}${base}${path.startsWith('/') ? '' : '/'}${path}`
+const LEGACY_TAB_REDIRECT: Record<string, string> = {
+  posts: '/analytics',
+  create: '/posts',
+  calendar: '/calendar?network=tw',
+  profile: '/channels',
+  processing: '/channels',
+}
+
+function TwitterHubMap() {
+  const { selectedBrandId } = useBrand()
+  const calendarHref = selectedBrandId
+    ? `/calendar?brand=${selectedBrandId}&network=tw`
+    : '/calendar?network=tw'
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-lg">Brand → Channel</CardTitle>
+        <CardDescription>
+          Здесь только OAuth и сессия X. Источники (@handle), collect/publish и цели — в Channels.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <ul className="grid gap-3 sm:grid-cols-2 text-sm">
+          <li>
+            <Link to="/analytics" className="text-primary-400 hover:underline font-medium">
+              Posts → Analytics
+            </Link>
+            <p className="text-[var(--text-muted)] mt-0.5">
+              Очередь и лента по каналам бренда (не отдельный список на /twitter).
+            </p>
+          </li>
+          <li>
+            <Link to={calendarHref} className="text-primary-400 hover:underline font-medium">
+              Calendar → общий календарь
+            </Link>
+            <p className="text-[var(--text-muted)] mt-0.5">
+              Расписание публикаций, фильтр network=tw.
+            </p>
+          </li>
+          <li>
+            <Link to="/channels" className="text-primary-400 hover:underline font-medium">
+              Profile Settings → Channels
+            </Link>
+            <p className="text-[var(--text-muted)] mt-0.5">
+              Добавьте канал network=Twitter с external_id=@handle, включите Collect.
+            </p>
+          </li>
+          <li>
+            <Link to="/channels" className="text-primary-400 hover:underline font-medium">
+              Чтение каналов
+            </Link>
+            <p className="text-[var(--text-muted)] mt-0.5">
+              tw-bot читает x.com/@handle через браузер (логин ниже) или API (OAuth).
+            </p>
+          </li>
+        </ul>
+        <p className="mt-4 text-sm">
+          Создать пост:{' '}
+          <Link to="/posts" className="text-primary-400 hover:underline">
+            Posts
+          </Link>
+          {' · '}
+          очередь:{' '}
+          <Link to="/inbox" className="text-primary-400 hover:underline">
+            Inbox
+          </Link>
+        </p>
+      </CardContent>
+    </Card>
+  )
 }
 
 export function TwitterPage() {
   const { user } = useAuth()
   const hasTeam = Boolean(user?.group_id || user?.role_in_group)
   const canAuth = canManagePlatformAuth(user?.role_in_group, hasTeam)
+  const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
-  const [activeTab, setActiveTab] = useState<'create' | 'auth' | 'posts' | 'profile'>('posts')
+  const [activeTab, setActiveTab] = useState<'auth' | 'session'>('auth')
 
   const [publishEnabled, setPublishEnabled] = useState(false)
   const [collectEnabled, setCollectEnabled] = useState(false)
@@ -47,10 +115,6 @@ export function TwitterPage() {
   const [screenshotXpath, setScreenshotXpath] = useState('')
   const [twitterConnected, setTwitterConnected] = useState(false)
   const [twitterRestId, setTwitterRestId] = useState<string | null>(null)
-
-  const [posts, setPosts] = useState<TwPostRow[]>([])
-  const [isLoadingPosts, setIsLoadingPosts] = useState(false)
-  const [hasLoadedPosts, setHasLoadedPosts] = useState(false)
 
   const [isLoading, setIsLoading] = useState(false)
   const [isLoadingProfile, setIsLoadingProfile] = useState(true)
@@ -105,6 +169,19 @@ export function TwitterPage() {
   }, [loadProfile])
 
   useEffect(() => {
+    const legacyTab = searchParams.get('tab')
+    if (legacyTab && LEGACY_TAB_REDIRECT[legacyTab]) {
+      navigate(LEGACY_TAB_REDIRECT[legacyTab], { replace: true })
+      return
+    }
+    if (searchParams.get('auth') === '1') {
+      setActiveTab('auth')
+      searchParams.delete('auth')
+      setSearchParams(searchParams, { replace: true })
+    }
+  }, [searchParams, setSearchParams, navigate])
+
+  useEffect(() => {
     if (searchParams.get('oauth') === 'success' || searchParams.get('oauth') === 'error') {
       const message =
         searchParams.get('message') ||
@@ -117,26 +194,6 @@ export function TwitterPage() {
       void loadProfile()
     }
   }, [searchParams, setSearchParams, loadProfile])
-
-  useEffect(() => {
-    if (activeTab === 'posts' && !hasLoadedPosts) {
-      void loadPosts()
-    }
-  }, [activeTab, hasLoadedPosts])
-
-  async function loadPosts() {
-    setIsLoadingPosts(true)
-    setError('')
-    try {
-      const data = await twitterService.getPosts(50, 0)
-      setPosts(data)
-      setHasLoadedPosts(true)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load posts')
-    } finally {
-      setIsLoadingPosts(false)
-    }
-  }
 
   function addTimeInterval() {
     if (timeIntervals.length < 3) {
@@ -162,7 +219,12 @@ export function TwitterPage() {
     setIsConnectingOAuth(true)
     try {
       const url = await twitterService.getOAuthUrl()
-      window.location.href = url
+      const allowed = allowedOAuthUrl(url)
+      if (!allowed) {
+        setError('OAuth URL is not allowed')
+        return
+      }
+      window.location.href = allowed
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to get OAuth URL')
     } finally {
@@ -197,19 +259,18 @@ export function TwitterPage() {
     return profile
   }
 
-  async function handleSaveProfile(e: FormEvent) {
+  async function handleSaveSession(e: FormEvent) {
     e.preventDefault()
     setError('')
     setSuccess('')
     setIsLoading(true)
-
     try {
       await twitterService.saveProfile(buildProfilePayload() as TwitterProfile)
-      setSuccess('Profile settings saved successfully')
+      setSuccess('Session settings saved')
       setTwitterPassword('')
       await loadProfile()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save profile settings')
+      setError(err instanceof Error ? err.message : 'Failed to save settings')
     } finally {
       setIsLoading(false)
     }
@@ -306,100 +367,65 @@ export function TwitterPage() {
 
   return (
     <PageContainer maxWidth="wide">
-      <PageHeader title="Twitter / X Integration" description="Connect X, manage posting and feed collection" />
-      <p className="mb-4 text-sm flex flex-wrap gap-4">
-        <Link to="/posts" className="text-primary-400 hover:underline">
-          Создать пост → /posts
-        </Link>
-      </p>
+      <PageHeader
+        title="Twitter / X"
+        description="OAuth и сессия браузера. Каналы (@handle) — в Channels."
+      />
+
+      <TwitterHubMap />
 
       {error && (
-        <Alert variant="error" className="animate-slide-down">
+        <Alert variant="error" className="animate-slide-down mt-4">
           {error}
         </Alert>
       )}
 
       {success && (
-        <Alert variant="success" className="animate-slide-down">
+        <Alert variant="success" className="animate-slide-down mt-4">
           {success}
         </Alert>
       )}
 
-      <div className="flex border-b border-[var(--border-color)]">
+      <div className="flex border-b border-[var(--border-color)] mt-4">
         {canAuth && (
-        <button
-          className={`px-6 py-3 text-sm font-medium transition-all relative ${
-            activeTab === 'auth'
-              ? 'text-primary-400'
-              : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-          }`}
-          onClick={() => setActiveTab('auth')}
-        >
-          Авторизация
-          {activeTab === 'auth' && (
-            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-500" />
-          )}
-        </button>
+          <button
+            type="button"
+            className={`px-6 py-3 text-sm font-medium transition-all relative ${
+              activeTab === 'auth'
+                ? 'text-primary-400'
+                : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+            }`}
+            onClick={() => setActiveTab('auth')}
+          >
+            Авторизация
+            {activeTab === 'auth' && (
+              <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-500" />
+            )}
+          </button>
         )}
         <button
+          type="button"
           className={`px-6 py-3 text-sm font-medium transition-all relative ${
-            activeTab === 'posts'
+            activeTab === 'session'
               ? 'text-primary-400'
               : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
           }`}
-          onClick={() => setActiveTab('posts')}
+          onClick={() => setActiveTab('session')}
         >
-          Posts
-          {activeTab === 'posts' && (
-            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-500" />
-          )}
-        </button>
-        <button
-          className={`px-6 py-3 text-sm font-medium transition-all relative ${
-            activeTab === 'profile'
-              ? 'text-primary-400'
-              : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-          }`}
-          onClick={() => setActiveTab('profile')}
-        >
-          Profile Settings
-          {activeTab === 'profile' && (
+          Session
+          {activeTab === 'session' && (
             <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-500" />
           )}
         </button>
       </div>
 
-      {activeTab === 'create' && (
-        <Alert className="mt-4">
-          Создание постов — на странице{' '}
-          <Link to="/posts" className="text-primary-400 hover:underline">
-            Posts
-          </Link>
-        </Alert>
-      )}
-
       {activeTab === 'auth' && canAuth && (
-        <Card className="animate-slide-up">
+        <Card className="animate-slide-up mt-4">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="h-6 w-6 text-primary-400"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"
-                />
-              </svg>
-              Авторизация
-            </CardTitle>
+            <CardTitle>Авторизация</CardTitle>
             <CardDescription>
-              OAuth для API X; логин и пароль — для автоматизации (tw-bot / скриншоты), не для REST.
+              OAuth — публикация через API. Логин/пароль — чтение таймлайнов brand-каналов в браузере
+              (рекомендуемый путь для Free/Basic API).
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -408,11 +434,12 @@ export function TwitterPage() {
             ) : (
               <div className="space-y-8">
                 <div className="p-4 rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)] space-y-3">
-                  <h3 className="text-sm font-semibold text-[var(--text-primary)]">Подключение (OAuth 2.0)</h3>
+                  <h3 className="text-sm font-semibold text-[var(--text-primary)]">
+                    Подключение (OAuth 2.0)
+                  </h3>
                   <p className="text-sm text-[var(--text-secondary)]">
-                    Для постинга и проверки подписок нужен OAuth. Redirect URI должен совпадать с{' '}
-                    <code className="text-xs">TWITTER_OAUTH_REDIRECT_URI</code>. После смены scope (
-                    <code className="text-xs">follows.read</code>) выполните подключение заново.
+                    Нужен для постинга и API-проверки. Redirect URI должен совпадать с{' '}
+                    <code className="text-xs">TWITTER_OAUTH_REDIRECT_URI</code>.
                   </p>
                   <div className="flex flex-wrap items-center gap-3">
                     <Button type="button" onClick={() => void handleConnectX()} isLoading={isConnectingOAuth}>
@@ -432,9 +459,12 @@ export function TwitterPage() {
                 </div>
 
                 <form onSubmit={handleSaveCredentials} className="space-y-4">
-                  <h3 className="text-sm font-semibold text-[var(--text-primary)]">Учётные данные</h3>
+                  <h3 className="text-sm font-semibold text-[var(--text-primary)]">
+                    Учётные данные (браузер)
+                  </h3>
                   <p className="text-xs text-[var(--text-muted)]">
-                    Официальный API X не принимает пароль. Поля ниже сохраняются для сценариев с браузером / прокси.
+                    Для сбора постов из Channels: tw-bot открывает x.com/@handle под этой сессией.
+                    API пароль не принимает.
                   </p>
                   <div className="grid gap-4 md:grid-cols-2">
                     <Input
@@ -460,9 +490,11 @@ export function TwitterPage() {
                 </form>
 
                 <div className="space-y-4 pt-2 border-t border-[var(--border-color)]">
-                  <h3 className="text-sm font-semibold text-[var(--text-primary)]">Проверка авторизации</h3>
+                  <h3 className="text-sm font-semibold text-[var(--text-primary)]">
+                    Проверка авторизации
+                  </h3>
                   <p className="text-xs text-[var(--text-muted)]">
-                    Запрашиваем список подписок через X API (нужен OAuth с правом follows.read).
+                    API: список подписок (нужен OAuth с follows.read). Браузер: вход Selenium.
                   </p>
                   <div className="flex flex-wrap gap-3">
                     <Button
@@ -470,7 +502,7 @@ export function TwitterPage() {
                       onClick={() => void refreshFollowing()}
                       isLoading={isLoadingFollowing}
                     >
-                      Проверить (список подписок)
+                      Проверить (API / подписки)
                     </Button>
                     {followingNextToken && (
                       <Button
@@ -482,6 +514,14 @@ export function TwitterPage() {
                         Загрузить ещё
                       </Button>
                     )}
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={() => void runSeleniumVerify()}
+                      isLoading={isLoadingSelenium}
+                    >
+                      Проверить через браузер
+                    </Button>
                   </div>
                   {followingUsers.length > 0 && (
                     <ul className="mt-4 space-y-2 max-h-80 overflow-y-auto rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)] p-3">
@@ -490,9 +530,7 @@ export function TwitterPage() {
                           key={u.id}
                           className="flex flex-wrap gap-x-3 gap-y-1 text-sm text-[var(--text-primary)] border-b border-[var(--border-color)] border-opacity-50 pb-2 last:border-0 last:pb-0"
                         >
-                          <span className="font-mono text-primary-400">
-                            @{u.username ?? u.id}
-                          </span>
+                          <span className="font-mono text-primary-400">@{u.username ?? u.id}</span>
                           {u.name && (
                             <span className="text-[var(--text-secondary)]">{u.name}</span>
                           )}
@@ -500,35 +538,24 @@ export function TwitterPage() {
                       ))}
                     </ul>
                   )}
-
-                  <div className="space-y-3 pt-4 border-t border-[var(--border-color)]">
-                    <p className="text-xs text-[var(--text-muted)]">
-                      Если OAuth или API недоступны (403, план разработчика): проверка через браузер в tw-bot. Не
-                      заменяет OAuth для публикации по API. Возможны капча, 2FA и блокировки — см. правила X.
-                    </p>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      onClick={() => void runSeleniumVerify()}
-                      isLoading={isLoadingSelenium}
-                    >
-                      Проверить через браузер (Selenium)
-                    </Button>
-                    {seleniumUsers.length > 0 && (
-                      <ul className="mt-2 space-y-2 max-h-64 overflow-y-auto rounded-xl border border-[var(--border-color)] bg-[var(--bg-tertiary)] p-3">
-                        <li className="text-xs font-medium text-[var(--text-secondary)] mb-2">Список (веб-страница)</li>
-                        {seleniumUsers.map((u) => (
-                          <li
-                            key={`se-${u.id}`}
-                            className="flex flex-wrap gap-x-3 gap-y-1 text-sm text-[var(--text-primary)] border-b border-[var(--border-color)] border-opacity-50 pb-2 last:border-0 last:pb-0"
-                          >
-                            <span className="font-mono text-primary-400">@{u.username ?? u.id}</span>
-                            {u.name && <span className="text-[var(--text-secondary)]">{u.name}</span>}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
+                  {seleniumUsers.length > 0 && (
+                    <ul className="mt-2 space-y-2 max-h-64 overflow-y-auto rounded-xl border border-[var(--border-color)] bg-[var(--bg-tertiary)] p-3">
+                      <li className="text-xs font-medium text-[var(--text-secondary)] mb-2">
+                        Selenium
+                      </li>
+                      {seleniumUsers.map((u) => (
+                        <li
+                          key={`se-${u.id}`}
+                          className="flex flex-wrap gap-x-3 gap-y-1 text-sm text-[var(--text-primary)] border-b border-[var(--border-color)] border-opacity-50 pb-2 last:border-0 last:pb-0"
+                        >
+                          <span className="font-mono text-primary-400">@{u.username ?? u.id}</span>
+                          {u.name && (
+                            <span className="text-[var(--text-secondary)]">{u.name}</span>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
               </div>
             )}
@@ -536,176 +563,49 @@ export function TwitterPage() {
         </Card>
       )}
 
-      {activeTab === 'posts' && (
-        <Card className="animate-slide-up">
+      {activeTab === 'session' && (
+        <Card className="animate-slide-up mt-4">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="h-6 w-6 text-primary-400"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M4 6h16M4 10h16M4 14h10"
-                />
-              </svg>
-              Posts
-            </CardTitle>
-            <CardDescription>Your X queue (status from posts / post_targets and tw-bot)</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {isLoadingPosts ? (
-              <div className="text-center py-8 text-[var(--text-muted)]">Loading...</div>
-            ) : posts.length === 0 ? (
-              <div className="text-center py-8 text-[var(--text-muted)]">No posts yet.</div>
-            ) : (
-              <ul className="space-y-4">
-                {posts.map((p) => (
-                  <li
-                    key={p.id}
-                    className="p-4 rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)]"
-                  >
-                    <div className="flex flex-wrap gap-2 items-center text-xs text-[var(--text-muted)] mb-2">
-                      <span className="font-mono">#{p.id}</span>
-                      {p.status && (
-                        <span className="px-2 py-0.5 rounded bg-[var(--bg-tertiary)]">{p.status}</span>
-                      )}
-                      {p.created_at && <span>{formatDateTime(p.created_at)}</span>}
-                    </div>
-                    {p.url && (
-                      <a
-                        href={p.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-sm text-primary-400 hover:underline break-all"
-                      >
-                        {p.url}
-                      </a>
-                    )}
-                    {p.post_text && (
-                      <p className="text-[var(--text-primary)] mt-2 whitespace-pre-wrap">{p.post_text}</p>
-                    )}
-                    {p.screenshot && (
-                      <img
-                        src={screenshotUrl(p.screenshot)}
-                        alt=""
-                        className="mt-3 max-h-48 rounded-lg border border-[var(--border-color)] object-contain"
-                      />
-                    )}
-                  </li>
-                ))}
-              </ul>
-            )}
-            <div className="mt-4">
-              <Button type="button" variant="secondary" size="sm" onClick={() => void loadPosts()}>
-                Refresh
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {activeTab === 'profile' && (
-        <Card className="animate-slide-up">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="h-6 w-6 text-primary-400"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
-                />
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                />
-              </svg>
-              Profile settings
-            </CardTitle>
-            <CardDescription>Publishing, collection, proxy (tw-bot). Авторизация — вкладка «Авторизация».</CardDescription>
+            <CardTitle>Session / browser</CardTitle>
+            <CardDescription>
+              Прокси и скриншоты для tw-bot. Collect/Publish по источникам — в{' '}
+              <Link to="/channels" className="text-primary-400 hover:underline">
+                Channels
+              </Link>
+              . Legacy «лента Following» ниже — только если нет brand-каналов.
+            </CardDescription>
           </CardHeader>
           <CardContent>
             {isLoadingProfile ? (
               <div className="text-center py-8 text-[var(--text-muted)]">Loading profile...</div>
             ) : (
-              <form onSubmit={handleSaveProfile} className="space-y-8">
+              <form onSubmit={handleSaveSession} className="space-y-8">
                 <div className="space-y-4">
-                  <h3 className="text-sm font-semibold text-[var(--text-primary)] flex items-center gap-2">
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      className="h-5 w-5 text-primary-400"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
-                      />
-                    </svg>
-                    Publishing & collection
-                  </h3>
                   <label className="flex items-center gap-3 cursor-pointer group">
-                    <div className="relative">
-                      <input
-                        type="checkbox"
-                        checked={publishEnabled}
-                        onChange={(e) => setPublishEnabled(e.target.checked)}
-                        className="sr-only peer"
-                      />
-                      <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors" />
-                      <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
-                    </div>
+                    <Switch
+                      checked={publishEnabled}
+                      onChange={(e) => setPublishEnabled(e.target.checked)}
+                    />
                     <span className="text-[var(--text-primary)] group-hover:text-primary-400 transition-colors">
-                      Enable publishing (tw-bot)
+                      Enable publishing (tw-bot, нужен OAuth)
                     </span>
                   </label>
-
                   <label className="flex items-center gap-3 cursor-pointer group">
-                    <div className="relative">
-                      <input
-                        type="checkbox"
-                        checked={collectEnabled}
-                        onChange={(e) => setCollectEnabled(e.target.checked)}
-                        className="sr-only peer"
-                      />
-                      <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors" />
-                      <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
-                    </div>
+                    <Switch
+                      checked={collectEnabled}
+                      onChange={(e) => setCollectEnabled(e.target.checked)}
+                    />
                     <span className="text-[var(--text-primary)] group-hover:text-primary-400 transition-colors">
-                      Enable feed collection (tw-bot)
+                      Legacy: собирать Following (если нет каналов в бренде)
                     </span>
                   </label>
-
                   <label className="flex items-center gap-3 cursor-pointer group">
-                    <div className="relative">
-                      <input
-                        type="checkbox"
-                        checked={takeScreenshotCollect}
-                        onChange={(e) => setTakeScreenshotCollect(e.target.checked)}
-                        className="sr-only peer"
-                      />
-                      <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors" />
-                      <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
-                    </div>
+                    <Switch
+                      checked={takeScreenshotCollect}
+                      onChange={(e) => setTakeScreenshotCollect(e.target.checked)}
+                    />
                     <span className="text-[var(--text-primary)] group-hover:text-primary-400 transition-colors">
-                      Screenshot tweets when collecting (url-bot / Selenium)
+                      Screenshot tweets when collecting
                     </span>
                   </label>
                   {takeScreenshotCollect && (
@@ -720,7 +620,9 @@ export function TwitterPage() {
                 </div>
 
                 <div className="space-y-4 pt-4 border-t border-[var(--border-color)]">
-                  <label className="text-sm font-medium text-[var(--text-secondary)] block">Schedule</label>
+                  <label className="text-sm font-medium text-[var(--text-secondary)] block">
+                    Schedule (legacy profile collect)
+                  </label>
                   <div className="space-y-3">
                     <label className="flex items-center gap-3 cursor-pointer">
                       <input
@@ -731,7 +633,7 @@ export function TwitterPage() {
                         onChange={() => setScheduleType('immediate')}
                         className="w-4 h-4 text-primary-500"
                       />
-                      <span className="text-[var(--text-primary)]">Immediate (on new items)</span>
+                      <span className="text-[var(--text-primary)]">Immediate</span>
                     </label>
                     <label className="flex items-center gap-3 cursor-pointer">
                       <input
@@ -745,7 +647,6 @@ export function TwitterPage() {
                       <span className="text-[var(--text-primary)]">By time intervals</span>
                     </label>
                   </div>
-
                   {scheduleType === 'intervals' && (
                     <div className="space-y-3 mt-4 animate-slide-down">
                       {timeIntervals.map((interval, index) => (
@@ -772,35 +673,13 @@ export function TwitterPage() {
                               onClick={() => removeTimeInterval(interval.id)}
                               className="px-3 text-red-400 hover:text-red-300"
                             >
-                              <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                className="h-5 w-5"
-                                fill="none"
-                                viewBox="0 0 24 24"
-                                stroke="currentColor"
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                                />
-                              </svg>
+                              Remove
                             </Button>
                           )}
                         </div>
                       ))}
                       {timeIntervals.length < 3 && (
                         <Button type="button" variant="secondary" size="sm" onClick={addTimeInterval}>
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            className="h-4 w-4 mr-2"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                          >
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                          </svg>
                           Add interval
                         </Button>
                       )}
@@ -811,21 +690,11 @@ export function TwitterPage() {
                 <div className="space-y-4 pt-4 border-t border-[var(--border-color)]">
                   <h3 className="text-sm font-semibold text-[var(--text-primary)]">Proxy</h3>
                   <label className="flex items-center gap-3 cursor-pointer group">
-                    <div className="relative">
-                      <input
-                        type="checkbox"
-                        checked={useProxy}
-                        onChange={(e) => setUseProxy(e.target.checked)}
-                        className="sr-only peer"
-                      />
-                      <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors" />
-                      <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
-                    </div>
+                    <Switch checked={useProxy} onChange={(e) => setUseProxy(e.target.checked)} />
                     <span className="text-[var(--text-primary)] group-hover:text-primary-400 transition-colors">
                       Use proxy
                     </span>
                   </label>
-
                   {useProxy && (
                     <div className="grid gap-4 md:grid-cols-2 animate-slide-down p-4 bg-[var(--bg-secondary)] rounded-xl">
                       <Input
@@ -833,28 +702,24 @@ export function TwitterPage() {
                         type="text"
                         value={proxyUser}
                         onChange={(e) => setProxyUser(e.target.value)}
-                        placeholder="Proxy username"
                       />
                       <Input
                         label="Proxy password"
                         type="password"
                         value={proxyPass}
                         onChange={(e) => setProxyPass(e.target.value)}
-                        placeholder="Proxy password"
                       />
                       <Input
                         label="Proxy host"
                         type="text"
                         value={proxyHost}
                         onChange={(e) => setProxyHost(e.target.value)}
-                        placeholder="Proxy host"
                       />
                       <Input
                         label="Proxy port"
                         type="number"
                         value={proxyPort}
                         onChange={(e) => setProxyPort(e.target.value)}
-                        placeholder="Proxy port"
                       />
                     </div>
                   )}
@@ -862,16 +727,7 @@ export function TwitterPage() {
 
                 <CardFooter className="px-0">
                   <Button type="submit" isLoading={isLoading} className="w-full sm:w-auto">
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      className="h-5 w-5 mr-2"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                    Save profile settings
+                    Save session settings
                   </Button>
                 </CardFooter>
               </form>

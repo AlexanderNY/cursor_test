@@ -1,8 +1,8 @@
 """9to18.ru site contour: auth, apps, blogs, contacts.
 
 Роли:
-- user — чтение опубликованных страниц и статей всех сервисов
-- админ сервиса (site_app_admins) — плашка, страница и блог своих сервисов
+- user — сервисы витрины и статьи блогов
+- админ сервиса (site_app_admins) — плашка и отдельный блог своих сервисов
 - супер-админ (site_users.site_role = site_admin) — всё выше + любой сервис,
   спотлайт, назначение админов сервисов
 """
@@ -631,30 +631,13 @@ async def ensure_site_seeded() -> None:
                             int(app.get("sort_order") or 0),
                         ),
                     )
-                    stub_slug = "about"
-                    stub_title = f"О приложении {app['title']}"
-                    stub_body = (
-                        f"Это заглушка блога приложения **{app['title']}**.\n\n"
-                        f"{app.get('description', '')}\n\n"
-                        "Скоро здесь появятся новости о развитии сервиса. "
-                        "Пользователи 9to18 могут читать блоги приложений и "
-                        "писать разработчикам через форму обратной связи."
-                    )
-                    await cur.execute(
-                        """
-                        INSERT INTO site_posts (app_slug, slug, title, body, is_published)
-                        VALUES (%s, %s, %s, %s, TRUE)
-                        ON CONFLICT (app_slug, slug) DO NOTHING
-                        """,
-                        (app["slug"], stub_slug, stub_title, stub_body),
-                    )
             await _ensure_featured_apps(cur)
     finally:
         await release_site_db_connection(conn)
 
 
 async def _ensure_featured_apps(cur: Any) -> None:
-    """Insert missing featured tiles/about posts; never overwrite admin content."""
+    """Insert missing featured tiles. Never overwrite admin content."""
     stub_hide_slugs = {
         "e2e-tester",
         "menu",
@@ -694,24 +677,6 @@ async def _ensure_featured_apps(cur: Any) -> None:
                 app.get("app_path", ""),
                 int(app.get("sort_order") or 0),
             ),
-        )
-        stub_body = (
-            f"**{app['title']}** — {app.get('description', '')}\n\n"
-            "Откройте плитку на главной 9to18, читайте блог и пишите разработчикам."
-        )
-        if app["slug"] == "code":
-            stub_body = (
-                "## Code — Python в браузере\n\n"
-                "Песочница на **Pyodide** (тот же runtime, что у Bowl). "
-                "Откройте `/game/code` или кнопку «Запустить в браузере» на вкладке лабы Learn.\n"
-            )
-        await cur.execute(
-            """
-            INSERT INTO site_posts (app_slug, slug, title, body, is_published)
-            VALUES (%s, 'about', %s, %s, TRUE)
-            ON CONFLICT (app_slug, slug) DO NOTHING
-            """,
-            (app["slug"], f"О приложении {app['title']}", stub_body),
         )
     # Скрываем заглушки (не трогаем featured и ручные правки is_visible у них).
     if stub_hide_slugs:
@@ -1107,19 +1072,6 @@ async def create_app(
                     raise HTTPException(status_code=409, detail="Slug уже занят") from exc
                 raise
             row = await cur.fetchone()
-            stub_title = f"О приложении {body.title.strip()}"
-            stub_body = (
-                f"**{body.title.strip()}** — {body.description or body.subtitle}\n\n"
-                "Скоро здесь появятся новости о развитии сервиса."
-            )
-            await cur.execute(
-                """
-                INSERT INTO site_posts (app_slug, slug, title, body, is_published)
-                VALUES (%s, 'about', %s, %s, TRUE)
-                ON CONFLICT (app_slug, slug) DO NOTHING
-                """,
-                (slug, stub_title, stub_body),
-            )
     finally:
         await release_site_db_connection(conn)
     return _row_app(row)
@@ -1551,7 +1503,7 @@ async def _spotlight_items(
                 "appTitle": str(row[5] or app_slug),
                 "emoji": str(row[6] or ""),
                 "accent": str(row[7] or "#2dd4bf"),
-                "href": f"/app/{app_slug}/{post_slug}",
+                "href": f"/blog/{app_slug}/{post_slug}",
             }
         )
     return items

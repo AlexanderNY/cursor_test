@@ -1,4 +1,4 @@
-"""Чтение ленты Following на x.com/home через Selenium (cookies + логин/пароль)."""
+"""Чтение ленты X через Selenium: Following (home) и таймлайн пользователя (@handle)."""
 
 from __future__ import annotations
 
@@ -266,7 +266,90 @@ def _screenshot_article(article: WebElement) -> Optional[bytes]:
         return None
 
 
-def collect_following_feed_sync(
+def _scroll_collect_articles(
+    driver: WebDriver,
+    *,
+    known_status_ids: Set[str],
+    take_screenshot: bool,
+    max_scroll: int,
+    max_tweets: int,
+) -> List[FeedTweet]:
+    collected: List[FeedTweet] = []
+    seen_ids: Set[str] = set()
+    scroll_n = max(1, int(max_scroll))
+    limit = max(1, int(max_tweets))
+
+    for round_i in range(scroll_n):
+        try:
+            articles = driver.find_elements(By.CSS_SELECTOR, 'article[data-testid="tweet"]')
+        except Exception:
+            articles = []
+
+        visible_ids: List[str] = []
+        new_this_round = 0
+        for article in articles:
+            if len(collected) >= limit:
+                break
+            parsed = _parse_article(article)
+            if not parsed:
+                continue
+            sid = parsed["status_id"]
+            visible_ids.append(sid)
+            if sid in known_status_ids or sid in seen_ids:
+                continue
+            seen_ids.add(sid)
+            shot = _screenshot_article(article) if take_screenshot else None
+            collected.append(
+                FeedTweet(
+                    status_id=sid,
+                    text=parsed["text"],
+                    url=parsed["url"],
+                    screenshot_png=shot,
+                )
+            )
+            new_this_round += 1
+
+        if len(collected) >= limit:
+            break
+        if visible_ids and new_this_round == 0:
+            break
+        if round_i + 1 < scroll_n:
+            try:
+                driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+                time.sleep(1.2)
+            except Exception:
+                break
+    return collected
+
+
+def _ensure_logged_in(
+    driver: WebDriver,
+    login: str,
+    password: str,
+    cookies: List[Dict[str, Any]],
+) -> Optional[str]:
+    """Returns error message or None on success."""
+    logged_in = False
+    if cookies:
+        _apply_cookies(driver, cookies)
+        driver.get("https://x.com/home")
+        time.sleep(2.5)
+        if not _is_login_url(driver.current_url or ""):
+            logged_in = True
+
+    if not logged_in:
+        err = _login_x(driver, login, password)
+        if err:
+            return err
+        driver.get("https://x.com/home")
+        time.sleep(2.0)
+        if _is_login_url(driver.current_url or ""):
+            return "Сессия не установлена после входа (логин/challenge)"
+    return None
+
+
+def _browser_collect_sync(
+    *,
     login: str,
     password: str,
     cookies_json: Optional[str],
@@ -275,11 +358,12 @@ def collect_following_feed_sync(
     known_status_ids: Set[str],
     max_scroll: int,
     max_tweets: int,
+    after_login,
+    empty_feed_error: str,
 ) -> FeedCollectResult:
     """
-    Вход (cookies или логин/пароль) → Home / Following → карточки article.
-    known_status_ids — уже сохранённые status id; скролл останавливается, когда
-    все видимые посты уже известны.
+    Shared Selenium session: login → after_login(driver) → scroll tweet cards.
+    after_login navigates to the target feed and returns Optional[str] error.
     """
     login = (login or "").strip()
     if login.startswith("@"):
@@ -317,82 +401,28 @@ def collect_following_feed_sync(
 
     try:
         driver = create_chrome_driver(proxy)
-        logged_in = False
+        login_err = _ensure_logged_in(driver, login, password, cookies)
+        if login_err:
+            return _fail(login_err)
 
-        if cookies:
-            _apply_cookies(driver, cookies)
-            driver.get("https://x.com/home")
-            time.sleep(2.5)
-            if not _is_login_url(driver.current_url or ""):
-                logged_in = True
-
-        if not logged_in:
-            err = _login_x(driver, login, password)
-            if err:
-                return _fail(err)
-            driver.get("https://x.com/home")
-            time.sleep(2.0)
-            if _is_login_url(driver.current_url or ""):
-                return _fail("Сессия не установлена после входа (логин/challenge)")
-
-        _click_following_tab(driver)
+        nav_err = after_login(driver)
+        if nav_err:
+            return _fail(nav_err)
 
         try:
             WebDriverWait(driver, 30).until(
                 EC.presence_of_element_located((By.CSS_SELECTOR, 'article[data-testid="tweet"]'))
             )
         except TimeoutException:
-            return _fail(
-                "Лента Following не загрузилась (нет карточек tweet — изменилась вёрстка или пустая лента)."
-            )
+            return _fail(empty_feed_error)
 
-        collected: List[FeedTweet] = []
-        seen_ids: Set[str] = set()
-        scroll_n = max(1, int(max_scroll))
-        limit = max(1, int(max_tweets))
-
-        for round_i in range(scroll_n):
-            try:
-                articles = driver.find_elements(By.CSS_SELECTOR, 'article[data-testid="tweet"]')
-            except Exception:
-                articles = []
-
-            visible_ids: List[str] = []
-            new_this_round = 0
-            for article in articles:
-                if len(collected) >= limit:
-                    break
-                parsed = _parse_article(article)
-                if not parsed:
-                    continue
-                sid = parsed["status_id"]
-                visible_ids.append(sid)
-                if sid in known_status_ids or sid in seen_ids:
-                    continue
-                seen_ids.add(sid)
-                shot = _screenshot_article(article) if take_screenshot else None
-                collected.append(
-                    FeedTweet(
-                        status_id=sid,
-                        text=parsed["text"],
-                        url=parsed["url"],
-                        screenshot_png=shot,
-                    )
-                )
-                new_this_round += 1
-
-            if len(collected) >= limit:
-                break
-            if visible_ids and new_this_round == 0:
-                # Все видимые уже в БД или собраны в этом проходе
-                break
-            if round_i + 1 < scroll_n:
-                try:
-                    driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-                    time.sleep(1.2)
-                except Exception:
-                    break
-
+        collected = _scroll_collect_articles(
+            driver,
+            known_status_ids=known_status_ids,
+            take_screenshot=take_screenshot,
+            max_scroll=max_scroll,
+            max_tweets=max_tweets,
+        )
         cookies_out = _dump_driver_cookies(driver)
         return FeedCollectResult(ok=True, tweets=collected, cookies_json=cookies_out)
     except Exception as exc:
@@ -412,6 +442,88 @@ def collect_following_feed_sync(
                 driver.quit()
             except Exception:
                 pass
+
+
+def collect_following_feed_sync(
+    login: str,
+    password: str,
+    cookies_json: Optional[str],
+    proxy: Optional[Dict[str, Any]],
+    take_screenshot: bool,
+    known_status_ids: Set[str],
+    max_scroll: int,
+    max_tweets: int,
+) -> FeedCollectResult:
+    """
+    Вход (cookies или логин/пароль) → Home / Following → карточки article.
+    known_status_ids — уже сохранённые status id; скролл останавливается, когда
+    все видимые посты уже известны.
+    """
+
+    def _after(driver: WebDriver) -> Optional[str]:
+        _click_following_tab(driver)
+        return None
+
+    return _browser_collect_sync(
+        login=login,
+        password=password,
+        cookies_json=cookies_json,
+        proxy=proxy,
+        take_screenshot=take_screenshot,
+        known_status_ids=known_status_ids,
+        max_scroll=max_scroll,
+        max_tweets=max_tweets,
+        after_login=_after,
+        empty_feed_error=(
+            "Лента Following не загрузилась (нет карточек tweet — изменилась вёрстка или пустая лента)."
+        ),
+    )
+
+
+def collect_user_timeline_sync(
+    login: str,
+    password: str,
+    cookies_json: Optional[str],
+    proxy: Optional[Dict[str, Any]],
+    take_screenshot: bool,
+    known_status_ids: Set[str],
+    max_scroll: int,
+    max_tweets: int,
+    handle: str,
+) -> FeedCollectResult:
+    """
+    Вход → профиль https://x.com/{handle} → карточки article.
+    Основной способ чтения brand-канала Twitter (API часто недоступен на Free).
+    """
+    target = _normalize_handle(handle)
+    if not target:
+        return FeedCollectResult(ok=False, error="Пустой @handle канала Twitter")
+
+    def _after(driver: WebDriver) -> Optional[str]:
+        driver.get(f"https://x.com/{target}")
+        time.sleep(2.5)
+        if _is_login_url(driver.current_url or ""):
+            return "Сессия сброшена при открытии профиля"
+        cur = (driver.current_url or "").lower()
+        if "/i/flow/" in cur or "account/access" in cur:
+            return "X запросил challenge при открытии профиля"
+        return None
+
+    return _browser_collect_sync(
+        login=login,
+        password=password,
+        cookies_json=cookies_json,
+        proxy=proxy,
+        take_screenshot=take_screenshot,
+        known_status_ids=known_status_ids,
+        max_scroll=max_scroll,
+        max_tweets=max_tweets,
+        after_login=_after,
+        empty_feed_error=(
+            f"Лента @{target} не загрузилась (нет карточек tweet — приватный аккаунт, "
+            "пустой профиль или изменилась вёрстка)."
+        ),
+    )
 
 
 async def upload_feed_screenshot(user_id: int, png_bytes: bytes) -> Optional[str]:
@@ -437,6 +549,20 @@ async def upload_feed_screenshot(user_id: int, png_bytes: bytes) -> Optional[str
     except Exception:
         logger.warning("Feed screenshot S3 upload failed", exc_info=True)
         return None
+
+
+async def _upload_tweet_shots(
+    user_id: int,
+    result: FeedCollectResult,
+    take_screenshot: bool,
+) -> FeedCollectResult:
+    if not result.ok or not take_screenshot:
+        return result
+    for tweet in result.tweets:
+        if tweet.screenshot_png:
+            tweet.screenshot_path = await upload_feed_screenshot(user_id, tweet.screenshot_png)
+            tweet.screenshot_png = None
+    return result
 
 
 async def collect_following_feed_for_profile(
@@ -467,15 +593,40 @@ async def collect_following_feed_for_profile(
         )
     finally:
         sem.release()
+    return await _upload_tweet_shots(user_id, result, take_screenshot)
 
-    if not result.ok or not take_screenshot:
-        return result
 
-    for tweet in result.tweets:
-        if tweet.screenshot_png:
-            tweet.screenshot_path = await upload_feed_screenshot(user_id, tweet.screenshot_png)
-            tweet.screenshot_png = None
-    return result
+async def collect_user_timeline_for_profile(
+    login: str,
+    password: str,
+    cookies_json: Optional[str],
+    proxy: Optional[Dict[str, Any]],
+    take_screenshot: bool,
+    known_status_ids: Set[str],
+    user_id: int,
+    handle: str,
+) -> FeedCollectResult:
+    """Async: таймлайн конкретного @handle (brand channel)."""
+    max_scroll = int(getattr(settings, "X_SELENIUM_FOLLOWING_MAX_SCROLL", 4) or 4)
+    max_tweets = int(getattr(settings, "X_FEED_BROWSER_MAX_TWEETS", 30) or 30)
+    sem = get_selenium_semaphore()
+    await sem.acquire()
+    try:
+        result = await asyncio.to_thread(
+            collect_user_timeline_sync,
+            login,
+            password,
+            cookies_json,
+            proxy,
+            take_screenshot,
+            known_status_ids,
+            max_scroll,
+            max_tweets,
+            handle,
+        )
+    finally:
+        sem.release()
+    return await _upload_tweet_shots(user_id, result, take_screenshot)
 
 
 def normalize_login_handle(username_raw: str, handle_hint: str = "") -> Tuple[str, str]:

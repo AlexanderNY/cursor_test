@@ -20,3 +20,7 @@ venv/
 .vscode/
 .DS_Store
 Thumbs.db
+
+# Playwright client-path reports (screenshots)
+nine-to-eighteen/e2e/reports/
+ui-app/e2e/reports/

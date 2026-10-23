@@ -21,6 +21,7 @@ import {
   seriesColorMap,
   type CalendarView,
 } from './calendar-utils'
+import { Switch } from '@/components/ui/switch'
 
 const STATUS_FILTERS = [
   { value: '', label: 'All statuses' },
@@ -79,6 +80,7 @@ export function CalendarPage() {
   const [mineOnly, setMineOnly] = useState(false)
   const [bulkPublishAt, setBulkPublishAt] = useState('')
   const [learnMode, setLearnMode] = useState(false)
+  const [retryingId, setRetryingId] = useState<number | null>(null)
 
   const view = (searchParams.get('view') === 'week' ? 'week' : 'month') as CalendarView
   const statusFilter = searchParams.get('status') || ''
@@ -173,10 +175,45 @@ export function CalendarPage() {
     [jobs],
   )
 
+  const failedJobs = useMemo(
+    () => jobs.filter((j) => j.status === 'failed' || j.status === 'partial'),
+    [jobs],
+  )
+
   const assignedToMe = useMemo(
     () => pendingApproval.filter((j) => j.assigned_to != null),
     [pendingApproval],
   )
+
+  function jobTargetErrorSummary(job: PublishJob): string {
+    if (job.last_error) return job.last_error
+    const targets = job.adapters_result?.targets
+    if (!targets || typeof targets !== 'object') return 'Publish failed'
+    const parts: string[] = []
+    for (const [key, meta] of Object.entries(targets as Record<string, { status?: string; error?: string }>)) {
+      if (meta && (meta.status === 'failed' || meta.error)) {
+        parts.push(`${key}: ${meta.error || meta.status}`)
+      }
+    }
+    return parts[0] || 'Publish failed'
+  }
+
+  async function retryFailed(jobId: number) {
+    if (!canEditCalendar) {
+      setError('Read-only: Viewer cannot retry')
+      return
+    }
+    setRetryingId(jobId)
+    setError('')
+    try {
+      await smmService.retryJob(jobId)
+      await load()
+    } catch (err) {
+      setError(getErrorMessage(err))
+    } finally {
+      setRetryingId(null)
+    }
+  }
 
   const maxScheduleDate = useMemo(() => {
     const d = new Date()
@@ -243,7 +280,9 @@ export function CalendarPage() {
     }
     const pub = mergeDateTime(day, hour, job)
     if (pub > maxScheduleDate) {
-      setError(`Slot outside plan horizon (${horizonDays} days). Upgrade or pick an earlier date.`)
+      setError(
+        `Дата дальше горизонта тарифа (${horizonDays} дн.). Выберите раньше или обновите план → /pricing`,
+      )
       return
     }
     try {
@@ -417,7 +456,20 @@ export function CalendarPage() {
         </Alert>
       )}
       <LearnModeBanner visible={learnMode} />
-      {error && <Alert variant="error">{error}</Alert>}
+      {error && (
+        <Alert variant="error">
+          {error.includes('/pricing') ? (
+            <>
+              {error.replace(/\s*→\s*\/pricing$/, '')}{' '}
+              <Link to="/pricing" className="underline text-primary-400">
+                Тарифы
+              </Link>
+            </>
+          ) : (
+            error
+          )}
+        </Alert>
+      )}
 
       <div className="flex flex-wrap items-center gap-2 mb-4">
         <div className="inline-flex rounded-md border border-[var(--border-color)] overflow-hidden">
@@ -481,8 +533,7 @@ export function CalendarPage() {
           <option value="vk">VK</option>
         </select>
         <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
+          <Switch
             checked={mineOnly}
             onChange={(e) => setMineOnly(e.target.checked)}
           />
@@ -540,6 +591,52 @@ export function CalendarPage() {
         </Card>
       )}
 
+      {failedJobs.length > 0 && (
+        <Card className="mb-4 border-amber-500/40">
+          <CardHeader>
+            <CardTitle className="text-base">
+              Не опубликовано ({failedJobs.length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {failedJobs.map((j) => (
+              <div
+                key={j.id}
+                className="flex flex-wrap items-center justify-between gap-2 text-sm border-b border-[var(--border-color)] py-2"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-medium">{j.source_text.slice(0, 80)}</p>
+                  <p className="text-xs text-amber-500 truncate" title={jobTargetErrorSummary(j)}>
+                    {j.status} · {jobTargetErrorSummary(j)}
+                  </p>
+                  <p className="text-xs text-[var(--text-muted)]">
+                    {(j.targets || []).map((t) => `${t.network}:${t.external_id}`).join(', ') || '—'}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-1">
+                  {canEditCalendar && (
+                    <Button
+                      size="sm"
+                      isLoading={retryingId === j.id}
+                      onClick={() => void retryFailed(j.id)}
+                    >
+                      Повторить
+                    </Button>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => navigate(`/posts?job=${j.id}`)}
+                  >
+                    Открыть
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
       {pendingApproval.length > 0 && planFeatures.approval_workflow && (
         <Card className="mb-4">
           <CardHeader>
@@ -554,8 +651,7 @@ export function CalendarPage() {
                 className="flex flex-wrap items-center justify-between gap-2 text-sm border-b border-[var(--border-color)] py-2"
               >
                 <label className="flex items-center gap-2 min-w-0 flex-1">
-                  <input
-                    type="checkbox"
+                  <Switch
                     checked={selectedIds.includes(j.id)}
                     onChange={() => toggleSelect(j.id)}
                     disabled={isViewer}

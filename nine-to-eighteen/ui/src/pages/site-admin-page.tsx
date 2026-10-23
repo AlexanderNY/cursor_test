@@ -33,6 +33,7 @@ import {
   isSuperAdmin,
   refreshSiteAuthSession,
 } from '@/data/site/site-auth'
+import { blogHref, blogPostHref, serviceOpenTarget } from '@/data/sections'
 import {
   downloadSitePostFile,
   parseSitePostFile,
@@ -883,7 +884,7 @@ export function AppAdminPage({
         is_visible: isVisible,
       })
       setApp(saved)
-      setMessage('Плашка и страница сервиса сохранены')
+      setMessage('Плашка сохранена')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Ошибка')
     } finally {
@@ -966,8 +967,8 @@ export function AppAdminPage({
   return (
     <AdminFrame embedded={embedded}>
       {embedded ? null : (
-        <Link to={isSuperAdmin(session) ? '/admin' : `/app/${slug}`} className="back-link">
-          ← {isSuperAdmin(session) ? 'Админка сайта' : `Страница · ${app?.title || slug}`}
+        <Link to={isSuperAdmin(session) ? '/admin' : blogHref(slug)} className="back-link">
+          ← {isSuperAdmin(session) ? 'Админка сайта' : `Блог · ${app?.title || slug}`}
         </Link>
       )}
       {embedded ? null : (
@@ -977,8 +978,7 @@ export function AppAdminPage({
           </p>
           <h1 className="learn-title">Владелец · {app?.title || slug}</h1>
           <p className="learn-lead">
-            Плашка на главной ведёт сюда на публичную страницу сервиса. Здесь — описание, ссылки на
-            приложение и блог в едином формате статей.
+            Плашка на главной открывает сам сервис. Здесь — описание плашки и отдельный блог.
           </p>
         </header>
       )}
@@ -995,7 +995,20 @@ export function AppAdminPage({
           items={[
             { id: 'app-tile', label: 'Описание' },
             { id: 'app-posts', label: 'Блог' },
-            { id: 'app-public', label: 'Открыть сервис', href: `/app/${slug}` },
+            { id: 'app-blog', label: 'Открыть блог', href: blogHref(slug) },
+            ...(appPath.trim() || externalHref.trim()
+              ? [
+                  {
+                    id: 'app-public',
+                    label: 'Открыть сервис',
+                    href: serviceOpenTarget({
+                      slug,
+                      appPath,
+                      href: externalHref,
+                    }).href,
+                  },
+                ]
+              : []),
             { id: 'app-account', label: 'Раздел в кабинете', href: `/account?section=app:${slug}` },
           ]}
         />
@@ -1004,8 +1017,8 @@ export function AppAdminPage({
       <section id="app-tile" className="learn-schedule admin-jump-target">
         <h2 className="learn-section-title">Описание сервиса и плашка</h2>
         <p className="learn-section-note">
-          Внешняя ссылка и внутренний путь не меняют клик по плашке на главной — они показываются
-          кнопками на странице сервиса.
+          Плашка на главной открывает внутренний путь, а если его нет — внешнюю ссылку. Блог на
+          этот клик не влияет.
         </p>
         <form className="learn-admin-form" onSubmit={saveTile}>
           <div className="learn-admin-grid">
@@ -1071,11 +1084,11 @@ export function AppAdminPage({
           </button>
           {onOpenPublic ? (
             <button type="button" className="learn-admin-btn" onClick={onOpenPublic}>
-              Открыть страницу сервиса
+              Открыть блог
             </button>
           ) : (
-            <Link to={`/app/${slug}`} className="learn-admin-btn">
-              Открыть страницу сервиса
+            <Link to={blogHref(slug)} className="learn-admin-btn">
+              Открыть блог
             </Link>
           )}
         </div>
@@ -1106,7 +1119,7 @@ export function AppAdminPage({
                     Открыть
                   </button>
                 ) : (
-                  <Link to={`/app/${slug}/${post.slug}`} className="learn-admin-link">
+                  <Link to={blogPostHref(slug, post.slug)} className="learn-admin-link">
                     Открыть
                   </Link>
                 )}

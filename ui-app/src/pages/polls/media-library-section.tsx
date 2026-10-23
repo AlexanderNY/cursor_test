@@ -6,6 +6,7 @@ import { TableSkeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/ui/empty-state'
 import { gameService } from '@/services/game-service'
 import type { GameMediaAsset } from '@/types/game'
+import { fileTooLargeMessage, isFileWithinLimit, MAX_IMAGE_BYTES } from '@/utils/read-file'
 
 interface MediaLibrarySectionProps {
   onSelectUrl?: (url: string) => void
@@ -55,6 +56,10 @@ export function MediaLibrarySection({ onSelectUrl }: MediaLibrarySectionProps) {
     const file = event.target.files?.[0]
     event.target.value = ''
     if (!file) return
+    if (!isFileWithinLimit(file, MAX_IMAGE_BYTES)) {
+      setError(fileTooLargeMessage(MAX_IMAGE_BYTES))
+      return
+    }
 
     setError('')
     setSuccess('')

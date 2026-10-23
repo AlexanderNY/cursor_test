@@ -8,6 +8,12 @@ export interface TimeInterval {
 export interface ThreadsConfig {
   /** @username или имя без @ — для подписи; OAuth остаётся единственным способом входа API */
   instagram_handle?: string | null
+  /** Логин Instagram/Meta для браузерного сбора brand-каналов */
+  meta_login?: string | null
+  /** Пароль; при чтении маскируется как *** */
+  meta_password?: string | null
+  has_meta_password?: boolean
+  take_screenshot_collect?: boolean
   publish_enabled: boolean
   collect_enabled: boolean
   schedule_type?: 'immediate' | 'on_new_messages' | 'by_intervals'

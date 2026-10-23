@@ -24,7 +24,6 @@ export function TeamPage() {
   const [isCreating, setIsCreating] = useState(false)
   const [editName, setEditName] = useState('')
   const [isSavingName, setIsSavingName] = useState(false)
-  const [addEmail, setAddEmail] = useState('')
   const [addRole, setAddRole] = useState<GroupRole>('editor')
   const [isAddingMember, setIsAddingMember] = useState(false)
   const [addError, setAddError] = useState('')
@@ -119,25 +118,13 @@ export function TeamPage() {
     setIsAddingMember(true)
     try {
       const result = await authService.createGroupInvite(group.id, {
-        email: addEmail.trim() || undefined,
         role_in_group: addRole,
       })
-      if (result.status === 'added') {
-        const updated = await authService.getMyGroup()
-        setGroup(updated)
-        setAddEmail('')
-        setInviteInfo('Пользователь добавлен в команду')
-        if (isAdmin) await loadStats()
-      } else if (result.invite) {
+      if (result.invite) {
         const path = result.invite.invite_path || `/invite/${result.invite.token}`
         const url = `${window.location.origin}${path}`
         setLastInviteUrl(url)
-        setAddEmail('')
-        setInviteInfo(
-          result.invite.email
-            ? `Ссылка для ${result.invite.email} (аккаунт ещё не создан)`
-            : 'Ссылка-приглашение создана',
-        )
+        setInviteInfo('Ссылка-приглашение создана')
         await loadInvites(group.id)
       }
     } catch (e) {
@@ -261,7 +248,7 @@ export function TeamPage() {
       <PageContainer>
         <PageHeader title="Workspace" description="Вас ещё не добавили в workspace" />
         <p className="text-[var(--text-muted)]">
-          Откройте ссылку-приглашение от Owner или дождитесь добавления по email.
+          Откройте ссылку-приглашение от Owner.
         </p>
       </PageContainer>
     )
@@ -298,12 +285,6 @@ export function TeamPage() {
 
           {isAdmin && (
             <form onSubmit={handleAddMember} className="flex flex-wrap items-end gap-2">
-              <Input
-                label="Invite by email (optional)"
-                value={addEmail}
-                onChange={(e) => setAddEmail(e.target.value)}
-                placeholder="user@example.com — или пусто для ссылки"
-              />
               <div>
                 <label className="text-sm text-[var(--text-secondary)]">Role</label>
                 <select
@@ -317,7 +298,7 @@ export function TeamPage() {
                 </select>
               </div>
               <Button type="submit" disabled={isAddingMember}>
-                {isAddingMember ? '…' : addEmail.trim() ? 'Invite' : 'Create link'}
+                {isAddingMember ? '…' : 'Create link'}
               </Button>
               {addError && <Alert variant="error">{addError}</Alert>}
               {inviteInfo && <Alert variant="success">{inviteInfo}</Alert>}
@@ -342,7 +323,7 @@ export function TeamPage() {
                   return (
                     <li key={inv.id} className="flex flex-wrap justify-between items-center gap-2 py-2">
                       <div>
-                        <p>{inv.email || 'Link-only invite'}</p>
+                        <p>{inv.email || 'Invite link'}</p>
                         <p className="text-[var(--text-muted)]">
                           {roleLabel(inv.role_in_group)} · до {new Date(inv.expires_at).toLocaleDateString()}
                         </p>

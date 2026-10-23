@@ -12,6 +12,7 @@ import {
   type CsvParseError,
   type CsvMenuDraft,
 } from '@/utils/csv-menu-parser'
+import { fileTooLargeMessage, isFileWithinLimit, MAX_IMPORT_BYTES } from '@/utils/read-file'
 
 interface MenuCsvImportSectionProps {
   modeId: number | null
@@ -71,6 +72,10 @@ export function MenuCsvImportSection({
     setFileName('')
 
     if (!file || !modeId) return
+    if (!isFileWithinLimit(file, MAX_IMPORT_BYTES)) {
+      setParseErrors([{ line: 0, message: fileTooLargeMessage(MAX_IMPORT_BYTES) }])
+      return
+    }
 
     setIsParsing(true)
     setFileName(file.name)

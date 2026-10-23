@@ -20,10 +20,12 @@ from shared.db.bot_queue import claimed_target_as_post
 from shared.db.posts_repo import PostsRepository, PublishResult
 from .vk_client import VkClient
 from .channel_counter import bump_channel_counter
+from .event_logger import EventLogger
 from shared.post_adapt import NETWORK_TEXT_LIMITS
 
 
 logger = logging.getLogger(__name__)
+_event_logger = EventLogger()
 
 VK_MESSAGE_LIMIT = NETWORK_TEXT_LIMITS["vk"]
 
@@ -496,6 +498,22 @@ class PostPublisher:
                     platform="vk",
                     post_id=post_id,
                 )
+            await _event_logger.log_event(
+                int(user_id),
+                "published",
+                owner_id=last_owner_id,
+                post_id=last_vk_post_id,
+                text=text or "",
+                metadata={"hub_post_id": post_id, "external_id": ext_id},
+            )
+        else:
+            await _event_logger.log_event(
+                int(user_id),
+                "publish_failed",
+                owner_id=owner_ids[0] if owner_ids else None,
+                text=text or "",
+                metadata={"hub_post_id": post_id, "reason": "no_destination_or_wall_post"},
+            )
         return published_any
 
     async def _update_post_published(
@@ -561,6 +579,12 @@ class PostPublisher:
             elif post_id is not None:
                 # Do not leave forever in publishing (invisible to next claim).
                 await self._update_post_status(post, "review")
+                await _event_logger.log_event(
+                    int(post.get("user_id") or 0),
+                    "publish_failed",
+                    text=str(post.get("post_text") or post.get("text") or ""),
+                    metadata={"hub_post_id": post_id, "reason": "exception_or_review"},
+                )
                 logger.warning(
                     "Post %s moved to review after failed publish "
                     "(check community token / Group to post / Enable publishing)",

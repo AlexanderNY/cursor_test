@@ -1,7 +1,7 @@
 import type { CSSProperties } from 'react'
 import { Link } from 'react-router-dom'
 import { prefetchPyodideRuntime } from '@/game/bowl/pyodide-prefetch'
-import type { Section } from '@/data/sections'
+import { serviceOpenTarget, type Section } from '@/data/sections'
 
 interface SectionTileProps {
   section: Section
@@ -25,11 +25,6 @@ function SectionTileContent({ section }: SectionTileProps) {
   )
 }
 
-/** Плашка на главной всегда ведёт на страницу описания сервиса. */
-function tileTarget(section: Section): string {
-  return `/app/${section.slug}`
-}
-
 export function SectionTile({ section }: SectionTileProps) {
   const needsPyodide = section.slug === 'bowl' || section.slug === 'code'
   const tileStyle = { '--tile-accent': section.accent } as CSSProperties
@@ -37,14 +32,26 @@ export function SectionTile({ section }: SectionTileProps) {
     onMouseEnter: needsPyodide ? prefetchBowlRuntime : undefined,
     onFocus: needsPyodide ? prefetchBowlRuntime : undefined,
   }
+  const target = serviceOpenTarget(section)
+  const className = target.external ? 'section-tile section-tile-external' : 'section-tile'
+
+  if (target.external) {
+    return (
+      <a
+        href={target.href}
+        className={className}
+        style={tileStyle}
+        target="_blank"
+        rel="noopener noreferrer"
+        {...prefetchHandlers}
+      >
+        <SectionTileContent section={section} />
+      </a>
+    )
+  }
 
   return (
-    <Link
-      to={tileTarget(section)}
-      className="section-tile"
-      style={tileStyle}
-      {...prefetchHandlers}
-    >
+    <Link to={target.href} className={className} style={tileStyle} {...prefetchHandlers}>
       <SectionTileContent section={section} />
     </Link>
   )

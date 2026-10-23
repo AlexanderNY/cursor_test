@@ -9,7 +9,8 @@ import {
   type SiteApp,
   type SitePost,
 } from '@/data/site/site-api'
-import { getSectionBySlug } from '@/data/sections'
+import { blogHref, blogPostHref, getSectionBySlug, serviceOpenTarget } from '@/data/sections'
+import { safeHref } from '@/data/safe-url'
 import { parsePostBody } from '@/data/site/structured-post'
 import { canManageApp, isSuperAdmin } from '@/data/site/site-auth'
 
@@ -98,13 +99,14 @@ export function AppBlogPage({
     }
   }, [slug])
 
-  if (ready && app?.appPath && !posts.length && app.appPath.startsWith('/game/')) {
-    // Product tiles without a blog yet: open the app itself.
-    const known = getSectionBySlug(slug)
-    if (known?.appPath === app.appPath) {
-      return <Navigate to={app.appPath} replace />
-    }
-  }
+  const openTarget = app
+    ? serviceOpenTarget({
+        slug: app.slug,
+        appPath: app.appPath,
+        href: app.externalHref,
+      })
+    : null
+  const hasService = Boolean(openTarget && openTarget.href !== blogHref(slug))
 
   return (
     <PublicFrame embedded={embedded}>
@@ -122,7 +124,7 @@ export function AppBlogPage({
           <header className="learn-header">
             <p className="learn-eyebrow">
               {app.emoji ? `${app.emoji} ` : ''}
-              Страница сервиса
+              Блог сервиса
             </p>
             <h1 className="learn-title">{app.title}</h1>
             <p className="learn-lead">{app.subtitle}</p>
@@ -132,20 +134,21 @@ export function AppBlogPage({
               </div>
             ) : null}
             <div className="learn-admin-actions">
-              {app.appPath ? (
-                <Link to={app.appPath} className="learn-admin-btn learn-admin-btn-primary">
-                  Открыть приложение
-                </Link>
-              ) : null}
-              {app.externalHref ? (
-                <a
-                  href={app.externalHref}
-                  className="learn-admin-btn"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  {app.slug === 'e2e-tester' ? 'Панель тестера ↗' : 'Внешний сайт ↗'}
-                </a>
+              {hasService && openTarget ? (
+                openTarget.external ? (
+                  <a
+                    href={openTarget.href}
+                    className="learn-admin-btn learn-admin-btn-primary"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    Открыть сервис ↗
+                  </a>
+                ) : (
+                  <Link to={openTarget.href} className="learn-admin-btn learn-admin-btn-primary">
+                    Открыть сервис
+                  </Link>
+                )
               ) : null}
               {canManageApp(app.slug) ? (
                 onOpenAdmin ? (
@@ -163,7 +166,7 @@ export function AppBlogPage({
 
           <section aria-labelledby="app-blog-list">
             <h2 id="app-blog-list" className="learn-section-title">
-              Блог сервиса
+              Записи
             </h2>
             {posts.length === 0 ? (
               <p className="learn-section-note">Пока нет опубликованных записей.</p>
@@ -189,7 +192,7 @@ export function AppBlogPage({
                         </button>
                       ) : (
                         <Link
-                          to={`/app/${app.slug}/${post.slug}`}
+                          to={blogPostHref(app.slug, post.slug)}
                           className="learn-episode-card"
                         >
                           <span className="learn-episode-title">{post.title}</span>
@@ -261,11 +264,11 @@ export function AppPostPage({
     <PublicFrame embedded={embedded} article>
       {onBack ? (
         <button type="button" className="back-link" onClick={onBack}>
-          ← К сервису {app?.title || slug}
+          ← К блогу {app?.title || slug}
         </button>
       ) : (
-        <Link to={`/app/${slug}`} className="back-link">
-          ← К сервису {app?.title || slug}
+        <Link to={blogHref(slug)} className="back-link">
+          ← К блогу {app?.title || slug}
         </Link>
       )}
       {!ready ? (
@@ -291,4 +294,52 @@ export function AppPostPage({
       )}
     </PublicFrame>
   )
+}
+
+/** Old `/app/:slug` bookmarks open the product, not the blog. */
+export function AppEntryRedirect() {
+  const { slug = '' } = useParams()
+  const [target, setTarget] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    const fallback = getSectionBySlug(slug)
+    const go = (appPath: string, externalHref: string) => {
+      if (cancelled) {
+        return
+      }
+      const next = serviceOpenTarget({ slug, appPath, href: externalHref })
+      if (next.external) {
+        const safe = safeHref(next.href)
+        if (safe) {
+          window.location.replace(safe)
+          return
+        }
+        setTarget(blogHref(slug))
+        return
+      }
+      setTarget(next.href)
+    }
+    siteGetApp(slug)
+      .then((app) => go(app.appPath, app.externalHref))
+      .catch(() => go(fallback?.appPath || '', fallback?.href || ''))
+    return () => {
+      cancelled = true
+    }
+  }, [slug])
+
+  if (!target) {
+    return (
+      <PageShell>
+        <p className="learn-section-note">Открываем сервис…</p>
+      </PageShell>
+    )
+  }
+  return <Navigate to={target} replace />
+}
+
+/** Old `/app/:slug/:postSlug` bookmarks land on the blog article. */
+export function LegacyAppPostRedirect() {
+  const { slug = '', postSlug = '' } = useParams()
+  return <Navigate to={blogPostHref(slug, postSlug)} replace />
 }

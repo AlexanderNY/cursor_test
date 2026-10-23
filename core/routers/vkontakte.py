@@ -1234,3 +1234,26 @@ async def delete_vk_post(
     if not post:
         raise HTTPException(status_code=404, detail="Post not found")
     return post
+
+
+@router.get("/analytics/overview")
+async def vk_analytics_overview(
+    period: str = "7d",
+    x_user_id: Optional[str] = Header(None),
+):
+    """Сводка по vk_events: collected / published / publish_failed."""
+    from services.vk_analytics_service import vk_analytics_service
+
+    user_id = get_user_id_from_header(x_user_id)
+    return await vk_analytics_service.get_overview(user_id, period)
+
+
+@router.get("/analytics/health")
+async def vk_analytics_health(
+    period: str = "24h",
+    x_user_id: Optional[str] = Header(None),
+):
+    from services.vk_analytics_service import vk_analytics_service
+
+    user_id = get_user_id_from_header(x_user_id)
+    return await vk_analytics_service.get_health(user_id, period)

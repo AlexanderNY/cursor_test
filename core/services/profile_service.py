@@ -427,23 +427,35 @@ class ProfileService:
     
     async def save_threads_profile(self, user_id: int, data: Dict) -> Dict:
         """Сохраняет или обновляет профиль Threads (без записи токенов)."""
-        if "instagram_handle" not in data:
-            existing = await self.get_threads_profile(user_id)
-            if existing is not None:
-                data = {**data, "instagram_handle": existing.get("instagram_handle")}
+        existing = await self.get_threads_profile(user_id)
+        if "instagram_handle" not in data and existing is not None:
+            data = {**data, "instagram_handle": existing.get("instagram_handle")}
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
                 process_services = data.get("process_services")
                 process_services_json = json.dumps(process_services) if isinstance(process_services, list) else None
+                meta_login = (data.get("meta_login") or "").strip() or None
+                # Empty password → keep previous; "***" mask → keep previous
+                meta_password = data.get("meta_password")
+                if isinstance(meta_password, str):
+                    meta_password = meta_password.strip()
+                else:
+                    meta_password = None
+                if not meta_password or meta_password == "***":
+                    meta_password = None
+                take_shot = bool(data.get("take_screenshot_collect", False))
                 await cur.execute(
                     """
                     INSERT INTO threads_profiles (
                         user_id, instagram_handle, publish_enabled, collect_enabled, schedule_type,
                         time_intervals, process_enabled, processing_description,
                         remove_emojis, remove_images, clean_html, process_services,
-                        status_review_after_process, add_static_html, static_html_content
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        status_review_after_process, add_static_html, static_html_content,
+                        meta_login, meta_password, take_screenshot_collect
+                    ) VALUES (
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                    )
                     ON CONFLICT (user_id) DO UPDATE SET
                         instagram_handle = EXCLUDED.instagram_handle,
                         publish_enabled = EXCLUDED.publish_enabled,
@@ -459,6 +471,9 @@ class ProfileService:
                         status_review_after_process = EXCLUDED.status_review_after_process,
                         add_static_html = EXCLUDED.add_static_html,
                         static_html_content = EXCLUDED.static_html_content,
+                        meta_login = COALESCE(EXCLUDED.meta_login, threads_profiles.meta_login),
+                        meta_password = COALESCE(EXCLUDED.meta_password, threads_profiles.meta_password),
+                        take_screenshot_collect = EXCLUDED.take_screenshot_collect,
                         updated_at = CURRENT_TIMESTAMP
                     RETURNING *
                     """,
@@ -478,6 +493,9 @@ class ProfileService:
                         data.get("status_review_after_process", False),
                         data.get("add_static_html", False),
                         data.get("static_html_content"),
+                        meta_login,
+                        meta_password,
+                        take_shot,
                     )
                 )
                 row = await cur.fetchone()
@@ -532,10 +550,16 @@ class ProfileService:
             profile["process_services"] = []
         profile["threads_connected"] = bool(profile.get("access_token"))
         profile.setdefault("instagram_handle", None)
+        profile.setdefault("meta_login", None)
+        profile["has_meta_password"] = bool(profile.get("meta_password"))
+        if profile.get("meta_password"):
+            profile["meta_password"] = "***"
         if "access_token" in profile:
             del profile["access_token"]
         if "refresh_token" in profile:
             del profile["refresh_token"]
+        if "session_cookies" in profile:
+            del profile["session_cookies"]
         return profile
     
     async def get_all_threads_profiles(self) -> List[Dict]:

@@ -14,6 +14,7 @@ import { quotaResourceLabel } from '@/lib/quota'
 import { formatDateTime } from '@/utils/date'
 import { getErrorMessage } from '@/services/api-client'
 import { formatRub, PLAN_REQUEST_STATUS_LABEL } from '@/lib/billing'
+import { allowedStripeUrl } from '@/utils/safe-url'
 
 export function BillingTabContent() {
   const { user, refreshUserData } = useAuth()
@@ -64,7 +65,12 @@ export function BillingTabContent() {
     setError('')
     try {
       const url = await authService.createBillingPortalSession()
-      window.location.href = url
+      const allowed = allowedStripeUrl(url)
+      if (!allowed) {
+        setError('Billing URL is not allowed')
+        return
+      }
+      window.location.href = allowed
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not open billing portal')
     } finally {
@@ -77,7 +83,12 @@ export function BillingTabContent() {
     setError('')
     try {
       const url = await authService.createCheckoutSession(plan)
-      window.location.href = url
+      const allowed = allowedStripeUrl(url)
+      if (!allowed) {
+        setError('Billing URL is not allowed')
+        return
+      }
+      window.location.href = allowed
     } catch (e) {
       setError(getErrorMessage(e))
       setCheckoutPlan(null)

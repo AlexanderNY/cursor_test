@@ -6,6 +6,7 @@ import {
   type PublicPortfolio,
 } from '@/data/site/portfolio-api'
 import { SiteApiError } from '@/data/site/site-api'
+import { safeHref } from '@/data/safe-url'
 
 export function PortfolioPublicPage() {
   const { handle = '' } = useParams<{ handle: string }>()
@@ -129,13 +130,13 @@ export function PortfolioPublicPage() {
                   </ul>
                 ) : null}
                 <p className="portfolio-actions">
-                  {item.repoUrl ? (
-                    <a href={item.repoUrl} target="_blank" rel="noopener noreferrer">
+                  {safeHref(item.repoUrl) ? (
+                    <a href={safeHref(item.repoUrl) || undefined} target="_blank" rel="noopener noreferrer">
                       Репозиторий
                     </a>
                   ) : null}
-                  {item.demoUrl ? (
-                    <a href={item.demoUrl} target="_blank" rel="noopener noreferrer">
+                  {safeHref(item.demoUrl) ? (
+                    <a href={safeHref(item.demoUrl) || undefined} target="_blank" rel="noopener noreferrer">
                       Демо
                     </a>
                   ) : null}

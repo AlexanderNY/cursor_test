@@ -4,6 +4,23 @@
 
 ## 1. Высокоуровневая схема
 
+Интерактивная диаграмма (сервисы и боты отдельными блоками, связи с БД / MinIO / Ollama):
+
+**[architecture.drawio](architecture.drawio)** — открыть в [diagrams.net](https://app.diagrams.net/) или расширении Draw.io в IDE. Красным выделены `auth` и Redis (JWT blacklist).
+
+Кратко по маршрутам `ui-edge`:
+
+| Host | Путь | Upstream |
+|------|------|----------|
+| copyparse.ru | `/` | `ui:8100` |
+| copyparse.ru | `/tg/game/media/`, `/vk/*` | `gateway:8000` |
+| 9to18.ru | `/` | `ui-9to18:8200` |
+| 9to18.ru | `/api/(site\|learn)` | `site-api:8020` |
+| 9to18.ru | `/api/resume` | `resume-api:8021` |
+| 9to18.ru | `/api/portfolio` | `portfolio-api:8022` |
+
+Стек 9to18 **не** проходит через CopyParse gateway. UI CopyParse проксирует `/api` → `gateway:8000`.
+
 ```mermaid
 flowchart TB
   subgraph Edge["Публичный край"]
@@ -33,33 +50,47 @@ flowchart TB
     IG[instagram-bot :8011]
     DZ[dzen-bot :8012]
     TH[th-bot :8013]
-    TW[tw-bot :8011 внутр.]
+    TW[tw-bot :8014]
     GAME[tg-game :8015]
+  end
+
+  subgraph Nine["9to18 APIs"]
+    SITE[site-api :8020]
+    RES[resume-api :8021]
+    PORT[portfolio-api :8022]
   end
 
   subgraph Data["Данные"]
     PG[(PostgreSQL db_bot)]
+    PG9[(PostgreSQL db_9to18)]
     S3[(MinIO S3)]
+    REDIS[(Redis)]
   end
 
   Internet --> IE
   IE -->|copyparse.ru| UI
+  IE -->|tg/vk paths| GW
   IE -->|9to18.ru| UI9
-  IE -->|/api| GW
+  IE -->|/api site learn| SITE
+  IE -->|/api/resume| RES
+  IE -->|/api/portfolio| PORT
   UI -->|/api| GW
 
   GW --> AUTH
   GW --> CORE
   GW --> SCHED
   GW --> TG & VK & WP & URL & IG & DZ & TH & TW & GAME
+  GW --> REDIS
 
   CORE --> PG & S3 & AI
   AUTH --> PG
   SCHED --> PG
   COLL --> PG
   PROC --> PG & AI
-  TG & VK & WP & IG & DZ & TH & TW & GAME --> PG
+  TG & VK & WP & URL & IG & DZ & TH & TW & GAME --> PG
   TG & VK & IG & DZ & TH & TW & GAME --> S3
+  SITE & RES & PORT --> PG9
+  RES --> S3 & AI
 ```
 
 ## 2. Деплой-юниты
@@ -201,5 +232,6 @@ Redis используется для JWT blacklist, не как брокер з
 - [INSTALLATION.md](INSTALLATION.md) — установка
 - [SECURITY_HARDENING.md](SECURITY_HARDENING.md) — hardening и ротация секретов
 - [USER_GUIDE.md](USER_GUIDE.md) — инструкция пользователя
+- [architecture.drawio](architecture.drawio) — Draw.io: ui-edge, CopyParse, 9to18
 - [../deploy/DEPLOYMENT.md](../deploy/DEPLOYMENT.md) — прод-деплой
 - [../k8s/README.md](../k8s/README.md) — Kubernetes / Minikube

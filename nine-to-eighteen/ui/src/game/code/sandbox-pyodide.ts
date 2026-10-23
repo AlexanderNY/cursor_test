@@ -1,17 +1,25 @@
 /** Lightweight Pyodide loader for Code sandbox (independent of Bowl game VFS). */
 
-type PyodideInterface = import('pyodide').PyodideInterface
-
-let sandboxInstance: PyodideInterface | null = null
-let loadPromise: Promise<PyodideInterface> | null = null
-
 const DEFAULT_TIMEOUT_MS = 5000
 const DEFAULT_TRACE_LIMIT = 2_000_000
 
-function pyodideIndexUrl(): string {
-  const base = import.meta.env.BASE_URL || '/'
-  return `${base}pyodide/`
+type WorkerResult = {
+  type: 'result'
+  id: number
+  stdout: string
+  stderr: string
+  result: string
+  timedOut: boolean
 }
+
+type WorkerProgress = { type: 'progress'; value: number; label: string }
+type WorkerReady = { type: 'ready' }
+type WorkerLoadError = { type: 'load-error'; message: string }
+
+let sandboxWorker: Worker | null = null
+let loadPromise: Promise<void> | null = null
+let nextRunId = 1
+const pendingRuns = new Map<number, (value: WorkerResult) => void>()
 
 export type SandboxProgress = (value: number, label: string) => void
 
@@ -32,44 +40,76 @@ export type SandboxRunResult = {
   timedOut?: boolean
 }
 
-export async function loadSandboxPyodide(
-  onProgress?: SandboxProgress,
-): Promise<PyodideInterface> {
-  if (sandboxInstance) {
-    return sandboxInstance
-  }
-  if (loadPromise) {
-    return loadPromise
-  }
-  loadPromise = (async () => {
-    onProgress?.(0.1, 'Загрузка Pyodide…')
-    const { loadPyodide } = await import('pyodide')
-    const pyodide = await loadPyodide({
-      indexURL: pyodideIndexUrl(),
+function pyodideIndexUrl(): string {
+  const base = import.meta.env.BASE_URL || '/'
+  return new URL(`${base}pyodide/`, window.location.origin).href
+}
+
+function dropWorker(): void {
+  sandboxWorker?.terminate()
+  sandboxWorker = null
+  loadPromise = null
+  for (const [id, resolve] of pendingRuns) {
+    pendingRuns.delete(id)
+    resolve({
+      type: 'result',
+      id,
+      stdout: '',
+      stderr: 'Превышено время выполнения. Runtime остановлен.',
+      result: '',
+      timedOut: true,
     })
-    onProgress?.(1, 'Готово')
-    sandboxInstance = pyodide
-    return pyodide
-  })()
-  try {
-    return await loadPromise
-  } catch (err) {
-    loadPromise = null
-    throw err
   }
 }
 
-function readPyString(value: unknown): string {
-  if (value === undefined || value === null) {
-    return ''
-  }
-  return String(value)
+function ensureWorker(onProgress?: SandboxProgress): Promise<void> {
+  if (loadPromise && sandboxWorker) return loadPromise
+  const worker = new Worker(new URL('./sandbox-pyodide.worker.ts', import.meta.url), {
+    type: 'module',
+  })
+  sandboxWorker = worker
+  loadPromise = new Promise<void>((resolve, reject) => {
+    const onMessage = (event: MessageEvent) => {
+      const data = event.data as
+        | WorkerResult
+        | WorkerProgress
+        | WorkerReady
+        | WorkerLoadError
+      if (data.type === 'progress') {
+        onProgress?.(data.value, data.label)
+        return
+      }
+      if (data.type === 'result') {
+        const pending = pendingRuns.get(data.id)
+        if (!pending) return
+        pendingRuns.delete(data.id)
+        pending(data)
+        return
+      }
+      if (data.type === 'ready') {
+        resolve()
+        return
+      }
+      if (data.type === 'load-error') {
+        reject(new Error(data.message))
+      }
+    }
+    worker.addEventListener('message', onMessage)
+    worker.postMessage({ type: 'load', indexURL: pyodideIndexUrl() })
+  }).catch((err) => {
+    dropWorker()
+    throw err
+  })
+  return loadPromise
+}
+
+export async function loadSandboxPyodide(onProgress?: SandboxProgress): Promise<void> {
+  await ensureWorker(onProgress)
 }
 
 /**
- * Run user Python in an isolated namespace (by default) with a soft timeout.
- * Pure-Python infinite loops are stopped via sys.settrace; wall-clock race covers
- * long-running work that still yields to the event loop.
+ * Run user Python in a worker. The worker is terminated when the wall clock
+ * expires, so a stuck runtime cannot keep the page busy.
  */
 export async function runPythonInSandbox(
   code: string,
@@ -81,118 +121,39 @@ export async function runPythonInSandbox(
   const traceLimit = opts.traceLimit ?? DEFAULT_TRACE_LIMIT
   const isolate = opts.isolate !== false
 
-  const pyodide = await loadSandboxPyodide(opts.onProgress)
-  const stdout: string[] = []
-  const stderr: string[] = []
-  pyodide.setStdout({
-    batched: (text: string) => {
-      stdout.push(text)
-    },
-  })
-  pyodide.setStderr({
-    batched: (text: string) => {
-      stderr.push(text)
-    },
-  })
-
-  let timedOut = false
-  let result = ''
-
-  const runIsolated = async () => {
-    pyodide.globals.set('__sandbox_source', code)
-    pyodide.globals.set('__sandbox_trace_limit', traceLimit)
-    await pyodide.runPythonAsync(`
-import ast as __ast
-import sys as __sys
-import traceback as __tb
-
-__trace_count = 0
-__trace_limit = int(__sandbox_trace_limit)
-
-def __sandbox_trace(frame, event, arg):
-    global __trace_count
-    __trace_count += 1
-    if __trace_count > __trace_limit:
-        raise TimeoutError(
-            "Превышен лимит выполнения (возможный бесконечный цикл). "
-            "Упростите код или уберите while True."
-        )
-    return __sandbox_trace
-
-__user_ns = {"__name__": "__main__", "__builtins__": __builtins__}
-__sandbox_result = None
-__sandbox_error = None
-__sandbox_timed_out = False
-__sys.settrace(__sandbox_trace)
-try:
-    __source = str(__sandbox_source)
-    __tree = __ast.parse(__source, mode="exec")
-    __last_expr = None
-    if __tree.body and isinstance(__tree.body[-1], __ast.Expr):
-        __last_expr = __tree.body.pop()
-    exec(compile(__tree, "<sandbox>", "exec"), __user_ns)
-    if __last_expr is not None:
-        __sandbox_result = eval(
-            compile(__ast.Expression(__last_expr.value), "<sandbox>", "eval"),
-            __user_ns,
-        )
-except TimeoutError as __exc:
-    __sandbox_timed_out = True
-    __sandbox_error = str(__exc)
-except Exception:
-    __sandbox_error = __tb.format_exc()
-finally:
-    __sys.settrace(None)
-`)
-    timedOut = Boolean(pyodide.globals.get('__sandbox_timed_out'))
-    const err = pyodide.globals.get('__sandbox_error')
-    if (err !== undefined && err !== null && String(err) !== 'None') {
-      stderr.push(readPyString(err).trimEnd())
-    } else {
-      const raw = pyodide.globals.get('__sandbox_result')
-      if (raw !== undefined && raw !== null && String(raw) !== 'None') {
-        result = readPyString(raw)
-      }
-    }
+  await loadSandboxPyodide(opts.onProgress)
+  const worker = sandboxWorker
+  if (!worker) {
+    return { stdout: '', stderr: 'Pyodide worker is not running', result: '', timedOut: true }
   }
 
-  const runShared = async () => {
-    try {
-      const raw = await pyodide.runPythonAsync(code)
-      if (raw !== undefined && raw !== null) {
-        result = String(raw)
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      stderr.push(message)
-    }
-  }
+  const id = nextRunId
+  nextRunId += 1
 
-  let timer: ReturnType<typeof setTimeout> | undefined
-  const timeoutPromise = new Promise<void>((resolve) => {
-    timer = setTimeout(() => {
-      timedOut = true
-      stderr.push(
-        `Превышено время выполнения (${timeoutMs} мс). Код, возможно, всё ещё занят runtime.`,
-      )
-      resolve()
+  return new Promise((resolve) => {
+    const timer = window.setTimeout(() => {
+      pendingRuns.delete(id)
+      dropWorker()
+      resolve({
+        stdout: '',
+        stderr: `Превышено время выполнения (${timeoutMs} мс). Код, возможно, всё ещё занят runtime.`,
+        result: '',
+        timedOut: true,
+      })
     }, timeoutMs)
+
+    pendingRuns.set(id, (data) => {
+      window.clearTimeout(timer)
+      resolve({
+        stdout: data.stdout,
+        stderr: data.stderr,
+        result: data.result,
+        timedOut: data.timedOut,
+      })
+    })
+
+    worker.postMessage({ type: 'run', id, code, traceLimit, isolate })
   })
-
-  try {
-    await Promise.race([isolate ? runIsolated() : runShared(), timeoutPromise])
-  } finally {
-    if (timer) {
-      clearTimeout(timer)
-    }
-  }
-
-  return {
-    stdout: stdout.join('\n'),
-    stderr: stderr.join('\n'),
-    result,
-    timedOut,
-  }
 }
 
 /**

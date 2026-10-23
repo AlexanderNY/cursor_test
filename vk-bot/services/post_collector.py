@@ -23,9 +23,11 @@ from .brand_channel_flow import (
     resolve_publish_targets,
 )
 from .alert_dispatcher import dispatch_alerts_for_post
+from .event_logger import EventLogger
 
 
 logger = logging.getLogger(__name__)
+_event_logger = EventLogger()
 
 
 def _log_action(msg: str, *args, **kwargs) -> None:
@@ -260,6 +262,23 @@ class PostCollector:
                     post_id=post_row_id,
                     metadata={"text_preview": (post_text or "")[:120]},
                 )
+            try:
+                owner_int = int(domain) if str(domain).lstrip("-").isdigit() else None
+            except (TypeError, ValueError):
+                owner_int = None
+            await _event_logger.log_event(
+                user_id,
+                "collected",
+                owner_id=owner_int,
+                post_id=int(vk_source_id) if vk_source_id is not None else None,
+                text=post_text or "",
+                metadata={
+                    "hub_post_id": post_row_id,
+                    "channel_id": channel_id,
+                    "brand_id": brand_id,
+                    "domain": domain,
+                },
+            )
             await wake_process_http(getattr(settings, "PROCESSOR_SERVICE_URL", "") or "")
             return True
         except Exception as e:

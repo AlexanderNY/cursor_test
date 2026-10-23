@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react'
+import { sanitizeSvg } from '@/data/safe-url'
 
 interface MermaidBlockProps {
   chart: string
@@ -23,12 +24,13 @@ export function MermaidBlock({ chart }: MermaidBlockProps) {
         mermaid.initialize({
           startOnLoad: false,
           theme: 'dark',
-          securityLevel: 'loose',
+          securityLevel: 'strict',
           fontFamily: 'Segoe UI, system-ui, sans-serif',
         })
         const { svg } = await mermaid.render(`learn-mermaid-${reactId}`, chart.trim())
+        const safeSvg = sanitizeSvg(svg)
         if (!isCancelled && containerRef.current) {
-          containerRef.current.innerHTML = svg
+          containerRef.current.innerHTML = safeSvg
         }
       } catch {
         if (!isCancelled) {

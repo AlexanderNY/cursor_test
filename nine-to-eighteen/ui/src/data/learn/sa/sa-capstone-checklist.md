@@ -25,6 +25,18 @@ canonicalUrl: https://9to18.ru/game/learn/sa-capstone-checklist
 
 Capstone собирает серию по **BABOK Knowledge Areas** как оглавлению компетенций: Planning, Elicitation, Requirements Life Cycle, Strategy, Analysis/Design, Solution Evaluation — плюс стандарты **BPMN OMG**, **OpenAPI**, **Richardson**, **C4**, **ADR Nygard**, **Kafka/Rabbit** для интegrations. Индекс **T→slug** сохранён; [Хабр 963708](https://habr.com/ru/articles/963708/) — опциональный индекс вопросов.
 
+## Раздел: Ответ вслух
+
+Чеклист я использую как страховку дыр: требования, данные, интеграция, поставка. Вслух беру один пункт и пример, а не читаю все двадцать четыре заголовка.
+
+## Раздел: Плохой ответ
+
+«Я прошёл всю карту». Карта не отвечает на вопрос про конкретный процесс.
+
+## Раздел: Термины
+
+Поставка — delivery. Граница — boundary. Компромисс — tradeoff.
+
 ## Раздел: Чеклисты Junior → Middle → Senior
 
 **Как пользоваться серией.**

@@ -12,6 +12,8 @@ import {
 import { apiClient } from '@/services/api-client'
 import { vkontakteService } from '@/services/vkontakte-service'
 import { useAuth } from '@/contexts/auth-context'
+import { allowedOAuthUrl } from '@/utils/safe-url'
+import { fileTooLargeMessage, isFileWithinLimit, MAX_IMAGE_BYTES } from '@/utils/read-file'
 import { useBrand } from '@/contexts/brand-context'
 import type {
   VKontakteProfile,
@@ -472,6 +474,9 @@ export function VKontaktePage() {
     setUploadingImage(true)
     try {
       for (let i = 0; i < files.length; i++) {
+        if (!isFileWithinLimit(files[i], MAX_IMAGE_BYTES)) {
+          throw new Error(fileTooLargeMessage(MAX_IMAGE_BYTES))
+        }
         const url = await vkontakteService.uploadImage(files[i])
         setPostImages((prev) => [...prev, url])
       }
@@ -717,7 +722,12 @@ export function VKontaktePage() {
     void vkontakteService
       .getAuthUrl(flow)
       .then(({ url }) => {
-        window.location.href = url
+        const allowed = allowedOAuthUrl(url)
+        if (!allowed) {
+          setError('OAuth URL is not allowed')
+          return
+        }
+        window.location.href = allowed
       })
       .catch((err) => {
         setError(err instanceof Error ? err.message : 'Failed to get OAuth URL')

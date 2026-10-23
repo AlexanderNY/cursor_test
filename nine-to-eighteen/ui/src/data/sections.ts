@@ -1,3 +1,5 @@
+import { safeHref } from '@/data/safe-url'
+
 export type Section = {
   slug: string
   title: string
@@ -118,4 +120,60 @@ const sectionBySlug = new Map(sections.map((section) => [section.slug, section])
 
 export function getSectionBySlug(slug: string): Section | undefined {
   return sectionBySlug.get(slug)
+}
+
+export function blogHref(slug: string): string {
+  return `/blog/${slug}`
+}
+
+export function blogPostHref(slug: string, postSlug: string): string {
+  return `/blog/${slug}/${postSlug}`
+}
+
+/** Article links. Rewrites the old `/app/:slug/:post` shape onto the blog. */
+export function publicPostHref(href: string, appSlug = '', postSlug = ''): string {
+  const raw = href.trim()
+  const legacy = /^\/app\/([^/]+)\/([^/]+)\/?$/.exec(raw)
+  if (legacy) {
+    return blogPostHref(decodeURIComponent(legacy[1]), decodeURIComponent(legacy[2]))
+  }
+  if (raw) {
+    const safe = safeHref(raw)
+    if (safe && (safe.startsWith('/') || safe.startsWith('http://') || safe.startsWith('https://'))) {
+      return safe
+    }
+  }
+  if (appSlug && postSlug) {
+    return blogPostHref(appSlug, postSlug)
+  }
+  return raw
+}
+
+export type ServiceOpenTarget = {
+  href: string
+  external: boolean
+}
+
+function isAbsoluteHttp(href: string): boolean {
+  return /^https?:\/\//i.test(href)
+}
+
+/** Tile and title clicks open the product. The blog is a separate page. */
+export function serviceOpenTarget(
+  section: Pick<Section, 'slug' | 'href' | 'appPath'>,
+): ServiceOpenTarget {
+  const appPath = (section.appPath || '').trim()
+  const safeApp = safeHref(appPath)
+  if (safeApp && isAbsoluteHttp(safeApp)) {
+    return { href: safeApp, external: true }
+  }
+  if (appPath.startsWith('/') && !appPath.startsWith('//')) {
+    return { href: appPath, external: false }
+  }
+  const externalHref = (section.href || '').trim()
+  const safeExternal = safeHref(externalHref)
+  if (safeExternal && isAbsoluteHttp(safeExternal)) {
+    return { href: safeExternal, external: true }
+  }
+  return { href: blogHref(section.slug), external: false }
 }

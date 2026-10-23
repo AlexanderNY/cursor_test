@@ -70,7 +70,7 @@ function roleFunctions(session: SiteAuthSession): string[] {
   ]
   if (session.appAdmin.length > 0) {
     items.push(
-      `Кабинет владельца: ${session.appAdmin.join(', ')} — описание, плашка и блог`,
+      `Кабинет владельца: ${session.appAdmin.join(', ')} — плашка и отдельный блог`,
     )
   }
   if (isSuperAdmin(session)) {
@@ -220,7 +220,7 @@ export function SiteAccountPage() {
     const serviceMeta: AccountNavMeta[] = managed.map((slug) => ({
       id: `app:${slug}`,
       label: slug,
-      hint: 'Описание и блог',
+      hint: 'Плашка и блог',
     }))
     const adminMeta: AccountNavMeta[] = []
     if (isSuperAdmin(session)) {
@@ -269,7 +269,7 @@ export function SiteAccountPage() {
           return {
             id,
             label: item.label,
-            hint: id.startsWith('app:') ? 'Описание и блог' : hintById[id],
+            hint: id.startsWith('app:') ? 'Плашка и блог' : hintById[id],
           } satisfies AccountNavMeta
         }),
       ),
@@ -394,7 +394,7 @@ export function SiteAccountPage() {
       ? {
           id: activeId,
           label: activeId.slice(4),
-          hint: 'Описание и блог',
+          hint: 'Плашка и блог',
         }
       : undefined)
 
@@ -759,8 +759,8 @@ export function SiteAccountPage() {
                 return (
                   <>
                     <p className="learn-section-note">
-                      Кабинет владельца сервиса <strong>{slug}</strong>: описание на витрине, кнопки
-                      приложения и блог в едином формате (введение, разделы, схемы, тест, anki).
+                      Кабинет владельца сервиса <strong>{slug}</strong>: плашка на витрине открывает
+                      сам сервис, блог ведётся отдельно (введение, разделы, схемы, тест, anki).
                     </p>
                     <div className="account-actions">
                       <button
@@ -783,7 +783,7 @@ export function SiteAccountPage() {
                         }
                         onClick={() => setPane('public')}
                       >
-                        Публичная страница
+                        Блог
                       </button>
                     </div>
                     {paneView === 'admin' ? (

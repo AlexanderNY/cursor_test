@@ -9,6 +9,7 @@ import { customURLService } from '@/services/custom-url-service'
 import { smmService } from '@/services/smm-service'
 import type { URLConfig, CustomURLSettings, UrlPostListItem } from '@/types/custom-url'
 import { formatDateTime } from '@/utils/date'
+import { Switch } from '@/components/ui/switch'
 
 function generateId(): string {
   return crypto.randomUUID?.() || Math.random().toString(36).substring(2, 9)
@@ -277,16 +278,10 @@ export function CustomURLPage() {
               ) : (
                 <>
                   <label className="flex items-center gap-3 cursor-pointer group">
-                    <div className="relative">
-                      <input
-                        type="checkbox"
+                    <Switch
                         checked={collectEnabled}
                         onChange={(e) => setCollectEnabled(e.target.checked)}
-                        className="sr-only peer"
                       />
-                      <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors" />
-                      <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
-                    </div>
                     <span className="text-[var(--text-primary)] group-hover:text-primary-400 transition-colors">
                       Enable collection
                     </span>
@@ -355,31 +350,19 @@ export function CustomURLPage() {
                             />
                           </div>
                           <label className="flex items-center gap-3 cursor-pointer group">
-                            <div className="relative">
-                              <input
-                                type="checkbox"
+                            <Switch
                                 checked={config.run_once ?? false}
                                 onChange={(e) => updateUrlConfig(config.id, 'run_once', e.target.checked)}
-                                className="sr-only peer"
                               />
-                              <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors" />
-                              <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
-                            </div>
                             <span className="text-[var(--text-primary)] group-hover:text-primary-400 transition-colors">
                               Выполнить единоразово
                             </span>
                           </label>
                           <label className="flex items-center gap-3 cursor-pointer group">
-                            <div className="relative">
-                              <input
-                                type="checkbox"
+                            <Switch
                                 checked={config.take_screenshot}
                                 onChange={(e) => updateUrlConfig(config.id, 'take_screenshot', e.target.checked)}
-                                className="sr-only peer"
                               />
-                              <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors" />
-                              <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
-                            </div>
                             <span className="text-[var(--text-primary)] group-hover:text-primary-400 transition-colors">
                               Take screenshot
                             </span>

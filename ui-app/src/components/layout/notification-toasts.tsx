@@ -4,6 +4,7 @@ import { useAuth } from '@/contexts/auth-context'
 import { notificationsService } from '@/services/notifications-service'
 import { CloseIcon } from '@/components/icons'
 import type { Notification } from '@/types/core'
+import { sanitizeNotificationHtml } from '@/utils/notification-html'
 
 const POLL_MS = 12_000
 const DISMISSED_KEY = 'cp_dismissed_notifications'
@@ -96,7 +97,7 @@ export function NotificationToasts() {
             <div
               className="flex-1 text-sm text-[var(--text-primary)] notification-content min-w-0"
               onClick={handleBodyClick}
-              dangerouslySetInnerHTML={{ __html: n.message || '' }}
+              dangerouslySetInnerHTML={{ __html: sanitizeNotificationHtml(n.message || '') }}
             />
             <button
               type="button"

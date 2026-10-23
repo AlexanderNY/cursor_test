@@ -6,6 +6,10 @@
 
 **Секреты VK хранятся только в БД (`vk_profiles`)**, не в `.env`.
 
+## Журнал событий (`vk_events`)
+
+Сбор и публикация пишут в `vk_events` (типы: `collected`, `published`, `publish_failed`) через `vk-bot/services/event_logger.py`. Миграция: [deploy/sql/migrate_vk_events.sql](../deploy/sql/migrate_vk_events.sql). Сводка: `GET /vk/analytics/overview`, health: `GET /vk/analytics/health`. Ошибки SMM-джобов с целью VK видны в календаре («Не опубликовано» + «Повторить»), как у Telegram.
+
 ## Четыре блока авторизации (UI)
 
 | Блок | Поля БД | Verify API | Назначение |

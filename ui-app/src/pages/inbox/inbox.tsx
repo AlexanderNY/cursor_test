@@ -11,6 +11,7 @@ import { smmService } from '@/services/smm-service'
 import type { InboxItem, InboxStatus } from '@/types/smm'
 import { getErrorMessage } from '@/services/api-client'
 import { formatDateTime } from '@/utils/date'
+import { Switch } from '@/components/ui/switch'
 
 const DEFAULT_SNIPPETS = [
   'Спасибо!',
@@ -528,8 +529,7 @@ export function InboxPage() {
                       <div className="space-y-1 max-h-28 overflow-y-auto">
                         {ownChannels.map((c) => (
                           <label key={c.id} className="flex items-center gap-2 text-sm">
-                            <input
-                              type="checkbox"
+                            <Switch
                               checked={redirectIds.includes(c.id)}
                               onChange={() =>
                                 setRedirectIds((prev) =>
@@ -575,8 +575,7 @@ export function InboxPage() {
                       <div className="space-y-1 max-h-28 overflow-y-auto">
                         {ownChannels.map((c) => (
                           <label key={c.id} className="flex items-center gap-2 text-sm">
-                            <input
-                              type="checkbox"
+                            <Switch
                               checked={redirectIds.includes(c.id)}
                               onChange={() =>
                                 setRedirectIds((prev) =>

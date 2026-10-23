@@ -520,10 +520,26 @@ export const smmService = {
     return data
   },
 
+  async previewAutomation(
+    id: number,
+    limit = 5,
+  ): Promise<{
+    type: string
+    items: { id: string; text_preview: string; new?: boolean }[]
+    targets: { network: string; external_id: string }[]
+    status: string
+    would_create: number
+  }> {
+    const { data } = await apiClient.get(`/smm/automations/${id}/preview`, {
+      params: { limit },
+    })
+    return data
+  },
+
   async runAutomation(
     id: number,
     limit = 10,
-  ): Promise<{ created: number; job_ids: number[]; skipped: number; status: string }> {
+  ): Promise<{ created: number; job_ids: number[]; skipped: number; status: string; type?: string }> {
     const { data } = await apiClient.post(`/smm/automations/${id}/run`, null, {
       params: { limit },
     })
@@ -532,6 +548,11 @@ export const smmService = {
 
   async deleteAutomation(id: number): Promise<void> {
     await apiClient.delete(`/smm/automations/${id}`)
+  },
+
+  async retryJob(id: number): Promise<PublishJob> {
+    const { data } = await apiClient.post(`/smm/jobs/${id}/retry`)
+    return data
   },
 
   async analyticsOverview(

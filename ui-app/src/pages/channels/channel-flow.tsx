@@ -20,6 +20,7 @@ import { publishAllowed, authStatusLabel, collectAllowed, alertAllowed } from '@
 import { getErrorMessage } from '@/services/api-client'
 import { networkLabel, networkSetupUrl } from '@/lib/smm-networks'
 import type { PlatformNetworkStatus } from '@/types/smm'
+import { Switch } from '@/components/ui/switch'
 
 type FlowTab = 'collect' | 'processing' | 'publish' | 'alerting' | 'auth'
 
@@ -201,6 +202,9 @@ export function ChannelFlowPage() {
       channel_id: String(channel.id),
     })
     if (channel.network === 'tg') q.set('tab', 'telegram')
+    if (channel.network === 'tw') q.set('network', 'tw')
+    if (channel.network === 'threads') q.set('network', 'threads')
+    if (channel.network === 'instagram') q.set('network', 'instagram')
     return `/analytics?${q.toString()}`
   }, [channel])
 
@@ -209,7 +213,12 @@ export function ChannelFlowPage() {
     return brandChannels.filter(
       (c) =>
         c.role === 'own' &&
-        (c.network === 'tg' || c.network === 'vk' || c.network === 'wp') &&
+        (c.network === 'tg' ||
+          c.network === 'vk' ||
+          c.network === 'wp' ||
+          c.network === 'tw' ||
+          c.network === 'threads' ||
+          c.network === 'instagram') &&
         c.id !== channel.id &&
         Boolean(c.external_id),
     )
@@ -239,7 +248,13 @@ export function ChannelFlowPage() {
           ? 'Collect требует user OAuth VK (VKontakte → Авторизация → Подключить пользователя), затем Recheck на вкладке Auth.'
           : channel.network === 'wp'
             ? 'Collect требует URL сайта WordPress. Application Password нужен для публикации и обновления страницы (WordPress → Profile), затем Recheck на вкладке Auth.'
-            : 'Collect требует авторизацию Telegram (Telegram → Auth), затем Recheck на вкладке Auth.',
+            : channel.network === 'tw'
+              ? 'Collect требует OAuth X и/или логин+пароль на Twitter → Авторизация (браузер читает x.com/@handle), затем Recheck.'
+              : channel.network === 'threads'
+                ? 'Collect требует OAuth Threads и/или логин Instagram/Meta на Threads → Авторизация (браузер читает threads.net/@handle), затем Recheck.'
+                : channel.network === 'instagram'
+                  ? 'Collect требует логин Instagram и рабочую сессию (Instagram → Авторизация → Проверить вход), затем Recheck.'
+                  : 'Collect требует авторизацию Telegram (Telegram → Auth), затем Recheck на вкладке Auth.',
       )
       return
     }
@@ -545,8 +560,24 @@ export function ChannelFlowPage() {
     'Нужна сессия Telegram: Telegram → Auth. Затем Recheck на вкладке Auth этого канала.'
   const authHintWp =
     'Сбор публичных записей идёт по Site URL канала. Для Publish нужны Application Password: WordPress → Profile → Recheck на вкладке Auth.'
+  const authHintTw =
+    'Collect: Twitter → Авторизация — OAuth и/или логин+пароль X (браузер читает x.com/@handle). Publish через API — только OAuth. Затем Recheck.'
+  const authHintThreads =
+    'Collect: Threads → Авторизация — OAuth и/или логин Instagram/Meta (браузер читает threads.net/@handle). Publish через API — только OAuth. Затем Recheck.'
+  const authHintIg =
+    'Collect: Instagram → Авторизация — логин/пароль и «Проверить вход» (сессия instagrapi). Publish тоже требует сессию. Затем Recheck.'
   const collectAuthHint =
-    channel.network === 'vk' ? authHintVk : channel.network === 'wp' ? authHintWp : authHintTg
+    channel.network === 'vk'
+      ? authHintVk
+      : channel.network === 'wp'
+        ? authHintWp
+        : channel.network === 'tw'
+          ? authHintTw
+          : channel.network === 'threads'
+            ? authHintThreads
+            : channel.network === 'instagram'
+              ? authHintIg
+              : authHintTg
   const alertAuthHint = collectAuthHint
   const isUrl = channel.network === 'url'
   const setupHref = networkSetupUrl(channel.network)
@@ -627,8 +658,7 @@ export function ChannelFlowPage() {
           <form onSubmit={saveCollect}>
             <CardContent className="space-y-4">
               <label className="flex items-center gap-2 text-sm font-medium">
-                <input
-                  type="checkbox"
+                <Switch
                   checked={collectEnabled}
                   onChange={(e) => setCollectEnabled(e.target.checked)}
                 />
@@ -677,16 +707,14 @@ export function ChannelFlowPage() {
                 />
               </div>
               <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
+                <Switch
                   checked={Boolean(urlConfig.run_once)}
                   onChange={(e) => setUrlConfig((u) => ({ ...u, run_once: e.target.checked }))}
                 />
                 Выполнить единоразово
               </label>
               <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
+                <Switch
                   checked={Boolean(urlConfig.take_screenshot)}
                   onChange={(e) => {
                     const on = e.target.checked
@@ -720,8 +748,7 @@ export function ChannelFlowPage() {
                     </label>
                   </div>
                   <label className="flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
+                    <Switch
                       checked={Boolean(urlConfig.screenshot_only)}
                       onChange={(e) =>
                         setUrlConfig((u) => ({ ...u, screenshot_only: e.target.checked }))
@@ -736,8 +763,7 @@ export function ChannelFlowPage() {
               )}
               <div className="rounded-lg border border-[var(--border-color)] p-3 space-y-1">
                 <label className="flex items-center gap-2 text-sm font-medium">
-                  <input
-                    type="checkbox"
+                  <Switch
                     checked={Boolean(urlConfig.status_review_after_process)}
                     onChange={(e) =>
                       setUrlConfig((u) => ({
@@ -769,6 +795,24 @@ export function ChannelFlowPage() {
             <CardDescription>
               Условия сбора для этого канала. Пустой список — сохранять все сообщения.
               Отдельно от алертов: сбор кладёт пост в базу, алерт сразу пишет в ваши каналы.
+              {channel.network === 'tw' && (
+                <>
+                  {' '}
+                  Twitter: источник — @handle из external_id; tw-bot читает x.com/handle (браузер) или API.
+                </>
+              )}
+              {channel.network === 'threads' && (
+                <>
+                  {' '}
+                  Threads: источник — @handle; th-bot читает threads.net/@handle (браузер) или свои посты через API.
+                </>
+              )}
+              {channel.network === 'instagram' && (
+                <>
+                  {' '}
+                  Instagram: источник — @username; instagram-bot читает ленту через instagrapi.
+                </>
+              )}
             </CardDescription>
           </CardHeader>
           <form onSubmit={saveCollect}>
@@ -788,8 +832,7 @@ export function ChannelFlowPage() {
                   canCollect ? '' : 'opacity-60'
                 }`}
               >
-                <input
-                  type="checkbox"
+                <Switch
                   checked={collectEnabled && canCollect}
                   disabled={!canCollect}
                   onChange={(e) => {
@@ -808,8 +851,7 @@ export function ChannelFlowPage() {
               />
               <div className="rounded-lg border border-[var(--border-color)] p-3 space-y-1">
                 <label className="flex items-center gap-2 text-sm font-medium">
-                  <input
-                    type="checkbox"
+                  <Switch
                     checked={!!processing.status_review_after_process}
                     disabled={!canCollect && !collectEnabled}
                     onChange={(e) =>
@@ -845,8 +887,7 @@ export function ChannelFlowPage() {
           <form onSubmit={saveProcessing}>
             <CardContent className="space-y-4">
               <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
+                <Switch
                   checked={Boolean(urlConfig.process_before_publish)}
                   onChange={(e) =>
                     setUrlConfig((u) => ({ ...u, process_before_publish: e.target.checked }))
@@ -874,8 +915,7 @@ export function ChannelFlowPage() {
                   ] as const
                 ).map(([key, label]) => (
                   <label key={key} className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
+                    <Switch
                       checked={Boolean(urlConfig[key])}
                       onChange={(e) => setUrlConfig((u) => ({ ...u, [key]: e.target.checked }))}
                     />
@@ -884,8 +924,7 @@ export function ChannelFlowPage() {
                 ))}
               </div>
               <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
+                <Switch
                   checked={Boolean(urlConfig.status_review_after_process)}
                   onChange={(e) =>
                     setUrlConfig((u) => ({
@@ -897,8 +936,7 @@ export function ChannelFlowPage() {
                 На review после обработки
               </label>
               <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
+                <Switch
                   checked={Boolean(urlConfig.add_static_html)}
                   onChange={(e) =>
                     setUrlConfig((u) => ({ ...u, add_static_html: e.target.checked }))
@@ -940,8 +978,7 @@ export function ChannelFlowPage() {
           <form onSubmit={saveProcessing}>
             <CardContent className="space-y-4">
               <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
+                <Switch
                   checked={!!processing.process_enabled}
                   onChange={(e) =>
                     setProcessing((p) => ({ ...p, process_enabled: e.target.checked }))
@@ -968,8 +1005,7 @@ export function ChannelFlowPage() {
                   ] as const
                 ).map(([key, label]) => (
                   <label key={key} className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
+                    <Switch
                       checked={!!processing[key]}
                       onChange={(e) => setProcessing((p) => ({ ...p, [key]: e.target.checked }))}
                     />
@@ -979,8 +1015,7 @@ export function ChannelFlowPage() {
               </div>
               <div className="rounded-lg border border-[var(--border-color)] p-3 space-y-1">
                 <label className="flex items-center gap-2 text-sm font-medium">
-                  <input
-                    type="checkbox"
+                  <Switch
                     checked={!!processing.status_review_after_process}
                     onChange={(e) =>
                       setProcessing((p) => ({
@@ -1021,8 +1056,7 @@ export function ChannelFlowPage() {
             <CardContent className="space-y-3">
               {!isUrl && (
                 <label className="flex items-center gap-2 text-sm font-medium">
-                  <input
-                    type="checkbox"
+                  <Switch
                     checked={publishEnabled}
                     disabled={channel.role !== 'own' || !publishAllowed(channel)}
                     onChange={(e) => setPublishEnabled(e.target.checked)}
@@ -1054,8 +1088,7 @@ export function ChannelFlowPage() {
                         key={c.id}
                         className="flex items-start gap-3 rounded-md border border-[var(--border-color)] p-3 text-sm cursor-pointer"
                       >
-                        <input
-                          type="checkbox"
+                        <Switch
                           className="mt-0.5"
                           checked={selected}
                           onChange={() => togglePublishTarget(c.id)}
@@ -1153,8 +1186,7 @@ export function ChannelFlowPage() {
                   isAlertNetwork && canAlert ? '' : 'opacity-60'
                 }`}
               >
-                <input
-                  type="checkbox"
+                <Switch
                   checked={alertEnabled && canAlert}
                   disabled={!isAlertNetwork || !canAlert}
                   onChange={(e) => {
@@ -1184,8 +1216,7 @@ export function ChannelFlowPage() {
                           key={c.id}
                           className="flex items-start gap-3 rounded-md border border-[var(--border-color)] p-3 text-sm cursor-pointer"
                         >
-                          <input
-                            type="checkbox"
+                          <Switch
                             className="mt-0.5"
                             checked={selected}
                             disabled={!isAlertNetwork || !canAlert}
@@ -1217,8 +1248,7 @@ export function ChannelFlowPage() {
                   disabled={!isAlertNetwork || !canAlert}
                 />
                 <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
+                  <Switch
                     checked={!!delivery.include_ai_summary}
                     onChange={(e) =>
                       setDelivery((d) => ({ ...d, include_ai_summary: e.target.checked }))
@@ -1314,6 +1344,27 @@ export function ChannelFlowPage() {
                   — после подключения нажмите Recheck.
                 </>
               )}
+              {channel.network === 'tw' && (
+                <>
+                  {' '}
+                  Collect: OAuth и/или логин X (браузер читает таймлайн @handle). Publish через API —
+                  только OAuth. После настройки нажмите Recheck.
+                </>
+              )}
+              {channel.network === 'threads' && (
+                <>
+                  {' '}
+                  Collect: OAuth и/или логин Instagram/Meta (браузер читает threads.net/@handle).
+                  Publish через API — только OAuth. После настройки нажмите Recheck.
+                </>
+              )}
+              {channel.network === 'instagram' && (
+                <>
+                  {' '}
+                  Collect и Publish требуют сессию Instagram (Авторизация → Проверить вход). После
+                  настройки нажмите Recheck.
+                </>
+              )}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4 text-sm">
@@ -1328,7 +1379,11 @@ export function ChannelFlowPage() {
                   {channelStatus?.platform_connected ? 'connected' : 'not connected'}
                 </p>
               </div>
-              {(channel.network === 'tg' || channel.network === 'vk') && (
+              {(channel.network === 'tg' ||
+                channel.network === 'vk' ||
+                channel.network === 'tw' ||
+                channel.network === 'threads' ||
+                channel.network === 'instagram') && (
                 <>
                   <div>
                     <span className="text-[var(--text-muted)]">Collect / Alert auth</span>

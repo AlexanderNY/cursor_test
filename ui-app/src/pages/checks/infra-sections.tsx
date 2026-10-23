@@ -8,6 +8,7 @@ import type { PostTraceResponse, ScheduleSnapshot } from '@/types/core'
 import { useChecksInfraContext } from './checks-infra-context'
 import { platformStatusCell, platformTableStatusColumns } from './checks-utils'
 import { formatDateTime } from '@/utils/date'
+import { Switch } from '@/components/ui/switch'
 
 /** Платформы для «Принудительный запуск ботов» (совпадает с scheduler BOT_PLATFORMS). */
 const SCHEDULE_BOT_PLATFORMS = [
@@ -689,11 +690,10 @@ export function SchedulerSection() {
                     key={platform}
                     className="flex items-center space-x-2 cursor-pointer p-3 rounded-lg border border-[var(--border-color)] hover:bg-[var(--bg-secondary)] transition-colors"
                   >
-                    <input
-                      type="checkbox"
+                    <Switch
                       checked={selectedBots[platform]}
                       onChange={() => handleBotToggle(platform)}
-                      className="w-4 h-4 text-primary-400 rounded focus:ring-primary-400"
+                      className="text-primary-400 focus:ring-primary-400"
                     />
                     <span className="text-[var(--text-secondary)] font-medium uppercase">{platform}</span>
                   </label>

@@ -1,17 +1,34 @@
-"""Сбор постов из Instagram (свои и usernames_to_read) и сохранение в instagram_posts."""
+"""
+Сбор постов Instagram в posts.
+
+Приоритет:
+1) Brand channels (network=instagram, collect_enabled) — @username через instagrapi
+2) Legacy: usernames_to_read + свой аккаунт при collect_enabled на профиле
+"""
+
+from __future__ import annotations
 
 import json
 import logging
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from database import get_db_connection, release_db_connection
 from config import settings
+from shared.db.bot_queue import dest_flags_to_platforms
 from shared.db.posts_repo import InboundPostCreate, PostsRepository
 from shared.queue_wakeup import wake_process_http
+from shared.text_conditions import should_save_text
+
+from .brand_channel_flow import (
+    list_instagram_flow_channels,
+    normalize_instagram_handle,
+    publish_targets_to_destination_fields,
+    resolve_publish_targets,
+)
+from .channel_counter import bump_channel_counter
 from .image_mirror import mirror_collected_images_to_storage
 from .instagram_client import InstagramClient
-
 
 logger = logging.getLogger(__name__)
 
@@ -38,28 +55,26 @@ def _normalize_session(raw: Any) -> Optional[Dict[str, Any]]:
 
 
 class PostCollector:
-    """Сбор постов из своего аккаунта и usernames_to_read в instagram_posts."""
+    """Brand-channel usernames + legacy usernames_to_read / own feed."""
 
-    async def get_profiles_for_collect(self) -> List[Dict]:
-        """Профили с collect_enabled и учётными данными + сессия instagrapi."""
+    async def _profiles_map(self) -> Dict[int, Dict[str, Any]]:
+        """Profiles with credentials (for brand collect and/or legacy)."""
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
                     SELECT user_id, username, password, usernames_to_read,
-                           instagrapi_session, instagram_verification_code
+                           instagrapi_session, instagram_verification_code,
+                           collect_enabled
                     FROM instagram_profiles
-                    WHERE collect_enabled = TRUE
-                      AND username IS NOT NULL
-                      AND username != ''
-                      AND password IS NOT NULL
-                      AND password != ''
+                    WHERE username IS NOT NULL AND username != ''
+                      AND password IS NOT NULL AND password != ''
                     """
                 )
                 rows = await cur.fetchall()
                 cols = [c.name for c in cur.description]
-                result = []
+                result: Dict[int, Dict[str, Any]] = {}
                 for row in rows:
                     rec = dict(zip(cols, row))
                     if isinstance(rec.get("usernames_to_read"), str):
@@ -70,13 +85,20 @@ class PostCollector:
                     if rec.get("usernames_to_read") is None:
                         rec["usernames_to_read"] = []
                     rec["instagrapi_session"] = _normalize_session(rec.get("instagrapi_session"))
-                    result.append(rec)
+                    result[int(rec["user_id"])] = rec
                 return result
         finally:
             await release_db_connection(conn)
 
+    async def _dest_for_channel(self, channel: Dict[str, Any]) -> Dict[str, Any]:
+        brand_id = channel.get("brand_id")
+        target_ids = channel.get("publish_targets") or []
+        if not brand_id or not target_ids:
+            return {}
+        resolved = await resolve_publish_targets(int(brand_id), target_ids)
+        return publish_targets_to_destination_fields(resolved)
+
     async def exists_by_source_id(self, user_id: int, domain: str, source_id: str) -> bool:
-        """Проверяет, есть ли уже пост с таким instagram_source_id для user_id и domain."""
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
@@ -105,8 +127,20 @@ class PostCollector:
         images_json: str,
         comments: int,
         likes: int,
+        *,
+        dest: Optional[Dict[str, Any]] = None,
+        brand_id: Optional[int] = None,
+        channel_id: Optional[int] = None,
+        save_conditions: Optional[List[str]] = None,
+        conditions_mode: str = "any_of",
     ) -> Optional[int]:
-        """Вставляет пост в posts со статусом collected. Возвращает id или None."""
+        body = (post_text or "").strip()
+        if not should_save_text(body, save_conditions or [], conditions_mode or "any_of"):
+            return None
+        dest = dest or {}
+        platforms = dest_flags_to_platforms(dest)
+        if not platforms:
+            platforms = ("instagram",)
         images = json.loads(images_json) if isinstance(images_json, str) else images_json
         conn = await get_db_connection()
         try:
@@ -115,10 +149,12 @@ class PostCollector:
                     InboundPostCreate(
                         user_id=user_id,
                         source_platform="instagram",
-                        post_text=post_text,
+                        post_text=body,
                         post_date=post_date,
                         author=author,
                         domain=domain,
+                        brand_id=brand_id,
+                        channel_id=channel_id,
                         images=images if isinstance(images, list) else [],
                         extras={
                             "instagram_source_id": str(instagram_source_id),
@@ -126,17 +162,34 @@ class PostCollector:
                             "likes": likes,
                         },
                         source_native_id=f"{domain}:{instagram_source_id}",
-                        target_platforms=("instagram",),
+                        target_channels=dest.get("target_channels") or [],
+                        target_groups=dest.get("target_groups") or [],
+                        target_platforms=platforms,
                         target_status="pending",
                     )
                 )
                 new_id = int(created["id"])
                 _log_action(
-                    "Saved instagram post id=%s user_id=%s domain=%s source_id=%s",
+                    "Saved instagram post id=%s user_id=%s domain=%s source_id=%s brand=%s channel=%s",
                     new_id,
                     user_id,
                     domain,
                     instagram_source_id,
+                    brand_id,
+                    channel_id,
+                )
+            if channel_id is not None or domain:
+                await bump_channel_counter(
+                    user_id,
+                    network="instagram",
+                    external_id=domain,
+                    channel_id=channel_id,
+                    received=1,
+                    direction="collected",
+                    platform="instagram",
+                    post_id=new_id,
+                    external_msg_id=str(instagram_source_id),
+                    metadata={"text_preview": body[:120]},
                 )
             await wake_process_http(getattr(settings, "PROCESSOR_SERVICE_URL", "") or "")
             return new_id
@@ -160,6 +213,12 @@ class PostCollector:
         domain: str,
         author: str,
         medias: List[Dict[str, Any]],
+        *,
+        dest: Optional[Dict[str, Any]] = None,
+        brand_id: Optional[int] = None,
+        channel_id: Optional[int] = None,
+        save_conditions: Optional[List[str]] = None,
+        conditions_mode: str = "any_of",
     ) -> int:
         saved = 0
         for m in medias:
@@ -181,6 +240,11 @@ class PostCollector:
                 images_json=images_json,
                 comments=m.get("comment_count") or 0,
                 likes=m.get("like_count") or 0,
+                dest=dest,
+                brand_id=brand_id,
+                channel_id=channel_id,
+                save_conditions=save_conditions,
+                conditions_mode=conditions_mode,
             )
             if new_id is not None:
                 saved += 1
@@ -188,42 +252,147 @@ class PostCollector:
                     await mirror_collected_images_to_storage(new_id, user_id, images_list)
         return saved
 
+    async def _client_for_profile(self, profile: Dict[str, Any]) -> Optional[InstagramClient]:
+        username = (profile.get("username") or "").strip()
+        password = profile.get("password") or ""
+        if not username or not password:
+            return None
+        client = InstagramClient(
+            username,
+            password,
+            user_id=int(profile["user_id"]),
+            session_dict=profile.get("instagrapi_session"),
+            verification_code=profile.get("instagram_verification_code"),
+        )
+        if not await client.login():
+            logger.warning("Instagram login failed for user_id=%s", profile.get("user_id"))
+            return None
+        return client
+
+    async def _collect_username(
+        self,
+        client: InstagramClient,
+        user_id: int,
+        handle: str,
+        *,
+        dest: Optional[Dict[str, Any]] = None,
+        brand_id: Optional[int] = None,
+        channel_id: Optional[int] = None,
+        save_conditions: Optional[List[str]] = None,
+        conditions_mode: str = "any_of",
+    ) -> int:
+        if handle.isdigit():
+            uid: Optional[int] = int(handle)
+            domain = handle
+            author = handle
+        else:
+            uid = await client.user_id_from_username(handle)
+            domain = handle
+            author = handle
+        if uid is None:
+            logger.debug("Instagram user not found: @%s", handle)
+            return 0
+        medias = await client.user_medias(uid, amount=20)
+        return await self._save_media_items(
+            user_id,
+            domain,
+            author,
+            medias,
+            dest=dest,
+            brand_id=brand_id,
+            channel_id=channel_id,
+            save_conditions=save_conditions,
+            conditions_mode=conditions_mode,
+        )
+
     async def run_collect(self) -> int:
-        """Собирает посты: свои + по каждому username из usernames_to_read. Возвращает число сохранённых."""
-        profiles = await self.get_profiles_for_collect()
+        profiles = await self._profiles_map()
         if not profiles:
             return 0
-        saved = 0
-        for profile in profiles:
-            user_id = profile["user_id"]
-            username = (profile.get("username") or "").strip()
-            password = profile.get("password") or ""
-            if not username or not password:
+
+        total = 0
+        polled: Set[Tuple[int, str]] = set()
+        clients: Dict[int, InstagramClient] = {}
+
+        async def _ensure_client(uid: int) -> Optional[InstagramClient]:
+            if uid in clients:
+                return clients[uid]
+            pr = profiles.get(uid)
+            if not pr:
+                return None
+            client = await self._client_for_profile(pr)
+            if client:
+                clients[uid] = client
+            return client
+
+        channels = await list_instagram_flow_channels()
+        for channel in channels:
+            user_id = int(channel["user_id"])
+            handle = normalize_instagram_handle(str(channel.get("external_id") or ""))
+            if not handle:
+                logger.warning(
+                    "Skip IG brand channel %s: bad external_id=%r",
+                    channel.get("id"),
+                    channel.get("external_id"),
+                )
                 continue
-            usernames_to_read = profile.get("usernames_to_read") or []
-            if not isinstance(usernames_to_read, list):
-                usernames_to_read = []
-            client = InstagramClient(
-                username,
-                password,
-                user_id=user_id,
-                session_dict=profile.get("instagrapi_session"),
-                verification_code=profile.get("instagram_verification_code"),
+            key = (user_id, handle.lower())
+            if key in polled:
+                continue
+            client = await _ensure_client(user_id)
+            if not client:
+                continue
+            dest = await self._dest_for_channel(channel)
+            brand_id = (
+                int(channel["brand_id"]) if channel.get("brand_id") is not None else None
             )
-            if not await client.login():
-                logger.warning("Instagram login failed for user_id=%s", user_id)
+            channel_id = int(channel["id"]) if channel.get("id") is not None else None
+            try:
+                n = await self._collect_username(
+                    client,
+                    user_id,
+                    handle,
+                    dest=dest,
+                    brand_id=brand_id,
+                    channel_id=channel_id,
+                    save_conditions=channel.get("save_conditions") or [],
+                    conditions_mode=channel.get("conditions_mode") or "any_of",
+                )
+                total += n
+            except Exception as exc:
+                logger.exception(
+                    "collect brand channel user=%s @%s: %s", user_id, handle, exc
+                )
+            polled.add(key)
+
+        # Legacy profile collect
+        for user_id, profile in profiles.items():
+            if not profile.get("collect_enabled"):
                 continue
-            self_uid = await client.get_self_user_id()
-            if self_uid:
-                medias = await client.user_medias(self_uid, amount=20)
-                saved += await self._save_media_items(user_id, username, username, medias)
-            for uname in usernames_to_read:
-                if not uname or not str(uname).strip():
-                    continue
-                uname = str(uname).strip()
-                uid = await client.user_id_from_username(uname)
-                if uid is None:
-                    continue
-                medias = await client.user_medias(uid, amount=20)
-                saved += await self._save_media_items(user_id, uname, uname, medias)
-        return saved
+            client = await _ensure_client(user_id)
+            if not client:
+                continue
+            username = (profile.get("username") or "").strip()
+            try:
+                self_uid = await client.get_self_user_id()
+                if self_uid and username:
+                    key = (user_id, username.lower())
+                    if key not in polled:
+                        medias = await client.user_medias(self_uid, amount=20)
+                        total += await self._save_media_items(
+                            user_id, username, username, medias
+                        )
+                        polled.add(key)
+                for uname in profile.get("usernames_to_read") or []:
+                    handle = normalize_instagram_handle(str(uname or ""))
+                    if not handle:
+                        continue
+                    key = (user_id, handle.lower())
+                    if key in polled:
+                        continue
+                    total += await self._collect_username(client, user_id, handle)
+                    polled.add(key)
+            except Exception as exc:
+                logger.exception("legacy collect user=%s: %s", user_id, exc)
+
+        return total

@@ -11,6 +11,7 @@ import {
   type CsvParseError,
   type CsvQuestionDraft,
 } from '@/utils/csv-questions-parser'
+import { fileTooLargeMessage, isFileWithinLimit, MAX_IMPORT_BYTES } from '@/utils/read-file'
 
 interface CsvImportSectionProps {
   modeId: number | null
@@ -69,6 +70,10 @@ export function CsvImportSection({
     setFileName('')
 
     if (!file || !modeId) return
+    if (!isFileWithinLimit(file, MAX_IMPORT_BYTES)) {
+      setParseErrors([{ line: 0, message: fileTooLargeMessage(MAX_IMPORT_BYTES) }])
+      return
+    }
 
     setIsParsing(true)
     setFileName(file.name)

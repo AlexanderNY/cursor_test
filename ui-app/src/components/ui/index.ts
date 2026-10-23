@@ -1,6 +1,7 @@
 export { Button } from './button'
 export { Input } from './input'
 export { Select } from './select'
+export { Switch } from './switch'
 export { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from './card'
 export { Alert } from './alert'
 export { TipTapEditor } from './tiptap-editor'

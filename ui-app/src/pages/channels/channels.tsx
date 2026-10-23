@@ -13,6 +13,7 @@ import { smmService } from '@/services/smm-service'
 import type { BrandChannel, BrandNetwork, ChannelRole, PlatformStatusResponse } from '@/types/smm'
 import { authStatusLabel, publishReady, collectReady, alertReady, channelReady, reviewEnabled } from '@/hooks/use-platform-readiness'
 import { getErrorMessage } from '@/services/api-client'
+import { fileTooLargeMessage, isFileWithinLimit, MAX_IMPORT_BYTES } from '@/utils/read-file'
 import { parseQuotaError, type QuotaErrorDetail } from '@/lib/quota'
 import { QuotaUpgradeModal } from '@/components/billing/QuotaUpgradeModal'
 import { QuotaBanner } from '@/components/billing/QuotaBanner'
@@ -330,6 +331,10 @@ export function ChannelsPage() {
     const targetBrand = selectedBrandId ?? brandId
     if (!targetBrand) {
       setError('Выберите бренд — импорт идёт в конкретный бренд')
+      return
+    }
+    if (!isFileWithinLimit(file, MAX_IMPORT_BYTES)) {
+      setError(fileTooLargeMessage(MAX_IMPORT_BYTES))
       return
     }
     setImporting(true)
@@ -909,7 +914,13 @@ export function ChannelsPage() {
                               ? '236… / club… / onlinestudies'
                               : network === 'wp'
                                 ? 'https://example.com'
-                                : '@username / site'
+                                : network === 'tw'
+                                  ? '@handle / x.com/handle'
+                                  : network === 'threads'
+                                    ? '@handle / threads.net/@handle'
+                                    : network === 'instagram'
+                                      ? '@username / instagram.com/username'
+                                      : '@username / site'
                         }
                         className="input-field min-w-0 flex-1"
                       />

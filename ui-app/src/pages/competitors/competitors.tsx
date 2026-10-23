@@ -18,7 +18,9 @@ import type {
   CompetitorPost,
 } from '@/types/smm'
 import { getErrorMessage } from '@/services/api-client'
+import { safeHref } from '@/utils/safe-url'
 import { formatDateTime } from '@/utils/date'
+import { Switch } from '@/components/ui/switch'
 
 type CompNetwork = 'tg' | 'vk' | 'url'
 const WEEKDAYS = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб']
@@ -32,7 +34,7 @@ function ideaDraftText(idea: CompetitorIdea): string {
 
 export function CompetitorsPage() {
   const { selectedBrandId, channels, refreshChannels } = useBrand()
-  const [canCompetitors, setCanCompetitors] = useState(true)
+  const [canCompetitors, setCanCompetitors] = useState(false)
   const [error, setError] = useState('')
   const [compNetwork, setCompNetwork] = useState<CompNetwork>('tg')
   const [compId, setCompId] = useState('')
@@ -72,9 +74,9 @@ export function CompetitorsPage() {
       try {
         const plan = await smmService.getPlan().catch(() => null)
         const feats = (plan?.limits?.features || {}) as Record<string, boolean>
-        setCanCompetitors(Boolean(feats.competitors))
+        setCanCompetitors(Boolean(plan && feats.competitors))
       } catch {
-        /* ignore */
+        setCanCompetitors(false)
       }
     })()
   }, [])
@@ -280,8 +282,7 @@ export function CompetitorsPage() {
               </Button>
             </div>
             <label className="flex items-center gap-2 text-sm text-[var(--text-muted)]">
-              <input
-                type="checkbox"
+              <Switch
                 checked={alertOnAdd}
                 onChange={(e) => setAlertOnAdd(e.target.checked)}
               />
@@ -377,8 +378,7 @@ export function CompetitorsPage() {
                     Ideas
                   </Button>
                   <label className="flex items-center gap-2 text-sm self-center text-[var(--text-muted)]">
-                    <input
-                      type="checkbox"
+                    <Switch
                       checked={viralOnly}
                       onChange={(e) => setViralOnly(e.target.checked)}
                     />
@@ -564,9 +564,9 @@ export function CompetitorsPage() {
                           </span>
                         </div>
                         <p className="whitespace-pre-wrap line-clamp-6">{p.text || '—'}</p>
-                        {p.url ? (
+                        {safeHref(p.url) ? (
                           <a
-                            href={p.url}
+                            href={safeHref(p.url) || undefined}
                             target="_blank"
                             rel="noreferrer"
                             className="text-xs text-primary-400 hover:underline"

@@ -11,8 +11,11 @@ import { useToast } from '@/contexts/toast-context'
 import { authService } from '@/services/auth-service'
 import { decodeJwt, formatTokenDate, getTimeUntilExpiry } from '@/utils/jwt-utils'
 import { BillingTabContent } from '@/pages/billing/billing'
+import { QuotaBanner } from '@/components/billing/QuotaBanner'
 import { formatDateTime } from '@/utils/date'
 import { roleLabel } from '@/types/smm'
+import { smmService } from '@/services/smm-service'
+import type { AiUsage, UsageSummary } from '@/types/smm'
 
 type ProfileTab = 'main' | 'billing'
 
@@ -130,12 +133,36 @@ export function ProfilePage() {
   
   const [verificationCode, setVerificationCode] = useState('')
   const [isVerifying, setIsVerifying] = useState(false)
+  const [aiUsage, setAiUsage] = useState<AiUsage | null>(null)
+  const [usageSummary, setUsageSummary] = useState<UsageSummary | null>(null)
 
   useEffect(() => {
     if (user?.email) {
       setEmail(user.email)
     }
   }, [user])
+
+  useEffect(() => {
+    if (!user?.id) return
+    let cancelled = false
+    void (async () => {
+      try {
+        const [ai, summary] = await Promise.all([
+          smmService.getAiUsage().catch(() => null),
+          smmService.getUsageSummary().catch(() => null),
+        ])
+        if (!cancelled) {
+          setAiUsage(ai)
+          setUsageSummary(summary)
+        }
+      } catch {
+        /* ignore */
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [user?.id, user?.tariff])
 
   async function handleUpdateProfile(e: FormEvent) {
     e.preventDefault()
@@ -218,6 +245,10 @@ export function ProfilePage() {
   return (
     <PageContainer>
       <PageHeader title="Profile" description="Manage your account settings and preferences" />
+
+      {activeTab === 'main' && (
+        <QuotaBanner metrics={usageSummary?.metrics} focusKey="ai_calls_month" className="mb-4" />
+      )}
 
       <div className="flex flex-wrap gap-1 border-b border-[var(--border-color)] mb-4">
         <button
@@ -313,6 +344,30 @@ export function ProfilePage() {
               >
                 {user?.tariff ?? 'free'}
               </Link>
+            </div>
+            <div className="flex justify-between items-center py-3 border-b border-[var(--border-color)]">
+              <span className="text-[var(--text-secondary)]">AI this month</span>
+              <span className="font-medium">
+                {aiUsage
+                  ? `${aiUsage.used.toLocaleString()} / ${aiUsage.limit.toLocaleString()}`
+                  : '—'}
+                {aiUsage && aiUsage.limit > 0 && (aiUsage.remaining ?? aiUsage.limit - aiUsage.used) <= 0 && (
+                  <>
+                    {' · '}
+                    <Link to="/pricing" className="text-primary-400 hover:underline">
+                      Upgrade
+                    </Link>
+                  </>
+                )}
+                {aiUsage && aiUsage.limit === 0 && (
+                  <>
+                    {' · '}
+                    <Link to="/pricing" className="text-primary-400 hover:underline">
+                      AI on Standard+
+                    </Link>
+                  </>
+                )}
+              </span>
             </div>
             <div className="flex justify-between items-center py-3">
               <span className="text-[var(--text-secondary)]">Member since</span>

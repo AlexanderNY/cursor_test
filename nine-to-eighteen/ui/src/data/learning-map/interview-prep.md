@@ -19,16 +19,11 @@
 ## Аналитика и продукт
 
 ### Системный анализ {learn:s01e04-sa profiles:analyst,product_owner,developer}
-### Требования и user stories {learn:map-requirements profiles:analyst,product_owner,tester}
-### Приоритизация бэклога {learn:map-product-backlog profiles:product_owner,analyst}
 
 ## Данные
 
 ### PostgreSQL основы {learn:s01e07-postgres profiles:developer,analyst,devops,tester}
 ### SQL JOIN и агрегаты {learn:s01e08-sql profiles:developer,analyst,tester}
-### Нормализация и моделирование {learn:map-normalization profiles:analyst,developer}
-### SQL и NoSQL {learn:map-sql-nosql profiles:developer,analyst,devops}
-### Redis как кэш {learn:map-redis profiles:developer,devops}
 
 ## Инструменты
 
@@ -43,23 +38,23 @@
 
 ### Docker образ {learn:b10-docker profiles:devops,developer}
 ### Docker Compose {learn:b11-compose profiles:devops,developer}
-### CI/CD обзор {learn:map-cicd profiles:devops,developer,tester}
-### Kubernetes обзор {learn:map-k8s profiles:devops,developer}
-### Сети и HTTP путь запроса {learn:map-networking profiles:devops,developer,tester}
+### Процесс Linux {learn:ops-linux-process profiles:devops,developer}
+### Объекты Kubernetes {learn:ops-k8s-objects profiles:devops,developer}
+### Пайплайн {learn:ops-ci-pipeline profiles:devops,developer,tester}
 
 ## Безопасность
 
-### Аутентификация и JWT {learn:map-auth-jwt profiles:developer,devops,tester,analyst}
-### HTTPS и доступ {learn:map-https-access profiles:developer,devops,tester}
-
-## Тестирование
-
-### QA и тест-дизайн {learn:map-qa profiles:tester,analyst,developer,product_owner}
-### E2E сценарии локально {learn:map-e2e profiles:tester,developer,devops}
+### Кто вы и что можно {learn:sec-authn-authz profiles:developer}
+### JWT и хранение {learn:sec-jwt-storage profiles:developer}
+### Инъекции {learn:sec-injection profiles:developer}
+### Секреты {learn:sec-secrets profiles:developer,devops}
 
 ## Soft skills
 
-### Поведенческие вопросы {learn:map-soft-skills profiles:developer,analyst,devops,tester,product_owner}
+### Каркас STAR {learn:beh-star profiles:developer,analyst,devops,tester,product_owner}
+### Конфликт {learn:beh-conflict profiles:developer,analyst,devops,tester,product_owner}
+### Провал {learn:beh-failure profiles:developer,analyst,devops,tester,product_owner}
+### Набор историй {learn:beh-interview-drill profiles:developer,analyst,devops,tester,product_owner}
 
 ## Python
 
@@ -214,3 +209,53 @@
 ### Портфель продуктов и ставок {learn:pm-portfolio profiles:product_owner}
 ### Drill продукта {learn:pm-interview-drill profiles:product_owner}
 ### Чеклист продукта {learn:pm-capstone profiles:product_owner}
+
+## Алгоритмы
+
+### Сложность {learn:algo-complexity profiles:developer}
+### Массив и хеш {learn:algo-hash-array profiles:developer}
+### Два указателя {learn:algo-two-pointers profiles:developer}
+### Стек и очередь {learn:algo-stack-queue profiles:developer}
+### Деревья и графы {learn:algo-trees-graphs profiles:developer}
+### Разбор задачи {learn:algo-interview-drill profiles:developer}
+
+## Проектирование
+
+### Один сервис {learn:sd-one-service profiles:developer}
+### Кэш и очередь {learn:sd-cache-queue profiles:developer}
+### Выбор хранилища {learn:sd-data-choice profiles:developer}
+### Что падает первым {learn:sd-failure profiles:developer}
+
+## Postgres
+
+### Изоляция {learn:pg-isolation profiles:developer,analyst}
+### MVCC и блокировки {learn:pg-locks-mvcc profiles:developer,analyst}
+### Индекс молчит {learn:pg-index-miss profiles:developer,analyst}
+### Разбор Postgres {learn:pg-interview-drill profiles:developer,analyst}
+
+## Сети
+
+### DNS и HTTP {learn:net-dns-http profiles:developer,devops,tester}
+### TCP и UDP {learn:net-tcp-udp profiles:developer,devops}
+### TLS {learn:net-tls profiles:developer,devops,tester}
+### Разбор сетей {learn:net-interview-drill profiles:developer,devops,tester}
+
+## Наблюдаемость
+
+### Логи {learn:obs-logs profiles:developer,devops}
+### Метрики и трейсы {learn:obs-metrics-traces profiles:developer,devops}
+### Инцидент {learn:obs-interview-drill profiles:developer,devops}
+
+## Java Core
+
+### HashMap {learn:jc-collections-hashmap profiles:developer}
+### Потоки {learn:jc-concurrency profiles:developer}
+### Сборщик мусора {learn:jc-gc profiles:developer}
+### Spring: бин и транзакция {learn:jc-spring-di-tx profiles:developer}
+
+## Фронтенд
+
+### Цикл событий {learn:fe-event-loop profiles:developer}
+### Замыкание и прототип {learn:fe-closures-proto profiles:developer}
+### Состояние React {learn:fe-react-state profiles:developer}
+### TypeScript {learn:fe-typescript profiles:developer}

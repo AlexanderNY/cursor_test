@@ -16,6 +16,7 @@ import {
 } from '@/game/git/sandbox-git'
 import { GIT_TASKS, getGitTask, type GitTask } from '@/game/git/tasks'
 import { seedPostsLocal } from '@/data/learn/learn-store'
+import { codeFromQuery } from '@/data/safe-url'
 import {
   getPublishedPosts,
   useLearnPosts,
@@ -82,13 +83,9 @@ export function GitSandboxPage() {
   const [draftLoaded, setDraftLoaded] = useState(false)
 
   useEffect(() => {
-    const fromQuery = searchParams.get('code')
+    const fromQuery = codeFromQuery(searchParams.get('code'))
     if (fromQuery) {
-      try {
-        setCode(decodeURIComponent(fromQuery))
-      } catch {
-        setCode(fromQuery)
-      }
+      setCode(fromQuery)
       setDraftLoaded(true)
       return
     }

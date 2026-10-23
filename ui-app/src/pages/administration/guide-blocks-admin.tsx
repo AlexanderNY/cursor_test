@@ -7,6 +7,7 @@ import { Alert } from '@/components/ui/alert'
 import { guideService, type GuideBlock, type GuideBlockStyle } from '@/services/guide-service'
 import { getErrorMessage } from '@/services/api-client'
 import { renderGuideMarkdown, styleToCss, titleStyle, subtitleStyle, bodyStyle } from '@/lib/guide-render'
+import { Switch } from '@/components/ui/switch'
 
 const STYLE_FIELDS: { key: keyof GuideBlockStyle; label: string; placeholder: string }[] = [
   { key: 'titleColor', label: 'Цвет заголовка', placeholder: '#e2e8f0' },
@@ -262,8 +263,7 @@ export function GuideBlocksAdmin() {
               />
             </div>
             <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
+              <Switch
                 checked={draft.is_visible !== false}
                 onChange={(e) => setDraft((p) => ({ ...p, is_visible: e.target.checked }))}
               />

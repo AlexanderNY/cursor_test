@@ -2,6 +2,7 @@ import type { Components } from 'react-markdown'
 import ReactMarkdown from 'react-markdown'
 import { Link } from 'react-router-dom'
 import remarkGfm from 'remark-gfm'
+import { safeHref } from '@/data/safe-url'
 
 interface MarkdownBodyProps {
   content: string
@@ -16,19 +17,18 @@ function isInternalPath(href: string | undefined): boolean {
 
 const components: Components = {
   a: ({ href, children }) => {
-    if (href && isInternalPath(href)) {
-      return <Link to={href}>{children}</Link>
+    const safe = safeHref(href)
+    if (safe && isInternalPath(safe)) {
+      return <Link to={safe}>{children}</Link>
     }
-    const isExternal = Boolean(href?.startsWith('http'))
-    return (
-      <a
-        href={href}
-        target={isExternal ? '_blank' : undefined}
-        rel={isExternal ? 'noreferrer' : undefined}
-      >
-        {children}
-      </a>
-    )
+    if (safe && (safe.startsWith('http://') || safe.startsWith('https://'))) {
+      return (
+        <a href={safe} target="_blank" rel="noreferrer">
+          {children}
+        </a>
+      )
+    }
+    return <span>{children}</span>
   },
 }
 

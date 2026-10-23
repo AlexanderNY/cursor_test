@@ -1,5 +1,6 @@
 import type { CSSProperties } from 'react'
 import { Link } from 'react-router-dom'
+import { publicPostHref } from '@/data/sections'
 import type { SiteLatestPost } from '@/data/site/site-api'
 
 type LatestPostsProps = {
@@ -40,7 +41,7 @@ export function LatestPosts({ items }: LatestPostsProps) {
         {items.map((item) => (
           <li key={`${item.appSlug}/${item.postSlug}`}>
             <Link
-              to={item.href || `/app/${item.appSlug}/${item.postSlug}`}
+              to={publicPostHref(item.href || '', item.appSlug, item.postSlug)}
               className="latest-posts-card"
               style={{ '--post-accent': item.accent || '#2dd4bf' } as CSSProperties}
             >

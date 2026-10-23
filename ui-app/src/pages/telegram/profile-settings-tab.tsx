@@ -24,6 +24,7 @@ import {
   type AvailableChannel,
   channelIdToString,
 } from './telegram-helpers'
+import { Switch } from '@/components/ui/switch'
 
 type ProfileSection = 'publishing' | 'collection' | 'alerting' | 'channels'
 
@@ -239,16 +240,10 @@ export function ProfileSettingsTab(props: ProfileSettingsTabProps) {
             {section === 'publishing' && (
               <div className="space-y-4 animate-slide-up">
                 <label className="flex items-center gap-3 cursor-pointer group">
-                  <div className="relative">
-                    <input
-                      type="checkbox"
+                  <Switch
                       checked={publishEnabled}
                       onChange={(e) => onPublishEnabledChange(e.target.checked)}
-                      className="sr-only peer"
                     />
-                    <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors" />
-                    <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
-                  </div>
                   <span className="text-[var(--text-primary)] group-hover:text-primary-400 transition-colors">
                     Enable publishing
                   </span>
@@ -341,11 +336,9 @@ export function ProfileSettingsTab(props: ProfileSettingsTabProps) {
                                 key={ch.id}
                                 className="flex items-center gap-2 cursor-pointer text-sm"
                               >
-                                <input
-                                  type="checkbox"
+                                <Switch
                                   checked={channelsToPost.some((c) => c.id === idStr)}
                                   onChange={() => toggleChannelToPost(idStr, ch.title)}
-                                  className="w-4 h-4 text-primary-500 rounded"
                                 />
                                 <span className="font-mono text-xs">{idStr}</span>
                                 <span className="text-[var(--text-muted)]">: {ch.title}</span>
@@ -436,16 +429,10 @@ export function ProfileSettingsTab(props: ProfileSettingsTabProps) {
             {section === 'collection' && (
               <div className="space-y-4 animate-slide-up">
                 <label className="flex items-center gap-3 cursor-pointer group">
-                  <div className="relative">
-                    <input
-                      type="checkbox"
+                  <Switch
                       checked={collectEnabled}
                       onChange={(e) => onCollectEnabledChange(e.target.checked)}
-                      className="sr-only peer"
                     />
-                    <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors" />
-                    <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
-                  </div>
                   <span className="text-[var(--text-primary)] group-hover:text-primary-400 transition-colors">
                     Enable collection
                   </span>
@@ -710,16 +697,10 @@ export function ProfileSettingsTab(props: ProfileSettingsTabProps) {
             {section === 'alerting' && (
               <div className="space-y-4 animate-slide-up">
                 <label className="flex items-center gap-3 cursor-pointer group">
-                  <div className="relative">
-                    <input
-                      type="checkbox"
+                  <Switch
                       checked={alertEnabled}
                       onChange={(e) => onAlertEnabledChange(e.target.checked)}
-                      className="sr-only peer"
                     />
-                    <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors" />
-                    <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
-                  </div>
                   <span className="text-[var(--text-primary)] group-hover:text-primary-400 transition-colors">
                     Enable alerting
                   </span>
@@ -755,13 +736,11 @@ export function ProfileSettingsTab(props: ProfileSettingsTabProps) {
                           </h4>
                           <div className="flex items-center gap-3">
                             <label className="flex items-center gap-2 cursor-pointer text-sm text-[var(--text-secondary)]">
-                              <input
-                                type="checkbox"
+                              <Switch
                                 checked={rule.enabled}
                                 onChange={(e) =>
                                   onUpdateAlertRule(rule.id, { enabled: e.target.checked })
                                 }
-                                className="w-4 h-4 text-primary-500"
                               />
                               Enabled
                             </label>
@@ -871,8 +850,7 @@ export function ProfileSettingsTab(props: ProfileSettingsTabProps) {
 
                         <div className="flex flex-wrap gap-4">
                           <label className="flex items-center gap-2 text-sm">
-                            <input
-                              type="checkbox"
+                            <Switch
                               checked={rule.includeAiSummary}
                               onChange={(e) =>
                                 onUpdateAlertRule(rule.id, {
@@ -883,8 +861,7 @@ export function ProfileSettingsTab(props: ProfileSettingsTabProps) {
                             AI summary in alert
                           </label>
                           <label className="flex items-center gap-2 text-sm">
-                            <input
-                              type="checkbox"
+                            <Switch
                               checked={rule.stopOnMatch}
                               onChange={(e) =>
                                 onUpdateAlertRule(rule.id, { stopOnMatch: e.target.checked })

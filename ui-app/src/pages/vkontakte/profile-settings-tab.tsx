@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
 import type { ScheduleType } from '@/types/vkontakte'
 import type { DynamicField } from './vkontakte-helpers'
+import { Switch } from '@/components/ui/switch'
 
 export interface ProfileSettingsTabProps {
   isLoadingProfile: boolean
@@ -71,29 +72,17 @@ export function ProfileSettingsTab({
             <div className="space-y-4">
               <h3 className="text-sm font-semibold text-[var(--text-primary)]">Publishing</h3>
               <label className="flex items-center gap-3 cursor-pointer group">
-                <div className="relative">
-                  <input
-                    type="checkbox"
+                <Switch
                     checked={publishEnabled}
                     onChange={(e) => onPublishEnabledChange(e.target.checked)}
-                    className="sr-only peer"
                   />
-                  <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors" />
-                  <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
-                </div>
                 <span className="text-[var(--text-primary)]">Enable publishing</span>
               </label>
               <label className="flex items-center gap-3 cursor-pointer group">
-                <div className="relative">
-                  <input
-                    type="checkbox"
+                <Switch
                     checked={fromGroup}
                     onChange={(e) => onFromGroupChange(e.target.checked)}
-                    className="sr-only peer"
                   />
-                  <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors" />
-                  <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
-                </div>
                 <span className="text-[var(--text-primary)]">From group</span>
               </label>
               <Input
@@ -188,20 +177,14 @@ export function ProfileSettingsTab({
                   userOauthConnected ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'
                 }`}
               >
-                <div className="relative">
-                  <input
-                    type="checkbox"
+                <Switch
                     checked={collectEnabled && userOauthConnected}
                     disabled={!userOauthConnected}
                     onChange={(e) => {
                       if (!userOauthConnected) return
                       onCollectEnabledChange(e.target.checked)
                     }}
-                    className="sr-only peer"
                   />
-                  <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors" />
-                  <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
-                </div>
                 <span className="text-[var(--text-primary)]">Enable collection</span>
               </label>
               {collectEnabled && userOauthConnected && (

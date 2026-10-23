@@ -15,6 +15,7 @@ import {
   type SelectedBrandChannels,
 } from '@/components/target-social-networks'
 import type { WordPressPost, WordPressPostListItem, PostStatus, PublishScheduleType } from '@/types/wordpress'
+import { Switch } from '@/components/ui/switch'
 
 const SCHEDULE_MINUTES = [0, 15, 30, 45] as const
 type ScheduleMinute = (typeof SCHEDULE_MINUTES)[number]
@@ -813,16 +814,10 @@ export function WordPressPage() {
                     Publishing
                   </h3>
                 <label className="flex items-center gap-3 cursor-pointer group">
-                  <div className="relative">
-                    <input
-                      type="checkbox"
+                  <Switch
                       checked={publishEnabled}
                       onChange={(e) => setPublishEnabled(e.target.checked)}
-                      className="sr-only peer"
                     />
-                    <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors"></div>
-                    <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></div>
-                  </div>
                   <span className="text-[var(--text-primary)] group-hover:text-primary-400 transition-colors">
                     Enable publishing
                   </span>
@@ -831,16 +826,10 @@ export function WordPressPage() {
                 {publishEnabled && (
                   <>
                     <label className="flex items-center gap-3 cursor-pointer group">
-                      <div className="relative">
-                        <input
-                          type="checkbox"
+                      <Switch
                           checked={publishAllReady}
                           onChange={(e) => setPublishAllReady(e.target.checked)}
-                          className="sr-only peer"
                         />
-                        <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors"></div>
-                        <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></div>
-                      </div>
                       <span className="text-[var(--text-primary)] group-hover:text-primary-400 transition-colors">
                         Публиковать все посты, готовые к публикации
                       </span>
@@ -1025,16 +1014,10 @@ export function WordPressPage() {
             ) : (
               <form onSubmit={handleSavePostProfile} className="space-y-6">
                 <label className="flex items-center gap-3 cursor-pointer group">
-                  <div className="relative">
-                    <input
-                      type="checkbox"
+                  <Switch
                       checked={processBeforePublish}
                       onChange={(e) => setProcessBeforePublish(e.target.checked)}
-                      className="sr-only peer"
                     />
-                    <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors"></div>
-                    <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></div>
-                  </div>
                   <span className="text-[var(--text-primary)] group-hover:text-primary-400 transition-colors">
                     Обрабатывать перед публикацией
                   </span>
@@ -1056,48 +1039,30 @@ export function WordPressPage() {
                 )}
 
                 <label className="flex items-center gap-3 cursor-pointer group">
-                  <div className="relative">
-                    <input
-                      type="checkbox"
+                  <Switch
                       checked={removeEmojis}
                       onChange={(e) => setRemoveEmojis(e.target.checked)}
-                      className="sr-only peer"
                     />
-                    <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors"></div>
-                    <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></div>
-                  </div>
                   <span className="text-[var(--text-primary)] group-hover:text-primary-400 transition-colors">
                     Удалить смайлики/эмодзи
                   </span>
                 </label>
 
                 <label className="flex items-center gap-3 cursor-pointer group">
-                  <div className="relative">
-                    <input
-                      type="checkbox"
+                  <Switch
                       checked={removeImages}
                       onChange={(e) => setRemoveImages(e.target.checked)}
-                      className="sr-only peer"
                     />
-                    <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors"></div>
-                    <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></div>
-                  </div>
                   <span className="text-[var(--text-primary)] group-hover:text-primary-400 transition-colors">
                     Удалить картинки
                   </span>
                 </label>
 
                 <label className="flex items-center gap-3 cursor-pointer group">
-                  <div className="relative">
-                    <input
-                      type="checkbox"
+                  <Switch
                       checked={cleanHtml}
                       onChange={(e) => setCleanHtml(e.target.checked)}
-                      className="sr-only peer"
                     />
-                    <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors"></div>
-                    <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></div>
-                  </div>
                   <span className="text-[var(--text-primary)] group-hover:text-primary-400 transition-colors">
                     Очистить HTML
                   </span>
@@ -1107,38 +1072,30 @@ export function WordPressPage() {
                   <span className="text-sm font-medium text-[var(--text-secondary)] block">Для каких сервисов подготовить обработку</span>
                   <div className="flex flex-wrap gap-4">
                     <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
+                      <Switch
                         checked={processServiceWordpress}
                         onChange={(e) => setProcessServiceWordpress(e.target.checked)}
-                        className="w-4 h-4 text-primary-500 rounded"
                       />
                       <span className="text-[var(--text-primary)]">WordPress</span>
                     </label>
                     <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
+                      <Switch
                         checked={processServiceTelegram}
                         onChange={(e) => setProcessServiceTelegram(e.target.checked)}
-                        className="w-4 h-4 text-primary-500 rounded"
                       />
                       <span className="text-[var(--text-primary)]">Telegram</span>
                     </label>
                     <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
+                      <Switch
                         checked={processServiceTwitter}
                         onChange={(e) => setProcessServiceTwitter(e.target.checked)}
-                        className="w-4 h-4 text-primary-500 rounded"
                       />
                       <span className="text-[var(--text-primary)]">Twitter</span>
                     </label>
                     <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
+                      <Switch
                         checked={processServiceVkontakte}
                         onChange={(e) => setProcessServiceVkontakte(e.target.checked)}
-                        className="w-4 h-4 text-primary-500 rounded"
                       />
                       <span className="text-[var(--text-primary)]">VKontakte</span>
                     </label>
@@ -1146,32 +1103,20 @@ export function WordPressPage() {
                 </div>
 
                 <label className="flex items-center gap-3 cursor-pointer group">
-                  <div className="relative">
-                    <input
-                      type="checkbox"
+                  <Switch
                       checked={statusReviewAfterProcess}
                       onChange={(e) => setStatusReviewAfterProcess(e.target.checked)}
-                      className="sr-only peer"
                     />
-                    <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors"></div>
-                    <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></div>
-                  </div>
                   <span className="text-[var(--text-primary)] group-hover:text-primary-400 transition-colors">
                     Перевести пост в статус review после обработки
                   </span>
                 </label>
 
                 <label className="flex items-center gap-3 cursor-pointer group">
-                  <div className="relative">
-                    <input
-                      type="checkbox"
+                  <Switch
                       checked={addStaticHtml}
                       onChange={(e) => setAddStaticHtml(e.target.checked)}
-                      className="sr-only peer"
                     />
-                    <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors"></div>
-                    <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></div>
-                  </div>
                   <span className="text-[var(--text-primary)] group-hover:text-primary-400 transition-colors">
                     Добавлять в посты статичный HTML
                   </span>

@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException, Header
 from typing import Optional
 from database import get_db_connection, release_db_connection
 from schemas import NotificationCreate, Notification, NotificationResponse
+from services.notification_html import sanitize_notification_html
 
 
 router = APIRouter(prefix="/notifications", tags=["Notifications"])
@@ -43,6 +44,7 @@ async def create_notification(
             user_id = None
 
     notif_type = notification.type or "general"
+    message = sanitize_notification_html(notification.message)
 
     conn = await get_db_connection()
     try:
@@ -53,7 +55,7 @@ async def create_notification(
                 VALUES (%s, %s, %s)
                 RETURNING id, message, user_id, type, created_at
                 """,
-                (notification.message, user_id, notif_type)
+                (message, user_id, notif_type)
             )
             row = await cur.fetchone()
             

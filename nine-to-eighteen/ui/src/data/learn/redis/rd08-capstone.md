@@ -23,6 +23,18 @@ canonicalUrl: https://9to18.ru/game/learn/rd-capstone
 
 Финальный выпуск: собрать ответы серии и проверить пробелы перед собесом. Термины и границы — по [redis.io/docs](https://redis.io/docs/); сценарии гибрида с PostgreSQL — по вашему стеку.
 
+## Раздел: Ответ вслух
+
+Redis у меня — структуры и срок жизни ключа, не основная база заказов. Я называю cache-aside, TTL и чем pub/sub хуже очереди, если воркер спал.
+
+## Раздел: Плохой ответ
+
+«Положим всё в Redis, он в памяти». Нет источника правды и нет выселения.
+
+## Раздел: Термины
+
+Ключ-значение — key-value. Выселение — eviction. Срок жизни — TTL.
+
 ## Раздел: Чеклист уровней
 
 **Junior (RD01–RD03):** KV, [типы](https://redis.io/docs/data-types/), TTL, [RDB/AOF](https://redis.io/docs/management/persistence/), не source of truth.

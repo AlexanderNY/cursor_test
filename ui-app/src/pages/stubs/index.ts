@@ -2,5 +2,5 @@
 export { WordPressPage } from '@/pages/wordpress/wordpress'
 export { CustomURLPage } from '@/pages/custom-url/custom-url'
 export { DzenPage } from './dzen'
-export { InstagramPage } from './instagram'
+export { InstagramPage } from '@/pages/instagram'
 // VKontakte moved to pages/vkontakte

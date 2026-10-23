@@ -7,6 +7,7 @@ import { useBrand } from '@/contexts/brand-context'
 import { smmService } from '@/services/smm-service'
 import { getErrorMessage } from '@/services/api-client'
 import type { BrandChannel } from '@/types/smm'
+import { Switch } from '@/components/ui/switch'
 
 interface Draft {
   discussionId: string
@@ -154,8 +155,7 @@ export function CommentSourcesCard() {
                   </span>
                 </div>
                 <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
+                  <Switch
                     checked={draft.enabled}
                     onChange={(event) => updateDraft(channel.id, { enabled: event.target.checked })}
                   />

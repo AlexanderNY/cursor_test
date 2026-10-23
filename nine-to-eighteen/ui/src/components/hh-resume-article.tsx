@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import { safeHref } from '@/data/safe-url'
 import { employmentLabel, workFormatLabel } from '@/data/site/resume-options'
 import type {
   GithubProject,
@@ -134,9 +135,13 @@ export function HhResumeArticle({
           <ul>
             {projects.map((project) => (
               <li key={project.url}>
-                <a href={project.url} target="_blank" rel="noreferrer">
-                  {project.name}
-                </a>
+                {safeHref(project.url) ? (
+                  <a href={safeHref(project.url) || undefined} target="_blank" rel="noreferrer">
+                    {project.name}
+                  </a>
+                ) : (
+                  <span>{project.name}</span>
+                )}
                 {project.language ? ` · ${project.language}` : ''}
                 {project.stars > 0 ? ` · ★${project.stars}` : ''}
                 {project.description ? (

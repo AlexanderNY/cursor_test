@@ -5,7 +5,12 @@ import { GameSectionPage } from '@/pages/game-section-page'
 import { HomePage } from '@/pages/home-page'
 import { SiteLoginPage } from '@/pages/site-login-page'
 import { SiteAccountPage } from '@/pages/site-account-page'
-import { AppBlogPage, AppPostPage } from '@/pages/app-blog-page'
+import {
+  AppBlogPage,
+  AppEntryRedirect,
+  AppPostPage,
+  LegacyAppPostRedirect,
+} from '@/pages/app-blog-page'
 import { AppAdminPage, SiteAdminPage } from '@/pages/site-admin-page'
 
 const BowlGamePage = lazy(() =>
@@ -164,8 +169,10 @@ export default function App() {
       <Route path="/account" element={<SiteAccountPage />} />
       <Route path="/admin" element={<SiteAdminPage />} />
       <Route path="/admin/apps/:slug" element={<AppAdminPage />} />
-      <Route path="/app/:slug" element={<AppBlogPage />} />
-      <Route path="/app/:slug/:postSlug" element={<AppPostPage />} />
+      <Route path="/blog/:slug" element={<AppBlogPage />} />
+      <Route path="/blog/:slug/:postSlug" element={<AppPostPage />} />
+      <Route path="/app/:slug/:postSlug" element={<LegacyAppPostRedirect />} />
+      <Route path="/app/:slug" element={<AppEntryRedirect />} />
       <Route
         path="/game/tasks"
         element={

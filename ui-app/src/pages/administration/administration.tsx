@@ -32,6 +32,8 @@ import type {
 import { FEEDBACK_TYPE_LABELS } from '@/types/core'
 import { platformStatusCell, platformTableStatusColumns } from '@/pages/checks/checks-utils'
 import { formatDateTime } from '@/utils/date'
+import { sanitizeNotificationHtml } from '@/utils/notification-html'
+import { Switch } from '@/components/ui/switch'
 
 type AdminTab = 'users' | 'notifications' | 'feedback' | 'guide' | 'posts-tables' | 'runtime-location' | 'storage'
 type UsersSubTab = 'management' | 'billing' | 'groups' | 'audit' | 'statistics' | 'growth'
@@ -465,7 +467,9 @@ export function AdministrationPage() {
     }
 
     try {
-      await notificationsService.createNotification({ message: notificationMessage })
+      await notificationsService.createNotification({
+        message: sanitizeNotificationHtml(notificationMessage),
+      })
       setNotificationSuccess('Notification created successfully')
       setNotificationMessage('')
     } catch (error) {
@@ -1911,7 +1915,7 @@ export function AdministrationPage() {
                           <td className="py-3 px-4 text-[var(--text-primary)]">
                             <div 
                               className="notification-content max-w-md truncate"
-                              dangerouslySetInnerHTML={{ __html: notification.message }}
+                              dangerouslySetInnerHTML={{ __html: sanitizeNotificationHtml(notification.message) }}
                             />
                           </td>
                           <td className="py-3 px-4 text-center">
@@ -2413,11 +2417,9 @@ export function AdministrationPage() {
                 className="max-w-xs"
               />
               <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)] cursor-pointer select-none">
-                <input
-                  type="checkbox"
+                <Switch
                   checked={storageDiagOnly}
                   onChange={(e) => setStorageDiagOnly(e.target.checked)}
-                  className="rounded border-[var(--border-color)]"
                 />
                 Только диагностика Selenium (ключ содержит «diag»)
               </label>
@@ -2474,8 +2476,7 @@ export function AdministrationPage() {
                   <thead className="bg-[var(--bg-tertiary)]">
                     <tr>
                       <th className="py-3 px-4 w-10">
-                        <input
-                          type="checkbox"
+                        <Switch
                           aria-label="Выбрать все файлы"
                           checked={allVisibleStorageSelected}
                           ref={(el) => {
@@ -2483,7 +2484,6 @@ export function AdministrationPage() {
                           }}
                           disabled={visibleStorageKeys.length === 0 || storageBusy}
                           onChange={() => toggleAllVisibleStorageKeys(visibleStorageKeys)}
-                          className="rounded border-[var(--border-color)]"
                         />
                       </th>
                       <th className="py-3 px-4 text-left text-sm font-medium text-[var(--text-secondary)]">Ключ</th>
@@ -2508,13 +2508,11 @@ export function AdministrationPage() {
                           className={isSelected ? 'bg-primary-500/10 hover:bg-primary-500/15' : 'hover:bg-[var(--bg-tertiary)]'}
                         >
                           <td className="py-3 px-4">
-                            <input
-                              type="checkbox"
+                            <Switch
                               aria-label={`Выбрать ${obj.key}`}
                               checked={isSelected}
                               disabled={storageBusy}
                               onChange={() => toggleStorageKey(obj.key)}
-                              className="rounded border-[var(--border-color)]"
                             />
                           </td>
                           <td className="py-3 px-4 text-[var(--text-primary)] font-mono text-sm break-all">{obj.key}</td>

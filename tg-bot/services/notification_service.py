@@ -1,5 +1,6 @@
 """Сервис для отправки уведомлений через core API."""
 
+import html
 import logging
 import httpx
 from config import settings
@@ -69,10 +70,11 @@ class NotificationService:
         Returns:
             True если уведомление отправлено успешно
         """
+        safe_phone = html.escape(phone_number, quote=True)
         message = (
             f"Telegram авторизация: код подтверждения отправлен "
-            f"на номер {phone_number}. "
-            f'<a href="/telegram?auth=1" style="color:#60a5fa;text-decoration:underline">'
+            f"на номер {safe_phone}. "
+            f'<a href="/telegram?auth=1">'
             f"Введите код на странице Telegram</a>."
         )
         return await self.send_notification(user_id, message, notif_type="tg_auth_code")
@@ -108,7 +110,7 @@ class NotificationService:
         Returns:
             True если уведомление отправлено успешно
         """
-        message = f"Telegram авторизация: {error_message}"
+        message = f"Telegram авторизация: {html.escape(error_message, quote=True)}"
         return await self.send_notification(user_id, message, notif_type="tg_auth_error")
 
 

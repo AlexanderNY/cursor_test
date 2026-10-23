@@ -35,6 +35,7 @@ import {
   CommentsVolumeChart,
 } from './components/analytics-charts'
 import { PostDetailDrawer } from './components/post-detail-drawer'
+import { Switch } from '@/components/ui/switch'
 
 const EMPTY_PIPELINE: PipelineCounts = {
   collected: 0,
@@ -927,8 +928,7 @@ export function SmmAnalyticsPage() {
 
           <div className="flex flex-wrap gap-3 items-center text-sm mb-2">
             <label className="inline-flex items-center gap-2">
-              <input
-                type="checkbox"
+              <Switch
                 checked={comparePrev}
                 onChange={(e) => setComparePrev(e.target.checked)}
               />

@@ -120,3 +120,63 @@ async def fetch_timeline_tweets(
             except Exception as e:
                 logger.warning("Timeline fetch %s: %s", url, e)
     return []
+
+
+async def lookup_user_by_username(
+    access_token: str,
+    username: str,
+) -> Optional[Dict[str, Any]]:
+    """GET /2/users/by/username/:username → {id, name, username}."""
+    handle = (username or "").strip().lstrip("@")
+    if not handle:
+        return None
+    url = f"https://api.twitter.com/2/users/by/username/{handle}"
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.get(
+                url,
+                headers={"Authorization": f"Bearer {access_token}"},
+                params={"user.fields": "id,name,username"},
+            )
+            data = resp.json()
+            if resp.status_code >= 400:
+                logger.debug("lookup_user_by_username %s -> %s %s", handle, resp.status_code, data)
+                return None
+            row = data.get("data")
+            return row if isinstance(row, dict) else None
+    except Exception as exc:
+        logger.warning("lookup_user_by_username %s: %s", handle, exc)
+        return None
+
+
+async def fetch_user_tweets(
+    access_token: str,
+    user_rest_id: str,
+    *,
+    max_results: int = 20,
+) -> List[Dict[str, Any]]:
+    """GET /2/users/:id/tweets — лента конкретного аккаунта (brand channel)."""
+    rest_id = str(user_rest_id or "").strip()
+    if not rest_id:
+        return []
+    url = f"https://api.twitter.com/2/users/{rest_id}/tweets"
+    params = {
+        "max_results": max(5, min(100, int(max_results))),
+        "tweet.fields": "created_at,public_metrics",
+        "exclude": "replies",
+    }
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.get(
+                url,
+                headers={"Authorization": f"Bearer {access_token}"},
+                params=params,
+            )
+            data = resp.json()
+            if resp.status_code == 200:
+                rows = data.get("data") or []
+                return rows if isinstance(rows, list) else []
+            logger.debug("fetch_user_tweets %s -> %s %s", rest_id, resp.status_code, data)
+    except Exception as exc:
+        logger.warning("fetch_user_tweets %s: %s", rest_id, exc)
+    return []

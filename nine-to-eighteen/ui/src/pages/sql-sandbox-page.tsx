@@ -16,6 +16,7 @@ import {
 } from '@/game/sql/sandbox-sqlite'
 import { SQL_TASKS, getSqlTask, type SqlTask } from '@/game/sql/tasks'
 import { seedPostsLocal } from '@/data/learn/learn-store'
+import { codeFromQuery } from '@/data/safe-url'
 import {
   getPublishedPosts,
   useLearnPosts,
@@ -79,13 +80,9 @@ export function SqlSandboxPage() {
   const [draftLoaded, setDraftLoaded] = useState(false)
 
   useEffect(() => {
-    const fromQuery = searchParams.get('code')
+    const fromQuery = codeFromQuery(searchParams.get('code'))
     if (fromQuery) {
-      try {
-        setCode(decodeURIComponent(fromQuery))
-      } catch {
-        setCode(fromQuery)
-      }
+      setCode(fromQuery)
       setDraftLoaded(true)
       return
     }

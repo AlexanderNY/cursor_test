@@ -6,7 +6,7 @@ import hashlib
 import json
 import logging
 import re
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Optional
 from urllib.parse import urlparse
 
@@ -6518,6 +6518,18 @@ class SmmService:
                 )
         finally:
             await release_db_connection(conn)
+        if final == "failed" and last_error:
+            try:
+                from services.notification_writer import notify_user
+
+                await notify_user(
+                    int(user_id),
+                    f"Публикация не вышла (job #{job_id}): {last_error}. "
+                    f"Откройте календарь и нажмите «Повторить».",
+                    type_="publish",
+                )
+            except Exception:
+                logger.debug("materialize-fail notify skipped", exc_info=True)
         if wake_networks:
             await self._wake_publish_bots(wake_networks)
         return updated or job
@@ -6712,6 +6724,7 @@ class SmmService:
                 adapters_result=adapters_out,
             )
             if final == "failed":
+                err_text = error or "publish failed"
                 conn2 = await get_db_connection()
                 try:
                     async with conn2.cursor() as cur:
@@ -6722,10 +6735,85 @@ class SmmService:
                                 updated_at = CURRENT_TIMESTAMP
                             WHERE id = %s
                             """,
-                            (error or "publish failed", job_id),
+                            (err_text, job_id),
                         )
                 finally:
                     await release_db_connection(conn2)
+                try:
+                    from services.notification_writer import notify_user
+
+                    await notify_user(
+                        int(user_id),
+                        f"Публикация не вышла (job #{job_id}): {err_text}. "
+                        f"Откройте календарь и нажмите «Повторить».",
+                        type_="publish",
+                    )
+                except Exception:
+                    logger.debug("publish-fail notify skipped", exc_info=True)
+
+    async def retry_job(self, user_id: int, job_id: int) -> dict:
+        """Re-queue a failed/partial job: clear failed target slots and execute again."""
+        job = await self.get_job(user_id, job_id)
+        if not job:
+            raise ValueError("Job not found")
+        if job.get("status") not in ("failed", "partial"):
+            raise ValueError("Only failed or partial jobs can be retried")
+        await self._assert_can_edit_job(user_id, job)
+
+        adapters = job.get("adapters_result") or {}
+        if not isinstance(adapters, dict):
+            adapters = {}
+        targets_meta = adapters.get("targets") if isinstance(adapters.get("targets"), dict) else {}
+        cleaned: dict[str, Any] = {}
+        for key, meta in targets_meta.items():
+            if not isinstance(meta, dict):
+                continue
+            status = str(meta.get("status") or "")
+            if status in ("failed", "skipped", "queued"):
+                continue
+            if status == "published":
+                cleaned[key] = meta
+        adapters_out = {**adapters, "targets": cleaned}
+        next_status = "scheduled" if job.get("publish_at") else "ready"
+        updated = await self.update_job(
+            user_id,
+            job_id,
+            status=next_status,
+            adapters_result=adapters_out,
+            _skip_edit_check=True,
+            _skip_revision=True,
+        )
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    UPDATE smm_publish_jobs
+                    SET last_error = NULL, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = %s
+                    """,
+                    (job_id,),
+                )
+        finally:
+            await release_db_connection(conn)
+
+        refreshed = updated or (await self.get_job(user_id, job_id)) or job
+        # Run immediately when due (no future publish_at, or already past).
+        pub_at = refreshed.get("publish_at")
+        due = True
+        if pub_at:
+            try:
+                dt = pub_at if isinstance(pub_at, datetime) else datetime.fromisoformat(
+                    str(pub_at).replace("Z", "+00:00")
+                )
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                due = dt <= datetime.now(timezone.utc)
+            except (TypeError, ValueError):
+                due = True
+        if due and refreshed.get("status") in ("ready", "scheduled"):
+            return await self.execute_job(refreshed)
+        return refreshed
 
     async def _stamp_post_tenancy(
         self,
@@ -7500,57 +7588,212 @@ class SmmService:
             _revision_summary=f"restored:revision:{revision_id}",
         )
 
+    def _automation_job_status(self, user_id: int, config: dict, tariff: str) -> str:
+        require_approval = config.get("require_approval")
+        if require_approval is None:
+            require_approval = plan_feature(tariff, "approval_workflow")
+        return "pending_approval" if require_approval else "draft"
+
+    async def _automation_targets(
+        self, user_id: int, config: dict
+    ) -> list[dict]:
+        target_ids = config.get("target_channel_ids") or []
+        id_set = set()
+        for x in target_ids:
+            try:
+                id_set.add(int(x))
+            except (TypeError, ValueError):
+                continue
+        channels = await self.list_all_channels(user_id)
+        return [
+            {"network": c["network"], "external_id": c["external_id"]}
+            for c in channels
+            if c["id"] in id_set and c.get("role") == "own"
+        ]
+
+    async def preview_automation(
+        self, user_id: int, automation_id: int, limit: int = 5
+    ) -> dict:
+        """Dry-run: show texts that would become jobs (RSS or tg_repost)."""
+        autos = await self.list_automations(user_id)
+        auto = next((a for a in autos if a["id"] == automation_id), None)
+        if not auto:
+            raise ValueError("Automation not found")
+        config = dict(auto.get("config") or {})
+        targets = await self._automation_targets(user_id, config)
+        suffix = (config.get("suffix") or "").strip()
+        seen_set = set(str(x) for x in (config.get("seen_ids") or []))
+        items_out: list[dict] = []
+        auto_type = auto.get("type")
+
+        if auto_type == "rss":
+            source_url = (config.get("source_url") or "").strip()
+            if not source_url:
+                raise ValueError("RSS source_url is required")
+            raw_items = await self._fetch_rss_items(source_url, limit=max(limit * 3, 20))
+            for item in raw_items:
+                if len(items_out) >= limit:
+                    break
+                item_id = str(item.get("id") or item.get("link") or item.get("title") or "")
+                if not item_id or item_id in seen_set:
+                    continue
+                text = (item.get("title") or "").strip()
+                body = (item.get("summary") or "").strip()
+                if body and body not in text:
+                    text = f"{text}\n\n{body}" if text else body
+                if suffix:
+                    text = f"{text}\n\n{suffix}".strip()
+                if not text:
+                    continue
+                preview = text if len(text) <= 400 else text[:397] + "..."
+                items_out.append({"id": item_id, "text_preview": preview, "new": True})
+        elif auto_type == "tg_repost":
+            source = (config.get("source_channel") or "").strip()
+            if not source:
+                raise ValueError("tg_repost source_channel is required")
+            raw_items = await self._fetch_tg_repost_candidates(
+                user_id, source, limit=max(limit * 3, 20)
+            )
+            for item in raw_items:
+                if len(items_out) >= limit:
+                    break
+                item_id = str(item.get("id") or "")
+                if not item_id or item_id in seen_set:
+                    continue
+                text = (item.get("text") or "").strip()
+                if suffix:
+                    text = f"{text}\n\n{suffix}".strip()
+                if not text:
+                    continue
+                preview = text if len(text) <= 400 else text[:397] + "..."
+                items_out.append({"id": item_id, "text_preview": preview, "new": True})
+        else:
+            raise ValueError("Preview supports rss and tg_repost only")
+
+        tariff = await get_user_tariff(user_id)
+        status = self._automation_job_status(user_id, config, tariff)
+        return {
+            "type": auto_type,
+            "items": items_out,
+            "targets": targets,
+            "status": status,
+            "would_create": len(items_out),
+        }
+
+    async def _fetch_tg_repost_candidates(
+        self, user_id: int, source_channel: str, limit: int = 20
+    ) -> list[dict]:
+        """Recent collected TG posts for source external_id / chat id."""
+        source = source_channel.strip()
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT id, COALESCE(post_text, ''),
+                           COALESCE(source_native_id, id::text)
+                    FROM posts
+                    WHERE user_id = %s
+                      AND source_platform = 'tg'
+                      AND (
+                        domain = %s
+                        OR source_native_id = %s
+                        OR source_native_id LIKE %s
+                        OR extras->>'channel_id' = %s
+                        OR extras->>'chat_id' = %s
+                      )
+                    ORDER BY id DESC
+                    LIMIT %s
+                    """,
+                    (
+                        user_id,
+                        source,
+                        source,
+                        f"%{source}%",
+                        source,
+                        source,
+                        limit,
+                    ),
+                )
+                rows = await cur.fetchall()
+                return [
+                    {
+                        "id": str(r[2] or r[0]),
+                        "text": r[1] or "",
+                    }
+                    for r in rows
+                ]
+        finally:
+            await release_db_connection(conn)
+
     async def run_automation(
         self, user_id: int, automation_id: int, limit: int = 10
     ) -> dict:
-        """Fetch RSS (or enqueue placeholder for other types) → publish jobs in review queue."""
+        """Fetch RSS or TG source posts → publish jobs in review / draft queue."""
         autos = await self.list_automations(user_id)
         auto = next((a for a in autos if a["id"] == automation_id), None)
         if not auto:
             raise ValueError("Automation not found")
         if not auto.get("enabled"):
             raise ValueError("Automation is disabled")
-        if auto.get("type") != "rss":
-            raise ValueError("Only RSS automations support run-once for now")
+        auto_type = auto.get("type")
+        if auto_type not in ("rss", "tg_repost"):
+            raise ValueError("Only RSS and tg_repost automations support run-once")
 
         config = dict(auto.get("config") or {})
-        source_url = (config.get("source_url") or "").strip()
-        if not source_url:
-            raise ValueError("RSS source_url is required")
-
         tariff = await get_user_tariff(user_id)
-        require_approval = config.get("require_approval")
-        if require_approval is None:
-            require_approval = plan_feature(tariff, "approval_workflow")
-        if require_approval:
+        status = self._automation_job_status(user_id, config, tariff)
+        if status == "pending_approval":
             await ensure_smm_feature(user_id, "approval_workflow")
-        status = "pending_approval" if require_approval else "draft"
 
-        target_ids = config.get("target_channel_ids") or []
-        channels = await self.list_all_channels(user_id)
-        targets = [
-            {"network": c["network"], "external_id": c["external_id"]}
-            for c in channels
-            if c["id"] in target_ids and c.get("role") == "own"
-        ]
+        targets = await self._automation_targets(user_id, config)
+        if not targets:
+            raise ValueError("Select at least one own target channel")
         suffix = (config.get("suffix") or "").strip()
         seen = list(config.get("seen_ids") or [])
         seen_set = set(str(x) for x in seen)
 
-        items = await self._fetch_rss_items(source_url, limit=max(limit * 3, 20))
+        if auto_type == "rss":
+            source_url = (config.get("source_url") or "").strip()
+            if not source_url:
+                raise ValueError("RSS source_url is required")
+            raw_items = await self._fetch_rss_items(source_url, limit=max(limit * 3, 20))
+            candidates = [
+                {
+                    "id": str(item.get("id") or item.get("link") or item.get("title") or ""),
+                    "text": (
+                        (
+                            (item.get("title") or "").strip()
+                            + (
+                                f"\n\n{(item.get('summary') or '').strip()}"
+                                if (item.get("summary") or "").strip()
+                                and (item.get("summary") or "").strip()
+                                not in (item.get("title") or "")
+                                else ""
+                            )
+                        ).strip()
+                    ),
+                }
+                for item in raw_items
+            ]
+        else:
+            source = (config.get("source_channel") or "").strip()
+            if not source:
+                raise ValueError("tg_repost source_channel is required")
+            candidates = await self._fetch_tg_repost_candidates(
+                user_id, source, limit=max(limit * 3, 20)
+            )
+
         created: list[int] = []
         skipped = 0
-        for item in items:
+        for item in candidates:
             if len(created) >= limit:
                 break
-            item_id = str(item.get("id") or item.get("link") or item.get("title") or "")
+            item_id = str(item.get("id") or "")
             if not item_id or item_id in seen_set:
                 skipped += 1
                 continue
-            text = (item.get("title") or "").strip()
-            body = (item.get("summary") or "").strip()
-            if body and body not in text:
-                text = f"{text}\n\n{body}" if text else body
+            text = (item.get("text") or "").strip()
             if suffix:
                 text = f"{text}\n\n{suffix}".strip()
             if not text:
@@ -7576,16 +7819,15 @@ class SmmService:
             "job_ids": created,
             "skipped": skipped,
             "status": status,
+            "type": auto_type,
         }
 
     async def _fetch_rss_items(self, url: str, limit: int = 20) -> list[dict]:
-        import httpx
         import xml.etree.ElementTree as ET
 
-        async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
-            resp = await client.get(url)
-            resp.raise_for_status()
-            raw = resp.text
+        from services.public_http import fetch_public_http_text
+
+        raw = await fetch_public_http_text(url)
 
         def _local(tag: str) -> str:
             return tag.split("}")[-1].lower() if tag else ""

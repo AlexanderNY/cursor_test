@@ -17,6 +17,12 @@ _NETWORK_TO_SERVICE = {
     "vkontakte": "vkontakte",
     "wp": "wordpress",
     "wordpress": "wordpress",
+    "tw": "twitter",
+    "twitter": "twitter",
+    "x": "twitter",
+    "threads": "threads",
+    "instagram": "instagram",
+    "ig": "instagram",
 }
 
 
@@ -183,6 +189,12 @@ def publish_targets_to_destination_fields(targets: List[Dict[str, Any]]) -> Dict
         elif net in ("wp", "wordpress"):
             wp_ids.append(ext)
             flags["to_wp"] = True
+        elif net in ("tw", "twitter", "x"):
+            flags["to_tw"] = True
+        elif net in ("threads",):
+            flags["to_threads"] = True
+        elif net in ("instagram", "ig"):
+            flags["to_instagram"] = True
         if svc and svc not in services:
             services.append(svc)
     return {

@@ -14,6 +14,7 @@ import {
 import { customURLService } from '@/services/custom-url-service'
 import type { CustomURLSettings, URLConfig } from '@/types/custom-url'
 import { getErrorMessage } from '@/services/api-client'
+import { Switch } from '@/components/ui/switch'
 
 type FlowTab = 'collect' | 'processing' | 'publish'
 
@@ -294,29 +295,17 @@ export function CustomUrlFlowPage() {
                     />
                   </div>
                   <label className="flex items-center gap-3 cursor-pointer group">
-                    <div className="relative">
-                      <input
-                        type="checkbox"
+                    <Switch
                         checked={item.run_once ?? false}
                         onChange={(e) => patchItem({ run_once: e.target.checked })}
-                        className="sr-only peer"
                       />
-                      <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors" />
-                      <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
-                    </div>
                     <span className="text-[var(--text-primary)]">Выполнить единоразово</span>
                   </label>
                   <label className="flex items-center gap-3 cursor-pointer group">
-                    <div className="relative">
-                      <input
-                        type="checkbox"
+                    <Switch
                         checked={item.take_screenshot}
                         onChange={(e) => patchItem({ take_screenshot: e.target.checked })}
-                        className="sr-only peer"
                       />
-                      <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors" />
-                      <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
-                    </div>
                     <span className="text-[var(--text-primary)]">Take screenshot</span>
                   </label>
                   {item.take_screenshot && (
@@ -360,16 +349,10 @@ export function CustomUrlFlowPage() {
                 </CardHeader>
                 <CardContent className="space-y-6">
                   <label className="flex items-center gap-3 cursor-pointer group">
-                    <div className="relative">
-                      <input
-                        type="checkbox"
+                    <Switch
                         checked={item.process_before_publish ?? false}
                         onChange={(e) => patchItem({ process_before_publish: e.target.checked })}
-                        className="sr-only peer"
                       />
-                      <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors" />
-                      <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
-                    </div>
                     <span className="text-[var(--text-primary)]">Обрабатывать перед публикацией</span>
                   </label>
 
@@ -389,58 +372,34 @@ export function CustomUrlFlowPage() {
                   )}
 
                   <label className="flex items-center gap-3 cursor-pointer group">
-                    <div className="relative">
-                      <input
-                        type="checkbox"
+                    <Switch
                         checked={item.remove_emojis ?? false}
                         onChange={(e) => patchItem({ remove_emojis: e.target.checked })}
-                        className="sr-only peer"
                       />
-                      <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors" />
-                      <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
-                    </div>
                     <span className="text-[var(--text-primary)]">Удалить смайлики/эмодзи</span>
                   </label>
 
                   <label className="flex items-center gap-3 cursor-pointer group">
-                    <div className="relative">
-                      <input
-                        type="checkbox"
+                    <Switch
                         checked={item.remove_images ?? false}
                         onChange={(e) => patchItem({ remove_images: e.target.checked })}
-                        className="sr-only peer"
                       />
-                      <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors" />
-                      <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
-                    </div>
                     <span className="text-[var(--text-primary)]">Удалить картинки</span>
                   </label>
 
                   <label className="flex items-center gap-3 cursor-pointer group">
-                    <div className="relative">
-                      <input
-                        type="checkbox"
+                    <Switch
                         checked={item.screenshot_only ?? false}
                         onChange={(e) => patchItem({ screenshot_only: e.target.checked })}
-                        className="sr-only peer"
                       />
-                      <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors" />
-                      <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
-                    </div>
                     <span className="text-[var(--text-primary)]">Сохранять только скриншот (без текста)</span>
                   </label>
 
                   <label className="flex items-center gap-3 cursor-pointer group">
-                    <div className="relative">
-                      <input
-                        type="checkbox"
+                    <Switch
                         checked={item.clean_html ?? false}
                         onChange={(e) => patchItem({ clean_html: e.target.checked })}
-                        className="sr-only peer"
                       />
-                      <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors" />
-                      <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
-                    </div>
                     <span className="text-[var(--text-primary)]">Очистить HTML</span>
                   </label>
 
@@ -458,11 +417,9 @@ export function CustomUrlFlowPage() {
                         ] as const
                       ).map(([key, label]) => (
                         <label key={key} className="flex items-center gap-2 cursor-pointer">
-                          <input
-                            type="checkbox"
+                          <Switch
                             checked={processServicesIncludes(key)}
                             onChange={(e) => setProcessService(key, e.target.checked)}
-                            className="w-4 h-4 text-primary-500 rounded"
                           />
                           <span className="text-[var(--text-primary)]">{label}</span>
                         </label>
@@ -471,30 +428,18 @@ export function CustomUrlFlowPage() {
                   </div>
 
                   <label className="flex items-center gap-3 cursor-pointer group">
-                    <div className="relative">
-                      <input
-                        type="checkbox"
+                    <Switch
                         checked={item.status_review_after_process ?? false}
                         onChange={(e) => patchItem({ status_review_after_process: e.target.checked })}
-                        className="sr-only peer"
                       />
-                      <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors" />
-                      <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
-                    </div>
                     <span className="text-[var(--text-primary)]">Перевести пост в статус review после обработки</span>
                   </label>
 
                   <label className="flex items-center gap-3 cursor-pointer group">
-                    <div className="relative">
-                      <input
-                        type="checkbox"
+                    <Switch
                         checked={item.add_static_html ?? false}
                         onChange={(e) => patchItem({ add_static_html: e.target.checked })}
-                        className="sr-only peer"
                       />
-                      <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors" />
-                      <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
-                    </div>
                     <span className="text-[var(--text-primary)]">Добавлять в посты статичный HTML</span>
                   </label>
 

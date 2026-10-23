@@ -1,3 +1,5 @@
+import { publicPostHref } from '@/data/sections'
+
 export type SpotlightItem = {
   appSlug: string
   postSlug: string
@@ -44,7 +46,7 @@ function normalizeItem(raw: Partial<SpotlightItem> | null | undefined): Spotligh
     appTitle: String(raw.appTitle || raw.appSlug || ''),
     emoji: String(raw.emoji || ''),
     accent: String(raw.accent || '#2dd4bf'),
-    href: String(raw.href),
+    href: publicPostHref(String(raw.href), String(raw.appSlug || ''), String(raw.postSlug || '')),
   }
 }
 

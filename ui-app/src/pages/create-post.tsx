@@ -12,6 +12,7 @@ import { createPostService } from '@/services/create-post-service'
 import { coreService } from '@/services/core-service'
 import { smmService } from '@/services/smm-service'
 import { useBrand } from '@/contexts/brand-context'
+import { useAuth } from '@/contexts/auth-context'
 import {
   TargetSocialNetworksWidget,
   EMPTY_TARGET_SOCIAL_NETWORKS,
@@ -27,10 +28,15 @@ import type { PlatformStatusResponse, PublishJob } from '@/types/smm'
 import { formatDateTime } from '@/utils/date'
 import { getErrorMessage } from '@/services/api-client'
 import { JobCollabPanel } from '@/components/smm/job-collab-panel'
+import { QuotaBanner } from '@/components/billing/QuotaBanner'
 import {
   CSV_POSTS_COLUMNS,
   downloadPostsCsvTemplate,
 } from '@/utils/csv-posts-template'
+import { Switch } from '@/components/ui/switch'
+import { isFileWithinLimit, fileTooLargeMessage, MAX_IMPORT_BYTES } from '@/utils/read-file'
+import { parseQuotaError } from '@/lib/quota'
+import type { UsageSummary } from '@/types/smm'
 
 const TEXT_MAX_LENGTH = 150000
 const POST_PREVIEW_LENGTH = 80
@@ -98,6 +104,8 @@ function fromDatetimeLocal(value: string): string {
 type TabId = 'create' | 'posts' | 'posts-review' | 'profile'
 
 export function CreatePostPage() {
+  const { user } = useAuth()
+  const isAdmin = user?.role === 'admin'
   const { selectedBrandId, selectedBrand, ownChannels } = useBrand()
   const [platformStatus, setPlatformStatus] = useState<PlatformStatusResponse | null>(null)
   const [searchParams] = useSearchParams()
@@ -160,6 +168,7 @@ export function CreatePostPage() {
   const [planFeatures, setPlanFeatures] = useState<Record<string, boolean>>({})
   const [horizonDays, setHorizonDays] = useState(7)
   const [bestSlots, setBestSlots] = useState<{ weekday: number; hour: number; score: number }[]>([])
+  const [usageSummary, setUsageSummary] = useState<UsageSummary | null>(null)
 
   const [editingPostId, setEditingPostId] = useState<number | null>(null)
   const [editingSource, setEditingSource] = useState<'cpost' | 'pipeline'>('cpost')
@@ -184,6 +193,7 @@ export function CreatePostPage() {
         setHorizonDays(Number(p.limits.schedule_horizon_days))
       }
     }).catch(() => undefined)
+    void smmService.getUsageSummary().then(setUsageSummary).catch(() => setUsageSummary(null))
   }, [])
 
   useEffect(() => {
@@ -548,7 +558,7 @@ export function CreatePostPage() {
           max.setDate(max.getDate() + horizonDays)
           if (picked > max) {
             setError(
-              `Schedule outside plan horizon (${horizonDays} days). Pick an earlier slot or upgrade.`,
+              `Дата дальше горизонта тарифа (${horizonDays} дн.). Выберите раньше или обновите план → /pricing`,
             )
             setIsCreating(false)
             return
@@ -592,7 +602,8 @@ export function CreatePostPage() {
         }
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save post')
+      const quota = parseQuotaError(err)
+      setError(quota ? `${quota.message} → ${quota.upgrade_url || '/pricing'}` : getErrorMessage(err))
     } finally {
       setIsCreating(false)
     }
@@ -605,9 +616,22 @@ export function CreatePostPage() {
         description="Создайте пост и отправьте в канал сети, где есть авторизация для публикации"
       />
 
+      {activeTab === 'create' && (
+        <QuotaBanner metrics={usageSummary?.metrics} className="mb-4" />
+      )}
+
       {error && (
         <Alert variant="error" className="animate-slide-down">
-          {error}
+          {error.includes('/pricing') ? (
+            <>
+              {error.replace(/\s*→\s*\/pricing$/, '')}{' '}
+              <Link to="/pricing" className="underline text-primary-400">
+                Тарифы
+              </Link>
+            </>
+          ) : (
+            error
+          )}
         </Alert>
       )}
 
@@ -667,6 +691,7 @@ export function CreatePostPage() {
             <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-500" />
           )}
         </button>
+        {isAdmin && (
         <button
           type="button"
           className={`px-6 py-3 text-sm font-medium transition-all relative ${
@@ -681,6 +706,7 @@ export function CreatePostPage() {
             <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-500" />
           )}
         </button>
+        )}
         <button
           type="button"
           className={`px-6 py-3 text-sm font-medium transition-all relative ${
@@ -871,13 +897,19 @@ export function CreatePostPage() {
                           targets,
                           { brand_id: selectedBrandId },
                         )
+                        void smmService.getUsageSummary().then(setUsageSummary).catch(() => undefined)
                         setAdaptPreview(res.variants)
                         setAdaptLimits(res.limits ?? null)
                         setSuccess(
                           `Preview для ${Object.keys(res.variants).length} сетей готов`,
                         )
                       } catch (err) {
-                        setError(getErrorMessage(err))
+                        const quota = parseQuotaError(err)
+                        setError(
+                          quota
+                            ? `${quota.message} → ${quota.upgrade_url || '/pricing'}`
+                            : getErrorMessage(err),
+                        )
                       } finally {
                         setAiBusy(false)
                       }
@@ -1005,7 +1037,7 @@ export function CreatePostPage() {
                           max.setDate(max.getDate() + horizonDays)
                           if (picked > max) {
                             setError(
-                              `Schedule outside plan horizon (${horizonDays} days). Pick an earlier slot or upgrade.`,
+                              `Дата дальше горизонта тарифа (${horizonDays} дн.). Выберите раньше или обновите план → /pricing`,
                             )
                           }
                         }
@@ -1013,7 +1045,12 @@ export function CreatePostPage() {
                       className="block mt-1 px-3 py-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)]"
                     />
                     <p className="text-xs text-[var(--text-muted)] mt-1">
-                      Plan horizon: {horizonDays} days
+                      Горизонт тарифа: {horizonDays} дн.{' '}
+                      {horizonDays <= 7 && (
+                        <Link to="/pricing" className="text-primary-400 hover:underline">
+                          Расширить
+                        </Link>
+                      )}
                     </p>
                   </div>
                   {planFeatures.best_times && (
@@ -1060,8 +1097,7 @@ export function CreatePostPage() {
                   )}
                   {planFeatures.approval_workflow && (
                     <label className="flex items-center gap-2 text-sm self-center">
-                      <input
-                        type="checkbox"
+                      <Switch
                         checked={requireApproval}
                         onChange={(e) => setRequireApproval(e.target.checked)}
                       />
@@ -1086,6 +1122,11 @@ export function CreatePostPage() {
                           onChange={async (e) => {
                             const file = e.target.files?.[0]
                             if (!file) return
+                            if (!isFileWithinLimit(file, MAX_IMPORT_BYTES)) {
+                              setCsvErrors([{ line: 0, error: fileTooLargeMessage(MAX_IMPORT_BYTES) }])
+                              e.target.value = ''
+                              return
+                            }
                             setCsvErrors([])
                             setCsvResult('')
                             try {
@@ -1219,11 +1260,9 @@ export function CreatePostPage() {
 
               <div className="flex flex-wrap items-center gap-6">
                 <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
+                  <Switch
                     checked={isAd}
                     onChange={(e) => setIsAd(e.target.checked)}
-                    className="w-4 h-4 rounded border-[var(--border-color)] text-primary-500 focus:ring-primary-500/50"
                   />
                   <span className="text-sm text-[var(--text-primary)]">is_ad</span>
                 </label>
@@ -1434,7 +1473,7 @@ export function CreatePostPage() {
       )}
 
       {/* Tab: Posts Review */}
-      {activeTab === 'posts-review' && (
+      {isAdmin && activeTab === 'posts-review' && (
         <Card className="animate-slide-up">
           <CardHeader>
             <CardTitle>Posts Review</CardTitle>
@@ -1531,8 +1570,7 @@ export function CreatePostPage() {
                       key={channel.id}
                       className="flex items-center gap-2 text-sm cursor-pointer"
                     >
-                      <input
-                        type="checkbox"
+                      <Switch
                         checked={profileChannelIds.includes(channel.id)}
                         onChange={() =>
                           setProfileChannelIds((prev) =>
@@ -1559,25 +1597,26 @@ export function CreatePostPage() {
                     </label>
                   ))}
                   {authorizedNetworksWithoutChannel.map((network) => (
-                    <label
-                      key={network}
-                      className="flex items-center gap-2 text-sm cursor-pointer"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={socialNetworks[network]}
-                        onChange={() =>
-                          setSocialNetworks((prev) => ({ ...prev, [network]: !prev[network] }))
-                        }
-                      />
-                      <span className="uppercase text-[var(--text-muted)]">
-                        {TARGET_SOCIAL_LABELS[network]}
-                      </span>
-                      <span className="text-[var(--text-primary)]">аккаунт авторизован</span>
-                      <Link to="/channels" className="text-xs text-primary-400 hover:underline">
+                    <div key={network} className="space-y-1">
+                      <label className="flex items-center gap-2 text-sm cursor-pointer">
+                        <Switch
+                          checked={socialNetworks[network]}
+                          onChange={() =>
+                            setSocialNetworks((prev) => ({ ...prev, [network]: !prev[network] }))
+                          }
+                        />
+                        <span className="uppercase text-[var(--text-muted)]">
+                          {TARGET_SOCIAL_LABELS[network]}
+                        </span>
+                        <span className="text-[var(--text-primary)]">аккаунт авторизован</span>
+                      </label>
+                      <Link
+                        to="/channels"
+                        className="ml-[3.25rem] inline-block text-xs text-primary-400 hover:underline"
+                      >
                         добавить канал
                       </Link>
-                    </label>
+                    </div>
                   ))}
                 </div>
               )}

@@ -1,4 +1,3 @@
-import type { Database, SqlJsStatic } from 'sql.js'
 import {
   compareRows,
   queryResultToRows,
@@ -6,13 +5,8 @@ import {
   type SqlRow,
 } from '@/game/sql/compare-rows'
 
-const SQLJS_BASE = '/sqljs/'
 const DEFAULT_WALL_MS = 8000
-
-let sqlPromise: Promise<SqlJsStatic> | null = null
-
-const BLOCKED_SQL =
-  /\b(ATTACH|DETACH|LOAD_EXTENSION|PRAGMA\s+load_extension|VACUUM\s+INTO)\b/i
+const MAX_SQL_CHARS = 20_000
 
 export type SqlRunResult = {
   rows: SqlRow[]
@@ -27,89 +21,82 @@ export type SqlCheckResult = SqlRunResult & {
   feedback: string
 }
 
-/**
- * Load sql.js against public/sqljs artifacts (copied at predev/build).
- * Prefer the wasm build; Vite may resolve either sql-wasm or sql-wasm-browser.
- */
-export async function loadSandboxSqlJs(
-  onProgress?: (value: number, label: string) => void,
-): Promise<SqlJsStatic> {
-  if (!sqlPromise) {
-    onProgress?.(0.1, 'sql.js')
-    sqlPromise = (async () => {
-      const initSqlJs = (
-        await import(/* @vite-ignore */ 'sql.js/dist/sql-wasm.js')
-      ).default as (config?: {
-        locateFile?: (file: string) => string
-      }) => Promise<SqlJsStatic>
-      const SQL = await initSqlJs({
-        locateFile: (file) => {
-          const name = file.endsWith('.wasm') ? 'sql-wasm.wasm' : file
-          return `${SQLJS_BASE}${name}`
-        },
-      })
-      onProgress?.(1, 'sql.js')
-      return SQL
-    })()
-  }
-  return sqlPromise
+export type SandboxProgress = (value: number, label: string) => void
+
+type WorkerCell = string | number | null
+
+type WorkerResult = {
+  type: 'result'
+  id: number
+  error: string | null
+  columns: string[]
+  values: WorkerCell[][]
+  emptyOk: boolean
+  truncated: boolean
+  blank: boolean
+  verifyError: string | null
+  verifyColumns: string[]
+  verifyValues: WorkerCell[][]
 }
 
-function assertSafeSql(sql: string): void {
-  if (BLOCKED_SQL.test(sql)) {
-    throw new Error(
-      'Команда запрещена в песочнице (ATTACH / load_extension / VACUUM INTO)',
-    )
+let sqlWorker: Worker | null = null
+let loadPromise: Promise<void> | null = null
+let nextRunId = 1
+const pendingRuns = new Map<number, (value: WorkerResult | { timedOut: true }) => void>()
+
+function dropWorker(): void {
+  sqlWorker?.terminate()
+  sqlWorker = null
+  loadPromise = null
+  for (const [id, resolve] of pendingRuns) {
+    pendingRuns.delete(id)
+    resolve({ timedOut: true })
   }
 }
 
-function openDb(SQL: SqlJsStatic): Database {
-  return new SQL.Database()
-}
-
-function execScript(db: Database, sql: string): SqlRunResult {
-  assertSafeSql(sql)
-  const trimmed = sql.trim()
-  if (!trimmed) {
-    return {
-      rows: [],
-      columns: [],
-      text: '(пусто)',
-      error: null,
-      timedOut: false,
-    }
-  }
-
-  try {
-    const results = db.exec(trimmed)
-    if (results.length === 0) {
-      return {
-        rows: [],
-        columns: [],
-        text: 'OK (нет результирующего набора)',
-        error: null,
-        timedOut: false,
+function ensureSqlWorker(): Promise<void> {
+  if (loadPromise && sqlWorker) return loadPromise
+  const worker = new Worker(new URL('./sandbox-sqlite.worker.ts', import.meta.url), {
+    type: 'module',
+  })
+  sqlWorker = worker
+  loadPromise = new Promise<void>((resolve, reject) => {
+    const onMessage = (event: MessageEvent) => {
+      const data = event.data as
+        | { type: 'ready' }
+        | { type: 'load-error'; message: string }
+        | WorkerResult
+      if (data.type === 'ready') {
+        resolve()
+        return
+      }
+      if (data.type === 'load-error') {
+        reject(new Error(data.message))
+        return
+      }
+      if (data.type === 'result') {
+        const pending = pendingRuns.get(data.id)
+        if (!pending) return
+        pendingRuns.delete(data.id)
+        pending(data)
       }
     }
-    const last = results[results.length - 1]
-    const rows = queryResultToRows(last.columns, last.values)
-    return {
-      rows,
-      columns: last.columns,
-      text: formatResultTable(last.columns, rows),
-      error: null,
-      timedOut: false,
-    }
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    return {
-      rows: [],
-      columns: [],
-      text: '',
-      error: message,
-      timedOut: false,
-    }
-  }
+    worker.addEventListener('message', onMessage)
+    worker.postMessage({ type: 'load' })
+  }).catch((err) => {
+    dropWorker()
+    throw err
+  })
+  return loadPromise
+}
+
+/**
+ * Load sql.js in a worker (public/sqljs artifacts copied at predev/build).
+ */
+export async function loadSandboxSqlJs(onProgress?: SandboxProgress): Promise<void> {
+  onProgress?.(0.1, 'sql.js')
+  await ensureSqlWorker()
+  onProgress?.(1, 'sql.js')
 }
 
 export function formatResultTable(columns: string[], rows: SqlRow[]): string {
@@ -131,26 +118,67 @@ export function formatResultTable(columns: string[], rows: SqlRow[]): string {
   return lines.join('\n')
 }
 
-async function withTimeout<T>(
-  work: () => T,
+function resultText(
+  columns: string[],
+  rows: SqlRow[],
+  emptyOk: boolean,
+  truncated: boolean,
+  blank: boolean,
+): string {
+  if (blank) return '(пусто)'
+  if (emptyOk) return 'OK (нет результирующего набора)'
+  const table = formatResultTable(columns, rows)
+  return truncated ? `${table}\n(показаны первые 200 строк)` : table
+}
+
+async function runInWorker(
+  studentSql: string,
+  schemaSql: string,
+  verifySql: string | undefined,
   wallMs: number,
-): Promise<{ value?: T; timedOut: boolean; error?: string }> {
+): Promise<WorkerResult | { timedOut: true }> {
+  if (studentSql.length > MAX_SQL_CHARS || (verifySql && verifySql.length > MAX_SQL_CHARS)) {
+    return {
+      type: 'result',
+      id: -1,
+      error: 'Запрос слишком длинный',
+      columns: [],
+      values: [],
+      emptyOk: false,
+      truncated: false,
+      blank: false,
+      verifyError: null,
+      verifyColumns: [],
+      verifyValues: [],
+    }
+  }
+  await ensureSqlWorker()
+  const worker = sqlWorker
+  if (!worker) return { timedOut: true }
+  const id = nextRunId
+  nextRunId += 1
   return new Promise((resolve) => {
     const timer = window.setTimeout(() => {
-      resolve({ timedOut: true, error: `Timeout ${wallMs}ms` })
+      pendingRuns.delete(id)
+      dropWorker()
+      resolve({ timedOut: true })
     }, wallMs)
-    try {
-      const value = work()
+    pendingRuns.set(id, (value) => {
       window.clearTimeout(timer)
-      resolve({ value, timedOut: false })
-    } catch (err) {
-      window.clearTimeout(timer)
-      resolve({
-        timedOut: false,
-        error: err instanceof Error ? err.message : String(err),
-      })
-    }
+      resolve(value)
+    })
+    worker.postMessage({
+      type: 'run',
+      id,
+      schemaSql,
+      studentSql,
+      verifySql,
+    })
   })
+}
+
+function toRows(columns: string[], values: WorkerCell[][]): SqlRow[] {
+  return queryResultToRows(columns, values)
 }
 
 /**
@@ -162,30 +190,17 @@ export async function runSqlInSandbox(
   schemaSql = '',
   wallMs = DEFAULT_WALL_MS,
 ): Promise<SqlRunResult> {
-  const SQL = await loadSandboxSqlJs()
-  const outcome = await withTimeout(() => {
-    const db = openDb(SQL)
-    try {
-      if (schemaSql.trim()) {
-        assertSafeSql(schemaSql)
-        db.run(schemaSql)
-      }
-      return execScript(db, studentSql)
-    } finally {
-      db.close()
-    }
-  }, wallMs)
-
-  if (outcome.timedOut) {
+  const outcome = await runInWorker(studentSql, schemaSql, undefined, wallMs)
+  if ('timedOut' in outcome) {
     return {
       rows: [],
       columns: [],
       text: '',
-      error: outcome.error || 'Timeout',
+      error: `Timeout ${wallMs}ms`,
       timedOut: true,
     }
   }
-  if (outcome.error && !outcome.value) {
+  if (outcome.error) {
     return {
       rows: [],
       columns: [],
@@ -194,7 +209,14 @@ export async function runSqlInSandbox(
       timedOut: false,
     }
   }
-  return outcome.value!
+  const rows = toRows(outcome.columns, outcome.values)
+  return {
+    rows,
+    columns: outcome.columns,
+    text: resultText(outcome.columns, rows, outcome.emptyOk, outcome.truncated, outcome.blank),
+    error: null,
+    timedOut: false,
+  }
 }
 
 export type QueryCheckSpec = {
@@ -217,85 +239,25 @@ export async function runSqlWithCheck(
   check: SqlCheckSpec,
   wallMs = DEFAULT_WALL_MS,
 ): Promise<SqlCheckResult> {
-  const SQL = await loadSandboxSqlJs()
-  const outcome = await withTimeout(() => {
-    const db = openDb(SQL)
-    try {
-      if (schemaSql.trim()) {
-        assertSafeSql(schemaSql)
-        db.run(schemaSql)
-      }
-      const run = execScript(db, studentSql)
-      if (run.error) {
-        return {
-          ...run,
-          passed: false,
-          feedback: run.error,
-        } satisfies SqlCheckResult
-      }
-
-      if (check.mode === 'query') {
-        const cmp = compareRows(run.rows, check.expectedRows, check.compare)
-        return {
-          ...run,
-          passed: cmp.equal,
-          feedback: cmp.equal
-            ? `PASS: ${cmp.message}`
-            : `FAIL: ${cmp.message}`,
-        } satisfies SqlCheckResult
-      }
-
-      assertSafeSql(check.verifySql)
-      const verifyResults = db.exec(check.verifySql.trim())
-      if (verifyResults.length === 0) {
-        return {
-          ...run,
-          passed: false,
-          feedback: 'FAIL: verifySql не вернул строк',
-        } satisfies SqlCheckResult
-      }
-      const last = verifyResults[verifyResults.length - 1]
-      const verifyRows = queryResultToRows(last.columns, last.values)
-      const ok =
-        verifyRows.length > 0 &&
-        (verifyRows[0].ok === 1 ||
-          verifyRows[0].ok === '1' ||
-          String(verifyRows[0].pass || '')
-            .toUpperCase()
-            .startsWith('PASS'))
-      const detail =
-        verifyRows[0]?.detail != null
-          ? String(verifyRows[0].detail)
-          : ok
-            ? 'проверка схемы пройдена'
-            : 'проверка схемы не пройдена'
-      return {
-        ...run,
-        text:
-          run.text +
-          (run.text ? '\n\n' : '') +
-          '-- verify --\n' +
-          formatResultTable(last.columns, verifyRows),
-        passed: Boolean(ok),
-        feedback: ok ? `PASS: ${detail}` : `FAIL: ${detail}`,
-      } satisfies SqlCheckResult
-    } finally {
-      db.close()
-    }
-  }, wallMs)
-
-  if (outcome.timedOut) {
+  const outcome = await runInWorker(
+    studentSql,
+    schemaSql,
+    check.mode === 'verify' ? check.verifySql : undefined,
+    wallMs,
+  )
+  if ('timedOut' in outcome) {
+    const error = `Timeout ${wallMs}ms`
     return {
       rows: [],
       columns: [],
       text: '',
-      error: outcome.error || 'Timeout',
+      error,
       timedOut: true,
       passed: false,
-      feedback: `FAIL: ${outcome.error || 'Timeout'}`,
+      feedback: `FAIL: ${error}`,
     }
   }
-  if (outcome.error && !outcome.value) {
+  if (outcome.error) {
     return {
       rows: [],
       columns: [],
@@ -306,7 +268,61 @@ export async function runSqlWithCheck(
       feedback: `FAIL: ${outcome.error}`,
     }
   }
-  return outcome.value!
+  const rows = toRows(outcome.columns, outcome.values)
+  const run: SqlRunResult = {
+    rows,
+    columns: outcome.columns,
+    text: resultText(outcome.columns, rows, outcome.emptyOk, outcome.truncated, outcome.blank),
+    error: null,
+    timedOut: false,
+  }
+
+  if (check.mode === 'query') {
+    const cmp = compareRows(run.rows, check.expectedRows, check.compare)
+    return {
+      ...run,
+      passed: cmp.equal,
+      feedback: cmp.equal ? `PASS: ${cmp.message}` : `FAIL: ${cmp.message}`,
+    }
+  }
+
+  if (outcome.verifyError) {
+    return {
+      ...run,
+      passed: false,
+      feedback: `FAIL: ${outcome.verifyError}`,
+    }
+  }
+  const verifyRows = toRows(outcome.verifyColumns, outcome.verifyValues)
+  if (verifyRows.length === 0) {
+    return {
+      ...run,
+      passed: false,
+      feedback: 'FAIL: verifySql не вернул строк',
+    }
+  }
+  const ok =
+    verifyRows[0].ok === 1 ||
+    verifyRows[0].ok === '1' ||
+    String(verifyRows[0].pass || '')
+      .toUpperCase()
+      .startsWith('PASS')
+  const detail =
+    verifyRows[0]?.detail != null
+      ? String(verifyRows[0].detail)
+      : ok
+        ? 'проверка схемы пройдена'
+        : 'проверка схемы не пройдена'
+  return {
+    ...run,
+    text:
+      run.text +
+      (run.text ? '\n\n' : '') +
+      '-- verify --\n' +
+      formatResultTable(outcome.verifyColumns, verifyRows),
+    passed: Boolean(ok),
+    feedback: ok ? `PASS: ${detail}` : `FAIL: ${detail}`,
+  }
 }
 
 const SQL_FENCE = /```(?:sql)\s*\n([\s\S]*?)```/gi

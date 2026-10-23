@@ -12,7 +12,7 @@ import { WordPressPage } from '@/pages/wordpress/wordpress'
 import { TwitterPage } from '@/pages/twitter'
 import { VKontaktePage } from '@/pages/vkontakte'
 import { DzenPage } from '@/pages/stubs/dzen'
-import { InstagramPage } from '@/pages/stubs/instagram'
+import { InstagramPage } from '@/pages/instagram'
 import { CustomURLPage } from '@/pages/custom-url/custom-url'
 import { CustomUrlFlowPage } from '@/pages/custom-url/custom-url-flow'
 import { CreatePostPage } from '@/pages/create-post'
@@ -37,6 +37,7 @@ import { PricingPage } from '@/pages/pricing/pricing'
 import { FeedbackPage } from '@/pages/feedback'
 import { RoadmapPage } from '@/pages/roadmap'
 import { RouteLoader } from '@/components/route-loader'
+import { HomeRedirect } from '@/components/home-redirect'
 
 interface ProtectedRouteProps {
   children: React.ReactNode
@@ -84,7 +85,7 @@ function PublicRoute({ children }: PublicRouteProps) {
   if (isLoading) return <RouteLoader />
 
   if (isAuthenticated) {
-    return <Navigate to="/profile" replace />
+    return <HomeRedirect />
   }
 
   return <>{children}</>
@@ -99,7 +100,7 @@ function App() {
       <Route path="/invite/:token" element={<AcceptInvitePage />} />
 
       <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
-        <Route index element={<Navigate to="/profile" replace />} />
+        <Route index element={<HomeRedirect />} />
         <Route path="about" element={<AboutPage />} />
         <Route path="guide" element={<Navigate to="/about" replace />} />
         <Route path="profile" element={<ProfilePage />} />

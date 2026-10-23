@@ -189,6 +189,8 @@ function buildNodeFromRow(
   }
 }
 
+const MAX_CSV_ROWS = 500
+
 export function parseMenuCsv(content: string, modeId: number): CsvMenuParseResult {
   const normalized = stripBom(content).replace(/\r\n/g, '\n').replace(/\r/g, '\n')
   const rawLines = normalized.split('\n')
@@ -231,6 +233,14 @@ export function parseMenuCsv(content: string, modeId: number): CsvMenuParseResul
       continue
     }
     if (result.node) {
+      if (nodes.length >= MAX_CSV_ROWS) {
+        const skipped = rawLines.length - i
+        errors.push({
+          line: lineNumber,
+          message: `Импорт остановлен: не больше ${MAX_CSV_ROWS} строк, пропущено ${skipped}`,
+        })
+        break
+      }
       nodes.push(result.node)
     }
   }

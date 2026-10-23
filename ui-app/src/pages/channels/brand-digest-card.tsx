@@ -8,6 +8,7 @@ import { smmService } from '@/services/smm-service'
 import type { BrandChannel, DigestJob, DigestPreviewItem } from '@/types/smm'
 import { getErrorMessage } from '@/services/api-client'
 import { formatDateTime } from '@/utils/date'
+import { Switch } from '@/components/ui/switch'
 
 const RUN_MATCH_MS = 5 * 60 * 1000
 
@@ -191,8 +192,7 @@ export function BrandDigestCard({ brandId, channels }: BrandDigestCardProps) {
               )}
 
               <label className="flex items-center gap-2 text-sm font-medium">
-                <input
-                  type="checkbox"
+                <Switch
                   checked={enabled}
                   onChange={(e) => setEnabled(e.target.checked)}
                 />
@@ -200,8 +200,7 @@ export function BrandDigestCard({ brandId, channels }: BrandDigestCardProps) {
               </label>
 
               <label className="flex items-center gap-2 text-sm font-medium">
-                <input
-                  type="checkbox"
+                <Switch
                   checked={attachCover}
                   onChange={(e) => setAttachCover(e.target.checked)}
                 />
@@ -240,8 +239,7 @@ export function BrandDigestCard({ brandId, channels }: BrandDigestCardProps) {
                         key={c.id}
                         className="flex items-start gap-3 rounded-md border border-[var(--border-color)] p-3 text-sm cursor-pointer"
                       >
-                        <input
-                          type="checkbox"
+                        <Switch
                           className="mt-0.5"
                           checked={sourceIds.includes(c.id)}
                           onChange={() => toggleSource(c.id)}

@@ -1,3 +1,5 @@
+import { DATA_IMAGE_MAX_CHARS, safeHref } from '@/data/safe-url'
+
 const ALLOWED_TAGS = new Set([
   'H1',
   'H2',
@@ -29,14 +31,11 @@ const ALLOWED_TAGS = new Set([
 ])
 
 function isSafeUrl(value: string): boolean {
-  const trimmed = value.trim().toLowerCase()
-  return (
-    trimmed.startsWith('http://') ||
-    trimmed.startsWith('https://') ||
-    trimmed.startsWith('/') ||
-    trimmed.startsWith('#') ||
-    trimmed.startsWith('data:image/')
-  )
+  const trimmed = value.trim()
+  if (trimmed.toLowerCase().startsWith('data:image/')) {
+    return trimmed.length <= DATA_IMAGE_MAX_CHARS
+  }
+  return safeHref(trimmed) !== null
 }
 
 function sanitizeElement(element: Element): void {
@@ -107,7 +106,7 @@ export function plainTextToHtml(text: string): string {
     return '<p></p>'
   }
   if (/<[a-z][\s\S]*>/i.test(trimmed)) {
-    return trimmed
+    return sanitizeLearnHtml(trimmed)
   }
 
   const escaped = trimmed

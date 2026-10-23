@@ -112,11 +112,21 @@ Workspace roles: `owner` | `editor` | `approver` | `viewer` (legacy aliases: adm
 
 ### 1.6 Twitter (twitter-service.ts)
 
+UI `/twitter` — auth hub (OAuth + логин для Selenium), как TG/VK. Источники и collect/publish — в **Channels** (`network=tw`, `external_id=@handle`).
+
+**Чтение каналов (tw-bot):** для brand-каналов с `collect_enabled` бот открывает `x.com/{handle}` в браузере (нужны логин/пароль в профиле) или fallback через OAuth API `users/:id/tweets`. Legacy: `tw_profiles.collect_enabled` → лента Following / home timeline.
+
 | Метод | Путь | Описание |
 |-------|------|----------|
 | GET | `/tw/profile` | Профиль Twitter |
 | POST | `/tw/profile` | Сохранение профиля |
 | POST | `/tw/post` | Создание поста |
+
+### 1.6b Threads (threads-service.ts)
+
+UI `/threads` — auth hub (OAuth Meta + логин Instagram для Selenium), как TG/VK/Twitter. Источники — в **Channels** (`network=threads`, `external_id=@handle`).
+
+**Чтение каналов (th-bot):** brand-каналы с `collect_enabled` → `threads.net/@handle` в браузере (meta_login/пароль или учётка Instagram) или API своих постов / `profile_lookup`. Legacy: `threads_profiles.collect_enabled` → свои посты Graph API.
 
 ### 1.7 VKontakte (vkontakte-service.ts)
 
@@ -127,6 +137,10 @@ Workspace roles: `owner` | `editor` | `approver` | `viewer` (legacy aliases: adm
 | POST | `/vk/post` | Создание поста |
 
 ### 1.8 Instagram (instagram-service.ts)
+
+UI `/instagram` — auth hub (логин + сессия instagrapi), как TG/VK/Twitter/Threads. Источники — в **Channels** (`network=instagram`, `external_id=@username`).
+
+**Чтение каналов (instagram-bot):** brand-каналы с `collect_enabled` → `user_medias` через instagrapi. Legacy: `usernames_to_read` + свой аккаунт при `collect_enabled` на профиле.
 
 | Метод | Путь | Описание |
 |-------|------|----------|
@@ -274,9 +288,11 @@ Workspace roles: `owner` | `editor` | `approver` | `viewer` (legacy aliases: adm
 | `/tg/auth` | POST | `/code` | Код подтверждения |
 | `/tg/auth` | POST | `/password` | 2FA пароль |
 | `/tg/auth` | GET | `/status/{user_id}` | Статус авторизации |
+| — | POST | `/schedule` | Команды scheduler (internal token) |
+| — | GET | `/schedule/upcoming` | Ближайшие публикации |
 | — | GET | `/health` | Health |
 
-Через Gateway вызывается только `POST /tg-bot/schedule` → `POST /schedule` на боте. В текущем коде tg-bot зарегистрирован только роутер `auth` (prefix `/tg`, эндпоинты `/tg/auth/code`, `/tg/auth/password`, `/tg/auth/status/{user_id}`). Эндпоинт `POST /schedule` для приёма команд от scheduler в репозитории не реализован (возможен в другой ветке или по плану).
+Через Gateway: `POST /tg-bot/schedule` → `POST /schedule` на боте (`tg-bot/routers/schedule.py`, `require_internal_token`). Роутер подключается в `tg-bot/main.py` (с prefix `/tg` и без). Scheduler шлёт расписания с `INTERNAL_API_TOKEN`.
 
 ### 3.5 Instagram Bot (порт 8011)
 

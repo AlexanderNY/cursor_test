@@ -25,6 +25,7 @@ import type {
   DzenSubscriptionItem,
   DzenVerifyResponse,
 } from '@/types/dzen'
+import { Switch } from '@/components/ui/switch'
 
 function generateId(): string {
   return Math.random().toString(36).substring(2, 9)
@@ -808,11 +809,7 @@ export function DzenPage() {
                 <div className="space-y-4">
                   <h3 className="text-sm font-semibold text-[var(--text-primary)]">Публикация (RSS)</h3>
                   <label className="flex items-center gap-3 cursor-pointer group">
-                    <div className="relative">
-                      <input type="checkbox" checked={publishEnabled} onChange={(e) => setPublishEnabled(e.target.checked)} className="sr-only peer" />
-                      <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors" />
-                      <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
-                    </div>
+                    <Switch checked={publishEnabled} onChange={(e) => setPublishEnabled(e.target.checked)} />
                     <span className="text-[var(--text-primary)]">Включить публикацию в Дзен по RSS</span>
                   </label>
                   <Input label="URL вашей RSS-ленты (для робота Дзена)" value={rssFeedUrl} onChange={(e) => setRssFeedUrl(e.target.value)} placeholder="https://..." />
@@ -895,11 +892,7 @@ export function DzenPage() {
                 <div className="space-y-4 pt-4 border-t border-[var(--border-color)]">
                   <h3 className="text-sm font-semibold text-[var(--text-primary)]">Вычитка каналов (RSS)</h3>
                   <label className="flex items-center gap-3 cursor-pointer group">
-                    <div className="relative">
-                      <input type="checkbox" checked={collectEnabled} onChange={(e) => setCollectEnabled(e.target.checked)} className="sr-only peer" />
-                      <div className="w-11 h-6 bg-[var(--bg-tertiary)] rounded-full peer-checked:bg-primary-500 transition-colors" />
-                      <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
-                    </div>
+                    <Switch checked={collectEnabled} onChange={(e) => setCollectEnabled(e.target.checked)} />
                     <span className="text-[var(--text-primary)]">Собирать посты из внешних RSS-лент</span>
                   </label>
                   {collectEnabled && (

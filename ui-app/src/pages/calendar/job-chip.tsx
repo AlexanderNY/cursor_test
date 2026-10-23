@@ -27,6 +27,13 @@ export function JobChip({
           minute: '2-digit',
         })
       : null
+  const targetErrors = Object.entries(
+    (job.adapters_result?.targets as Record<string, { status?: string; error?: string }> | undefined) ||
+      {},
+  )
+    .filter(([, m]) => m && (m.status === 'failed' || m.error))
+    .map(([k, m]) => `${k}: ${m.error || m.status}`)
+  const errorHint = job.last_error || targetErrors[0] || ''
 
   function handleDragStart(e: React.DragEvent) {
     if (!canDrag) {
@@ -44,9 +51,9 @@ export function JobChip({
       onDragStart={handleDragStart}
       className={`text-[10px] truncate rounded px-1 py-0.5 mb-0.5 text-white ${
         canDrag ? 'cursor-grab active:cursor-grabbing' : 'opacity-90'
-      }`}
+      } ${job.status === 'failed' || job.status === 'partial' ? 'ring-1 ring-amber-300' : ''}`}
       style={{ backgroundColor: color }}
-      title={`${job.status}${series ? ` · ${series.title}` : ''}: ${job.source_text}`}
+      title={`${job.status}${series ? ` · ${series.title}` : ''}${errorHint ? ` · ${errorHint}` : ''}: ${job.source_text}`}
     >
       <Link
         to={`/posts?job=${job.id}`}

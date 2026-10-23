@@ -13,7 +13,9 @@
 | `/login`, `/register` | Site auth |
 | `/account` | Кабинет (прогресс Learn через site JWT) |
 | `/admin`, `/admin/apps/:slug` | Супер-админ / админ сервиса |
-| `/app/:slug`, `/app/:slug/:postSlug` | Страница и блог сервиса |
+| `/blog/:slug`, `/blog/:slug/:postSlug` | Блог сервиса (отдельно от самого сервиса) |
+| `/app/:slug` | Редирект на сервис (`appPath` или внешняя ссылка) |
+| `/app/:slug/:postSlug` | Редирект на статью блога |
 | `/game/bowl` | Bowl 2D — игра на Pyodide |
 | `/game/code` | Code — песочница + задачи junior (Pyodide) |
 | `/game/sql` | SQL — песочница + задачи SQL01–SQL13 (sql.js / SQLite) |
