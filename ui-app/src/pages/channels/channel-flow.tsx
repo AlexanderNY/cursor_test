@@ -610,8 +610,8 @@ export function ChannelFlowPage() {
           ← Channels
         </Link>
         {isUrl ? (
-          <Link to="/custom-url" className="text-primary-400 hover:underline">
-            Собранные URL-посты →
+          <Link to="/analytics" className="text-primary-400 hover:underline">
+            Смотреть аналитику →
           </Link>
         ) : (
           <Link to={analyticsHref} className="text-primary-400 hover:underline">

@@ -1,6 +1,7 @@
 [
   {
     "iso2": "AU",
+    "flag": "🇦🇺",
     "name_ru": "Австралия",
     "capital_ru": "Canberra",
     "area_km2": 7692024,
@@ -8,6 +9,7 @@
   },
   {
     "iso2": "AT",
+    "flag": "🇦🇹",
     "name_ru": "Австрия",
     "capital_ru": "Vienna",
     "area_km2": 83871,
@@ -15,6 +17,7 @@
   },
   {
     "iso2": "AZ",
+    "flag": "🇦🇿",
     "name_ru": "Азербайджан",
     "capital_ru": "Baku",
     "area_km2": 86600,
@@ -22,6 +25,7 @@
   },
   {
     "iso2": "AL",
+    "flag": "🇦🇱",
     "name_ru": "Албания",
     "capital_ru": "Tirana",
     "area_km2": 28748,
@@ -29,6 +33,7 @@
   },
   {
     "iso2": "DZ",
+    "flag": "🇩🇿",
     "name_ru": "Алжир",
     "capital_ru": "Algiers",
     "area_km2": 2381741,
@@ -36,6 +41,7 @@
   },
   {
     "iso2": "AO",
+    "flag": "🇦🇴",
     "name_ru": "Ангола",
     "capital_ru": "Luanda",
     "area_km2": 1246700,
@@ -43,6 +49,7 @@
   },
   {
     "iso2": "AD",
+    "flag": "🇦🇩",
     "name_ru": "Андорра",
     "capital_ru": "Andorra la Vella",
     "area_km2": 468,
@@ -50,6 +57,7 @@
   },
   {
     "iso2": "AG",
+    "flag": "🇦🇬",
     "name_ru": "Антигуа и Барбуда",
     "capital_ru": "Saint John's",
     "area_km2": 442,
@@ -57,6 +65,7 @@
   },
   {
     "iso2": "AR",
+    "flag": "🇦🇷",
     "name_ru": "Аргентина",
     "capital_ru": "Buenos Aires",
     "area_km2": 2780400,
@@ -64,6 +73,7 @@
   },
   {
     "iso2": "AM",
+    "flag": "🇦🇲",
     "name_ru": "Армения",
     "capital_ru": "Yerevan",
     "area_km2": 29743,
@@ -71,6 +81,7 @@
   },
   {
     "iso2": "AF",
+    "flag": "🇦🇫",
     "name_ru": "Афганистан",
     "capital_ru": "Kabul",
     "area_km2": 652230,
@@ -78,6 +89,7 @@
   },
   {
     "iso2": "BS",
+    "flag": "🇧🇸",
     "name_ru": "Багамские Острова",
     "capital_ru": "Nassau",
     "area_km2": 13943,
@@ -85,6 +97,7 @@
   },
   {
     "iso2": "BD",
+    "flag": "🇧🇩",
     "name_ru": "Бангладеш",
     "capital_ru": "Dhaka",
     "area_km2": 147570,
@@ -92,6 +105,7 @@
   },
   {
     "iso2": "BB",
+    "flag": "🇧🇧",
     "name_ru": "Барбадос",
     "capital_ru": "Bridgetown",
     "area_km2": 430,
@@ -99,6 +113,7 @@
   },
   {
     "iso2": "BH",
+    "flag": "🇧🇭",
     "name_ru": "Бахрейн",
     "capital_ru": "Manama",
     "area_km2": 765,
@@ -106,6 +121,7 @@
   },
   {
     "iso2": "BY",
+    "flag": "🇧🇾",
     "name_ru": "Беларусь",
     "capital_ru": "Minsk",
     "area_km2": 207600,
@@ -113,6 +129,7 @@
   },
   {
     "iso2": "BZ",
+    "flag": "🇧🇿",
     "name_ru": "Белиз",
     "capital_ru": "Belmopan",
     "area_km2": 22966,
@@ -120,6 +137,7 @@
   },
   {
     "iso2": "BE",
+    "flag": "🇧🇪",
     "name_ru": "Бельгия",
     "capital_ru": "Brussels",
     "area_km2": 30528,
@@ -127,6 +145,7 @@
   },
   {
     "iso2": "BJ",
+    "flag": "🇧🇯",
     "name_ru": "Бенин",
     "capital_ru": "Porto-Novo",
     "area_km2": 112622,
@@ -134,6 +153,7 @@
   },
   {
     "iso2": "BG",
+    "flag": "🇧🇬",
     "name_ru": "Болгария",
     "capital_ru": "Sofia",
     "area_km2": 110879,
@@ -141,6 +161,7 @@
   },
   {
     "iso2": "BO",
+    "flag": "🇧🇴",
     "name_ru": "Боливия",
     "capital_ru": "Sucre",
     "area_km2": 1098581,
@@ -148,6 +169,7 @@
   },
   {
     "iso2": "BA",
+    "flag": "🇧🇦",
     "name_ru": "Босния и Герцеговина",
     "capital_ru": "Sarajevo",
     "area_km2": 51209,
@@ -155,6 +177,7 @@
   },
   {
     "iso2": "BW",
+    "flag": "🇧🇼",
     "name_ru": "Ботсвана",
     "capital_ru": "Gaborone",
     "area_km2": 582000,
@@ -162,6 +185,7 @@
   },
   {
     "iso2": "BR",
+    "flag": "🇧🇷",
     "name_ru": "Бразилия",
     "capital_ru": "Brasília",
     "area_km2": 8515767,
@@ -169,6 +193,7 @@
   },
   {
     "iso2": "BN",
+    "flag": "🇧🇳",
     "name_ru": "Бруней",
     "capital_ru": "Bandar Seri Begawan",
     "area_km2": 5765,
@@ -176,6 +201,7 @@
   },
   {
     "iso2": "BF",
+    "flag": "🇧🇫",
     "name_ru": "Буркина-Фасо",
     "capital_ru": "Ouagadougou",
     "area_km2": 272967,
@@ -183,6 +209,7 @@
   },
   {
     "iso2": "BI",
+    "flag": "🇧🇮",
     "name_ru": "Бурунди",
     "capital_ru": "Gitega",
     "area_km2": 27834,
@@ -190,6 +217,7 @@
   },
   {
     "iso2": "BT",
+    "flag": "🇧🇹",
     "name_ru": "Бутан",
     "capital_ru": "Thimphu",
     "area_km2": 38394,
@@ -197,6 +225,7 @@
   },
   {
     "iso2": "VU",
+    "flag": "🇻🇺",
     "name_ru": "Вануату",
     "capital_ru": "Port Vila",
     "area_km2": 12189,
@@ -204,6 +233,7 @@
   },
   {
     "iso2": "VA",
+    "flag": "🇻🇦",
     "name_ru": "Ватикан",
     "capital_ru": "Vatican City",
     "area_km2": 0.44,
@@ -211,6 +241,7 @@
   },
   {
     "iso2": "GB",
+    "flag": "🇬🇧",
     "name_ru": "Великобритания",
     "capital_ru": "London",
     "area_km2": 242900,
@@ -218,6 +249,7 @@
   },
   {
     "iso2": "HU",
+    "flag": "🇭🇺",
     "name_ru": "Венгрия",
     "capital_ru": "Budapest",
     "area_km2": 93028,
@@ -225,6 +257,7 @@
   },
   {
     "iso2": "VE",
+    "flag": "🇻🇪",
     "name_ru": "Венесуэла",
     "capital_ru": "Caracas",
     "area_km2": 916445,
@@ -232,6 +265,7 @@
   },
   {
     "iso2": "TL",
+    "flag": "🇹🇱",
     "name_ru": "Восточный Тимор",
     "capital_ru": "Dili",
     "area_km2": 14874,
@@ -239,6 +273,7 @@
   },
   {
     "iso2": "VN",
+    "flag": "🇻🇳",
     "name_ru": "Вьетнам",
     "capital_ru": "Hanoi",
     "area_km2": 331212,
@@ -246,6 +281,7 @@
   },
   {
     "iso2": "GA",
+    "flag": "🇬🇦",
     "name_ru": "Габон",
     "capital_ru": "Libreville",
     "area_km2": 267668,
@@ -253,6 +289,7 @@
   },
   {
     "iso2": "HT",
+    "flag": "🇭🇹",
     "name_ru": "Гаити",
     "capital_ru": "Port-au-Prince",
     "area_km2": 27750,
@@ -260,6 +297,7 @@
   },
   {
     "iso2": "GY",
+    "flag": "🇬🇾",
     "name_ru": "Гайана",
     "capital_ru": "Georgetown",
     "area_km2": 214969,
@@ -267,6 +305,7 @@
   },
   {
     "iso2": "GM",
+    "flag": "🇬🇲",
     "name_ru": "Гамбия",
     "capital_ru": "Banjul",
     "area_km2": 10689,
@@ -274,6 +313,7 @@
   },
   {
     "iso2": "GH",
+    "flag": "🇬🇭",
     "name_ru": "Гана",
     "capital_ru": "Accra",
     "area_km2": 238533,
@@ -281,6 +321,7 @@
   },
   {
     "iso2": "GT",
+    "flag": "🇬🇹",
     "name_ru": "Гватемала",
     "capital_ru": "Guatemala City",
     "area_km2": 108889,
@@ -288,6 +329,7 @@
   },
   {
     "iso2": "GN",
+    "flag": "🇬🇳",
     "name_ru": "Гвинея",
     "capital_ru": "Conakry",
     "area_km2": 245857,
@@ -295,6 +337,7 @@
   },
   {
     "iso2": "GW",
+    "flag": "🇬🇼",
     "name_ru": "Гвинея-Бисау",
     "capital_ru": "Bissau",
     "area_km2": 36125,
@@ -302,6 +345,7 @@
   },
   {
     "iso2": "DE",
+    "flag": "🇩🇪",
     "name_ru": "Германия",
     "capital_ru": "Berlin",
     "area_km2": 357114,
@@ -309,6 +353,7 @@
   },
   {
     "iso2": "HN",
+    "flag": "🇭🇳",
     "name_ru": "Гондурас",
     "capital_ru": "Tegucigalpa",
     "area_km2": 112492,
@@ -316,6 +361,7 @@
   },
   {
     "iso2": "GD",
+    "flag": "🇬🇩",
     "name_ru": "Гренада",
     "capital_ru": "St. George's",
     "area_km2": 344,
@@ -323,6 +369,7 @@
   },
   {
     "iso2": "GR",
+    "flag": "🇬🇷",
     "name_ru": "Греция",
     "capital_ru": "Athens",
     "area_km2": 131990,
@@ -330,6 +377,7 @@
   },
   {
     "iso2": "GE",
+    "flag": "🇬🇪",
     "name_ru": "Грузия",
     "capital_ru": "Tbilisi",
     "area_km2": 69700,
@@ -337,6 +385,7 @@
   },
   {
     "iso2": "DK",
+    "flag": "🇩🇰",
     "name_ru": "Дания",
     "capital_ru": "Copenhagen",
     "area_km2": 43094,
@@ -344,6 +393,7 @@
   },
   {
     "iso2": "CD",
+    "flag": "🇨🇩",
     "name_ru": "Демократическая Республика Конго",
     "capital_ru": "Kinshasa",
     "area_km2": 2344858,
@@ -351,6 +401,7 @@
   },
   {
     "iso2": "DJ",
+    "flag": "🇩🇯",
     "name_ru": "Джибути",
     "capital_ru": "Djibouti",
     "area_km2": 23200,
@@ -358,6 +409,7 @@
   },
   {
     "iso2": "DM",
+    "flag": "🇩🇲",
     "name_ru": "Доминика",
     "capital_ru": "Roseau",
     "area_km2": 751,
@@ -365,6 +417,7 @@
   },
   {
     "iso2": "DO",
+    "flag": "🇩🇴",
     "name_ru": "Доминиканская Республика",
     "capital_ru": "Santo Domingo",
     "area_km2": 48671,
@@ -372,6 +425,7 @@
   },
   {
     "iso2": "EG",
+    "flag": "🇪🇬",
     "name_ru": "Египет",
     "capital_ru": "Cairo",
     "area_km2": 1002450,
@@ -379,6 +433,7 @@
   },
   {
     "iso2": "ZM",
+    "flag": "🇿🇲",
     "name_ru": "Замбия",
     "capital_ru": "Lusaka",
     "area_km2": 752612,
@@ -386,6 +441,7 @@
   },
   {
     "iso2": "ZW",
+    "flag": "🇿🇼",
     "name_ru": "Зимбабве",
     "capital_ru": "Harare",
     "area_km2": 390757,
@@ -393,6 +449,7 @@
   },
   {
     "iso2": "IL",
+    "flag": "🇮🇱",
     "name_ru": "Израиль",
     "capital_ru": "Jerusalem",
     "area_km2": 20770,
@@ -400,6 +457,7 @@
   },
   {
     "iso2": "IN",
+    "flag": "🇮🇳",
     "name_ru": "Индия",
     "capital_ru": "New Delhi",
     "area_km2": 3287590,
@@ -407,6 +465,7 @@
   },
   {
     "iso2": "ID",
+    "flag": "🇮🇩",
     "name_ru": "Индонезия",
     "capital_ru": "Jakarta",
     "area_km2": 1904569,
@@ -414,6 +473,7 @@
   },
   {
     "iso2": "JO",
+    "flag": "🇯🇴",
     "name_ru": "Иордания",
     "capital_ru": "Amman",
     "area_km2": 89342,
@@ -421,6 +481,7 @@
   },
   {
     "iso2": "IQ",
+    "flag": "🇮🇶",
     "name_ru": "Ирак",
     "capital_ru": "Baghdad",
     "area_km2": 438317,
@@ -428,6 +489,7 @@
   },
   {
     "iso2": "IR",
+    "flag": "🇮🇷",
     "name_ru": "Иран",
     "capital_ru": "Tehran",
     "area_km2": 1648195,
@@ -435,6 +497,7 @@
   },
   {
     "iso2": "IE",
+    "flag": "🇮🇪",
     "name_ru": "Ирландия",
     "capital_ru": "Dublin",
     "area_km2": 70273,
@@ -442,6 +505,7 @@
   },
   {
     "iso2": "IS",
+    "flag": "🇮🇸",
     "name_ru": "Исландия",
     "capital_ru": "Reykjavik",
     "area_km2": 103000,
@@ -449,6 +513,7 @@
   },
   {
     "iso2": "ES",
+    "flag": "🇪🇸",
     "name_ru": "Испания",
     "capital_ru": "Madrid",
     "area_km2": 505992,
@@ -456,6 +521,7 @@
   },
   {
     "iso2": "IT",
+    "flag": "🇮🇹",
     "name_ru": "Италия",
     "capital_ru": "Rome",
     "area_km2": 301336,
@@ -463,6 +529,7 @@
   },
   {
     "iso2": "YE",
+    "flag": "🇾🇪",
     "name_ru": "Йемен",
     "capital_ru": "Sana'a",
     "area_km2": 527968,
@@ -470,6 +537,7 @@
   },
   {
     "iso2": "CV",
+    "flag": "🇨🇻",
     "name_ru": "Кабо-Верде",
     "capital_ru": "Praia",
     "area_km2": 4033,
@@ -477,6 +545,7 @@
   },
   {
     "iso2": "KZ",
+    "flag": "🇰🇿",
     "name_ru": "Казахстан",
     "capital_ru": "Astana",
     "area_km2": 2724900,
@@ -484,6 +553,7 @@
   },
   {
     "iso2": "KH",
+    "flag": "🇰🇭",
     "name_ru": "Камбоджа",
     "capital_ru": "Phnom Penh",
     "area_km2": 181035,
@@ -491,6 +561,7 @@
   },
   {
     "iso2": "CM",
+    "flag": "🇨🇲",
     "name_ru": "Камерун",
     "capital_ru": "Yaoundé",
     "area_km2": 475442,
@@ -498,6 +569,7 @@
   },
   {
     "iso2": "CA",
+    "flag": "🇨🇦",
     "name_ru": "Канада",
     "capital_ru": "Ottawa",
     "area_km2": 9984670,
@@ -505,6 +577,7 @@
   },
   {
     "iso2": "QA",
+    "flag": "🇶🇦",
     "name_ru": "Катар",
     "capital_ru": "Doha",
     "area_km2": 11586,
@@ -512,6 +585,7 @@
   },
   {
     "iso2": "KE",
+    "flag": "🇰🇪",
     "name_ru": "Кения",
     "capital_ru": "Nairobi",
     "area_km2": 580367,
@@ -519,6 +593,7 @@
   },
   {
     "iso2": "CY",
+    "flag": "🇨🇾",
     "name_ru": "Кипр",
     "capital_ru": "Nicosia",
     "area_km2": 9251,
@@ -526,6 +601,7 @@
   },
   {
     "iso2": "KG",
+    "flag": "🇰🇬",
     "name_ru": "Киргизия",
     "capital_ru": "Bishkek",
     "area_km2": 199951,
@@ -533,6 +609,7 @@
   },
   {
     "iso2": "KI",
+    "flag": "🇰🇮",
     "name_ru": "Кирибати",
     "capital_ru": "South Tarawa",
     "area_km2": 811,
@@ -540,6 +617,7 @@
   },
   {
     "iso2": "CN",
+    "flag": "🇨🇳",
     "name_ru": "Китай",
     "capital_ru": "Beijing",
     "area_km2": 9706961,
@@ -547,6 +625,7 @@
   },
   {
     "iso2": "CO",
+    "flag": "🇨🇴",
     "name_ru": "Колумбия",
     "capital_ru": "Bogotá",
     "area_km2": 1141748,
@@ -554,6 +633,7 @@
   },
   {
     "iso2": "KM",
+    "flag": "🇰🇲",
     "name_ru": "Коморы",
     "capital_ru": "Moroni",
     "area_km2": 1862,
@@ -561,6 +641,7 @@
   },
   {
     "iso2": "CR",
+    "flag": "🇨🇷",
     "name_ru": "Коста-Рика",
     "capital_ru": "San José",
     "area_km2": 51100,
@@ -568,6 +649,7 @@
   },
   {
     "iso2": "CI",
+    "flag": "🇨🇮",
     "name_ru": "Кот-д’Ивуар",
     "capital_ru": "Yamoussoukro",
     "area_km2": 322463,
@@ -575,6 +657,7 @@
   },
   {
     "iso2": "CU",
+    "flag": "🇨🇺",
     "name_ru": "Куба",
     "capital_ru": "Havana",
     "area_km2": 109884,
@@ -582,6 +665,7 @@
   },
   {
     "iso2": "KW",
+    "flag": "🇰🇼",
     "name_ru": "Кувейт",
     "capital_ru": "Kuwait City",
     "area_km2": 17818,
@@ -589,6 +673,7 @@
   },
   {
     "iso2": "LA",
+    "flag": "🇱🇦",
     "name_ru": "Лаос",
     "capital_ru": "Vientiane",
     "area_km2": 236800,
@@ -596,6 +681,7 @@
   },
   {
     "iso2": "LV",
+    "flag": "🇱🇻",
     "name_ru": "Латвия",
     "capital_ru": "Riga",
     "area_km2": 64559,
@@ -603,6 +689,7 @@
   },
   {
     "iso2": "LS",
+    "flag": "🇱🇸",
     "name_ru": "Лесото",
     "capital_ru": "Maseru",
     "area_km2": 30355,
@@ -610,6 +697,7 @@
   },
   {
     "iso2": "LR",
+    "flag": "🇱🇷",
     "name_ru": "Либерия",
     "capital_ru": "Monrovia",
     "area_km2": 111369,
@@ -617,6 +705,7 @@
   },
   {
     "iso2": "LB",
+    "flag": "🇱🇧",
     "name_ru": "Ливан",
     "capital_ru": "Beirut",
     "area_km2": 10452,
@@ -624,6 +713,7 @@
   },
   {
     "iso2": "LY",
+    "flag": "🇱🇾",
     "name_ru": "Ливия",
     "capital_ru": "Tripoli",
     "area_km2": 1759540,
@@ -631,6 +721,7 @@
   },
   {
     "iso2": "LT",
+    "flag": "🇱🇹",
     "name_ru": "Литва",
     "capital_ru": "Vilnius",
     "area_km2": 65300,
@@ -638,6 +729,7 @@
   },
   {
     "iso2": "LI",
+    "flag": "🇱🇮",
     "name_ru": "Лихтенштейн",
     "capital_ru": "Vaduz",
     "area_km2": 160,
@@ -645,6 +737,7 @@
   },
   {
     "iso2": "LU",
+    "flag": "🇱🇺",
     "name_ru": "Люксембург",
     "capital_ru": "Luxembourg",
     "area_km2": 2586,
@@ -652,6 +745,7 @@
   },
   {
     "iso2": "MU",
+    "flag": "🇲🇺",
     "name_ru": "Маврикий",
     "capital_ru": "Port Louis",
     "area_km2": 2040,
@@ -659,6 +753,7 @@
   },
   {
     "iso2": "MR",
+    "flag": "🇲🇷",
     "name_ru": "Мавритания",
     "capital_ru": "Nouakchott",
     "area_km2": 1030700,
@@ -666,6 +761,7 @@
   },
   {
     "iso2": "MG",
+    "flag": "🇲🇬",
     "name_ru": "Мадагаскар",
     "capital_ru": "Antananarivo",
     "area_km2": 587041,
@@ -673,6 +769,7 @@
   },
   {
     "iso2": "MW",
+    "flag": "🇲🇼",
     "name_ru": "Малави",
     "capital_ru": "Lilongwe",
     "area_km2": 118484,
@@ -680,6 +777,7 @@
   },
   {
     "iso2": "MY",
+    "flag": "🇲🇾",
     "name_ru": "Малайзия",
     "capital_ru": "Kuala Lumpur",
     "area_km2": 330803,
@@ -687,6 +785,7 @@
   },
   {
     "iso2": "ML",
+    "flag": "🇲🇱",
     "name_ru": "Мали",
     "capital_ru": "Bamako",
     "area_km2": 1240192,
@@ -694,6 +793,7 @@
   },
   {
     "iso2": "MV",
+    "flag": "🇲🇻",
     "name_ru": "Мальдивы",
     "capital_ru": "Malé",
     "area_km2": 300,
@@ -701,6 +801,7 @@
   },
   {
     "iso2": "MT",
+    "flag": "🇲🇹",
     "name_ru": "Мальта",
     "capital_ru": "Valletta",
     "area_km2": 316,
@@ -708,6 +809,7 @@
   },
   {
     "iso2": "MA",
+    "flag": "🇲🇦",
     "name_ru": "Марокко",
     "capital_ru": "Rabat",
     "area_km2": 446550,
@@ -715,6 +817,7 @@
   },
   {
     "iso2": "MH",
+    "flag": "🇲🇭",
     "name_ru": "Маршалловы Острова",
     "capital_ru": "Majuro",
     "area_km2": 181,
@@ -722,6 +825,7 @@
   },
   {
     "iso2": "MX",
+    "flag": "🇲🇽",
     "name_ru": "Мексика",
     "capital_ru": "Mexico City",
     "area_km2": 1964375,
@@ -729,6 +833,7 @@
   },
   {
     "iso2": "MZ",
+    "flag": "🇲🇿",
     "name_ru": "Мозамбик",
     "capital_ru": "Maputo",
     "area_km2": 801590,
@@ -736,6 +841,7 @@
   },
   {
     "iso2": "MD",
+    "flag": "🇲🇩",
     "name_ru": "Молдавия",
     "capital_ru": "Chișinău",
     "area_km2": 33846,
@@ -743,6 +849,7 @@
   },
   {
     "iso2": "MC",
+    "flag": "🇲🇨",
     "name_ru": "Монако",
     "capital_ru": "Monaco",
     "area_km2": 2.02,
@@ -750,6 +857,7 @@
   },
   {
     "iso2": "MN",
+    "flag": "🇲🇳",
     "name_ru": "Монголия",
     "capital_ru": "Ulan Bator",
     "area_km2": 1564110,
@@ -757,6 +865,7 @@
   },
   {
     "iso2": "MM",
+    "flag": "🇲🇲",
     "name_ru": "Мьянма",
     "capital_ru": "Naypyidaw",
     "area_km2": 676578,
@@ -764,6 +873,7 @@
   },
   {
     "iso2": "NA",
+    "flag": "🇳🇦",
     "name_ru": "Намибия",
     "capital_ru": "Windhoek",
     "area_km2": 825615,
@@ -771,6 +881,7 @@
   },
   {
     "iso2": "NR",
+    "flag": "🇳🇷",
     "name_ru": "Науру",
     "capital_ru": "Yaren",
     "area_km2": 21,
@@ -778,6 +889,7 @@
   },
   {
     "iso2": "NP",
+    "flag": "🇳🇵",
     "name_ru": "Непал",
     "capital_ru": "Kathmandu",
     "area_km2": 147181,
@@ -785,6 +897,7 @@
   },
   {
     "iso2": "NE",
+    "flag": "🇳🇪",
     "name_ru": "Нигер",
     "capital_ru": "Niamey",
     "area_km2": 1267000,
@@ -792,6 +905,7 @@
   },
   {
     "iso2": "NG",
+    "flag": "🇳🇬",
     "name_ru": "Нигерия",
     "capital_ru": "Abuja",
     "area_km2": 923768,
@@ -799,6 +913,7 @@
   },
   {
     "iso2": "NL",
+    "flag": "🇳🇱",
     "name_ru": "Нидерланды",
     "capital_ru": "Amsterdam",
     "area_km2": 41850,
@@ -806,6 +921,7 @@
   },
   {
     "iso2": "NI",
+    "flag": "🇳🇮",
     "name_ru": "Никарагуа",
     "capital_ru": "Managua",
     "area_km2": 130373,
@@ -813,6 +929,7 @@
   },
   {
     "iso2": "NZ",
+    "flag": "🇳🇿",
     "name_ru": "Новая Зеландия",
     "capital_ru": "Wellington",
     "area_km2": 270467,
@@ -820,6 +937,7 @@
   },
   {
     "iso2": "NO",
+    "flag": "🇳🇴",
     "name_ru": "Норвегия",
     "capital_ru": "Oslo",
     "area_km2": 323802,
@@ -827,6 +945,7 @@
   },
   {
     "iso2": "AE",
+    "flag": "🇦🇪",
     "name_ru": "Объединённые Арабские Эмираты",
     "capital_ru": "Abu Dhabi",
     "area_km2": 83600,
@@ -834,6 +953,7 @@
   },
   {
     "iso2": "OM",
+    "flag": "🇴🇲",
     "name_ru": "Оман",
     "capital_ru": "Muscat",
     "area_km2": 309500,
@@ -841,6 +961,7 @@
   },
   {
     "iso2": "PK",
+    "flag": "🇵🇰",
     "name_ru": "Пакистан",
     "capital_ru": "Islamabad",
     "area_km2": 881912,
@@ -848,6 +969,7 @@
   },
   {
     "iso2": "PW",
+    "flag": "🇵🇼",
     "name_ru": "Палау",
     "capital_ru": "Ngerulmud",
     "area_km2": 459,
@@ -855,6 +977,7 @@
   },
   {
     "iso2": "PA",
+    "flag": "🇵🇦",
     "name_ru": "Панама",
     "capital_ru": "Panama City",
     "area_km2": 75417,
@@ -862,6 +985,7 @@
   },
   {
     "iso2": "PG",
+    "flag": "🇵🇬",
     "name_ru": "Папуа — Новая Гвинея",
     "capital_ru": "Port Moresby",
     "area_km2": 462840,
@@ -869,6 +993,7 @@
   },
   {
     "iso2": "PY",
+    "flag": "🇵🇾",
     "name_ru": "Парагвай",
     "capital_ru": "Asunción",
     "area_km2": 406752,
@@ -876,6 +1001,7 @@
   },
   {
     "iso2": "PE",
+    "flag": "🇵🇪",
     "name_ru": "Перу",
     "capital_ru": "Lima",
     "area_km2": 1285216,
@@ -883,6 +1009,7 @@
   },
   {
     "iso2": "PL",
+    "flag": "🇵🇱",
     "name_ru": "Польша",
     "capital_ru": "Warsaw",
     "area_km2": 312679,
@@ -890,6 +1017,7 @@
   },
   {
     "iso2": "PT",
+    "flag": "🇵🇹",
     "name_ru": "Португалия",
     "capital_ru": "Lisbon",
     "area_km2": 92090,
@@ -897,6 +1025,7 @@
   },
   {
     "iso2": "CG",
+    "flag": "🇨🇬",
     "name_ru": "Республика Конго",
     "capital_ru": "Brazzaville",
     "area_km2": 342000,
@@ -904,6 +1033,7 @@
   },
   {
     "iso2": "RU",
+    "flag": "🇷🇺",
     "name_ru": "Россия",
     "capital_ru": "Moscow",
     "area_km2": 17098242,
@@ -911,6 +1041,7 @@
   },
   {
     "iso2": "RW",
+    "flag": "🇷🇼",
     "name_ru": "Руанда",
     "capital_ru": "Kigali",
     "area_km2": 26338,
@@ -918,6 +1049,7 @@
   },
   {
     "iso2": "RO",
+    "flag": "🇷🇴",
     "name_ru": "Румыния",
     "capital_ru": "Bucharest",
     "area_km2": 238391,
@@ -925,6 +1057,7 @@
   },
   {
     "iso2": "SV",
+    "flag": "🇸🇻",
     "name_ru": "Сальвадор",
     "capital_ru": "San Salvador",
     "area_km2": 21041,
@@ -932,6 +1065,7 @@
   },
   {
     "iso2": "WS",
+    "flag": "🇼🇸",
     "name_ru": "Самоа",
     "capital_ru": "Apia",
     "area_km2": 2842,
@@ -939,6 +1073,7 @@
   },
   {
     "iso2": "SM",
+    "flag": "🇸🇲",
     "name_ru": "Сан-Марино",
     "capital_ru": "City of San Marino",
     "area_km2": 61,
@@ -946,6 +1081,7 @@
   },
   {
     "iso2": "ST",
+    "flag": "🇸🇹",
     "name_ru": "Сан-Томе и Принсипи",
     "capital_ru": "São Tomé",
     "area_km2": 964,
@@ -953,6 +1089,7 @@
   },
   {
     "iso2": "SA",
+    "flag": "🇸🇦",
     "name_ru": "Саудовская Аравия",
     "capital_ru": "Riyadh",
     "area_km2": 2149690,
@@ -960,6 +1097,7 @@
   },
   {
     "iso2": "SZ",
+    "flag": "🇸🇿",
     "name_ru": "Свазиленд",
     "capital_ru": "Lobamba",
     "area_km2": 17364,
@@ -967,6 +1105,7 @@
   },
   {
     "iso2": "KP",
+    "flag": "🇰🇵",
     "name_ru": "Северная Корея",
     "capital_ru": "Pyongyang",
     "area_km2": 120538,
@@ -974,6 +1113,7 @@
   },
   {
     "iso2": "MK",
+    "flag": "🇲🇰",
     "name_ru": "Северная Македония",
     "capital_ru": "Skopje",
     "area_km2": 25713,
@@ -981,6 +1121,7 @@
   },
   {
     "iso2": "SC",
+    "flag": "🇸🇨",
     "name_ru": "Сейшельские Острова",
     "capital_ru": "Victoria",
     "area_km2": 452,
@@ -988,6 +1129,7 @@
   },
   {
     "iso2": "SN",
+    "flag": "🇸🇳",
     "name_ru": "Сенегал",
     "capital_ru": "Dakar",
     "area_km2": 196722,
@@ -995,6 +1137,7 @@
   },
   {
     "iso2": "VC",
+    "flag": "🇻🇨",
     "name_ru": "Сент-Винсент и Гренадины",
     "capital_ru": "Kingstown",
     "area_km2": 389,
@@ -1002,6 +1145,7 @@
   },
   {
     "iso2": "KN",
+    "flag": "🇰🇳",
     "name_ru": "Сент-Китс и Невис",
     "capital_ru": "Basseterre",
     "area_km2": 261,
@@ -1009,6 +1153,7 @@
   },
   {
     "iso2": "LC",
+    "flag": "🇱🇨",
     "name_ru": "Сент-Люсия",
     "capital_ru": "Castries",
     "area_km2": 616,
@@ -1016,6 +1161,7 @@
   },
   {
     "iso2": "RS",
+    "flag": "🇷🇸",
     "name_ru": "Сербия",
     "capital_ru": "Belgrade",
     "area_km2": 88361,
@@ -1023,6 +1169,7 @@
   },
   {
     "iso2": "SG",
+    "flag": "🇸🇬",
     "name_ru": "Сингапур",
     "capital_ru": "Singapore",
     "area_km2": 710,
@@ -1030,6 +1177,7 @@
   },
   {
     "iso2": "SY",
+    "flag": "🇸🇾",
     "name_ru": "Сирия",
     "capital_ru": "Damascus",
     "area_km2": 185180,
@@ -1037,6 +1185,7 @@
   },
   {
     "iso2": "SK",
+    "flag": "🇸🇰",
     "name_ru": "Словакия",
     "capital_ru": "Bratislava",
     "area_km2": 49037,
@@ -1044,6 +1193,7 @@
   },
   {
     "iso2": "SI",
+    "flag": "🇸🇮",
     "name_ru": "Словения",
     "capital_ru": "Ljubljana",
     "area_km2": 20273,
@@ -1051,6 +1201,7 @@
   },
   {
     "iso2": "US",
+    "flag": "🇺🇸",
     "name_ru": "Соединённые Штаты Америки",
     "capital_ru": "Washington D.C.",
     "area_km2": 9372610,
@@ -1058,6 +1209,7 @@
   },
   {
     "iso2": "SB",
+    "flag": "🇸🇧",
     "name_ru": "Соломоновы Острова",
     "capital_ru": "Honiara",
     "area_km2": 28896,
@@ -1065,6 +1217,7 @@
   },
   {
     "iso2": "SO",
+    "flag": "🇸🇴",
     "name_ru": "Сомали",
     "capital_ru": "Mogadishu",
     "area_km2": 637657,
@@ -1072,6 +1225,7 @@
   },
   {
     "iso2": "SD",
+    "flag": "🇸🇩",
     "name_ru": "Судан",
     "capital_ru": "Khartoum",
     "area_km2": 1886068,
@@ -1079,6 +1233,7 @@
   },
   {
     "iso2": "SR",
+    "flag": "🇸🇷",
     "name_ru": "Суринам",
     "capital_ru": "Paramaribo",
     "area_km2": 163820,
@@ -1086,6 +1241,7 @@
   },
   {
     "iso2": "SL",
+    "flag": "🇸🇱",
     "name_ru": "Сьерра-Леоне",
     "capital_ru": "Freetown",
     "area_km2": 71740,
@@ -1093,6 +1249,7 @@
   },
   {
     "iso2": "TJ",
+    "flag": "🇹🇯",
     "name_ru": "Таджикистан",
     "capital_ru": "Dushanbe",
     "area_km2": 143100,
@@ -1100,6 +1257,7 @@
   },
   {
     "iso2": "TH",
+    "flag": "🇹🇭",
     "name_ru": "Таиланд",
     "capital_ru": "Bangkok",
     "area_km2": 513120,
@@ -1107,6 +1265,7 @@
   },
   {
     "iso2": "TZ",
+    "flag": "🇹🇿",
     "name_ru": "Танзания",
     "capital_ru": "Dodoma",
     "area_km2": 945087,
@@ -1114,6 +1273,7 @@
   },
   {
     "iso2": "TG",
+    "flag": "🇹🇬",
     "name_ru": "Того",
     "capital_ru": "Lomé",
     "area_km2": 56785,
@@ -1121,6 +1281,7 @@
   },
   {
     "iso2": "TO",
+    "flag": "🇹🇴",
     "name_ru": "Тонга",
     "capital_ru": "Nuku'alofa",
     "area_km2": 747,
@@ -1128,6 +1289,7 @@
   },
   {
     "iso2": "TT",
+    "flag": "🇹🇹",
     "name_ru": "Тринидад и Тобаго",
     "capital_ru": "Port of Spain",
     "area_km2": 5130,
@@ -1135,6 +1297,7 @@
   },
   {
     "iso2": "TV",
+    "flag": "🇹🇻",
     "name_ru": "Тувалу",
     "capital_ru": "Funafuti",
     "area_km2": 26,
@@ -1142,6 +1305,7 @@
   },
   {
     "iso2": "TN",
+    "flag": "🇹🇳",
     "name_ru": "Тунис",
     "capital_ru": "Tunis",
     "area_km2": 163610,
@@ -1149,6 +1313,7 @@
   },
   {
     "iso2": "TM",
+    "flag": "🇹🇲",
     "name_ru": "Туркмения",
     "capital_ru": "Ashgabat",
     "area_km2": 488100,
@@ -1156,6 +1321,7 @@
   },
   {
     "iso2": "TR",
+    "flag": "🇹🇷",
     "name_ru": "Турция",
     "capital_ru": "Ankara",
     "area_km2": 783562,
@@ -1163,6 +1329,7 @@
   },
   {
     "iso2": "UG",
+    "flag": "🇺🇬",
     "name_ru": "Уганда",
     "capital_ru": "Kampala",
     "area_km2": 241550,
@@ -1170,6 +1337,7 @@
   },
   {
     "iso2": "UZ",
+    "flag": "🇺🇿",
     "name_ru": "Узбекистан",
     "capital_ru": "Tashkent",
     "area_km2": 447400,
@@ -1177,6 +1345,7 @@
   },
   {
     "iso2": "UA",
+    "flag": "🇺🇦",
     "name_ru": "Украина",
     "capital_ru": "Kyiv",
     "area_km2": 603500,
@@ -1184,6 +1353,7 @@
   },
   {
     "iso2": "UY",
+    "flag": "🇺🇾",
     "name_ru": "Уругвай",
     "capital_ru": "Montevideo",
     "area_km2": 181034,
@@ -1191,6 +1361,7 @@
   },
   {
     "iso2": "FM",
+    "flag": "🇫🇲",
     "name_ru": "Федеративные Штаты Микронезии",
     "capital_ru": "Palikir",
     "area_km2": 702,
@@ -1198,6 +1369,7 @@
   },
   {
     "iso2": "FJ",
+    "flag": "🇫🇯",
     "name_ru": "Фиджи",
     "capital_ru": "Suva",
     "area_km2": 18272,
@@ -1205,6 +1377,7 @@
   },
   {
     "iso2": "PH",
+    "flag": "🇵🇭",
     "name_ru": "Филиппины",
     "capital_ru": "Manila",
     "area_km2": 342353,
@@ -1212,6 +1385,7 @@
   },
   {
     "iso2": "FI",
+    "flag": "🇫🇮",
     "name_ru": "Финляндия",
     "capital_ru": "Helsinki",
     "area_km2": 338424,
@@ -1219,6 +1393,7 @@
   },
   {
     "iso2": "FR",
+    "flag": "🇫🇷",
     "name_ru": "Франция",
     "capital_ru": "Paris",
     "area_km2": 551695,
@@ -1226,6 +1401,7 @@
   },
   {
     "iso2": "HR",
+    "flag": "🇭🇷",
     "name_ru": "Хорватия",
     "capital_ru": "Zagreb",
     "area_km2": 56594,
@@ -1233,6 +1409,7 @@
   },
   {
     "iso2": "CF",
+    "flag": "🇨🇫",
     "name_ru": "Центральноафриканская Республика",
     "capital_ru": "Bangui",
     "area_km2": 622984,
@@ -1240,6 +1417,7 @@
   },
   {
     "iso2": "TD",
+    "flag": "🇹🇩",
     "name_ru": "Чад",
     "capital_ru": "N'Djamena",
     "area_km2": 1284000,
@@ -1247,6 +1425,7 @@
   },
   {
     "iso2": "ME",
+    "flag": "🇲🇪",
     "name_ru": "Черногория",
     "capital_ru": "Podgorica",
     "area_km2": 13812,
@@ -1254,6 +1433,7 @@
   },
   {
     "iso2": "CZ",
+    "flag": "🇨🇿",
     "name_ru": "Чехия",
     "capital_ru": "Prague",
     "area_km2": 78865,
@@ -1261,6 +1441,7 @@
   },
   {
     "iso2": "CL",
+    "flag": "🇨🇱",
     "name_ru": "Чили",
     "capital_ru": "Santiago",
     "area_km2": 756102,
@@ -1268,6 +1449,7 @@
   },
   {
     "iso2": "CH",
+    "flag": "🇨🇭",
     "name_ru": "Швейцария",
     "capital_ru": "Bern",
     "area_km2": 41284,
@@ -1275,6 +1457,7 @@
   },
   {
     "iso2": "SE",
+    "flag": "🇸🇪",
     "name_ru": "Швеция",
     "capital_ru": "Stockholm",
     "area_km2": 450295,
@@ -1282,6 +1465,7 @@
   },
   {
     "iso2": "LK",
+    "flag": "🇱🇰",
     "name_ru": "Шри-Ланка",
     "capital_ru": "Colombo",
     "area_km2": 65610,
@@ -1289,6 +1473,7 @@
   },
   {
     "iso2": "EC",
+    "flag": "🇪🇨",
     "name_ru": "Эквадор",
     "capital_ru": "Quito",
     "area_km2": 276841,
@@ -1296,6 +1481,7 @@
   },
   {
     "iso2": "GQ",
+    "flag": "🇬🇶",
     "name_ru": "Экваториальная Гвинея",
     "capital_ru": "Malabo",
     "area_km2": 28051,
@@ -1303,6 +1489,7 @@
   },
   {
     "iso2": "ER",
+    "flag": "🇪🇷",
     "name_ru": "Эритрея",
     "capital_ru": "Asmara",
     "area_km2": 117600,
@@ -1310,6 +1497,7 @@
   },
   {
     "iso2": "EE",
+    "flag": "🇪🇪",
     "name_ru": "Эстония",
     "capital_ru": "Tallinn",
     "area_km2": 45227,
@@ -1317,6 +1505,7 @@
   },
   {
     "iso2": "ET",
+    "flag": "🇪🇹",
     "name_ru": "Эфиопия",
     "capital_ru": "Addis Ababa",
     "area_km2": 1104300,
@@ -1324,6 +1513,7 @@
   },
   {
     "iso2": "KR",
+    "flag": "🇰🇷",
     "name_ru": "Южная Корея",
     "capital_ru": "Seoul",
     "area_km2": 100210,
@@ -1331,6 +1521,7 @@
   },
   {
     "iso2": "ZA",
+    "flag": "🇿🇦",
     "name_ru": "Южно-Африканская Республика",
     "capital_ru": "Pretoria",
     "area_km2": 1221037,
@@ -1338,6 +1529,7 @@
   },
   {
     "iso2": "SS",
+    "flag": "🇸🇸",
     "name_ru": "Южный Судан",
     "capital_ru": "Juba",
     "area_km2": 619745,
@@ -1345,6 +1537,7 @@
   },
   {
     "iso2": "JM",
+    "flag": "🇯🇲",
     "name_ru": "Ямайка",
     "capital_ru": "Kingston",
     "area_km2": 10991,
@@ -1352,6 +1545,7 @@
   },
   {
     "iso2": "JP",
+    "flag": "🇯🇵",
     "name_ru": "Япония",
     "capital_ru": "Tokyo",
     "area_km2": 377930,

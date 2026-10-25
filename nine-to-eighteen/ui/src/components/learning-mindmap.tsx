@@ -6,7 +6,6 @@ import {
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
-  type WheelEvent as ReactWheelEvent,
 } from 'react'
 import { AnkiStudy } from '@/components/anki-study'
 import { MnemonicStudy } from '@/components/mnemonic-study'
@@ -917,24 +916,41 @@ export function LearningMindmap({ root, branchCount, nodeCount }: LearningMindma
     }
   }
 
-  const onWheel = (event: ReactWheelEvent<HTMLDivElement>) => {
-    event.preventDefault()
+  const zoomRef = useRef(zoom)
+  const panRef = useRef(pan)
+  zoomRef.current = zoom
+  panRef.current = pan
+
+  useEffect(() => {
     const viewport = viewportRef.current
     if (!viewport) {
       return
     }
-    const rect = viewport.getBoundingClientRect()
-    const mouseX = event.clientX - rect.left
-    const mouseY = event.clientY - rect.top
-    const delta = event.deltaY > 0 ? 0.9 : 1.1
-    const nextZoom = clamp(zoom * delta, MIN_ZOOM, MAX_ZOOM)
-    const scale = nextZoom / zoom
-    setPan({
-      x: mouseX - (mouseX - pan.x) * scale,
-      y: mouseY - (mouseY - pan.y) * scale,
-    })
-    setZoom(nextZoom)
-  }
+    const onWheel = (event: WheelEvent) => {
+      event.preventDefault()
+      const rect = viewport.getBoundingClientRect()
+      const mouseX = event.clientX - rect.left
+      const mouseY = event.clientY - rect.top
+      const currentZoom = zoomRef.current
+      const currentPan = panRef.current
+      const delta = event.deltaY > 0 ? 0.9 : 1.1
+      const nextZoom = clamp(currentZoom * delta, MIN_ZOOM, MAX_ZOOM)
+      if (nextZoom === currentZoom) {
+        return
+      }
+      const scale = nextZoom / currentZoom
+      const nextPan = {
+        x: mouseX - (mouseX - currentPan.x) * scale,
+        y: mouseY - (mouseY - currentPan.y) * scale,
+      }
+      zoomRef.current = nextZoom
+      panRef.current = nextPan
+      setZoom(nextZoom)
+      setPan(nextPan)
+    }
+    viewport.addEventListener('wheel', onWheel, { passive: false })
+    return () => viewport.removeEventListener('wheel', onWheel)
+  }, [])
 
   const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) {
@@ -1304,7 +1320,6 @@ export function LearningMindmap({ root, branchCount, nodeCount }: LearningMindma
       <div
         ref={viewportRef}
         className="lm-viewport"
-        onWheel={onWheel}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}

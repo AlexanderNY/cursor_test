@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from unittest.mock import patch
+
+import pytest
 
 from services.game_engine import (
     BuildCountryQuizInput,
@@ -11,6 +15,7 @@ from services.game_engine import (
     format_country_card,
     format_int_ru,
     is_scored_mode_type,
+    iso2_to_flag_emoji,
 )
 
 
@@ -62,14 +67,22 @@ def test_format_int_ru() -> None:
     assert format_int_ru(42) == "42"
 
 
+def test_iso2_to_flag_emoji() -> None:
+    assert iso2_to_flag_emoji("ru") == "🇷🇺"
+    assert iso2_to_flag_emoji("AU") == "🇦🇺"
+    with pytest.raises(ValueError):
+        iso2_to_flag_emoji("RUS")
+
+
 def test_format_country_card() -> None:
     text = format_country_card(
         name_ru="Россия",
         capital_ru="Москва",
         area_km2=17_098_242,
         population=144_478_050,
+        flag="🇷🇺",
     )
-    assert "Россия" in text
+    assert text.startswith("🇷🇺 Россия")
     assert "Москва" in text
     assert "км²" in text
     assert "144 478 050" in text
@@ -85,6 +98,23 @@ def test_format_country_card_missing_facts() -> None:
     assert "Столица: —" in text
     assert "Площадь: —" in text
     assert "Население: —" in text
+
+
+def test_countries_json_each_has_flag() -> None:
+    path = Path(__file__).resolve().parents[1] / "data" / "countries.json"
+    rows = json.loads(path.read_text(encoding="utf-8"))
+    assert isinstance(rows, list) and rows
+
+    seen_iso: set[str] = set()
+    seen_flags: set[str] = set()
+    for row in rows:
+        iso2 = str(row["iso2"])
+        flag = str(row["flag"])
+        assert flag == iso2_to_flag_emoji(iso2)
+        assert iso2 not in seen_iso
+        assert flag not in seen_flags
+        seen_iso.add(iso2)
+        seen_flags.add(flag)
 
 
 def test_is_scored_mode_type() -> None:

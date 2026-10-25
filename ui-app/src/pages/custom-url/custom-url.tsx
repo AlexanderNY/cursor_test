@@ -1,5 +1,5 @@
 import { useState, FormEvent, useEffect, useMemo } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -7,9 +7,9 @@ import { Alert } from '@/components/ui/alert'
 import { PageHeader, PageContainer } from '@/components/ui'
 import { customURLService } from '@/services/custom-url-service'
 import { smmService } from '@/services/smm-service'
-import type { URLConfig, CustomURLSettings, UrlPostListItem } from '@/types/custom-url'
-import { formatDateTime } from '@/utils/date'
+import type { URLConfig, CustomURLSettings } from '@/types/custom-url'
 import { Switch } from '@/components/ui/switch'
+import { useBrand } from '@/contexts/brand-context'
 
 function generateId(): string {
   return crypto.randomUUID?.() || Math.random().toString(36).substring(2, 9)
@@ -73,8 +73,76 @@ function mapUrlFromApi(u: URLConfig): URLConfig {
   }
 }
 
+const LEGACY_TAB_REDIRECT: Record<string, string> = {
+  posts: '/analytics',
+  create: '/posts',
+  calendar: '/calendar?network=url',
+  profile: '/channels',
+  processing: '/channels',
+}
+
+function CustomUrlHubMap() {
+  const { selectedBrandId } = useBrand()
+  const calendarHref = selectedBrandId
+    ? `/calendar?brand=${selectedBrandId}&network=url`
+    : '/calendar?network=url'
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-lg">Brand → Channel</CardTitle>
+        <CardDescription>
+          Здесь список URL-источников. Потоки, очередь и картина по бренду — в общих разделах.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <ul className="grid gap-3 sm:grid-cols-2 text-sm">
+          <li>
+            <Link to="/analytics" className="text-primary-400 hover:underline font-medium">
+              Posts → Analytics
+            </Link>
+            <p className="text-[var(--text-muted)] mt-0.5">Собранные материалы смотрите в общей ленте.</p>
+          </li>
+          <li>
+            <Link to={calendarHref} className="text-primary-400 hover:underline font-medium">
+              Calendar → общий календарь
+            </Link>
+            <p className="text-[var(--text-muted)] mt-0.5">Расписание публикаций, фильтр network=url.</p>
+          </li>
+          <li>
+            <Link to="/channels" className="text-primary-400 hover:underline font-medium">
+              Profile Settings → Channels
+            </Link>
+            <p className="text-[var(--text-muted)] mt-0.5">
+              Канал network=URL и цели публикации — в карточке канала.
+            </p>
+          </li>
+          <li>
+            <Link to="/channels" className="text-primary-400 hover:underline font-medium">
+              Обработка → канал
+            </Link>
+            <p className="text-[var(--text-muted)] mt-0.5">Настроить → Обработка у конкретного источника.</p>
+          </li>
+        </ul>
+        <p className="mt-4 text-sm">
+          Создать пост:{' '}
+          <Link to="/posts" className="text-primary-400 hover:underline">
+            Posts
+          </Link>
+          {' · '}
+          очередь:{' '}
+          <Link to="/inbox" className="text-primary-400 hover:underline">
+            Inbox
+          </Link>
+        </p>
+      </CardContent>
+    </Card>
+  )
+}
+
 export function CustomURLPage() {
-  const [activeTab, setActiveTab] = useState<'urlSettings' | 'posts'>('urlSettings')
+  const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const [collectEnabled, setCollectEnabled] = useState(false)
   const [urlConfigs, setUrlConfigs] = useState<URLConfig[]>([defaultUrlConfig()])
 
@@ -82,10 +150,6 @@ export function CustomURLPage() {
   const [isLoadingSettings, setIsLoadingSettings] = useState(true)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
-
-  const [posts, setPosts] = useState<UrlPostListItem[]>([])
-  const [isLoadingPosts, setIsLoadingPosts] = useState(false)
-  const [hasLoadedPosts, setHasLoadedPosts] = useState(false)
   const [urlChannelByExternalId, setUrlChannelByExternalId] = useState<Record<string, number>>({})
 
   useEffect(() => {
@@ -124,23 +188,11 @@ export function CustomURLPage() {
   )
 
   useEffect(() => {
-    if (activeTab === 'posts' && !hasLoadedPosts) {
-      loadPosts()
+    const legacyTab = searchParams.get('tab')
+    if (legacyTab && LEGACY_TAB_REDIRECT[legacyTab]) {
+      navigate(LEGACY_TAB_REDIRECT[legacyTab], { replace: true })
     }
-  }, [activeTab, hasLoadedPosts])
-
-  async function loadPosts() {
-    setIsLoadingPosts(true)
-    try {
-      const data = await customURLService.getPosts()
-      setPosts(data)
-      setHasLoadedPosts(true)
-    } catch (err) {
-      console.error('Failed to load url posts:', err)
-    } finally {
-      setIsLoadingPosts(false)
-    }
-  }
+  }, [searchParams, navigate])
 
   function addUrlConfig() {
     setUrlConfigs([...urlConfigs, defaultUrlConfig()])
@@ -215,18 +267,13 @@ export function CustomURLPage() {
     <PageContainer>
       <PageHeader
         title="Custom URL"
-        description="Credentials и диагностика URL-источников. Основной стол — Channels."
+        description="Список URL-источников. Потоки настраиваются в Channels."
       />
-      <p className="mb-4 text-sm flex flex-wrap gap-3">
-        <Link to="/channels" className="text-primary-400 hover:underline">
-          Channels → добавить / настроить URL source
-        </Link>
-        {linkedChannelCount > 0 && (
-          <span className="text-[var(--text-muted)]">
-            Связано с каналами бренда: {linkedChannelCount}
-          </span>
-        )}
-      </p>
+      {linkedChannelCount > 0 && (
+        <p className="mb-4 text-sm text-[var(--text-muted)]">
+          Связано с каналами бренда: {linkedChannelCount}
+        </p>
+      )}
 
       {error && (
         <Alert variant="error" className="animate-slide-down">
@@ -239,31 +286,9 @@ export function CustomURLPage() {
         </Alert>
       )}
 
-      <div className="flex border-b border-[var(--border-color)]">
-        <button
-          type="button"
-          className={`px-6 py-3 text-sm font-medium transition-all relative ${
-            activeTab === 'urlSettings' ? 'text-primary-400' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-          }`}
-          onClick={() => setActiveTab('urlSettings')}
-        >
-          Настройки URL
-          {activeTab === 'urlSettings' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-500" />}
-        </button>
-        <button
-          type="button"
-          className={`px-6 py-3 text-sm font-medium transition-all relative ${
-            activeTab === 'posts' ? 'text-primary-400' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-          }`}
-          onClick={() => setActiveTab('posts')}
-        >
-          Posts
-          {activeTab === 'posts' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-500" />}
-        </button>
-      </div>
+      <CustomUrlHubMap />
 
-      {activeTab === 'urlSettings' && (
-        <form onSubmit={handleSaveSettings}>
+      <form onSubmit={handleSaveSettings} className="mt-4">
           <Card className="animate-slide-up">
             <CardHeader>
               <CardTitle>Custom URL Settings</CardTitle>
@@ -415,86 +440,6 @@ export function CustomURLPage() {
             </CardFooter>
           </Card>
         </form>
-      )}
-
-      {activeTab === 'posts' && (
-        <Card className="animate-slide-up">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <div>
-              <CardTitle className="flex items-center gap-2 text-xl">
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="h-5 w-5 text-primary-400"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M4 6h16M4 10h16M4 14h10"
-                  />
-                </svg>
-                Posts
-              </CardTitle>
-              <CardDescription>Собранные посты из настроенных URL (таблица url_posts)</CardDescription>
-            </div>
-            <Button type="button" variant="secondary" size="sm" onClick={loadPosts} disabled={isLoadingPosts}>
-              Refresh
-            </Button>
-          </CardHeader>
-          <CardContent>
-            {isLoadingPosts && posts.length === 0 && (
-              <div className="text-center py-8 text-[var(--text-muted)]">Loading posts...</div>
-            )}
-            {!isLoadingPosts && posts.length === 0 && hasLoadedPosts && (
-              <div className="text-center py-8 text-[var(--text-muted)]">No posts collected yet.</div>
-            )}
-            {!isLoadingPosts && posts.length > 0 && (
-              <div className="overflow-x-auto">
-                <table className="min-w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-[var(--border-color)] text-left text-[var(--text-secondary)]">
-                      <th className="py-2 pr-4 font-medium">URL</th>
-                      <th className="py-2 pr-4 font-medium">Text</th>
-                      <th className="py-2 pr-4 font-medium">Images</th>
-                      <th className="py-2 pr-4 font-medium">Status</th>
-                      <th className="py-2 pr-4 font-medium">Created</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {posts.map((post, index) => (
-                      <tr
-                        key={post.id ?? index}
-                        className="border-b border-[var(--border-color)] last:border-0"
-                      >
-                        <td className="py-2 pr-4 text-[var(--text-primary)]">
-                          <div className="max-w-xs truncate" title={post.url ?? ''}>
-                            {post.url || '—'}
-                          </div>
-                        </td>
-                        <td className="py-2 pr-4 text-[var(--text-primary)]">
-                          <div className="max-w-md truncate" title={post.post_text ?? ''}>
-                            {post.post_text || '—'}
-                          </div>
-                        </td>
-                        <td className="py-2 pr-4 text-[var(--text-secondary)]">
-                          {Array.isArray(post.images) ? post.images.length : 0}
-                        </td>
-                        <td className="py-2 pr-4 text-[var(--text-secondary)]">{post.status}</td>
-                        <td className="py-2 pr-4 text-[var(--text-secondary)] whitespace-nowrap">
-                          {post.created_at ? formatDateTime(post.created_at) : '—'}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
     </PageContainer>
   )
 }

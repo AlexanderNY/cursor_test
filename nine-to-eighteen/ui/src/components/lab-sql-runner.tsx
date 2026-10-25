@@ -5,6 +5,7 @@ import {
   formatSqlRunChannels,
   runSqlInSandbox,
 } from '@/game/sql/sandbox-sqlite'
+import { schemaForFreeSql } from '@/game/sql/schemas'
 import {
   sqlTasksForLearnEpisode,
   type SqlTask,
@@ -61,7 +62,10 @@ export function LabSqlRunner({ labMarkdown, episode }: LabSqlRunnerProps) {
   async function runBlock(index: number) {
     setBusyIndex(index)
     try {
-      const run = await runSqlInSandbox(blocks[index])
+      const run = await runSqlInSandbox(
+        blocks[index],
+        schemaForFreeSql(blocks[index]),
+      )
       setOutputs((prev) => ({
         ...prev,
         [index]: formatSqlRunChannels(run),

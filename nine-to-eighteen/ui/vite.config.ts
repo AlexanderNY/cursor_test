@@ -4,6 +4,11 @@ import path from 'path'
 
 export default defineConfig({
   plugins: [react()],
+  // Workers dynamic-import pyodide / sql.js, which code-splits. IIFE cannot
+  // emit multiple chunks; both workers are already constructed as modules.
+  worker: {
+    format: 'es',
+  },
   optimizeDeps: {
     exclude: ['pyodide', 'sql.js'],
   },

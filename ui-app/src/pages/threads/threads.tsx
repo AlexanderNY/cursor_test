@@ -1,6 +1,6 @@
 import { useState, FormEvent, useEffect, useCallback } from 'react'
 import { Link, useSearchParams, useNavigate } from 'react-router-dom'
-import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card'
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
@@ -19,8 +19,6 @@ import type {
   ThreadsSeleniumAttemptResult,
   ThreadsSeleniumSessionRow,
 } from '@/types/threads'
-import { Switch } from '@/components/ui/switch'
-
 const AUTH_STATUS_POLL_INTERVAL_MS = 15_000
 
 function generateId(): string {
@@ -33,6 +31,7 @@ const LEGACY_TAB_REDIRECT: Record<string, string> = {
   calendar: '/calendar?network=threads',
   profile: '/channels',
   processing: '/channels',
+  session: '/channels',
 }
 
 function ThreadsHubMap() {
@@ -77,10 +76,10 @@ function ThreadsHubMap() {
           </li>
           <li>
             <Link to="/channels" className="text-primary-400 hover:underline font-medium">
-              Чтение каналов
+              Обработка → канал
             </Link>
             <p className="text-[var(--text-muted)] mt-0.5">
-              th-bot: threads.net/@handle (браузер) или свои посты через OAuth API.
+              Настроить → Обработка у конкретного канала.
             </p>
           </li>
         </ul>
@@ -106,7 +105,6 @@ export function ThreadsPage() {
   const canAuth = canManagePlatformAuth(user?.role_in_group, hasTeam)
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
-  const [activeTab, setActiveTab] = useState<'auth' | 'session'>('auth')
 
   const [authStatus, setAuthStatus] = useState<ThreadsAuthStatus | null>(null)
   const [instagramHandle, setInstagramHandle] = useState('')
@@ -130,7 +128,6 @@ export function ThreadsPage() {
   ])
 
   const [isLoadingProfile, setIsLoadingProfile] = useState(true)
-  const [isSavingProfile, setIsSavingProfile] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
 
@@ -200,7 +197,6 @@ export function ThreadsPage() {
       return
     }
     if (searchParams.get('auth') === '1') {
-      setActiveTab('auth')
       searchParams.delete('auth')
       setSearchParams(searchParams, { replace: true })
     }
@@ -228,10 +224,9 @@ export function ThreadsPage() {
   }, [user?.id, loadAuthStatus])
 
   useEffect(() => {
-    if (activeTab === 'auth' && user?.id) {
-      void loadSeleniumLastSession()
-    }
-  }, [activeTab, user?.id, loadSeleniumLastSession])
+    if (!user?.id) return
+    void loadSeleniumLastSession()
+  }, [user?.id, loadSeleniumLastSession])
 
   function buildConfigPayload(): ThreadsConfig {
     const payload: ThreadsConfig = {
@@ -270,24 +265,6 @@ export function ThreadsPage() {
       setError(getErrorMessage(err))
     } finally {
       setIsSavingAuthHandle(false)
-    }
-  }
-
-  async function handleSaveSession(e: FormEvent) {
-    e.preventDefault()
-    setError('')
-    setSuccess('')
-    setIsSavingProfile(true)
-    try {
-      await threadsService.saveConfig(buildConfigPayload())
-      setSuccess('Session settings saved')
-      setMetaPassword('')
-      await loadProfile()
-      await threadsService.reloadBot()
-    } catch (err) {
-      setError(getErrorMessage(err))
-    } finally {
-      setIsSavingProfile(false)
     }
   }
 
@@ -363,40 +340,7 @@ export function ThreadsPage() {
         </Alert>
       )}
 
-      <div className="flex border-b border-[var(--border-color)] mt-4">
-        {canAuth && (
-          <button
-            type="button"
-            className={`px-6 py-3 text-sm font-medium transition-all relative ${
-              activeTab === 'auth'
-                ? 'text-primary-400'
-                : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-            }`}
-            onClick={() => setActiveTab('auth')}
-          >
-            Авторизация
-            {activeTab === 'auth' && (
-              <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-500" />
-            )}
-          </button>
-        )}
-        <button
-          type="button"
-          className={`px-6 py-3 text-sm font-medium transition-all relative ${
-            activeTab === 'session'
-              ? 'text-primary-400'
-              : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-          }`}
-          onClick={() => setActiveTab('session')}
-        >
-          Session
-          {activeTab === 'session' && (
-            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-500" />
-          )}
-        </button>
-      </div>
-
-      {activeTab === 'auth' && canAuth && (
+      {canAuth ? (
         <Card className="animate-slide-up mt-4">
           <CardHeader>
             <CardTitle>Авторизация</CardTitle>
@@ -548,108 +492,13 @@ export function ThreadsPage() {
             )}
           </CardContent>
         </Card>
-      )}
-
-      {activeTab === 'session' && (
-        <Card className="animate-slide-up mt-4">
-          <CardHeader>
-            <CardTitle>Session</CardTitle>
-            <CardDescription>
-              Publish / legacy collect. Источники brand — в{' '}
-              <Link to="/channels" className="text-primary-400 hover:underline">
-                Channels
-              </Link>
-              .
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {isLoadingProfile ? (
-              <div className="text-center py-8 text-[var(--text-muted)]">Loading...</div>
-            ) : (
-              <form onSubmit={handleSaveSession} className="space-y-6">
-                <label className="flex items-center gap-3 cursor-pointer">
-                  <Switch
-                    checked={publishEnabled}
-                    onChange={(e) => setPublishEnabled(e.target.checked)}
-                  />
-                  <span>Enable publishing (нужен OAuth)</span>
-                </label>
-                <label className="flex items-center gap-3 cursor-pointer">
-                  <Switch
-                    checked={collectEnabled}
-                    onChange={(e) => setCollectEnabled(e.target.checked)}
-                  />
-                  <span>Legacy: собирать свои посты через API (если нет brand-каналов)</span>
-                </label>
-                <label className="flex items-center gap-3 cursor-pointer">
-                  <Switch
-                    checked={takeScreenshotCollect}
-                    onChange={(e) => setTakeScreenshotCollect(e.target.checked)}
-                  />
-                  <span>Screenshot posts when collecting (browser)</span>
-                </label>
-
-                <div className="space-y-3 pt-4 border-t border-[var(--border-color)]">
-                  <p className="text-sm font-medium text-[var(--text-secondary)]">Schedule (legacy)</p>
-                  <label className="flex items-center gap-3 cursor-pointer">
-                    <input
-                      type="radio"
-                      checked={publishScheduleType === 'on_new_messages'}
-                      onChange={() => setPublishScheduleType('on_new_messages')}
-                    />
-                    Immediate
-                  </label>
-                  <label className="flex items-center gap-3 cursor-pointer">
-                    <input
-                      type="radio"
-                      checked={publishScheduleType === 'by_intervals'}
-                      onChange={() => setPublishScheduleType('by_intervals')}
-                    />
-                    By intervals
-                  </label>
-                  {publishScheduleType === 'by_intervals' && (
-                    <div className="space-y-2">
-                      {timeIntervals.map((interval, index) => (
-                        <div key={interval.id} className="flex gap-3 items-end">
-                          <Input
-                            label={`Start ${index + 1}`}
-                            type="time"
-                            value={interval.start}
-                            onChange={(e) =>
-                              setTimeIntervals((prev) =>
-                                prev.map((row) =>
-                                  row.id === interval.id ? { ...row, start: e.target.value } : row
-                                )
-                              )
-                            }
-                          />
-                          <Input
-                            label="End"
-                            type="time"
-                            value={interval.end}
-                            onChange={(e) =>
-                              setTimeIntervals((prev) =>
-                                prev.map((row) =>
-                                  row.id === interval.id ? { ...row, end: e.target.value } : row
-                                )
-                              )
-                            }
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                <CardFooter className="px-0">
-                  <Button type="submit" isLoading={isSavingProfile}>
-                    Save session settings
-                  </Button>
-                </CardFooter>
-              </form>
-            )}
-          </CardContent>
-        </Card>
+      ) : (
+        <Alert variant="info" className="mt-4">
+          Подключать Threads может владелец или админ команды.{' '}
+          <Link to="/channels" className="underline">
+            К каналам
+          </Link>
+        </Alert>
       )}
     </PageContainer>
   )

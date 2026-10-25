@@ -13,6 +13,7 @@ from services.game_engine import (
     build_country_quiz_rounds,
     build_training_order,
     format_country_card,
+    iso2_to_flag_emoji,
 )
 from services.game_repository import GameCountryRow, GameModeRow, game_repository
 from services.media_storage import extract_media_filename, fetch_media_bytes
@@ -160,11 +161,18 @@ async def _send_training_card(bot, chat_id: int, session_id: int, step: int) -> 
         await bot.send_message(chat_id, "Ошибка загрузки страны.")
         return
 
+    try:
+        flag = iso2_to_flag_emoji(country.iso2)
+    except ValueError:
+        logger.warning("Country %s has invalid iso2=%r", country.id, country.iso2)
+        flag = ""
+
     caption = format_country_card(
         name_ru=country.name_ru,
         capital_ru=country.capital_ru,
         area_km2=country.area_km2,
         population=country.population,
+        flag=flag,
     )
     kb = _training_keyboard(session_id, step)
 

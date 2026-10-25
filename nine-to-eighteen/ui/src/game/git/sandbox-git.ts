@@ -40,6 +40,8 @@ export type GitState = {
   head: { type: 'branch'; name: string } | { type: 'detached'; hash: string }
   remotes: Record<string, GitRemote>
   stash: GitStashEntry[]
+  /** Last entry removed by stash pop, so a following apply still has something to restore. */
+  lastPopped: GitStashEntry | null
   tags: GitTag[]
   config: Record<string, string>
   /** bisect session */
@@ -106,6 +108,7 @@ export function createEmptyState(): GitState {
     head: { type: 'branch', name: 'main' },
     remotes: {},
     stash: [],
+    lastPopped: null,
     tags: [],
     config: {
       'user.name': '9to18',
@@ -143,6 +146,13 @@ export function cloneState(state: GitState): GitState {
       workTree: cloneRecord(entry.workTree),
       index: cloneRecord(entry.index),
     })),
+    lastPopped: state.lastPopped
+      ? {
+          ...state.lastPopped,
+          workTree: cloneRecord(state.lastPopped.workTree),
+          index: cloneRecord(state.lastPopped.index),
+        }
+      : null,
     tags: state.tags.map((tag) => ({ ...tag })),
     config: cloneRecord(state.config),
     bisect: state.bisect
@@ -194,8 +204,25 @@ function headCommit(state: GitState): GitCommit | null {
 
 function requireInit(state: GitState): void {
   if (!state.initialized) {
-    throw new Error('not a git repository (run git init)')
+    throw new Error('fatal: not a git repository (run git init)')
   }
+}
+
+function stripInlineComment(line: string): string {
+  let quote: '"' | "'" | null = null
+  for (let i = 0; i < line.length; i += 1) {
+    const ch = line[i]
+    if (quote) {
+      if (ch === quote) quote = null
+      continue
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch
+      continue
+    }
+    if (ch === '#') return line.slice(0, i).trim()
+  }
+  return line.trim()
 }
 
 function parseArgs(line: string): string[] {
@@ -506,6 +533,14 @@ function runGitCommand(state: GitState, args: string[]): string {
     return `[${state.head.type === 'branch' ? state.head.name : 'detached'} ${commit.hash.slice(0, 7)}] ${message}`
   }
 
+  if (cmd === 'diff') {
+    const staged = args.includes('--staged') || args.includes('--cached')
+    const head = headCommit(state)
+    const before = staged ? head?.tree || {} : state.index
+    const after = staged ? state.index : state.workTree
+    return formatDiff(before, after)
+  }
+
   if (cmd === 'log') {
     const oneline = args.includes('--oneline')
     let cur = headHash(state)
@@ -526,11 +561,16 @@ function runGitCommand(state: GitState, args: string[]): string {
   }
 
   if (cmd === 'show') {
-    const ref = args[1] || headHash(state) || ''
-    const commit = state.commits[ref] || state.commits[headHash(state) || '']
+    const raw = args[1]
+    const hash = resolveShowRef(state, raw)
+    const commit = hash ? state.commits[hash] : null
     if (!commit) throw new Error('unknown revision')
     const files = Object.keys(commit.tree).sort().join('\n')
-    return `commit ${commit.hash}\n\n    ${commit.message}\n\nFiles:\n${files}`
+    const note =
+      raw && /^<[^>]+>$/.test(raw)
+        ? `(placeholder ${raw} → HEAD)\n`
+        : ''
+    return `${note}commit ${commit.hash}\n\n    ${commit.message}\n\nFiles:\n${files}`
   }
 
   if (cmd === 'branch') {
@@ -705,20 +745,29 @@ function runGitCommand(state: GitState, args: string[]): string {
         .join('\n')
     }
     if (sub === 'drop') {
-      if (!state.stash.length) throw new Error('No stash entries found.')
+      if (!state.stash.length) return 'No stash entries found.'
       state.stash.shift()
       return 'Dropped refs/stash@{0}'
     }
     if (sub === 'clear') {
       state.stash = []
+      state.lastPopped = null
       return ''
     }
     if (sub === 'pop' || sub === 'apply') {
-      if (!state.stash.length) throw new Error('No stash entries found.')
-      const entry = state.stash[0]
+      const entry = state.stash[0] || (sub === 'apply' ? state.lastPopped : null)
+      if (!entry) throw new Error('No stash entries found.')
       state.workTree = { ...state.workTree, ...entry.workTree }
       state.index = { ...state.index, ...entry.index }
-      if (sub === 'pop') state.stash.shift()
+      if (sub === 'pop') {
+        state.lastPopped = {
+          message: entry.message,
+          workTree: cloneRecord(entry.workTree),
+          index: cloneRecord(entry.index),
+          headHash: entry.headHash,
+        }
+        if (state.stash.length) state.stash.shift()
+      }
       return 'On branch ...\nChanges not staged for commit:\n  (use git add ...)\nDropped refs/stash@{0} (pop)'.replace(
         '(pop)',
         sub === 'pop' ? '' : '(kept)',
@@ -775,6 +824,9 @@ function runGitCommand(state: GitState, args: string[]): string {
   }
 
   if (cmd === 'rebase') {
+    if (args.includes('-i') || args.includes('--interactive')) {
+      return 'interactive rebase is not simulated (use git rebase <branch>)'
+    }
     const onto = args[1]
     if (!onto) throw new Error('branch required')
     const ontoHash = state.branches[onto]
@@ -842,23 +894,48 @@ function runGitCommand(state: GitState, args: string[]): string {
     const hash = headHash(state)
     if (!hash) throw new Error('no commits')
     if (!name) throw new Error('tag name required')
-    if (state.tags.some((t) => t.name === name)) {
-      throw new Error(`tag '${name}' already exists`)
+    const existing = state.tags.find((tag) => tag.name === name)
+    if (existing) {
+      if (!annotated) throw new Error(`tag '${name}' already exists`)
+      existing.hash = hash
+      existing.annotated = true
+      existing.message = message
+      return ''
     }
     state.tags.push({ name, hash, annotated, message })
     return ''
   }
 
   if (cmd === 'config') {
-    if (args[1] === '--get' || (args.length === 2 && !args[1].includes('='))) {
-      const key = args[1] === '--get' ? args[2] : args[1]
+    const flags = new Set(['--local', '--global', '--system'])
+    const rest = args.slice(1).filter((arg) => !flags.has(arg))
+    if (rest[0] === '--list' || rest.length === 0) {
+      return Object.entries(state.config)
+        .map(([key, value]) => `${key}=${value}`)
+        .join('\n')
+    }
+    if (rest[0] === '--get' || (rest.length === 1 && !rest[0].includes('='))) {
+      const key = rest[0] === '--get' ? rest[1] : rest[0]
       return state.config[key] || ''
     }
-    const key = args[1]
-    const value = args[2]
+    const key = rest[0]
+    const value = rest[1]
     if (!key || value === undefined) throw new Error('usage: git config <key> <value>')
     state.config[key] = value
     return ''
+  }
+
+  if (cmd === 'push') {
+    const positional = args.slice(1).filter((arg) => !arg.startsWith('-'))
+    const name = positional[0] || 'origin'
+    const remote = state.remotes[name]
+    if (!remote) throw new Error(`No such remote: ${name}`)
+    const ref = positional[1] || (state.head.type === 'branch' ? state.head.name : 'HEAD')
+    if (state.head.type === 'branch' && !positional[1]) {
+      const tip = state.branches[state.head.name]
+      if (tip) remote.branches[state.head.name] = tip
+    }
+    return `To ${remote.url}\n   ${ref} -> ${ref}`
   }
 
   if (cmd === 'bisect') {
@@ -875,7 +952,7 @@ function runGitCommand(state: GitState, args: string[]): string {
       return tryBisect(state)
     }
     if (sub === 'good') {
-      const hash = args[2] ? resolveRef(state, args[2]) : null
+      const hash = resolveBisectGood(state, args[2])
       if (!hash) throw new Error('good commit required')
       state.bisect.good = hash
       return tryBisect(state)
@@ -960,6 +1037,170 @@ function runHelper(state: GitState, args: string[]): string {
   throw new Error(`unknown helper ${cmd}`)
 }
 
+function formatDiff(
+  before: Record<string, string>,
+  after: Record<string, string>,
+): string {
+  const paths = [...new Set([...Object.keys(before), ...Object.keys(after)])].sort()
+  const chunks: string[] = []
+  for (const path of paths) {
+    const from = before[path]
+    const to = after[path]
+    if (from === to) continue
+    chunks.push(`diff --git a/${path} b/${path}`)
+    chunks.push(`--- a/${path}`)
+    chunks.push(`+++ b/${path}`)
+    chunks.push(`-${from ?? ''}`)
+    chunks.push(`+${to ?? ''}`)
+  }
+  return chunks.join('\n')
+}
+
+function resolveShowRef(state: GitState, raw: string | undefined): string | null {
+  if (!raw) return headHash(state)
+  const resolved = resolveRef(state, raw)
+  if (resolved) return resolved
+  if (/^<[^>]+>$/.test(raw)) return headHash(state)
+  return null
+}
+
+function resolveBisectGood(state: GitState, raw: string | undefined): string | null {
+  if (!raw) return null
+  const resolved = resolveRef(state, raw)
+  if (resolved) return resolved
+  if (/^<[^>]+>$/.test(raw)) return resolveRef(state, 'HEAD~1')
+  return null
+}
+
+function listedGitCommands(script: string): string[][] {
+  const commands: string[][] = []
+  for (const raw of script.split(/\r?\n/)) {
+    const line = stripInlineComment(raw)
+    if (!line || line.startsWith('#')) continue
+    const args = parseArgs(line)
+    if (args[0]?.toLowerCase() !== 'git') continue
+    commands.push(args.slice(1))
+  }
+  return commands
+}
+
+function commandName(args: string[]): string {
+  return (args[0] || '').toLowerCase()
+}
+
+/**
+ * Teaching repo for free-form scripts that call git without git init.
+ * Snippets from Learn assume a repository already exists.
+ */
+export function demoSeedForScript(script: string): string {
+  const commands = listedGitCommands(script)
+  if (!commands.length) return ''
+  const createsRepo = commands.some((args) => {
+    const name = commandName(args)
+    return name === 'init' || name === 'clone'
+  })
+  if (createsRepo) return ''
+
+  const flat = commands.map((args) => args.join(' '))
+  const addsRemote = commands.some(
+    (args) => commandName(args) === 'remote' && (args[1] || '').toLowerCase() === 'add',
+  )
+  const needsFeature =
+    flat.some((line) => /\bfeature\b/.test(line)) ||
+    commands.some((args) => {
+      const name = commandName(args)
+      if (name === 'merge') return true
+      if (name !== 'rebase') return false
+      return !args.includes('-i') && !args.includes('--interactive')
+    })
+  const needsFetch = commands.some((args) => {
+    const name = commandName(args)
+    return name === 'fetch' || name === 'pull'
+  })
+  const needsPush = commands.some((args) => commandName(args) === 'push')
+  const needsSecret = /secret\.env/.test(script)
+  const needsStash = commands.some((args) => commandName(args) === 'stash')
+
+  const lines = [
+    'git init',
+    'write README.md hello-9to18',
+    'write file.txt draft',
+    'git add README.md file.txt',
+    'git commit -m "init: sandbox"',
+    'write extra.txt more',
+    'git add extra.txt',
+    'git commit -m "add extra"',
+  ]
+  if (needsSecret) {
+    lines.push(
+      'write secret.env KEY=1',
+      'git add secret.env',
+      'git commit -m "add secret.env"',
+    )
+  }
+  if (needsFeature) {
+    lines.push(
+      'git switch -c feature',
+      'write feature.txt yes',
+      'git add feature.txt',
+      'git commit -m "feat: add feature"',
+      'git switch main',
+    )
+  }
+  if (!addsRemote && (needsFetch || needsPush)) {
+    lines.push('seed-remote origin https://github.com/example/notes.git main')
+    if (needsFetch) lines.push('seed-remote-ahead origin')
+  }
+  lines.push('write file.txt edited')
+  if (/\bold-name\b/.test(script)) lines.push('git branch old-name')
+  if (needsStash) lines.push('write notes.txt wip')
+  return lines.join('\n')
+}
+
+function withMissingWrites(script: string): string {
+  const written = new Set<string>()
+  const out: string[] = []
+  for (const raw of script.split(/\r?\n/)) {
+    const line = stripInlineComment(raw)
+    if (!line || line.startsWith('#')) {
+      out.push(raw)
+      continue
+    }
+    const args = parseArgs(line)
+    if (args[0] === 'write' && args[1]) written.add(args[1])
+    if (args[0]?.toLowerCase() === 'git' && (args[1] || '').toLowerCase() === 'add') {
+      for (const path of args.slice(2)) {
+        if (!path || path.startsWith('-') || path === '.' || path === '*') continue
+        if (written.has(path)) continue
+        out.push(`write ${path} ${path}`)
+        written.add(path)
+      }
+    }
+    if (args[0] === 'rmfile' && args[1]) written.delete(args[1])
+    out.push(raw)
+  }
+  return out.join('\n')
+}
+
+/**
+ * Sandbox entry: prepend a demo repository when the script never runs git init.
+ */
+export function runGitSandboxScript(script: string): GitRunResult {
+  const prepared = withMissingWrites(script)
+  const seed = demoSeedForScript(prepared)
+  if (!seed) return runGitScript(prepared)
+  const seeded = runGitScript(seed)
+  if (!seeded.ok) {
+    return seeded
+  }
+  const run = runGitScript(prepared, seeded.state)
+  const note = 'demo repo ready (script has no git init)'
+  return {
+    ...run,
+    stdout: [note, run.stdout].filter((part) => part.length > 0).join('\n'),
+  }
+}
+
 /**
  * Run a multi-line script. Lines starting with # are comments.
  * Supports `git …`, `write …`, `rmfile …`, `seed-remote …`.
@@ -974,7 +1215,7 @@ export function runGitScript(
   let ok = true
   const lines = script.split(/\r?\n/)
   for (const raw of lines) {
-    const line = raw.trim()
+    const line = stripInlineComment(raw)
     if (!line || line.startsWith('#')) continue
     try {
       const args = parseArgs(line)

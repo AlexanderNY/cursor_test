@@ -118,12 +118,21 @@ def format_int_ru(value: int) -> str:
     return f"{value:,}".replace(",", " ")
 
 
+def iso2_to_flag_emoji(iso2: str) -> str:
+    """Флаг по ISO 3166-1 alpha-2: пара региональных индикаторов."""
+    code = (iso2 or "").strip().upper()
+    if len(code) != 2 or not code.isascii() or not code.isalpha():
+        raise ValueError(f"iso2 must be two letters, got {iso2!r}")
+    return "".join(chr(0x1F1E6 + ord(char) - ord("A")) for char in code)
+
+
 def format_country_card(
     *,
     name_ru: str,
     capital_ru: str,
     area_km2: float | None,
     population: int | None,
+    flag: str = "",
 ) -> str:
     """Текст карточки страны для режима Тренировка."""
     area_text = "—"
@@ -135,8 +144,9 @@ def format_country_card(
         population_text = format_int_ru(int(population))
 
     capital = (capital_ru or "").strip() or "—"
+    mark = (flag or "").strip() or "🌍"
     return (
-        f"🌍 {name_ru}\n"
+        f"{mark} {name_ru}\n"
         f"Столица: {capital}\n"
         f"Площадь: {area_text}\n"
         f"Население: {population_text}"

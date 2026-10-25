@@ -3821,6 +3821,7 @@ button.learn-episode-card {
     linear-gradient(180deg, var(--color-surface-2), var(--color-surface));
   cursor: grab;
   touch-action: none;
+  overscroll-behavior: none;
   user-select: none;
 }
 

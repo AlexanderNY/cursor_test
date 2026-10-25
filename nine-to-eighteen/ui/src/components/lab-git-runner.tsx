@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import {
   extractGitBlocks,
   formatGitChannels,
-  runGitScript,
+  runGitSandboxScript,
 } from '@/game/git/sandbox-git'
 import {
   gitTasksForLearnEpisode,
@@ -78,7 +78,7 @@ export function LabGitRunner({
   function runBlock(index: number) {
     setBusyIndex(index)
     try {
-      const run = runGitScript(blocks[index])
+      const run = runGitSandboxScript(blocks[index])
       setOutputs((prev) => ({
         ...prev,
         [index]: formatGitChannels(run),

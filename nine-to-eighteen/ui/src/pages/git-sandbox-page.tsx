@@ -10,6 +10,7 @@ import {
 import { collectLearnGitSnippets } from '@/game/git/learn-snippets'
 import {
   formatGitChannels,
+  runGitSandboxScript,
   runGitScript,
   runGitWithCheck,
   snapshotPanel,
@@ -24,6 +25,8 @@ import {
 
 const DEFAULT_SCRIPT = `# Git-симулятор в браузере (без настоящего .git на диске)
 # Вспомогательные команды: write <path> <text>, rmfile <path>
+# Если в скрипте нет git init, перед запуском уже есть учебный репозиторий:
+# README.md, file.txt (незакоммиченная правка), commit «add extra».
 
 git init
 write README.md hello-9to18
@@ -77,7 +80,7 @@ export function GitSandboxPage() {
     text: string
   } | null>(null)
   const [status, setStatus] = useState(
-    'Симулятор готов · Ctrl+Enter — запуск · каждый Check с чистого seed',
+    'Симулятор готов · без git init подставится учебный репозиторий · Ctrl+Enter — запуск',
   )
   const [isRunning, setIsRunning] = useState(false)
   const [draftLoaded, setDraftLoaded] = useState(false)
@@ -124,7 +127,7 @@ export function GitSandboxPage() {
         setOutput(formatGitChannels(run))
         setPanel(snapshotPanel(run.state))
       } else {
-        const run = runGitScript(code)
+        const run = runGitSandboxScript(code)
         setOutput(formatGitChannels(run))
         setPanel(snapshotPanel(run.state))
       }

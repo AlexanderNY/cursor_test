@@ -16,8 +16,10 @@ const js = ts.transpileModule(source, {
 const moduleUrl = `data:text/javascript,${encodeURIComponent(js)}`
 const {
   runGitScript,
+  runGitSandboxScript,
   runGitWithCheck,
   checkGitState,
+  formatGitChannels,
 } = await import(moduleUrl)
 
 function check(condition, message) {
@@ -84,5 +86,41 @@ check(checked.passed, checked.feedback)
 
 const fail = checkGitState(init.state, { branch: 'nope' })
 check(!fail.passed, 'expect fail on wrong branch')
+
+const statusOnly = runGitSandboxScript(`
+git status
+git add file.txt
+git diff
+git diff --staged
+`)
+check(statusOnly.ok, statusOnly.stderr || statusOnly.stdout)
+check(!formatGitChannels(statusOnly).includes('fatal: not a git repository'), 'status snippet stays inside a repo')
+check(statusOnly.stdout.includes('diff --git'), 'staged diff after add')
+
+const initSnippet = runGitSandboxScript(`
+git init
+git add README.md
+git commit -m "init: учебный репозиторий"
+`)
+check(initSnippet.ok, initSnippet.stderr)
+check(initSnippet.state.commits[initSnippet.state.branches.main].tree['README.md'], 'README created for add')
+check(!('extra.txt' in initSnippet.state.workTree), 'git init does not use the demo repo')
+
+const pull = runGitSandboxScript(`
+git fetch origin
+git pull origin
+`)
+check(pull.ok, pull.stderr)
+check(pull.state.commits[pull.state.branches.main].tree['remote-only.txt'] === 'from remote', 'pull fast-forwards demo remote')
+
+const stashBlock = runGitSandboxScript(`
+git stash
+git stash list
+git stash pop
+git stash apply
+git stash drop
+git stash clear
+`)
+check(stashBlock.ok, stashBlock.stderr)
 
 console.log('check-git-sandbox: ok')

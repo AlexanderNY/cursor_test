@@ -14,6 +14,7 @@ import {
   runSqlInSandbox,
   runSqlWithCheck,
 } from '@/game/sql/sandbox-sqlite'
+import { schemaForFreeSql } from '@/game/sql/schemas'
 import { SQL_TASKS, getSqlTask, type SqlTask } from '@/game/sql/tasks'
 import { seedPostsLocal } from '@/data/learn/learn-store'
 import { codeFromQuery } from '@/data/safe-url'
@@ -24,13 +25,14 @@ import {
 
 const DEFAULT_SQL = `-- SQL в браузере (SQLite / sql.js)
 -- Диалект SQLite: нет GRANT, plpgsql, EXPLAIN ANALYZE как в PostgreSQL.
+-- Если свой CREATE TABLE нет, перед запуском уже есть тестовые
+-- users, customers, orders, order_items, sizes, colors.
+-- У Bob нет заказов; email и middle_name у него NULL.
 
-CREATE TABLE demo (
-  id INTEGER PRIMARY KEY,
-  name TEXT NOT NULL
-);
-INSERT INTO demo (name) VALUES ('9to18'), ('SQL');
-SELECT id, name FROM demo ORDER BY id;
+SELECT o.id AS order_id, u.name, o.total, o.status
+FROM orders AS o
+INNER JOIN users AS u ON u.id = o.user_id
+ORDER BY o.id;
 `
 
 type TabId = 'sandbox' | 'tasks'
@@ -124,7 +126,7 @@ export function SqlSandboxPage() {
         if (!cancelled) {
           setIsReady(true)
           setStatus(
-            'SQLite готов · Ctrl+Enter — запуск · каждый Check в чистой БД',
+            'SQLite готов · тестовые orders уже в базе · Ctrl+Enter — запуск',
           )
         }
       })
@@ -145,7 +147,10 @@ export function SqlSandboxPage() {
     setOutput('')
     setCheckFeedback(null)
     try {
-      const schema = activeTab === 'tasks' && activeTask ? activeTask.schemaSql : ''
+      const schema =
+        activeTab === 'tasks' && activeTask
+          ? activeTask.schemaSql
+          : schemaForFreeSql(code)
       const run = await runSqlInSandbox(code, schema)
       setOutput(formatSqlRunChannels(run))
     } finally {
@@ -226,7 +231,8 @@ export function SqlSandboxPage() {
         <p className="learn-eyebrow">SQL</p>
         <h1 className="learn-title">SQL в браузере</h1>
         <p className="learn-lead">
-          Песочница и тренажёр на SQLite (sql.js) — без сервера. Диалект SQLite;
+          Песочница и тренажёр на SQLite (sql.js) — без сервера. В свободном
+          режиме уже лежат тестовые users, customers и orders. Диалект SQLite;
           задачи связаны с{' '}
           <Link to="/game/learn">Learn</Link> SQL01–SQL13. PostgreSQL-специфика
           (GRANT, plpgsql, EXPLAIN ANALYZE) — в лекциях.

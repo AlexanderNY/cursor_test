@@ -3,11 +3,17 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 import httpx
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from services.game_engine import iso2_to_flag_emoji
+
 OUT = ROOT / "data" / "countries.json"
 
 WORLD_URL = (
@@ -59,6 +65,7 @@ def main() -> None:
         countries.append(
             {
                 "iso2": iso2,
+                "flag": iso2_to_flag_emoji(iso2),
                 "name_ru": name_ru,
                 "capital_ru": capital_ru,
                 "area_km2": area_km2,
