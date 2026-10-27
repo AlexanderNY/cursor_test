@@ -1,5 +1,5 @@
 ---
-slug: sql-performance-explain
+slug: sql-cte-window
 title: EXPLAIN, индексы и N+1 — производительность SQL
 shortTitle: EXPLAIN & perf
 episode: SQL14
@@ -16,7 +16,7 @@ prerequisites: [sql-cte-window]
 seoTitle: EXPLAIN ANALYZE и индексы PostgreSQL — собеседование
 seoDescription: SQL14: планы запросов, Seq Scan vs Index Scan, селективность, N+1 в приложении и покрывающие индексы для senior SQL.
 seoKeywords: [SQL, EXPLAIN, ANALYZE, индекс, N+1, PostgreSQL, собеседование]
-canonicalUrl: https://9to18.ru/game/learn/sql-performance-explain
+canonicalUrl: https://9to18.ru/game/learn/sql-cte-window
 ---
 
 ## Введение

@@ -609,7 +609,9 @@ def parse_learn_article_md(text: str) -> tuple[dict[str, Any], list[str]]:
         "canonicalUrl": parse_yaml_scalar(
             meta.get("canonicalurl") or meta.get("canonical_url") or ""
         ),
-        "publishedAt": (meta.get("publishedat") or meta.get("published_at") or "").strip(),
+        "publishedAt": parse_yaml_scalar(
+            meta.get("publishedat") or meta.get("published_at") or ""
+        ),
     }
     if not payload["slug"]:
         warnings.append("slug пустой")

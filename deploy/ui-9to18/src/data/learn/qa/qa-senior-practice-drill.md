@@ -12,7 +12,7 @@ tags: [practice, debugging, http, regression, interview-drill, собеседо�
 onKnowledgeMap: true
 durationMin: 45
 excerpt: Негативный POST, отладка 1+1=3, HTTP-ловушки, проверки без бэкенда, мёртвая кнопка логина, регресс за 2 дня и кроссбраузер.
-prerequisites: [qa-leadership-conflicts]
+prerequisites: [qa-security-perf-senior]
 seoTitle: Senior QA drill собеседование практика
 seoDescription: S30, S34–38, M88–90, M98–100, M102–103: разбор практических кейсов senior-собеседования тестировщика.
 seoKeywords: [qa interview, debugging, regression, http status, practice]

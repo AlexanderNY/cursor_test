@@ -12,7 +12,7 @@ tags: [javascript, dom, собеседование]
 onKnowledgeMap: true
 durationMin: 28
 excerpt: Дерево DOM, делегирование событий.
-prerequisites: [js-async-fetch]
+prerequisites: [js-types-coerce]
 seoTitle: DOM events — junior
 seoDescription: Дерево DOM, делегирование событий.
 seoKeywords: [javascript, dom, собеседование]
@@ -33,7 +33,7 @@ addEventListener; делегирование на родителе для спи
 
 ## Раздел: На собесе
 
-См. [qa-web-http-api-basics](/game/learn/qa-web-http-api-basics).
+См. [qa-docs-plan-cases](/game/learn/qa-docs-plan-cases).
 
 ## Лаба
 
@@ -108,5 +108,5 @@ Back: web basics
 
 ## Ссылки
 
-- Learn | [QA06](/game/learn/qa-web-http-api-basics)
-- Далее: [JSON/XML](/game/learn/js-json-xml)
+- Learn | [QA06](/game/learn/qa-docs-plan-cases)
+- Далее: [JSON/XML](/game/learn/js-dom-events)

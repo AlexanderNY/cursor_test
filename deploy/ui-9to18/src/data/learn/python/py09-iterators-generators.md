@@ -12,7 +12,7 @@ tags: [python, iterators, generators, yield, собеседование]
 onKnowledgeMap: true
 durationMin: 35
 excerpt: Протокол итератора, генераторы и когда comprehensions лучше цикла.
-prerequisites: [py-stdlib-re-json-copy]
+prerequisites: [py-oop-basics]
 seoTitle: Python итераторы и генераторы — middle
 seoDescription: __iter__/__next__, yield, generator expressions на middle.
 seoKeywords: [python, iterator, generator, yield]
@@ -128,4 +128,4 @@ Back: for x in xs: yield x (упрощённо)
 - [Generators](https://docs.python.org/3/tutorial/classes.html#generators)
 - [DEBAGanov — итераторы/генераторы](https://github.com/DEBAGanov/interview_questions/blob/main/400%20вопросов%20с%20ответами%2C%20которые%20должен%20знать%20Python-разработчик.md)
 - Learn | /game/learn
-- Далее: [Декораторы](/game/learn/py-decorators-context)
+- Далее: [Декораторы](/game/learn/py-iterators-generators)

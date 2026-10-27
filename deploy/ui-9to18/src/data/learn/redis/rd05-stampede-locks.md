@@ -1,5 +1,5 @@
 ---
-slug: rd-stampede-locks
+slug: rd-ttl-persistence
 title: Cache stampede и блокировки ключа
 shortTitle: Stampede
 episode: RD05
@@ -12,11 +12,11 @@ tags: [redis, stampede, dogpile, собеседование]
 onKnowledgeMap: true
 durationMin: 30
 excerpt: Dogpile при истечении TTL: singleflight и lock на ключ.
-prerequisites: [rd-cache-aside]
+prerequisites: [rd-ttl-persistence]
 seoTitle: Redis stampede dogpile — middle
 seoDescription: Что такое cache stampede и как защититься singleflight/lock.
 seoKeywords: [stampede, dogpile, redis, собеседование]
-canonicalUrl: https://9to18.ru/game/learn/rd-stampede-locks
+canonicalUrl: https://9to18.ru/game/learn/rd-ttl-persistence
 ---
 
 ## Введение
@@ -33,7 +33,7 @@ canonicalUrl: https://9to18.ru/game/learn/rd-stampede-locks
 
 ## Раздел: Связь с Memcached
 
-Та же идея в PY20 про dogpile. См. [py-db-cache-memcached](/game/learn/py-db-cache-memcached).
+Та же идея в PY20 про dogpile. См. [py-perf-packaging-alt-runtimes](/game/learn/py-perf-packaging-alt-runtimes).
 
 ## Лаба
 
@@ -112,6 +112,6 @@ Back: обновлять кэш до жёсткого протухания
 
 ## Ссылки
 
-- Learn | [cache-aside](/game/learn/rd-cache-aside)
-- Learn | [PY20](/game/learn/py-db-cache-memcached)
+- Learn | [cache-aside](/game/learn/rd-ttl-persistence)
+- Learn | [PY20](/game/learn/py-perf-packaging-alt-runtimes)
 - Далее: [pub/sub vs очередь](/game/learn/rd-pubsub-vs-queue)

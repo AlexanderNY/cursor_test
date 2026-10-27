@@ -1,5 +1,5 @@
 ---
-slug: sql-indexes-basics
+slug: sql-types-null
 title: Индексы в SQL — зачем, виды, clustered vs nonclustered
 shortTitle: Индексы basics
 episode: SQL06
@@ -16,7 +16,7 @@ prerequisites: [sql-types-null]
 seoTitle: Индексы SQL — clustered, B-tree, PostgreSQL собеседование
 seoDescription: Основы индексов для собеседования: назначение, clustered/nonclustered, типы. PostgreSQL vs SQL Server, оригинальный разбор.
 seoKeywords: [SQL, индекс, B-tree, clustered, nonclustered, PostgreSQL, SQL Server, собеседование]
-canonicalUrl: https://9to18.ru/game/learn/sql-indexes-basics
+canonicalUrl: https://9to18.ru/game/learn/sql-types-null
 ---
 
 ## Введение

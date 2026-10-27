@@ -12,7 +12,7 @@ tags: [java, orm, собеседование]
 onKnowledgeMap: true
 durationMin: 30
 excerpt: Зачем ORM и чем отличается от raw JDBC.
-prerequisites: [jv-jdbc-pool-tx]
+prerequisites: [jv-shell-process]
 seoTitle: ORM concepts — junior
 seoDescription: Зачем ORM и чем отличается от raw JDBC.
 seoKeywords: [java, orm, собеседование]
@@ -33,7 +33,7 @@ Unit of work откладывает SQL до flush/commit. Raw SQL нужен д
 
 ## Раздел: На собесе
 
-См. Python-угол: [py-web-flask-django](/game/learn/py-web-flask-django), [py-db-cache-memcached](/game/learn/py-db-cache-memcached).
+См. Python-угол: [py-perf-packaging-alt-runtimes](/game/learn/py-perf-packaging-alt-runtimes), [py-perf-packaging-alt-runtimes](/game/learn/py-perf-packaging-alt-runtimes).
 
 ## Лаба
 
@@ -108,6 +108,6 @@ Back: пакет изменений
 
 ## Ссылки
 
-- Learn | [PY19](/game/learn/py-web-flask-django)
-- Learn | [PY20](/game/learn/py-db-cache-memcached)
-- Далее: [JPA и N+1](/game/learn/jv-jpa-nplus1)
+- Learn | [PY19](/game/learn/py-perf-packaging-alt-runtimes)
+- Learn | [PY20](/game/learn/py-perf-packaging-alt-runtimes)
+- Далее: [JPA и N+1](/game/learn/jv-orm-concepts)

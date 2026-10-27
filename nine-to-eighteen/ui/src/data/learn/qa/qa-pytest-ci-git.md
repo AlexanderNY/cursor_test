@@ -1,31 +1,41 @@
 ---
 slug: qa-pytest-ci-git
-title: pytest, Git и CI для автотестов
-shortTitle: pytest, Git и CI для
+title: "pytest, Git и CI для · Мобильное тестирование и"
+shortTitle: "pytest, Git и CI для"
 episode: QA11
 rubric: tools
 order: 411
-publishedAt: 2026-12-13T10:00:00+03:00
+publishedAt: "2026-12-13T10:00:00+03:00"
 profiles: [tester]
 level: junior
-tags: [qa, pytest, git, ci, allure, собеседование]
+tags: [qa, pytest, git, ci, allure, "собеседование", mobile, appium, adb, android, ios]
 onKnowledgeMap: true
-durationMin: 40
-excerpt: Зачем test runner, pytest vs JUnit/TestNG, параллель, Git-база, CI и содержимое Allure-отчёта.
-prerequisites: [qa-selenium-webdriver]
-seoTitle: pytest Git CI Allure — QA junior
-seoDescription: Test runners, assertions, параллельный pytest, основы Git и встраивание автотестов в CI/CD.
+durationMin: 80
+excerpt: "Зачем test runner, pytest vs JUnit/TestNG, параллель, Git-база, CI и содержимое Allure-отчёта."
+prerequisites: [qa-aqa-principles]
+author: ""
+authorUrl: ""
+coverUrl: ""
+seoTitle: "pytest, Git и CI для · Мобильное тестирование и"
+seoDescription: "Test runners, assertions, параллельный pytest, основы Git и встраивание автотестов в CI/CD."
 seoKeywords: [pytest, ci, git, allure, testng]
-canonicalUrl: https://9to18.ru/game/learn/qa-pytest-ci-git
+canonicalUrl: "https://9to18.ru/game/learn/qa-pytest-ci-git"
 ---
-
 ## Введение
 
 Написать тест мало — его нужно запускать одинаково у всех и в пайплайне. J63–75 и M16: зачем runner, чем pytest отличается от TestNG/JUnit, как параллелить, что коммитить в Git и что должно быть в отчёте (Allure). Примеры — **pytest** + кратко про Java-раннеры.
 
 Термины и определения согласованы с **ISTQB CTFL v4** и [глоссарием ISTQB](https://glossary.istqb.org/); номера J/M/S — опциональный индекс типовых вопросов собеса.
 
-## Раздел: Runners, pytest, assertions, parallel
+**Мобильное тестирование и.** Мобильный блок J109–118 и обзор M72–84: не «умею Appium на проде», а понимание платформ, сборок, логов, жестов и чем мобильный тест отличается от веба. Автоматизация — концепт Appium + пример Desired Capabilities; лаба — ручной чеклист + ADB.
+
+Термины и определения согласованы с **ISTQB CTFL v4** и [глоссарием ISTQB](https://glossary.istqb.org/); номера J/M/S — опциональный индекс типовых вопросов собеса.
+
+## Раздел: Как отвечать одним блоком
+
+Этот выпуск собрал соседние короткие темы трека: «pytest, Git и CI для», «Мобильное тестирование и». Раньше каждая занимала отдельную карточку на несколько минут, а на собеседовании их спрашивают одним блоком. Ниже у каждой темы свой раздел, затем общие лабы, один тест и одна колода карточек. В ответе сначала назовите, какую тему спросили, потом определение и один пример. Не проговаривайте все разделы, если спросили один. Лабы можно пройти по порядку исходного трека. Если времени мало, сделайте первую и последнюю: первая ставит язык, последняя проверяет, что соседние темы вы не перепутали.
+
+## Раздел: pytest, Git и CI для: Runners, pytest, assertions, parallel
 
 **Зачем test runner.** Открывает discovery тестов, setup/teardown, ретраи, маркеры, отчёты, код возврата для CI. Без runner — «скрипт, который кто-то запускает руками».
 
@@ -61,11 +71,11 @@ def test_accepts_codes(api_base: str, code: int) -> None:
 pytest -n 4 -m smoke --alluredir=allure-results
 ```
 
-## Раздел: Git, CI, Allure, CI/CD sequence
+## Раздел: pytest, Git и CI для: Git, CI, Allure, CI/CD sequence
 
 **Git для QA.** `clone` → ветка `feature/qa-...` → `add` / `commit` / `push` → Merge Request. Смотрите `diff`, не коммитьте секреты, `__pycache__`, локальные отчёты. Конфликты в локаторах — норма; решайте с автором UI.
 
-Минимум команд: `status`, `diff`, `branch`, `checkout -b`, `pull`, `log`, `stash` (временно убрать локальные правки). Практика stash/веток без диска: [/game/git](/game/git), дальше [GIT03](/game/learn/git-stash-reset-rm).
+Минимум команд: `status`, `diff`, `branch`, `checkout -b`, `pull`, `log`, `stash` (временно убрать локальные правки). Практика stash/веток без диска: [/game/git](/game/git), дальше [GIT03](/game/learn/git-commit-anatomy).
 
 **CI integration.** Job: checkout → Python + deps → сервисы (БД/mock) → `pytest` → публикация отчёта → артефакты скриншотов при fail. Падение тестов валит пайплайн (или отдельный quality-gate nightly).
 
@@ -90,7 +100,81 @@ test_smoke:
     paths: [allure-results, screenshots]
 ```
 
-## Раздел: Частые вопросы с собеседования
+## Раздел: pytest, Git и CI для: Частые вопросы с собеседования
+
+**Вопрос.** Зачем на собесе спрашивают equivalence partitioning и граничные значения?
+
+**Ответ.** EP сжимает бесконечные входы в классы «ведут себя одинаково»; BVA бьёт по стыкам классов — там чаще ломается сравнение и валидация. Для поля 18–99 достаточно классов «ниже», «внутри», «выше» и точек 17–18–19, 98–99–100; не нужно 82 случайных числа.
+
+**Вопрос.** Severity и priority в баг-репорте — одно и то же?
+
+**Ответ.** Нет. Severity — ущерб для продукта и пользователя (crash vs опечатка). Priority — когда чинить в очереди команды. Критичный по severity баг может ждать, если воспроизводится только на стенде без пользователей; наоборот, мелкий UI-bug в checkout может быть P1 перед релизом.
+
+**Вопрос.** Что имеют в виду под «пирамидой тестирования» на собеседовании?
+
+**Ответ.** Много быстрых дешёвых проверок внизу (unit, контракт API), меньше медленных UI/e2e наверху. Цель — быстрая обратная связь в CI, а не «всё через Selenium». Пирамида не запрет на e2e: сквозные сценарии оставляют на критичные деньги-потоки.
+
+## Раздел: Мобильное тестирование и: Платформы, типы приложений, сборки
+
+**Платформы.** Android (Google Play / APK/AAB, фрагментация устройств и API levels) и iOS (App Store / TestFlight, IPA, жёстче экосистема и подписи). На собесе уточняйте: real device vs emulator/simulator.
+
+**Типы приложений:**
+
+| Тип | Суть | Что тестировать особо |
+|-----|------|------------------------|
+| Native | UIKit/Swift / Kotlin/Java | Жесты, системные диалоги, permissions |
+| Web | мобильный браузер | Viewport, touch, сеть |
+| Hybrid | WebView внутри оболочки | Переключение native ↔ web context |
+| Cross-platform | Flutter/RN и т.п. | Свои иерархии элементов, иногда другие инспекторы |
+
+**APK / IPA.** APK — пакет Android; IPA — iOS-архив (нужна подпись/провижн). Для теста: debug vs release, flavor/стенд, deep links, версии OS.
+
+**Отличия от web-QA:** прерывания (звонок, push), фон/убитый процесс, ориентация, offline, батарея/thermal throttling, permissions, магазинные политики, разные размеры экранов и notch.
+
+## Раздел: Мобильное тестирование и: ADB, логи, биометрия, Appium
+
+**ADB (Android Debug Bridge).** Установка/удаление, логи, скриншоты, ввод текста, clear data.
+
+```bash
+adb devices
+adb install -r app-debug.apk
+adb logcat | grep -i "MyApp\|FATAL"
+adb shell pm clear com.example.app
+adb shell input tap 200 400
+```
+
+**Логи.** Android — logcat; iOS — Console / device logs через Xcode. В баг-репорт: модель, OS, версия приложения, шаги, скрин/видео, релевантный stacktrace, сеть (proxy).
+
+**Биометрия.** Face ID / Touch ID / fingerprint: системные диалоги, fallback на PIN, отмена, негатив «не распознано». На эмуляторе — симуляция биометрии; на CI часто мок/флаг test-build. Проверяйте privacy prompts и повторный запрос permissions.
+
+**Appium (концепт).** Клиент-сервер: ваши тесты (Python client) → Appium Server → UiAutomator2 / XCUITest → устройство. Локаторы: accessibility id, xpath, id; контексты `NATIVE_APP` / `WEBVIEW_...`.
+
+```python
+from appium import webdriver
+from appium.options.android import UiAutomator2Options
+
+options = UiAutomator2Options()
+options.platform_name = "Android"
+options.device_name = "Pixel_7"
+options.app = "/path/to/app-debug.apk"
+options.automation_name = "UiAutomator2"
+
+driver = webdriver.Remote("http://127.0.0.1:4723", options=options)
+driver.find_element("accessibility id", "login_button").click()
+driver.quit()
+```
+
+**Middle-обзор (M72–84 идеи):** жесты (swipe/pinch), background/foreground, install/upgrade/reinstall, interrupt calls, battery saver, локаль/timezone, soft keyboard, notifications, deep link cold/warm start. Автоматизировать — после стабилизации ручного чеклиста критичных сценариев.
+
+## Раздел: Мобильное тестирование и: Частые вопросы с собеседования
+
+**Вопрос.** Чем уровень тестирования отличается от типа (вида) тестирования?
+
+**Ответ.** Уровень отвечает на «где режем систему»: модуль, стык, продукт целиком, приёмка. Тип — «с какой целью гоняем»: smoke, regression, exploratory, security и т.д. На собесе покажите пример: один checkout можно проверить на integration (API+БД) и оформить прогон как regression после фикса — оси независимы.
+
+**Вопрос.** Когда на собеседовании уместен smoke, а когда полный regression?
+
+**Ответ.** Smoke — узкий «жив ли билд»: логин, критичный платёж, главная. Падает smoke — глубже не идём. Regression — шире: уже работавшее после изменений. Sanity — точечно после маленького патча. Ошибка junior: называть любой повторный прогон regression.
 
 **Вопрос.** Зачем на собесе спрашивают equivalence partitioning и граничные значения?
 
@@ -105,6 +189,8 @@ test_smoke:
 **Ответ.** Много быстрых дешёвых проверок внизу (unit, контракт API), меньше медленных UI/e2e наверху. Цель — быстрая обратная связь в CI, а не «всё через Selenium». Пирамида не запрет на e2e: сквозные сценарии оставляют на критичные деньги-потоки.
 
 ## Лаба
+
+**pytest, Git и CI для.**
 
 **Цель.** Репозиторий с pytest, маркерами smoke/regression, xdist на API-тестах и выгрузкой Allure-результатов.
 
@@ -122,9 +208,28 @@ test_smoke:
 - [ ] Параллель без шаринга состояния
 - [ ] Называете 5 артефактов хорошего отчёта
 
-**Тренажёр Git:** [stash-roundtrip](/game/git?task=stash-roundtrip) · [GIT03](/game/learn/git-stash-reset-rm).
+**Тренажёр Git:** [stash-roundtrip](/game/git?task=stash-roundtrip) · [GIT03](/game/learn/git-commit-anatomy).
 
-## Схема: CI с автотестами
+**Мобильное тестирование и.**
+
+**Цель.** Прогнать мобильный smoke-чеклист на эмуляторе или реальном Android и собрать артефакты для баг-репорта.
+
+**Шаги.**
+1. Установите APK через `adb install`; зафиксируйте versionName/versionCode.
+2. Пройдите: первый запуск (permissions) → логин → уход в background → возврат → logout.
+3. Поверните экран на двух ключевых экранах; проверьте обрезку UI.
+4. Включите авиарежим на запросе списка; оцените сообщение об ошибке и ретрай.
+5. Снимите `adb logcat` вокруг краша/бага; приложите к черновику бага.
+6. (Опционально) Поднимите Appium Inspector, найдите accessibility id кнопки входа.
+
+**В группу:** что важнее на релизе — матрица 20 дешёвых Android или 3 топ-устройства + актуальный iPhone?
+
+**Готово, если…**
+- [ ] Называете разницу native / hybrid / web
+- [ ] Умеете adb install + logcat
+- [ ] Описываете биометрию: success / fail / fallback
+
+## Схема: pytest, Git и CI для: CI с автотестами
 
 ```mermaid
 flowchart LR
@@ -137,6 +242,15 @@ flowchart LR
   Reg --> Gate[release gate]
 ```
 
+## Схема: Мобильное тестирование и: Appium-стек
+
+```mermaid
+flowchart LR
+  Test["pytest + Appium-Python-Client"] --> Server[Appium Server]
+  Server --> Driver["UiAutomator2 / XCUITest"]
+  Driver --> Device["Emulator / Real device"]
+```
+
 ## Тест
 
 ### Зачем нужен test runner, если можно вызвать python file.py?
@@ -145,11 +259,23 @@ flowchart LR
 
 **Пояснение:** единый способ запуска у разработчика и пайплайна; иначе «у меня работало» без стандарта.
 
+### Чем hybrid-приложение отличается от native для тестировщика?
+
+**Ответ:** есть WebView и смена контекста; часть UI — DOM, часть — native-дерево
+
+**Пояснение:** баги часто на границе: клавиатура, скролл, локаторы «пропали» после switch context.
+
 ### Чем pytest assert удобнее assertEquals из старых фреймворков?
 
 **Ответ:** обычный Python assert + детальный diff при падении
 
 **Пояснение:** меньше API для заучивания; интроспекция показывает значения выражений.
+
+### Зачем ADB тестировщику Android?
+
+**Ответ:** ставить сборки, чистить данные, снимать логи и воспроизводить жесты/интенты без магазина
+
+**Пояснение:** ускоряет цикл баг → фикс → проверка и даёт артефакты разработчику.
 
 ### Что обязательно приложить к упавшему UI-тесту в Allure?
 
@@ -157,37 +283,9 @@ flowchart LR
 
 **Пояснение:** без вложений отчёт — список красных имён, а не инструмент разбора.
 
-### Зачем pytest.mark.parametrize?
-
-**Ответ:** один тест — много наборов данных без копипаста
-
-**Пояснение:** удобно для EP/BVA таблиц в API-тестах.
-
-### Что коммитить в репозиторий автотестов?
-
-**Ответ:** код, фикстуры, конфиг CI, requirements — не секреты и не артефакты прогона
-
-**Пояснение:** `.env` и пароли — в secrets CI; отчёты — как pipeline artifacts.
-
-
-
 ## Шпаргалка
 
-<h3>pytest</h3>
-<pre><code>pytest -m smoke -n auto --alluredir=allure-results
-@pytest.fixture / @pytest.mark.parametrize
-assert response.status_code == 200
-</code></pre>
-<h3>Git</h3>
-<ul>
-<li>branch → commit → push → MR</li>
-<li>не коммитить .env, отчёты, драйверы</li>
-</ul>
-<h3>CI/CD</h3>
-<ul>
-<li>smoke на MR; полный регресс на nightly/релизе</li>
-<li>артефакты: allure-results, screenshots, logs</li>
-</ul>
+<ul><li>branch → commit → push → MR</li><li>не коммитить .env, отчёты, драйверы</li><li>smoke на MR; полный регресс на nightly/релизе</li><li>артефакты: allure-results, screenshots, logs</li><li>Native / Web / Hybrid / Cross-platform</li><li>APK (Android), IPA (iOS + подпись)</li><li>Client → Server → UiAutomator2/XCUITest → device</li><li>Capabilities: platform, device, app, automationName</li></ul>
 
 ## Anki
 
@@ -195,27 +293,25 @@ assert response.status_code == 200
 
 Back: параллельный прогон в нескольких процессах; нужна изоляция данных и драйверов
 
+### Front: APK vs IPA?
+
+Back: APK — пакет Android; IPA — пакет iOS, обычно требует подписи и провижна
+
 ### Front: pytest vs TestNG одной фразой
 
 Back: pytest — экосистема Python; TestNG — популярный runner в Java Selenium-проектах с suites/groups
+
+### Front: Какие контексты бывают в hybrid Appium?
+
+Back: NATIVE_APP и WEBVIEW_*; нужно переключаться для поиска элементов
 
 ### Front: Где в CI/CD стоят smoke-автотесты?
 
 Back: после сборки/unit, до или сразу после выкладки на staging — как quality gate
 
-### Front: conftest.py — роль
+### Front: Что проверить в биометрии кроме успешного входа?
 
-Back: общие фикстуры и hooks pytest для каталога и подкаталогов
-
-### Front: pytest -x
-
-Back: остановить прогон на первом падении — быстрый feedback
-
-### Front: Зачем Allure/pytest-html?
-
-Back: история прогонов, шаги, скриншоты — доверие команды к автотестам
-
-
+Back: отказ/cancel, fallback PIN, повтор permissions, поведение при блокировке ОС
 
 ## Итоги
 
@@ -223,12 +319,17 @@ Back: история прогонов, шаги, скриншоты — дове
 - pytest закрывает junior Python AQA; JUnit/TestNG — для Java-вакансий
 - Параллель ускоряет, но требует изоляции
 - Git + Allure превращают «красные тесты» в воспроизводимый сигнал для команды
+- Мобильный QA = платформа + тип приложения + прерывания и permissions, не только «те же кейсы что в вебе»
+- ADB и логи — must-have junior Android
+- Appium — WebDriver-подобная модель с mobile capabilities и жестами
+- Чеклист smoke на устройстве важнее преждевременной автоматизации всех экранов
 
 ## Ссылки
 
 - [ISTQB Glossary](https://glossary.istqb.org/)
 - [CTFL v4 — Certified Tester Foundation Level](https://istqb.org/certifications/certified-tester-foundation-level-ctfl-v4-0/)
 - [pytest documentation](https://docs.pytest.org/)
-- Опционально: [QA-interview-250](https://github.com/Konstantine23/QA-interview-250) — полный список формулировок вопросов
-- Learn | /game/learn
-- Далее: [Mobile basics](/game/learn/qa-mobile-basics)
+- [QA-interview-250](https://github.com/Konstantine23/QA-interview-250)
+- [Learn](/game/learn)
+- [Playwright Python — mobile emulation](https://playwright.dev/python/docs/emulation)
+- [Middle process](/game/learn/qa-middle-process)

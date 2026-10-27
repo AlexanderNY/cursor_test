@@ -1,5 +1,5 @@
 ---
-slug: sa-rest-advanced
+slug: sa-sync-async-queues
 title: REST advanced — кэш, идемпотентность, версии, JSON Schema
 shortTitle: REST Advanced
 episode: SA11
@@ -16,7 +16,7 @@ prerequisites: [sa-sync-async-queues]
 seoTitle: Идемпотентность и версии REST — middle СА на собеседовании
 seoDescription: T4.2.5–6 и T4.2.15–20: кэш, идемпотентность, DELETE/POST, обратная совместимость API, JSON Schema для системного аналитика.
 seoKeywords: [REST, идемпотентность, кэширование, JSON Schema, версионирование API, собеседование]
-canonicalUrl: https://9to18.ru/game/learn/sa-rest-advanced
+canonicalUrl: https://9to18.ru/game/learn/sa-sync-async-queues
 ---
 
 ## Введение

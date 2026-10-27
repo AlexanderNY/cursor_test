@@ -1,5 +1,5 @@
 ---
-slug: pm-stakeholders
+slug: pm-okr
 title: Стейкхолдеры и RACI
 shortTitle: Stakeholders
 episode: PM08
@@ -16,7 +16,7 @@ prerequisites: [pm-okr]
 seoTitle: Stakeholders — middle
 seoDescription: Карта интересов и RACI.
 seoKeywords: [product, stakeholders, raci, собеседование]
-canonicalUrl: https://9to18.ru/game/learn/pm-stakeholders
+canonicalUrl: https://9to18.ru/game/learn/pm-okr
 ---
 
 ## Введение

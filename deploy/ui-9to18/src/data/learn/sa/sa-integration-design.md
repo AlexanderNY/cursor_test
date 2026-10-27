@@ -1,5 +1,5 @@
 ---
-slug: sa-integration-design
+slug: sa-modeling-workshop
 title: Проектирование интеграций — sync, async, очередь, ESB и совместимость контрактов
 shortTitle: Integration design
 episode: SA19
@@ -16,7 +16,7 @@ prerequisites: [sa-modeling-workshop]
 seoTitle: Выбор интеграции sync async ESB — senior СА
 seoDescription: SA19: когда sync, async, очередь или ESB; версионирование и обратная совместимость API-контрактов для системного аналитика.
 seoKeywords: [интеграции, Kafka, REST, ESB, совместимость, собеседование]
-canonicalUrl: https://9to18.ru/game/learn/sa-integration-design
+canonicalUrl: https://9to18.ru/game/learn/sa-modeling-workshop
 ---
 
 ## Введение

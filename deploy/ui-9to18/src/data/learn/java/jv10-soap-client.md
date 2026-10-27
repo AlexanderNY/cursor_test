@@ -1,5 +1,5 @@
 ---
-slug: jv-soap-client
+slug: jv-jms
 title: SOAP-клиент в Java
 shortTitle: SOAP client
 episode: JV10
@@ -12,11 +12,11 @@ tags: [java, soap, xml, собеседование]
 onKnowledgeMap: true
 durationMin: 28
 excerpt: Клиент SOAP/WSDL; теория — SA12.
-prerequisites: [jv-esb-adapter]
+prerequisites: [jv-jms]
 seoTitle: SOAP client — middle
 seoDescription: Клиент SOAP/WSDL; теория — SA12.
 seoKeywords: [java, soap, xml, собеседование]
-canonicalUrl: https://9to18.ru/game/learn/jv-soap-client
+canonicalUrl: https://9to18.ru/game/learn/jv-jms
 ---
 
 ## Введение

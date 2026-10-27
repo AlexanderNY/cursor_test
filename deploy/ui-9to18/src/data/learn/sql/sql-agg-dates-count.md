@@ -12,7 +12,7 @@ tags: [sql, COUNT, CURRENT_DATE, агрегаты, PostgreSQL, собеседо�
 onKnowledgeMap: true
 durationMin: 28
 excerpt: Q14 — текущая дата/время в PostgreSQL vs MSSQL; Q30 — COUNT(*) vs COUNT(col) и приближённые оценки числа строк.
-prerequisites: [sql-subqueries]
+prerequisites: [sql-triggers-operators]
 seoTitle: CURRENT_DATE, now и COUNT в SQL — собеседование
 seoDescription: Разбор Q14 и Q30: функции даты в PostgreSQL и MSSQL, разница COUNT(*), COUNT(column) и оценка через статистику планировщика.
 seoKeywords: [SQL, COUNT, CURRENT_DATE, now, PostgreSQL, собеседование]
@@ -171,4 +171,4 @@ Back: reltuples в pg_class или оценка узлов в EXPLAIN; не дл
 - [OTUS / Хабр — топ SQL, часть I (Q14, Q30)](https://habr.com/ru/companies/otus/articles/461067/)
 - [PostgreSQL: Date/Time Functions](https://www.postgresql.org/docs/current/functions-datetime.html)
 - [PostgreSQL: Aggregate Functions](https://www.postgresql.org/docs/current/functions-aggregate.html)
-- Learn | /game/learn/sql-subqueries
+- Learn | /game/learn/sql-triggers-operators

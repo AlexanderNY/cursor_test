@@ -12,7 +12,7 @@ tags: [python, strings, files, io, собеседование]
 onKnowledgeMap: true
 durationMin: 30
 excerpt: Операторы, строки, работа с файлами и базовый I/O на собеседовании.
-prerequisites: [py-types-collections]
+prerequisites: [py-intro-python]
 seoTitle: Python строки и файлы — junior
 seoDescription: Операторы, строки, open/read, os — типовые вопросы junior.
 seoKeywords: [python, str, files, operators]
@@ -128,4 +128,4 @@ Back: os.remove / Path.unlink
 - [Reading and Writing Files](https://docs.python.org/3/tutorial/inputoutput.html#reading-and-writing-files)
 - [DEBAGanov — строки / операторы / файлы](https://github.com/DEBAGanov/interview_questions/blob/main/400%20вопросов%20с%20ответами%2C%20которые%20должен%20знать%20Python-разработчик.md)
 - Learn | /game/learn
-- Далее: [Функции](/game/learn/py-control-flow-functions)
+- Далее: [Функции](/game/learn/py-strings-ops-io)

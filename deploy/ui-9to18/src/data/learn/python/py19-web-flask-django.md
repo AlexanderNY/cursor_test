@@ -1,5 +1,5 @@
 ---
-slug: py-web-flask-django
+slug: py-perf-packaging-alt-runtimes
 title: Веб-фреймворки — Flask, Django, Pyramid
 shortTitle: Flask / Django
 episode: PY19
@@ -16,7 +16,7 @@ prerequisites: [py-perf-packaging-alt-runtimes]
 seoTitle: Python Flask Django — senior
 seoDescription: Flask vs Django/Pyramid, sessions, middleware.
 seoKeywords: [python, flask, django, middleware]
-canonicalUrl: https://9to18.ru/game/learn/py-web-flask-django
+canonicalUrl: https://9to18.ru/game/learn/py-perf-packaging-alt-runtimes
 ---
 
 ## Введение
@@ -129,4 +129,4 @@ Back: WSGI sync-модель; ASGI — async/websockets (Uvicorn/FastAPI)
 - [Django](https://docs.djangoproject.com/)
 - [DEBAGanov — Flask/Django](https://github.com/DEBAGanov/interview_questions/blob/main/400%20вопросов%20с%20ответами%2C%20которые%20должен%20знать%20Python-разработчик.md)
 - Learn | /game/learn
-- Далее: [БД и Memcached](/game/learn/py-db-cache-memcached)
+- Далее: [БД и Memcached](/game/learn/py-perf-packaging-alt-runtimes)

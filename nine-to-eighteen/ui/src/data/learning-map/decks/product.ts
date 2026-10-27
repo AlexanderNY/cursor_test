@@ -13,7 +13,7 @@ export const deckProduct: TopicDeck = {
       id: 'pool:product:rice',
       front: `Что такое RICE?`,
       back: `Reach × Impact × Confidence / Effort — фреймворк приоритизации. Confidence снижает самообман.`,
-      learnSlug: 'pm-prioritization',
+      learnSlug: 'pm-product-management',
     },
     {
       id: 'pool:product:okr',
@@ -37,13 +37,13 @@ export const deckProduct: TopicDeck = {
       id: 'pool:product:roadmap',
       front: `Хорошая roadmap?`,
       back: `Исходы/темы во времени, гибкость, связь со стратегией. Избегайте жёсткого Gantt фич как обещания дат без буфера.`,
-      learnSlug: 'pm-roadmapping',
+      learnSlug: 'pm-product-strategy',
     },
     {
       id: 'pool:product:raci',
       front: `RACI?`,
       back: `Responsible/Accountable/Consulted/Informed — ясность ролей в решении. Один Accountable на решение.`,
-      learnSlug: 'pm-stakeholders',
+      learnSlug: 'pm-okr',
     },
     {
       id: 'pool:product:unit-econ',
@@ -55,13 +55,13 @@ export const deckProduct: TopicDeck = {
       id: 'pool:product:agile-po',
       front: `PO в agile?`,
       back: `Максимизация ценности backlog, готовность PBI, приёмка. Баланс стейкхолдеров и фокуса команды.`,
-      learnSlug: 'pm-agile-po',
+      learnSlug: 'pm-cjm',
     },
     {
       id: 'pool:product:portfolio',
       front: `Портфель продуктов?`,
       back: `Распределение ставок: core/adjacent/bet. Kill criteria и этапность инвестиций.`,
-      learnSlug: 'pm-portfolio',
+      learnSlug: 'pm-pnl-unit-econ',
     },
     {
       id: 'pool:product:metrics',
@@ -73,13 +73,13 @@ export const deckProduct: TopicDeck = {
       id: 'pool:product:ice',
       front: `ICE vs RICE?`,
       back: `ICE — Impact/Confidence/Ease без Reach. Проще, грубее. Выбирайте фреймворк под данные команды.`,
-      learnSlug: 'pm-prioritization',
+      learnSlug: 'pm-product-management',
     },
     {
       id: 'pool:product:stakeholder',
       front: `Управление стейкхолдерами?`,
       back: `Карта влияния/интереса, регулярный ритм, прозрачные trade-off. Эскалация фактами и опциями.`,
-      learnSlug: 'pm-stakeholders',
+      learnSlug: 'pm-okr',
     },
     {
       id: 'pool:product:pnl',
@@ -109,13 +109,13 @@ export const deckProduct: TopicDeck = {
       id: 'pool:product:kano',
       front: `Модель Кано кратко?`,
       back: `Базовые / performance / delight-фичи. Помогает не путать must-have с wow при приоритизации.`,
-      learnSlug: 'pm-prioritization',
+      learnSlug: 'pm-product-management',
     },
     {
       id: 'pool:product:roadmap-now',
       front: `Now / Next / Later?`,
       back: `Горизонты обязательств: сейчас жёстче, later — темы. Снижает ложные обещания дат.`,
-      learnSlug: 'pm-roadmapping',
+      learnSlug: 'pm-product-strategy',
     },
     {
       id: 'pool:product:interview-drill-pm',
@@ -133,7 +133,7 @@ export const deckProduct: TopicDeck = {
       id: 'pool:product:tech-debt-pm',
       front: `Техдолг глазами PM?`,
       back: `Явный trade-off скорости сейчас vs скорости потом. Квоты capacity и симптомы (инциденты, lead time).`,
-      learnSlug: 'pm-roadmapping',
+      learnSlug: 'pm-product-strategy',
     },
     {
       id: 'pool:product:outcome',
@@ -145,7 +145,7 @@ export const deckProduct: TopicDeck = {
       id: 'pool:product:capstone-pm',
       front: `Чеклист product capstone?`,
       back: `Роль, приоритизация, CJM, стратегия/roadmap, OKR, стейкхолдеры, экономика, drill — связный кейс.`,
-      learnSlug: 'pm-capstone',
+      learnSlug: 'pm-interview-drill',
     },
     {
       id: 'pool:product:jobs',
@@ -157,7 +157,7 @@ export const deckProduct: TopicDeck = {
       id: 'pool:product:prio-conflict',
       front: `Конфликт приоритетов стейкхолдеров?`,
       back: `Общие цели/метрики, прозрачная матрица, эскалация с опциями. Не тайный backlog «для любимчиков».`,
-      learnSlug: 'pm-stakeholders',
+      learnSlug: 'pm-okr',
     },
     {
       id: 'pool:product:leading-lagging',

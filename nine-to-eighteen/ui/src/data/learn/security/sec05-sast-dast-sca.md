@@ -12,7 +12,7 @@ tags: [security, sast, dast, sca, appsec, собеседование]
 onKnowledgeMap: true
 durationMin: 40
 excerpt: Один смотрит исходники, другой — живой запрос, третий — чужие библиотеки. Находка без разбора не равна дефекту.
-prerequisites: [sec-injection]
+prerequisites: [sec-authn-authz]
 seoTitle: SAST DAST SCA для AppSec
 seoDescription: Чем отличаются сканеры и как отсеивать ложные срабатывания.
 seoKeywords: [sast, dast, sca, semgrep, zap]
@@ -181,5 +181,5 @@ Back: На изменение в запросе на слияние, до вык
 
 ## Ссылки
 
-- [Инъекции](/game/learn/sec-injection)
+- [Инъекции](/game/learn/sec-authn-authz)
 - [Secure SDLC](/game/learn/sec-sdlc)

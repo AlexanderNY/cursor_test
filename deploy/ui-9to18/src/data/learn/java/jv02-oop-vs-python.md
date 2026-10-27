@@ -1,5 +1,5 @@
 ---
-slug: jv-oop-vs-python
+slug: jv-se-jvm
 title: ООП Java vs Python
 shortTitle: ООП vs Python
 episode: JV02
@@ -16,7 +16,7 @@ prerequisites: [jv-se-jvm]
 seoTitle: ООП vs Python — junior
 seoDescription: class, interface, static; мост к Python ООП.
 seoKeywords: [java, oop, собеседование]
-canonicalUrl: https://9to18.ru/game/learn/jv-oop-vs-python
+canonicalUrl: https://9to18.ru/game/learn/jv-se-jvm
 ---
 
 ## Введение

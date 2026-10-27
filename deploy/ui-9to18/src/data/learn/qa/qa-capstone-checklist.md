@@ -1,5 +1,5 @@
 ---
-slug: qa-capstone-checklist
+slug: qa-senior-practice-drill
 title: Capstone QA: чеклист Junior→Senior+AQA и appendix
 shortTitle: Capstone checklist
 episode: QA24
@@ -16,7 +16,7 @@ prerequisites: [qa-senior-practice-drill]
 seoTitle: QA capstone чеклист Junior Senior AQA
 seoDescription: Capstone серии QA Learn: чеклисты уровней, маршрут по выпускам, appendix J104–108, M40, M69 и ссылка на полный список вопросов.
 seoKeywords: [qa checklist, senior qa, aqa, capstone, interview]
-canonicalUrl: https://9to18.ru/game/learn/qa-capstone-checklist
+canonicalUrl: https://9to18.ru/game/learn/qa-senior-practice-drill
 ---
 
 ## Введение
@@ -85,29 +85,29 @@ canonicalUrl: https://9to18.ru/game/learn/qa-capstone-checklist
 | Ep | slug | Фокус |
 |----|------|--------|
 | QA01 | qa-intro-testing | Основы, STLC |
-| QA02 | qa-types-levels | Типы и уровни |
+| QA02 | qa-intro-testing | Типы и уровни |
 | QA03 | qa-test-design | Дизайн junior |
-| QA04 | qa-bugs-reports | Баги |
+| QA04 | qa-test-design | Баги |
 | QA05 | qa-docs-plan-cases | Документы |
-| QA06 | qa-web-http-api-basics | HTTP/API |
+| QA06 | qa-docs-plan-cases | HTTP/API |
 | QA07 | qa-sql-db-basics | SQL |
-| QA08 | qa-junior-practice-lab | Практика junior |
+| QA08 | qa-sql-db-basics | Практика junior |
 | QA09 | qa-aqa-principles | AQA принципы |
-| QA10 | qa-selenium-webdriver | Selenium |
+| QA10 | qa-aqa-principles | Selenium |
 | QA11 | qa-pytest-ci-git | pytest, CI, Git |
-| QA12 | qa-mobile-basics | Mobile |
+| QA12 | qa-pytest-ci-git | Mobile |
 | QA13 | qa-middle-process | Процесс middle |
-| QA14 | qa-test-design-advanced | Дизайн middle |
+| QA14 | qa-middle-process | Дизайн middle |
 | QA15 | qa-api-contract-perf | API/perf |
-| QA16 | qa-agile-scrum-kanban | Agile |
+| QA16 | qa-api-contract-perf | Agile |
 | QA17 | qa-infra-linux-containers | Инфра |
-| QA18 | qa-middle-web-mobile-sql | Web/mobile/SQL mid |
+| QA18 | qa-infra-linux-containers | Web/mobile/SQL mid |
 | QA19 | qa-strategy-metrics | Стратегия |
-| QA20 | qa-shift-left-automation-roi | Shift-left/ROI |
+| QA20 | qa-strategy-metrics | Shift-left/ROI |
 | QA21 | qa-security-perf-senior | Security/stress |
-| QA22 | qa-leadership-conflicts | Лидерство |
+| QA22 | qa-security-perf-senior | Лидерство |
 | QA23 | qa-senior-practice-drill | Drill |
-| QA24 | qa-capstone-checklist | Capstone |
+| QA24 | qa-senior-practice-drill | Capstone |
 
 ## Лаба
 

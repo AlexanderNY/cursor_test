@@ -12,7 +12,7 @@ tags: [python, sqlalchemy, postgresql, orm, собеседование]
 onKnowledgeMap: true
 durationMin: 45
 excerpt: ORM не отменяет SQL. На собесе показывают сессию, границу транзакции и запрос, который раздулся в цикл.
-prerequisites: [py-typing-pep8-static]
+prerequisites: [py-oop-advanced-mro]
 seoTitle: SQLAlchemy на собесе — middle
 seoDescription: Session, commit, relationship и как поймать N+1.
 seoKeywords: [sqlalchemy, orm, python, postgres]
@@ -186,4 +186,4 @@ Back: Когда план и форма запроса важнее удобст
 ## Ссылки
 
 - [PostgreSQL: таблица и SELECT](/game/learn/s01e07-postgres)
-- [JOIN и индекс](/game/learn/s01e08-sql)
+- [JOIN и индекс](/game/learn/s01e07-postgres)

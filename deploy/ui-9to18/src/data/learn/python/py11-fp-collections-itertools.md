@@ -1,5 +1,5 @@
 ---
-slug: py-fp-collections-itertools
+slug: py-iterators-generators
 title: FP в Python — map/filter/reduce, collections, itertools
 shortTitle: FP и itertools
 episode: PY11
@@ -12,11 +12,11 @@ tags: [python, functional, collections, itertools, собеседование]
 onKnowledgeMap: true
 durationMin: 30
 excerpt: Функциональный стиль и готовые структуры из collections/itertools.
-prerequisites: [py-decorators-context]
+prerequisites: [py-iterators-generators]
 seoTitle: Python FP collections itertools — middle
 seoDescription: map/filter/reduce, Counter, itertools на middle-собесе.
 seoKeywords: [python, map, filter, collections, itertools]
-canonicalUrl: https://9to18.ru/game/learn/py-fp-collections-itertools
+canonicalUrl: https://9to18.ru/game/learn/py-iterators-generators
 ---
 
 ## Введение

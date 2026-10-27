@@ -12,7 +12,7 @@ tags: [BPMN, UML, Sequence, ER, моделирование, воркшоп, со
 onKnowledgeMap: true
 durationMin: 40
 excerpt: Практика T2+T3: один сквозной кейс заказа и оплаты — BPMN, sequence-диаграмма и ER-модель.
-prerequisites: [sa-requirements-senior-craft]
+prerequisites: [sa-http-security-basics]
 seoTitle: BPMN Sequence ER воркшоп — senior СА
 seoDescription: Лабораторный выпуск SA18: моделирование заказа и оплаты в BPMN, UML Sequence и ER для собеседования системного аналитика.
 seoKeywords: [BPMN, Sequence, ER, моделирование, заказ, оплата, собеседование]
@@ -201,4 +201,4 @@ Back: в Sequence на createPayment и в ER как UNIQUE idempotency_key у P
 
 - [Топ-150 вопросов СА (Хабр)](https://habr.com/ru/articles/963708/)
 - Learn | /game/learn
-- Далее: [Проектирование интеграций](/game/learn/sa-integration-design)
+- Далее: [Проектирование интеграций](/game/learn/sa-modeling-workshop)

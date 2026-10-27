@@ -1,5 +1,5 @@
 ---
-slug: sql-subqueries
+slug: sql-triggers-operators
 title: Подзапросы — correlated и noncorrelated (Q28, Q29)
 shortTitle: Subqueries
 episode: SQL10
@@ -16,7 +16,7 @@ prerequisites: [sql-triggers-operators]
 seoTitle: Подзапросы SQL correlated vs noncorrelated — собеседование
 seoDescription: Разбор подзапросов (Q28, Q29): скалярные, IN/EXISTS, корреляция с внешней строкой, типичные ошибки и планы в PostgreSQL.
 seoKeywords: [SQL, подзапрос, correlated, EXISTS, PostgreSQL, собеседование]
-canonicalUrl: https://9to18.ru/game/learn/sql-subqueries
+canonicalUrl: https://9to18.ru/game/learn/sql-triggers-operators
 ---
 
 ## Введение

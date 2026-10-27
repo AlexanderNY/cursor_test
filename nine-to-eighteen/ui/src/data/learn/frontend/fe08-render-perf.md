@@ -12,7 +12,7 @@ tags: [frontend, react, memo, virtualization, собеседование]
 onKnowledgeMap: true
 durationMin: 40
 excerpt: memo и useMemo ставят после замера. Длинный список лечат окном видимых строк, а не обёрткой каждого элемента.
-prerequisites: [fe-react-state]
+prerequisites: [fe-event-loop]
 seoTitle: React memo и виртуализация
 seoDescription: Когда мемоизация окупается и зачем окно списка.
 seoKeywords: [react.memo, usememo, virtualization]
@@ -176,5 +176,5 @@ Back: Когда вычисление и так дешёвое: обёртка �
 
 ## Ссылки
 
-- [Состояние React](/game/learn/fe-react-state)
+- [Состояние React](/game/learn/fe-event-loop)
 - [Стейт-библиотеки](/game/learn/fe-state-libraries)

@@ -12,7 +12,7 @@ tags: [архитектура, SOA, микросервисы, монолит, д
 onKnowledgeMap: true
 durationMin: 30
 excerpt: Клиент-сервер, виды архитектур, SOA vs микросервисы, декомпозиция, независимость сервисов, монолит vs микросервисы.
-prerequisites: [sa-esb-integrations]
+prerequisites: [sa-soap-xml]
 seoTitle: SOA и микросервисы — middle СА на собеседовании
 seoDescription: T5.1–5.6: клиент-сервер, виды архитектуры, SOA vs микросервисы, декомпозиция, независимость, монолит против микросервисов.
 seoKeywords: [SOA, микросервисы, монолит, клиент-сервер, архитектура, собеседование]
@@ -175,4 +175,4 @@ Back: проще транзакции, проще отладка и деплой
 
 - [Топ-150 вопросов СА (Хабр)](https://habr.com/ru/articles/963708/)
 - Learn | /game/learn
-- Далее: [Оркестрация, CAP, Gateway](/game/learn/sa-orchestration-cap-gateway)
+- Далее: [Оркестрация, CAP, Gateway](/game/learn/sa-architecture-styles)

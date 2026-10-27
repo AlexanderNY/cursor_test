@@ -1,5 +1,5 @@
 ---
-slug: jv-jpa-nplus1
+slug: jv-orm-concepts
 title: JPA/Hibernate обзор и N+1
 shortTitle: JPA N+1
 episode: JV07
@@ -16,7 +16,7 @@ prerequisites: [jv-orm-concepts]
 seoTitle: JPA N+1 — middle
 seoDescription: Entity, lazy loading и классика N+1.
 seoKeywords: [java, jpa, n+1, собеседование]
-canonicalUrl: https://9to18.ru/game/learn/jv-jpa-nplus1
+canonicalUrl: https://9to18.ru/game/learn/jv-orm-concepts
 ---
 
 ## Введение
@@ -29,7 +29,7 @@ Entity связан с таблицей. FetchType.LAZY откладывает �
 
 ## Раздел: Практика
 
-Лечение: join fetch, entity graph, batch size. См. [sql-performance-explain](/game/learn/sql-performance-explain).
+Лечение: join fetch, entity graph, batch size. См. [sql-cte-window](/game/learn/sql-cte-window).
 
 ## Раздел: На собесе
 
@@ -107,5 +107,5 @@ Back: планы и N+1
 
 ## Ссылки
 
-- Learn | [SQL14](/game/learn/sql-performance-explain)
+- Learn | [SQL14](/game/learn/sql-cte-window)
 - Далее: [JMS](/game/learn/jv-jms)

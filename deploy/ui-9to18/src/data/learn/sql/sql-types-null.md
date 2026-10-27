@@ -12,7 +12,7 @@ tags: [sql, char, varchar, null, типы-данных, собеседовани
 onKnowledgeMap: true
 durationMin: 24
 excerpt: Разница CHAR и VARCHAR, почему NULL не равен 0 и пробелу, трёхзначная логика и IS NULL в PostgreSQL.
-prerequisites: [sql-joins]
+prerequisites: [sql-delete-truncate-drop]
 seoTitle: CHAR vs VARCHAR и NULL в SQL — собеседование
 seoDescription: Чем CHAR отличается от VARCHAR, что такое NULL и почему сравнения с NULL коварны. Примеры PostgreSQL для junior SQL.
 seoKeywords: [CHAR, VARCHAR, NULL, SQL, PostgreSQL, трёхзначная логика, собеседование]
@@ -178,4 +178,4 @@ Back: '' — значение нулевой длины; NULL — отсутст
 - [OTUS / Хабр — топ вопросов по SQL, часть I](https://habr.com/ru/companies/otus/articles/461067/)
 - [PostgreSQL: Character Types](https://www.postgresql.org/docs/current/datatype-character.html)
 - Learn | /game/learn
-- Далее: [Основы индексов](/game/learn/sql-indexes-basics)
+- Далее: [Основы индексов](/game/learn/sql-types-null)

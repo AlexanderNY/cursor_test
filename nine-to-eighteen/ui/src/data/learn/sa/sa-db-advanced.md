@@ -12,7 +12,7 @@ tags: [sa, базы данных, ACID, индексы, шардирование
 onKnowledgeMap: true
 durationMin: 35
 excerpt: Транзакции и ACID, проектирование и оптимизация БД, партиции, реплики, шарды, маппинг, уровни абстракции, индексы, dirty read и денормализация.
-prerequisites: [sa-methods-scrum-kanban]
+prerequisites: [sa-rest-basics]
 seoTitle: ACID, индексы, шардирование — middle СА на собеседовании
 seoDescription: Ответы СА на T3.1.13–3.1.24: транзакции, ACID, проектирование БД, оптимизация, партиционирование, репликация, шардирование, индексы, dirty read.
 seoKeywords: [ACID, транзакция, индекс, шардирование, репликация, системный аналитик, собеседование]

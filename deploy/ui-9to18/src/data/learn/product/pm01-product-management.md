@@ -110,4 +110,4 @@ Back: уровни СА
 ## Ссылки
 
 - Learn | [SA22](/game/learn/sa-profession-levels)
-- Далее: [Приоритизация](/game/learn/pm-prioritization)
+- Далее: [Приоритизация](/game/learn/pm-product-management)

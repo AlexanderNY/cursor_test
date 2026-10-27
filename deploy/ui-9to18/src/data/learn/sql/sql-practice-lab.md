@@ -1,5 +1,5 @@
 ---
-slug: sql-practice-lab
+slug: sql-agg-dates-count
 title: Сводная лаба SQL — практика по Q1–Q30
 shortTitle: Practice lab
 episode: SQL12
@@ -16,7 +16,7 @@ prerequisites: [sql-agg-dates-count]
 seoTitle: SQL practice lab — JOIN, anti-join, COUNT, подзапросы
 seoDescription: SQL12: практическая лаба на PostgreSQL по схеме интернет-магазина — сводка навыков middle перед senior-блоком CTE/EXPLAIN.
 seoKeywords: [SQL, лаба, JOIN, TRUNCATE, подзапрос, PostgreSQL, собеседование]
-canonicalUrl: https://9to18.ru/game/learn/sql-practice-lab
+canonicalUrl: https://9to18.ru/game/learn/sql-agg-dates-count
 ---
 
 ## Введение

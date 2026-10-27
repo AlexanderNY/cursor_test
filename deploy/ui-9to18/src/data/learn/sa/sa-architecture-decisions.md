@@ -12,7 +12,7 @@ tags: [ADR, монолит, микросервисы, CAP, архитектур�
 onKnowledgeMap: true
 durationMin: 35
 excerpt: Синтез T5: как писать ADR, когда монолит уместнее микросервисов, CAP-компромиссы с прикладным примером.
-prerequisites: [sa-integration-design]
+prerequisites: [sa-modeling-workshop]
 seoTitle: ADR монолит микросервисы CAP — senior СА
 seoDescription: SA20: Architecture Decision Record, выбор монолита или микросервисов, CAP trade-offs на примере для системного аналитика.
 seoKeywords: [ADR, микросервисы, монолит, CAP, архитектура, собеседование]
@@ -154,4 +154,4 @@ Back: при разделении сети нельзя одновременно
 
 - [Топ-150 вопросов СА (Хабр)](https://habr.com/ru/articles/963708/)
 - Learn | /game/learn
-- Далее: [Оценка и поставка](/game/learn/sa-estimation-delivery)
+- Далее: [Оценка и поставка](/game/learn/sa-architecture-decisions)

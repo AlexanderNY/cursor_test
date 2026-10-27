@@ -12,7 +12,7 @@ tags: [qa, test-design, bva, equivalence, собеседование]
 onKnowledgeMap: true
 durationMin: 30
 excerpt: Equivalence partitioning, boundary value analysis, pesticide paradox и практика на поле возраста 18–99.
-prerequisites: [qa-types-levels]
+prerequisites: [qa-intro-testing]
 seoTitle: Тест-дизайн EP/BVA — junior QA, собеседование
 seoDescription: Эквивалентные классы, границы, парадокс пестицида и практика для поля возраста и страховых классов.
 seoKeywords: [тест-дизайн, BVA, эквивалентность, junior QA, собеседование]
@@ -148,4 +148,4 @@ Back: обновлять кейсы и данные, добавлять explorat
 
 - [QA-interview-250](https://github.com/Konstantine23/QA-interview-250)
 - Learn | /game/learn
-- Далее: [Баги и баг-репорты](/game/learn/qa-bugs-reports)
+- Далее: [Баги и баг-репорты](/game/learn/qa-test-design)

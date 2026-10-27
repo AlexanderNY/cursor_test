@@ -12,7 +12,7 @@ tags: [карьера, junior, senior, профессия, компетенци�
 onKnowledgeMap: true
 durationMin: 30
 excerpt: T6.2.1–6.2.4: кто такой хороший аналитик, чем junior отличается от senior, признаки плохого СА и зона ответственности роли.
-prerequisites: [sa-estimation-delivery]
+prerequisites: [sa-architecture-decisions]
 seoTitle: Junior vs Senior системный аналитик — T6.2
 seoDescription: SA22: хороший и плохой аналитик, различия junior и senior, что должен делать СА — ответы T6.2.1–6.2.4 для собеседования.
 seoKeywords: [системный аналитик, junior, senior, компетенции, собеседование]
@@ -180,4 +180,4 @@ Back: должен — требования, модели, постановка,
 
 - [Топ-150 вопросов СА (Хабр)](https://habr.com/ru/articles/963708/)
 - Learn | /game/learn
-- Далее: [Interview drill T1–T7](/game/learn/sa-interview-drill)
+- Далее: [Interview drill T1–T7](/game/learn/sa-profession-levels)

@@ -12,7 +12,7 @@ tags: [redis, pubsub, kafka, собеседование]
 onKnowledgeMap: true
 durationMin: 28
 excerpt: Когда Redis pub/sub уместен и чем не заменяет Kafka/RabbitMQ.
-prerequisites: [rd-stampede-locks]
+prerequisites: [rd-ttl-persistence]
 seoTitle: Redis pub/sub vs Kafka — middle
 seoDescription: Отличие pub/sub Redis от брокера с персистентностью и consumer group.
 seoKeywords: [redis, pubsub, kafka, rabbitmq, собеседование]
@@ -114,5 +114,5 @@ Back: invalidate cache / live signal
 ## Ссылки
 
 - Learn | [SA sync/async queues](/game/learn/sa-sync-async-queues)
-- Learn | [Stampede](/game/learn/rd-stampede-locks)
-- Далее: [Eviction и cluster](/game/learn/rd-eviction-cluster)
+- Learn | [Stampede](/game/learn/rd-ttl-persistence)
+- Далее: [Eviction и cluster](/game/learn/rd-pubsub-vs-queue)

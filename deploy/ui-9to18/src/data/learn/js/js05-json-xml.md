@@ -1,5 +1,5 @@
 ---
-slug: js-json-xml
+slug: js-dom-events
 title: JSON и XML в браузере
 shortTitle: JSON XML
 episode: JS05
@@ -16,7 +16,7 @@ prerequisites: [js-dom-events]
 seoTitle: JSON XML — middle
 seoDescription: JSON.parse/stringify; XML рядом с SOAP.
 seoKeywords: [javascript, json, xml, собеседование]
-canonicalUrl: https://9to18.ru/game/learn/js-json-xml
+canonicalUrl: https://9to18.ru/game/learn/js-dom-events
 ---
 
 ## Введение
@@ -29,7 +29,7 @@ JSON.parse / stringify; ловите SyntaxError. Не доверяйте дан
 
 ## Раздел: Практика
 
-XML: DOMParser; канон интеграций — [sa-soap-xml](/game/learn/sa-soap-xml). Python json — [py-stdlib-re-json-copy](/game/learn/py-stdlib-re-json-copy).
+XML: DOMParser; канон интеграций — [sa-soap-xml](/game/learn/sa-soap-xml). Python json — [py-oop-basics](/game/learn/py-oop-basics).
 
 ## Раздел: На собесе
 
@@ -109,5 +109,5 @@ Back: XML/SOAP
 ## Ссылки
 
 - Learn | [SA12](/game/learn/sa-soap-xml)
-- Learn | [PY08](/game/learn/py-stdlib-re-json-copy)
-- Далее: [Capstone](/game/learn/js-capstone)
+- Learn | [PY08](/game/learn/py-oop-basics)
+- Далее: [Capstone](/game/learn/js-dom-events)

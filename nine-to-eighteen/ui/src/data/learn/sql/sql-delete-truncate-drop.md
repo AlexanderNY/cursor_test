@@ -1,29 +1,37 @@
 ---
 slug: sql-delete-truncate-drop
-title: DELETE, TRUNCATE и DROP — что удаляет что
-shortTitle: DELETE, TRUNCATE и DROP
+title: "DELETE, TRUNCATE и DROP · JOIN типы"
+shortTitle: "DELETE, TRUNCATE и DROP"
 episode: SQL03
 rubric: data
 order: 603
-publishedAt: 2027-04-05T10:00:00+03:00
+publishedAt: "2027-04-05T10:00:00+03:00"
 profiles: [developer, analyst, tester]
 level: junior
-tags: [sql, delete, truncate, drop, транзакции, собеседование]
+tags: [sql, delete, truncate, drop, "транзакции", "собеседование", join, inner-join, left-join, cross-join]
 onKnowledgeMap: true
-durationMin: 26
-excerpt: Разница DELETE и TRUNCATE, отличие DROP от TRUNCATE, откат в PostgreSQL и подводные камни SQL Server/MySQL.
-prerequisites: [sql-tables-keys-constraints]
-seoTitle: DELETE vs TRUNCATE vs DROP — SQL собеседование
-seoDescription: Когда использовать DELETE, TRUNCATE и DROP. Откат транзакций в PostgreSQL и отличия MS SQL/MySQL. Оригинальный разбор для junior.
-seoKeywords: [DELETE, TRUNCATE, DROP, PostgreSQL, SQL Server, транзакции, собеседование]
-canonicalUrl: https://9to18.ru/game/learn/sql-delete-truncate-drop
+durationMin: 58
+excerpt: "Разница DELETE и TRUNCATE, отличие DROP от TRUNCATE, откат в PostgreSQL и подводные камни SQL Server/MySQL."
+prerequisites: [sql-ddl-dml-dcl]
+author: ""
+authorUrl: ""
+coverUrl: ""
+seoTitle: "DELETE, TRUNCATE и DROP · JOIN типы"
+seoDescription: "Когда использовать DELETE, TRUNCATE и DROP. Откат транзакций в PostgreSQL и отличия MS SQL/MySQL. Оригинальный разбор для junior."
+seoKeywords: [DELETE, TRUNCATE, DROP, PostgreSQL, "SQL Server", "транзакции", "собеседование"]
+canonicalUrl: "https://9to18.ru/game/learn/sql-delete-truncate-drop"
 ---
-
 ## Введение
 
 Классика собеседования: «чем DELETE отличается от TRUNCATE» и следом «а DROP тогда зачем». Вопрос звучит просто, но ловит на деталях: WHERE, скорость, триггеры, идентичность/sequence, права и особенно **откат**. Ниже — практичный разбор с упором на PostgreSQL и явными оговорками по диалектам.
 
-## Раздел: DELETE против TRUNCATE
+**JOIN типы.** JOIN — способ связать строки нескольких таблиц по условию. На собесе ждут не только названия типов, но и понимание, какие строки пропадут, где появятся NULL и чем опасен NATURAL JOIN. Примеры ниже для PostgreSQL; идея переносится на MySQL и SQL Server (с оговоркой по FULL OUTER JOIN в MySQL).
+
+## Раздел: Как отвечать одним блоком
+
+Этот выпуск собрал соседние короткие темы трека: «DELETE, TRUNCATE и DROP», «JOIN типы». Раньше каждая занимала отдельную карточку на несколько минут, а на собеседовании их спрашивают одним блоком. Ниже у каждой темы свой раздел, затем общие лабы, один тест и одна колода карточек. В ответе сначала назовите, какую тему спросили, потом определение и один пример. Не проговаривайте все разделы, если спросили один. Лабы можно пройти по порядку исходного трека. Если времени мало, сделайте первую и последнюю: первая ставит язык, последняя проверяет, что соседние темы вы не перепутали.
+
+## Раздел: DELETE, TRUNCATE и DROP: DELETE против TRUNCATE
 
 **DELETE** — DML: удаляет строки, можно с условием.
 
@@ -60,7 +68,7 @@ TRUNCATE TABLE order_items, orders RESTART IDENTITY CASCADE;  -- PostgreSQL
 
 Короткий ответ: DELETE — выборочно и как DML; TRUNCATE — полная быстрая очистка таблицы без WHERE; про rollback всегда уточняйте СУБД.
 
-## Раздел: DROP против TRUNCATE
+## Раздел: DELETE, TRUNCATE и DROP: DROP против TRUNCATE
 
 **DROP** удаляет сам объект схемы.
 
@@ -82,7 +90,8 @@ DROP TABLE IF EXISTS orders CASCADE;  -- PG: зависимые объекты �
 2. очистить таблицу, сохранив схему → `TRUNCATE`;
 3. убрать таблицу из модели → `DROP TABLE`.
 
-## Раздел: Частые вопросы с собеседования
+## Раздел: DELETE, TRUNCATE и DROP: Частые вопросы с собеседования
+
 **Вопрос.** Нужно удалить 10% строк — DELETE или TRUNCATE?
 
 **Ответ.** DELETE с WHERE — единственный выбор; TRUNCATE не фильтрует. TRUNCATE — полная очистка таблицы быстро, без построчного WHERE.
@@ -99,7 +108,98 @@ DROP TABLE IF EXISTS orders CASCADE;  -- PG: зависимые объекты �
 
 **Ответ.** Сбрасывает serial/identity counters — полезно в тестовых схемах после полного wipe. В prod на живых id осторожно: внешние системы могли запомнить старые id.
 
+## Раздел: JOIN типы: Зачем нужны соединения
+
+Без JOIN пришлось бы вручную сопоставлять ключи во внешнем коде. В SQL соединение — декларативное описание: «возьми заказы и пользователей, где `orders.user_id = users.id`».
+
+Базовый шаблон:
+
+```sql
+SELECT o.id, u.email, o.status
+FROM orders AS o
+INNER JOIN users AS u ON u.id = o.user_id
+WHERE o.status = 'paid';
+```
+
+Ключевые идеи:
+- условие соединения (`ON` / `USING`) задаёт соответствие строк;
+- фильтр `WHERE` применяется к уже соединённому результату (с нюансами для внешних JOIN — см. ниже);
+- алиасы (`o`, `u`) обязательны в речи на собесе, иначе легко запутаться в одноимённых `id`.
+
+## Раздел: JOIN типы: Типы JOIN подробно
+
+**INNER JOIN** — только пары, где условие истинно. Заказ без пользователя (битый FK) или пользователь без заказов не попадут в результат (для пары «заказ–пользователь» пользователь без заказов отпадёт).
+
+**LEFT (OUTER) JOIN** — все строки левой таблицы + совпадения справа; если совпадения нет, правые столбцы = NULL. Удобно искать «пользователи без заказов»:
+
+```sql
+SELECT u.id, u.email
+FROM users u
+LEFT JOIN orders o ON o.user_id = u.id
+WHERE o.id IS NULL;
+```
+
+Важно: условие на правую таблицу в `WHERE` может «убить» LEFT и превратить его по сути в INNER. Фильтры на правую сторону часто кладут в `ON`.
+
+**RIGHT (OUTER) JOIN** — зеркало LEFT (все справа). На практике чаще переписывают в LEFT, меняя порядок таблиц — так читаемее.
+
+**FULL (OUTER) JOIN** — строки обеих сторон; NULL там, где нет пары. В PostgreSQL и SQL Server поддерживается; в MySQL historically нет FULL OUTER — эмулируют через UNION LEFT и RIGHT.
+
+**SELF JOIN** — таблица соединяется сама с собой (иерархия сотрудников, граф друзей): алиасы обязательны.
+
+**Антиджойны / семиджойны** (часто обсуждают рядом): «есть ли хотя бы одна связанная строка» (`EXISTS`) vs «нет связанных» (`NOT EXISTS` / `LEFT … IS NULL`).
+
+## Раздел: JOIN типы: CROSS JOIN и NATURAL JOIN
+
+**CROSS JOIN** — декартово произведение: каждая строка A с каждой строкой B. Явный вид:
+
+```sql
+SELECT *
+FROM sizes
+CROSS JOIN colors;
+```
+
+Эквивалент старого `FROM a, b` без условия — опасен случайно: на больших таблицах взрывает объём. Осознанное применение — генерация комбинаций, календарные решётки, тестовые наборы.
+
+**NATURAL JOIN** соединяет таблицы по **всем одноимённым столбцам** автоматически:
+
+```sql
+-- рискованно: сработает по всем общим именам столбцов
+SELECT *
+FROM orders
+NATURAL JOIN users;
+```
+
+Почему на практике избегают:
+- скрытое условие — легко сломать при добавлении столбца `created_at` в обе таблицы;
+- читатель запроса не видит ключ связи;
+- в команде предпочтительны `USING (user_id)` или явный `ON`.
+
+`USING (user_id)` — компромисс: условие явное по имени столбца, в результате столбец не дублируется.
+
+Итог для собеса: CROSS — декартово; NATURAL — неявное соединение по именам; в проде почти всегда пишите явный `ON`.
+
+## Раздел: JOIN типы: Частые вопросы с собеседования
+
+**Вопрос.** `EXISTS` или `INNER JOIN` для проверки «есть связанные строки»?
+
+**Ответ.** Оба могут; `EXISTS` часто останавливается на первом совпадении и не раздувает результат дубликатами join. Если нужны столбцы из обеих таблиц — JOIN; если булев факт связи — EXISTS семантически яснее.
+
+**Вопрос.** Почему фильтр на правую таблицу в `WHERE` ломает LEFT JOIN?
+
+**Ответ.** NULL из несовпавших строк отфильтровывается предикатом на правые столбцы — строки «только слева» исчезают. Условие на правую часть для сохранения OUTER кладут в `ON`.
+
+**Вопрос.** CROSS JOIN случайно — риск?
+
+**Ответ.** Декартово произведение: |A|×|B| строк. Забытое условие в старом синтаксисе `FROM a, b` на больших таблицах убивает память и диск. Явный CROSS — только осознанные комбинаторные задачи.
+
+**Вопрос.** SELF JOIN — типичный кейс?
+
+**Ответ.** Иерархия в одной таблице: сотрудник и manager_id → join employees m ON e.manager_id = m.id. Два алиаса одной таблицы обязательны, иначе неразличимы столбцы.
+
 ## Лаба
+
+**DELETE, TRUNCATE и DROP.**
 
 **Цель.** На учебной таблице сравнить DELETE, TRUNCATE и DROP и проверить откат в вашей СУБД.
 
@@ -117,7 +217,25 @@ DROP TABLE IF EXISTS orders CASCADE;  -- PG: зависимые объекты �
 - [ ] Объясняете, почему DROP опаснее TRUNCATE для приложения
 - [ ] Умеете сказать про rollback в PostgreSQL vs типичный MySQL
 
-## Схема: Что остаётся после команды
+**JOIN типы.**
+
+**Цель.** На схеме users/orders/order_items получить четыре результата разными JOIN и объяснить кардинальность.
+
+**Шаги.**
+1. Подготовьте 3 пользователя, у одного из них 0 заказов; 2 заказа с позициями.
+2. Напишите INNER JOIN заказов с пользователями и посчитайте строки.
+3. Напишите LEFT JOIN от users к orders и найдите пользователя без заказов через `IS NULL`.
+4. Сделайте CROSS JOIN двух маленьких справочников (например, `priorities` × `channels`) — убедитесь, что число строк = произведение.
+5. Попробуйте NATURAL JOIN на таблицах с общим лишним столбцом `updated_at` и объясните, почему результат «сломался» или стал пустым.
+
+**В группу:** партнёр рисует круги Венна для INNER/LEFT/FULL — вы подписываете SQL-синонимы.
+
+**Готово, если…**
+- [ ] Объясняете INNER vs LEFT на пальцах и на примере с NULL
+- [ ] Знаете, когда CROSS уместен и чем опасен случайный декарт
+- [ ] Аргументированно отказываетесь от NATURAL JOIN в пользу ON/USING
+
+## Схема: DELETE, TRUNCATE и DROP: Что остаётся после команды
 
 ```mermaid
 flowchart LR
@@ -125,6 +243,32 @@ flowchart LR
   T -->|DELETE WHERE| A["Таблица + оставшиеся строки"]
   T -->|TRUNCATE| B["Таблица пустая, схема жива"]
   T -->|DROP| C["Объекта таблицы нет"]
+```
+
+## Схема: JOIN типы: Типы соединений
+
+```mermaid
+flowchart TB
+  subgraph inner [INNER]
+    I[Только совпадения]
+  end
+  subgraph left [LEFT OUTER]
+    L[Все слева + совпадения]
+  end
+  subgraph full [FULL OUTER]
+    F[Все с обеих сторон]
+  end
+  subgraph cross [CROSS]
+    C[Декартово произведение]
+  end
+  A[Таблица A] --> inner
+  B[Таблица B] --> inner
+  A --> left
+  B --> left
+  A --> full
+  B --> full
+  A --> cross
+  B --> cross
 ```
 
 ## Тест
@@ -135,11 +279,23 @@ flowchart LR
 
 **Пояснение:** TRUNCATE очищает таблицу целиком (или перечисленные таблицы целиком).
 
+### Какой JOIN вернёт пользователей без заказов вместе с NULL в полях заказа?
+
+**Ответ:** LEFT JOIN
+
+**Пояснение:** INNER отбросит пользователей без совпадений; для «только без заказов» добавьте `WHERE o.id IS NULL`.
+
 ### Откатывается ли TRUNCATE в PostgreSQL?
 
 **Ответ:** да, внутри незакоммиченной транзакции ROLLBACK вернёт данные
 
 **Пояснение:** это важное отличие от распространённого поведения MySQL, где truncate обычно не откатывают как DML.
+
+### Чем CROSS JOIN отличается от INNER JOIN?
+
+**Ответ:** CROSS не требует условия и даёт все комбинации; INNER оставляет только строки, где условие истинно
+
+**Пояснение:** INNER концептуально можно представить как CROSS + фильтр, но оптимизатор работает иначе.
 
 ### Чем DROP TABLE отличается от TRUNCATE TABLE?
 
@@ -147,36 +303,9 @@ flowchart LR
 
 **Пояснение:** TRUNCATE очищает строки, определение таблицы остаётся; после DROP нужны CREATE и права.
 
-### DELETE с WHERE — это DML?
-
-**Ответ:** да, DML
-
-**Пояснение:** построчное изменение данных; можно откатить в транзакции и задействовать ROW-триггеры.
-
-### Когда DELETE предпочтительнее TRUNCATE?
-
-**Ответ:** нужен фильтр WHERE
-
-**Пояснение:** частичное удаление, аудит через триггеры, мягкое удаление по статусу.
-
 ## Шпаргалка
 
-<h3>Сравнение</h3>
-<ul>
-<li><b>DELETE</b> — строки, WHERE, триггеры DELETE, DML, rollback</li>
-<li><b>TRUNCATE</b> — все строки, быстро, без WHERE; rollback зависит от СУБД</li>
-<li><b>DROP</b> — удаляет таблицу как объект</li>
-</ul>
-<h3>Диалекты</h3>
-<ul>
-<li>PostgreSQL: TRUNCATE транзакционен; RESTART IDENTITY, CASCADE</li>
-<li>MySQL: TRUNCATE часто с неявным commit</li>
-<li>SQL Server: уточняйте версию и мифы про «нельзя откатить»</li>
-</ul>
-<pre><code>BEGIN;
-TRUNCATE TABLE sql03_demo;
-ROLLBACK;  -- в PostgreSQL данные вернутся
-</code></pre>
+<ul><li><b>DELETE</b> — строки, WHERE, триггеры DELETE, DML, rollback</li><li><b>TRUNCATE</b> — все строки, быстро, без WHERE; rollback зависит от СУБД</li><li><b>DROP</b> — удаляет таблицу как объект</li><li>PostgreSQL: TRUNCATE транзакционен; RESTART IDENTITY, CASCADE</li><li>MySQL: TRUNCATE часто с неявным commit</li><li>SQL Server: уточняйте версию и мифы про «нельзя откатить»</li><li><b>INNER</b> — пересечение по условию</li><li><b>LEFT/RIGHT/FULL</b> — внешние, с NULL на стороне без пары</li><li><b>CROSS</b> — декартово произведение</li><li><b>NATURAL</b> — неявный JOIN по общим именам (избегать)</li><li>Фильтры на правую таблицу во внешнем JOIN — осторожно: лучше в ON</li><li>MySQL: FULL OUTER часто эмулируют UNION</li></ul>
 
 ## Anki
 
@@ -184,35 +313,41 @@ ROLLBACK;  -- в PostgreSQL данные вернутся
 
 Back: Когда нужно условие WHERE, построчные DELETE-триггеры или удаление части строк
 
+### Front: Что делает LEFT JOIN?
+
+Back: Возвращает все строки левой таблицы и подходящие справа; если пары нет — справа NULL
+
 ### Front: Что делает DROP TABLE?
 
 Back: Удаляет определение таблицы и всё её содержимое из схемы; объект нужно создавать заново
+
+### Front: Когда уместен CROSS JOIN?
+
+Back: Когда нужны все комбинации небольших наборов; не как случайный JOIN без ON
 
 ### Front: TRUNCATE в PostgreSQL и откат?
 
 Back: Можно выполнить в транзакции и откатить ROLLBACK до COMMIT
 
-### Front: TRUNCATE RESTART IDENTITY в PG?
+### Front: Чем заменить NATURAL JOIN?
 
-Back: Сбрасывает счётчики SERIAL/identity после очистки таблицы
-
-### Front: CASCADE в TRUNCATE — зачем?
-
-Back: Очистить связанные таблицы по FK-зависимости одной командой
-
-### Front: Q1 на собесе — про что?
-
-Back: Сравнение DELETE, TRUNCATE и DROP по объекту, скорости и откату
+Back: Явным ON или USING (column) с понятным ключом связи
 
 ## Итоги
 
 - DELETE — точечная работа со строками; TRUNCATE — полная очистка; DROP — конец объекта
 - Скорость и триггеры — частые критерии выбора
 - Про rollback всегда уточняйте СУБД: PostgreSQL дружелюбнее к транзакционному TRUNCATE, чем типичный MySQL
+- JOIN связывает наборы строк; тип определяет судьбу несовпавших
+- LEFT + IS NULL — рабочий приём для «нет связанной записи»
+- CROSS осознанно, NATURAL — почти никогда в прикладном коде
 
 ## Ссылки
 
 - [PostgreSQL: TRUNCATE](https://www.postgresql.org/docs/current/sql-truncate.html)
 - [PostgreSQL: DELETE](https://www.postgresql.org/docs/current/sql-delete.html)
-- Индекс Q1, Q21: [OTUS / Хабр — часть I](https://habr.com/ru/companies/otus/articles/461067/)
-- Далее: [JOIN в SQL](/game/learn/sql-joins)
+- [OTUS / Хабр — часть I](https://habr.com/ru/companies/otus/articles/461067/)
+- [PostgreSQL: Joins](https://www.postgresql.org/docs/current/tutorial-join.html)
+- [Use The Index, Luke! — глава про JOIN](https://use-the-index-luke.com/sql/join)
+- [Select Star SQL](https://selectstarsql.com/)
+- [Типы CHAR/VARCHAR и NULL](/game/learn/sql-types-null)

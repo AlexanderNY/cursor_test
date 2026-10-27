@@ -1,5 +1,5 @@
 ---
-slug: sa-notations-bpmn-uml
+slug: sa-gost-srs-artifacts
 title: BPMN и UML на собесе системного аналитика
 shortTitle: BPMN и UML
 episode: SA04
@@ -16,7 +16,7 @@ prerequisites: [sa-gost-srs-artifacts]
 seoTitle: BPMN UML нотации — junior системный аналитик, собеседование
 seoDescription: Ответы T2.1–2.8: нотации, BPMN gateway/events, UML, sequence frames, use case diagram, class vs ER.
 seoKeywords: [BPMN, UML, sequence, use case, ER, системный аналитик, собеседование]
-canonicalUrl: https://9to18.ru/game/learn/sa-notations-bpmn-uml
+canonicalUrl: https://9to18.ru/game/learn/sa-gost-srs-artifacts
 ---
 
 ## Введение

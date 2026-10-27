@@ -1,5 +1,5 @@
 ---
-slug: jv-capstone
+slug: jv-adr-bus-vs-broker
 title: Capstone Java/enterprise — чеклист
 shortTitle: JV capstone
 episode: JV16
@@ -12,11 +12,11 @@ tags: [java, capstone, собеседование]
 onKnowledgeMap: true
 durationMin: 35
 excerpt: Чеклист JV01–JV15 и индекс slug.
-prerequisites: [jv-interview-drill]
+prerequisites: [jv-adr-bus-vs-broker]
 seoTitle: JV capstone — senior
 seoDescription: Чеклист JV01–JV15 и индекс slug.
 seoKeywords: [java, capstone, собеседование]
-canonicalUrl: https://9to18.ru/game/learn/jv-capstone
+canonicalUrl: https://9to18.ru/game/learn/jv-adr-bus-vs-broker
 ---
 
 ## Введение
@@ -29,7 +29,7 @@ Junior: JVM, OOP, shell, JDBC, pool, ORM concepts. Middle: JPA/N+1, JMS, ESB ada
 
 ## Раздел: Практика
 
-Индекс: jv-se-jvm … jv-capstone (см. SERIES.md).
+Индекс: jv-se-jvm … jv-adr-bus-vs-broker (см. SERIES.md).
 
 ## Раздел: На собесе
 
@@ -107,4 +107,4 @@ Back: ADR
 ## Ссылки
 
 - Learn | [SERIES](/game/learn)
-- Learn | [SA13](/game/learn/sa-esb-integrations)
+- Learn | [SA13](/game/learn/sa-soap-xml)

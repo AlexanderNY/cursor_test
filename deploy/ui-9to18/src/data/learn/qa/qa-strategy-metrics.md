@@ -12,7 +12,7 @@ tags: [strategy, metrics, risk, estimate, coverage, собеседование]
 onKnowledgeMap: true
 durationMin: 40
 excerpt: Старт QA без документов, критерии «достаточно», review кейсов, риски, нагрузка команды, метрики и оценка трудозатрат.
-prerequisites: [qa-middle-web-mobile-sql]
+prerequisites: [qa-infra-linux-containers]
 seoTitle: QA стратегия риски метрики — senior
 seoDescription: S1–2, S5–13, S15–18: как начинать тестирование, когда стоп, risk mitigation, smoke, estimate и coverage.
 seoKeywords: [test strategy, metrics, risk based, estimate, coverage, senior qa]

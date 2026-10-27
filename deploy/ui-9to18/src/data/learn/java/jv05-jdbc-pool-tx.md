@@ -1,5 +1,5 @@
 ---
-slug: jv-jdbc-pool-tx
+slug: jv-shell-process
 title: Пул соединений и транзакции JDBC
 shortTitle: JDBC pool tx
 episode: JV05
@@ -12,11 +12,11 @@ tags: [java, jdbc, transactions, собеседование]
 onKnowledgeMap: true
 durationMin: 30
 excerpt: Connection pool и autocommit; связь с SQL ACID.
-prerequisites: [jv-jdbc-basics]
+prerequisites: [jv-shell-process]
 seoTitle: JDBC pool tx — junior
 seoDescription: Connection pool и autocommit; связь с SQL ACID.
 seoKeywords: [java, jdbc, transactions, собеседование]
-canonicalUrl: https://9to18.ru/game/learn/jv-jdbc-pool-tx
+canonicalUrl: https://9to18.ru/game/learn/jv-shell-process
 ---
 
 ## Введение
@@ -29,7 +29,7 @@ canonicalUrl: https://9to18.ru/game/learn/jv-jdbc-pool-tx
 
 ## Раздел: Практика
 
-См. [sql-acid-transactions](/game/learn/sql-acid-transactions).
+См. [sql-normalization](/game/learn/sql-normalization).
 
 ## Раздел: На собесе
 
@@ -111,5 +111,5 @@ Back: ACID канон
 
 ## Ссылки
 
-- Learn | [SQL08 ACID](/game/learn/sql-acid-transactions)
+- Learn | [SQL08 ACID](/game/learn/sql-normalization)
 - Далее: [ORM concepts](/game/learn/jv-orm-concepts)

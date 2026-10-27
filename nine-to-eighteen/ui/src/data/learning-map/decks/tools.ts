@@ -13,13 +13,13 @@ export const deckTools: TopicDeck = {
       id: 'pool:tools:branch-pr',
       front: `Ветка и PR?`,
       back: `Изоляция изменения, ревью, CI на PR. Защита main — базовая гигиена.`,
-      learnSlug: 'b06-git-branch',
+      learnSlug: 'b05-api-check',
     },
     {
       id: 'pool:tools:rebase-merge',
       front: `merge vs rebase?`,
       back: `merge сохраняет факт слияния; rebase линеаризует. Не rebaseйте публичную историю без договорённости.`,
-      learnSlug: 'b06-git-branch',
+      learnSlug: 'b05-api-check',
     },
     {
       id: 'pool:tools:regex',
@@ -31,7 +31,7 @@ export const deckTools: TopicDeck = {
       id: 'pool:tools:insomnia',
       front: `Проверка API в Insomnia/Postman?`,
       back: `Коллекции запросов, env,断言. Быстрый ручной/полуавтоматический контракт.`,
-      learnSlug: 's01e06-insomnia',
+      learnSlug: 's01e05-fastapi',
     },
     {
       id: 'pool:tools:curl',
@@ -43,13 +43,13 @@ export const deckTools: TopicDeck = {
       id: 'pool:tools:git-zero',
       front: `Git с нуля — ключевые объекты?`,
       back: `blob/tree/commit, ссылки веток. Понимание модели спасает от «магии» reset/revert.`,
-      learnSlug: 'b02-git',
+      learnSlug: 'b01-karta',
     },
     {
       id: 'pool:tools:conflict',
       front: `Конфликт слияния?`,
       back: `Обе стороны меняли одни строки. Разрешите осознанно, протестируйте, не коммитьте маркеры.`,
-      learnSlug: 'b06-git-branch',
+      learnSlug: 'b05-api-check',
     },
     {
       id: 'pool:tools:gitignore',
@@ -73,13 +73,13 @@ export const deckTools: TopicDeck = {
       id: 'pool:tools:collections',
       front: `Зачем коллекции запросов?`,
       back: `Онбординг, регрессия ручная, единые env для стендов. Версионируйте рядом с кодом.`,
-      learnSlug: 's01e06-insomnia',
+      learnSlug: 's01e05-fastapi',
     },
     {
       id: 'pool:tools:cherry-pick',
       front: `cherry-pick?`,
       back: `Перенос одного коммита. Осторожно с зависимостями и дублями при позднем merge.`,
-      learnSlug: 'b06-git-branch',
+      learnSlug: 'b05-api-check',
     },
     {
       id: 'pool:tools:tag',
@@ -97,7 +97,7 @@ export const deckTools: TopicDeck = {
       id: 'pool:tools:stash',
       front: `git stash?`,
       back: `Временно убрать локальные изменения. Не используйте как долговременное хранилище фич.`,
-      learnSlug: 'b02-git',
+      learnSlug: 'b01-karta',
     },
     {
       id: 'pool:tools:regex-anchor',
@@ -109,19 +109,19 @@ export const deckTools: TopicDeck = {
       id: 'pool:tools:pr-review',
       front: `Что просят в PR?`,
       back: `Зачем изменение, как проверить, риски. Маленький diff > огромный «всё сразу».`,
-      learnSlug: 'b06-git-branch',
+      learnSlug: 'b05-api-check',
     },
     {
       id: 'pool:tools:reset-revert',
       front: `reset vs revert?`,
       back: `reset двигает ветку (опасно на shared); revert создаёт новый коммит-отмену — безопасно для main.`,
-      learnSlug: 'b02-git',
+      learnSlug: 'b01-karta',
     },
     {
       id: 'pool:tools:auth-header',
       front: `Authorization header в проверках?`,
       back: `Bearer/токен в env коллекции, не в скриншотах. Ротация секретов стенда.`,
-      learnSlug: 's01e06-insomnia',
+      learnSlug: 's01e05-fastapi',
     },
   ],
 }

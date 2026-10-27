@@ -17,8 +17,8 @@ type LabGitRunnerProps = {
 }
 
 const GIT_TRAINER_SLUGS = new Set([
-  'b02-git',
-  'b06-git-branch',
+  'b01-karta',
+  'b05-api-check',
   's01e03-git',
   'qa-pytest-ci-git',
 ])

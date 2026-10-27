@@ -12,7 +12,7 @@ tags: [qa, sql, database, sqlite, собеседование]
 onKnowledgeMap: true
 durationMin: 30
 excerpt: Типы баз, SELECT с WHERE, идея JOIN и лаба на sqlite3 в Python для books/users/orders.
-prerequisites: [qa-web-http-api-basics]
+prerequisites: [qa-docs-plan-cases]
 seoTitle: SQL для junior QA — SELECT, JOIN, собеседование
 seoDescription: Типы БД, выборка с WHERE, концепция JOIN и практика sqlite3 для тестировщика на собеседовании.
 seoKeywords: [SQL, SELECT, JOIN, sqlite, junior QA, собеседование]
@@ -184,4 +184,4 @@ Back: файловая БД без установки сервера, досту
 - [QA-interview-250](https://github.com/Konstantine23/QA-interview-250)
 - Learn | /game/learn
 - См. также: [SQL DDL/DML](/game/learn/sql-ddl-dml-dcl)
-- Далее: [Сводная junior-практика](/game/learn/qa-junior-practice-lab)
+- Далее: [Сводная junior-практика](/game/learn/qa-sql-db-basics)

@@ -12,7 +12,7 @@ tags: [product, strategy, собеседование]
 onKnowledgeMap: true
 durationMin: 30
 excerpt: Сегмент, ставка, что не делаем.
-prerequisites: [pm-agile-po]
+prerequisites: [pm-cjm]
 seoTitle: Strategy — middle
 seoDescription: Сегмент, ставка, что не делаем.
 seoKeywords: [product, strategy, собеседование]
@@ -108,4 +108,4 @@ Back: отказ
 ## Ссылки
 
 - Learn | [PM01](/game/learn/pm-product-management)
-- Далее: [Roadmapping](/game/learn/pm-roadmapping)
+- Далее: [Roadmapping](/game/learn/pm-product-strategy)

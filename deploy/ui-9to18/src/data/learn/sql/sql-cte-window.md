@@ -12,7 +12,7 @@ tags: [sql, CTE, window functions, ROW_NUMBER, PostgreSQL, собеседова�
 onKnowledgeMap: true
 durationMin: 35
 excerpt: Сверх Части I Хабра: WITH (CTE), ROW_NUMBER/RANK/SUM OVER — то, что ждут от middle/senior на современных собесах.
-prerequisites: [sql-practice-lab]
+prerequisites: [sql-agg-dates-count]
 seoTitle: CTE и оконные функции PostgreSQL — собеседование senior
 seoDescription: SQL13: обычные и рекурсивные CTE, окна ROW_NUMBER/RANK/DENSE_RANK и SUM OVER — разбор с примерами на заказах.
 seoKeywords: [SQL, CTE, WITH, ROW_NUMBER, window, PostgreSQL, собеседование]
@@ -113,7 +113,7 @@ WHERE status = 'paid';
 **Цель.** На схеме SQL12 написать CTE-отчёт и выборку «топ-1 заказ на клиента» через `ROW_NUMBER`.
 
 **Шаги.**
-1. Возьмите `customers` / `orders` из sql-practice-lab (или пересоздайте кратко).
+1. Возьмите `customers` / `orders` из sql-agg-dates-count (или пересоздайте кратко).
 2. Через `WITH` посчитайте сумму `paid` по клиентам и отфильтруйте порог.
 3. Выберите последний заказ каждого клиента (`ROW_NUMBER` + фильтр `rn = 1`).
 4. Добавьте `SUM(total) OVER (PARTITION BY customer_id ORDER BY created_at)` и сверьте руками на 2–3 строках.
@@ -208,4 +208,4 @@ Back: PARTITION сохраняет строки и считает окно; GROU
 - [OTUS / Хабр — топ SQL, часть I](https://habr.com/ru/companies/otus/articles/461067/)
 - [PostgreSQL: WITH Queries (CTEs)](https://www.postgresql.org/docs/current/queries-with.html)
 - [PostgreSQL: Window Functions](https://www.postgresql.org/docs/current/tutorial-window.html)
-- Learn | /game/learn/sql-practice-lab
+- Learn | /game/learn/sql-agg-dates-count

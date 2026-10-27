@@ -18,23 +18,23 @@
 | Ep | slug | Тема |
 |----|------|------|
 | RD01 | `rd-kv-model` | KV-модель, не source of truth |
-| RD02 | `rd-data-types` | string, hash, list, set, zset |
+| RD02 | `rd-kv-model` | string, hash, list, set, zset |
 | RD03 | `rd-ttl-persistence` | TTL, RDB vs AOF |
 
 ## Middle · RD04–RD06 · order 704–706
 
 | Ep | slug | Тема |
 |----|------|------|
-| RD04 | `rd-cache-aside` | cache-aside и инвалидация |
-| RD05 | `rd-stampede-locks` | dogpile / singleflight |
+| RD04 | `rd-ttl-persistence` | cache-aside и инвалидация |
+| RD05 | `rd-ttl-persistence` | dogpile / singleflight |
 | RD06 | `rd-pubsub-vs-queue` | pub/sub vs брокер |
 
 ## Senior · RD07–RD08 · order 707–708
 
 | Ep | slug | Тема |
 |----|------|------|
-| RD07 | `rd-eviction-cluster` | eviction, sentinel/cluster |
-| RD08 | `rd-capstone` | drill vs PostgreSQL, чеклист |
+| RD07 | `rd-pubsub-vs-queue` | eviction, sentinel/cluster |
+| RD08 | `rd-pubsub-vs-queue` | drill vs PostgreSQL, чеклист |
 
 ## Обслуживание
 

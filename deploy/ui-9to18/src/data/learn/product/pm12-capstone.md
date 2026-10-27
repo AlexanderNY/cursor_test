@@ -1,5 +1,5 @@
 ---
-slug: pm-capstone
+slug: pm-interview-drill
 title: Capstone Product — чеклист
 shortTitle: PM capstone
 episode: PM12
@@ -16,7 +16,7 @@ prerequisites: [pm-interview-drill]
 seoTitle: PM capstone — senior
 seoDescription: Чеклист PM01–PM11.
 seoKeywords: [product, capstone, собеседование]
-canonicalUrl: https://9to18.ru/game/learn/pm-capstone
+canonicalUrl: https://9to18.ru/game/learn/pm-interview-drill
 ---
 
 ## Введение

@@ -1,5 +1,5 @@
 ---
-slug: py-control-flow-functions
+slug: py-strings-ops-io
 title: Управление потоком и функции — args, lambda, comprehensions
 shortTitle: Функции
 episode: PY04
@@ -16,7 +16,7 @@ prerequisites: [py-strings-ops-io]
 seoTitle: Python функции и циклы — junior
 seoDescription: for/while, функции, lambda, comprehensions для junior-собеса.
 seoKeywords: [python, functions, lambda, comprehension]
-canonicalUrl: https://9to18.ru/game/learn/py-control-flow-functions
+canonicalUrl: https://9to18.ru/game/learn/py-strings-ops-io
 ---
 
 ## Введение
@@ -129,4 +129,4 @@ Back: короче выражает «новый список из преобр�
 - [Defining Functions](https://docs.python.org/3/tutorial/controlflow.html#defining-functions)
 - [DEBAGanov — функции / циклы / lambda](https://github.com/DEBAGanov/interview_questions/blob/main/400%20вопросов%20с%20ответами%2C%20которые%20должен%20знать%20Python-разработчик.md)
 - Learn | /game/learn
-- Далее: [Модули и venv](/game/learn/py-modules-packages-venv)
+- Далее: [Модули и venv](/game/learn/py-strings-ops-io)

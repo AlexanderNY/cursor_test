@@ -1,5 +1,5 @@
 ---
-slug: py-senior-capstone
+slug: py-concurrency-io-patterns
 title: Карта собеса Python — чеклист Junior→Senior
 shortTitle: Capstone
 episode: PY24
@@ -12,11 +12,11 @@ tags: [python, checklist, interview, собеседование]
 onKnowledgeMap: true
 durationMin: 30
 excerpt: Сводка трека: что закрыто серией и где искать пробелы.
-prerequisites: [py-interview-tricky]
+prerequisites: [py-concurrency-io-patterns]
 seoTitle: Python interview checklist — senior capstone
 seoDescription: Чеклист Junior→Senior и ссылка на полный список вопросов.
 seoKeywords: [python, interview, checklist, senior]
-canonicalUrl: https://9to18.ru/game/learn/py-senior-capstone
+canonicalUrl: https://9to18.ru/game/learn/py-concurrency-io-patterns
 ---
 
 ## Введение
@@ -123,4 +123,4 @@ Back: SERIES.md в каталоге python Learn
 - [DEBAGanov — полный список вопросов](https://github.com/DEBAGanov/interview_questions/blob/main/400%20вопросов%20с%20ответами%2C%20которые%20должен%20знать%20Python-разработчик.md)
 - [docs.python.org](https://docs.python.org/3/)
 - Learn | /game/learn
-- Назад: [Tricky drill](/game/learn/py-interview-tricky)
+- Назад: [Tricky drill](/game/learn/py-concurrency-io-patterns)

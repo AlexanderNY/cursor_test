@@ -12,7 +12,7 @@ tags: [owasp, security, sockets, stress, performance, собеседование
 onKnowledgeMap: true
 durationMin: 45
 excerpt: OWASP Top и защиты, ручное и авто-тестирование сокетов, когда нужен stress и как проектировать сценарии нагрузки.
-prerequisites: [qa-shift-left-automation-roi]
+prerequisites: [qa-strategy-metrics]
 seoTitle: OWASP sockets stress testing — senior QA
 seoDescription: S26, S28–29: Top рисков OWASP с защитами, тестирование WebSocket/TCP, выбор инструментов stress и дизайн сценариев.
 seoKeywords: [owasp, stress testing, websocket, security testing, k6, jmeter]

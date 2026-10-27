@@ -12,7 +12,7 @@ tags: [БД, СУБД, нормализация, NoSQL, PK, собеседова
 onKnowledgeMap: true
 durationMin: 32
 excerpt: БД и СУБД, типы БД, зачем реляционные, задачи NoSQL, нормализация 1–3NF, денормализация, типы связей, M:N и первичный ключ.
-prerequisites: [sa-notations-bpmn-uml]
+prerequisites: [sa-gost-srs-artifacts]
 seoTitle: Базы данных основы — junior системный аналитик, собеседование
 seoDescription: Ответы T3.1.1–3.1.12: СУБД, реляционные vs NoSQL, 1–3NF, связи, M:N, первичный ключ.
 seoKeywords: [база данных, нормализация, NoSQL, первичный ключ, системный аналитик, собеседование]

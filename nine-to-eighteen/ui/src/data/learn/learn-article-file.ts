@@ -467,8 +467,9 @@ export function parseLearnArticleFile(
     theoryFormat: 'markdown',
     labFormat: 'markdown',
     cheatsheetFormat: 'html',
-    publishedAt:
-      (meta.publishedat || meta.published_at || fallback.publishedAt || new Date().toISOString()).trim(),
+    publishedAt: parseYamlScalar(
+      meta.publishedat || meta.published_at || fallback.publishedAt || new Date().toISOString(),
+    ),
     ...metaFields,
     warnings,
   }

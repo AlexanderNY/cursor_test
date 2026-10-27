@@ -12,7 +12,7 @@ tags: [process, coverage, defect-cost, leakage, собеседование]
 onKnowledgeMap: true
 durationMin: 40
 excerpt: Обязанности QA, entry/exit, цена дефекта, pos/neg, пререлиз, bug leakage и когда не писать кейсы.
-prerequisites: [qa-mobile-basics]
+prerequisites: [qa-pytest-ci-git]
 seoTitle: QA process middle — entry exit leakage
 seoDescription: Middle-процесс тестирования: обязанности, критерии входа/выхода, стоимость бага, leakage vs релиз.
 seoKeywords: [qa process, entry criteria, bug leakage, middle]
@@ -142,4 +142,4 @@ Back: когда требования плывут или время на док
 ## Ссылки
 
 - [QA-interview-250](https://github.com/Konstantine23/QA-interview-250)
-- Learn | /game/learn/qa-mobile-basics
+- Learn | /game/learn/qa-pytest-ci-git

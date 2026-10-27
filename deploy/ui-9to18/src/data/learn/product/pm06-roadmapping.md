@@ -1,5 +1,5 @@
 ---
-slug: pm-roadmapping
+slug: pm-product-strategy
 title: Roadmapping — Now/Next/Later
 shortTitle: Roadmapping
 episode: PM06
@@ -16,7 +16,7 @@ prerequisites: [pm-product-strategy]
 seoTitle: Roadmapping — middle
 seoDescription: Now/Next/Later вместо ложного Ганта.
 seoKeywords: [product, roadmap, собеседование]
-canonicalUrl: https://9to18.ru/game/learn/pm-roadmapping
+canonicalUrl: https://9to18.ru/game/learn/pm-product-strategy
 ---
 
 ## Введение
@@ -29,7 +29,7 @@ Now — текущий фокус; Next — кандидаты; Later — иде
 
 ## Раздел: Практика
 
-Не путать с roadmap автоматизации QA ([qa-shift-left-automation-roi](/game/learn/qa-shift-left-automation-roi)).
+Не путать с roadmap автоматизации QA ([qa-strategy-metrics](/game/learn/qa-strategy-metrics)).
 
 ## Раздел: На собесе
 
@@ -106,5 +106,5 @@ Back: не путать
 
 ## Ссылки
 
-- Learn | [QA20](/game/learn/qa-shift-left-automation-roi)
+- Learn | [QA20](/game/learn/qa-strategy-metrics)
 - Далее: [OKR](/game/learn/pm-okr)

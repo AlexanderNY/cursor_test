@@ -188,4 +188,4 @@ Back: Секрет, дыра доступа, сломанный контракт
 ## Ссылки
 
 - [SOLID](/game/learn/py-solid)
-- [Тесты и pdb](/game/learn/py-testing-debug)
+- [Тесты и pdb](/game/learn/py-threading-gil-gc)

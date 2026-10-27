@@ -107,5 +107,5 @@ Back: object
 
 ## Ссылки
 
-- Learn | [QA06 JS фраза](/game/learn/qa-web-http-api-basics)
-- Далее: [Functions](/game/learn/js-functions-this)
+- Learn | [QA06 JS фраза](/game/learn/qa-docs-plan-cases)
+- Далее: [Functions](/game/learn/js-types-coerce)

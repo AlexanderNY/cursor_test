@@ -1,5 +1,5 @@
 ---
-slug: jv-esb-adapter
+slug: jv-jms
 title: Адаптер к ESB со стороны Java
 shortTitle: ESB adapter
 episode: JV09
@@ -16,7 +16,7 @@ prerequisites: [jv-jms]
 seoTitle: ESB adapter — middle
 seoDescription: Как приложение стыкуется с шиной; канон — SA13.
 seoKeywords: [java, esb, собеседование]
-canonicalUrl: https://9to18.ru/game/learn/jv-esb-adapter
+canonicalUrl: https://9to18.ru/game/learn/jv-jms
 ---
 
 ## Введение
@@ -29,7 +29,7 @@ canonicalUrl: https://9to18.ru/game/learn/jv-esb-adapter
 
 ## Раздел: Практика
 
-Не тащите бизнес-логику в ESB «потому что можно». См. [sa-esb-integrations](/game/learn/sa-esb-integrations).
+Не тащите бизнес-логику в ESB «потому что можно». См. [sa-soap-xml](/game/learn/sa-soap-xml).
 
 ## Раздел: На собесе
 
@@ -106,6 +106,6 @@ Back: общая схема
 
 ## Ссылки
 
-- Learn | [SA13](/game/learn/sa-esb-integrations)
-- Learn | [SA19](/game/learn/sa-integration-design)
-- Далее: [SOAP client](/game/learn/jv-soap-client)
+- Learn | [SA13](/game/learn/sa-soap-xml)
+- Learn | [SA19](/game/learn/sa-modeling-workshop)
+- Далее: [SOAP client](/game/learn/jv-jms)

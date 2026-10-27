@@ -12,7 +12,7 @@ tags: [redis, ttl, rdb, aof, собеседование]
 onKnowledgeMap: true
 durationMin: 28
 excerpt: TTL ключей, зачем EXPIRE; RDB vs AOF и риск потери данных.
-prerequisites: [rd-data-types]
+prerequisites: [rd-kv-model]
 seoTitle: Redis TTL RDB AOF — junior
 seoDescription: Срок жизни ключей и режимы persistence Redis для собеседования.
 seoKeywords: [redis, TTL, RDB, AOF, собеседование]
@@ -122,5 +122,5 @@ Back: сессия сама истечёт без ручного DELETE
 ## Ссылки
 
 - [Redis persistence](https://redis.io/docs/management/persistence/)
-- Learn | [Типы данных](/game/learn/rd-data-types)
-- Далее: [cache-aside](/game/learn/rd-cache-aside)
+- Learn | [Типы данных](/game/learn/rd-kv-model)
+- Далее: [cache-aside](/game/learn/rd-ttl-persistence)

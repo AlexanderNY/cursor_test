@@ -12,7 +12,7 @@ tags: [sql, нормализация, 1NF, 2NF, 3NF, денормализаци�
 onKnowledgeMap: true
 durationMin: 34
 excerpt: Сущности и связи, выгоды нормализации, формы 1NF–3NF и когда осознанно денормализуют схему.
-prerequisites: [sql-indexes-basics]
+prerequisites: [sql-types-null]
 seoTitle: Нормализация 1NF 2NF 3NF и денормализация — SQL middle
 seoDescription: Сущности, связи, нормальные формы и денормализация для собеседования. Оригинальный разбор с примерами таблиц PostgreSQL.
 seoKeywords: [нормализация, 1NF, 2NF, 3NF, денормализация, ER, SQL, собеседование]
@@ -183,4 +183,4 @@ Back: Кэш суммы заказа в orders или email в таблице а
 - [OTUS / Хабр — топ вопросов по SQL, часть I](https://habr.com/ru/companies/otus/articles/461067/)
 - [PostgreSQL: Table Basics](https://www.postgresql.org/docs/current/ddl-basics.html)
 - Learn | /game/learn
-- Далее: [ACID и транзакции](/game/learn/sql-acid-transactions)
+- Далее: [ACID и транзакции](/game/learn/sql-normalization)

@@ -1,5 +1,5 @@
 ---
-slug: py-stdlib-re-json-copy
+slug: py-oop-basics
 title: Stdlib на собесе — re, json, copy
 shortTitle: re / json / copy
 episode: PY08
@@ -12,11 +12,11 @@ tags: [python, re, json, copy, stdlib, собеседование]
 onKnowledgeMap: true
 durationMin: 30
 excerpt: Регулярки, JSON, shallow/deep copy и соседние утилиты stdlib.
-prerequisites: [py-exceptions]
+prerequisites: [py-oop-basics]
 seoTitle: Python re json copy — junior
 seoDescription: re, json, copy — практический stdlib для junior.
 seoKeywords: [python, regex, json, deepcopy]
-canonicalUrl: https://9to18.ru/game/learn/py-stdlib-re-json-copy
+canonicalUrl: https://9to18.ru/game/learn/py-oop-basics
 ---
 
 ## Введение

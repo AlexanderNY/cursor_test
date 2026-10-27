@@ -11,8 +11,8 @@
 | Ep | slug |
 |----|------|
 | JS01 | `js-types-coerce` |
-| JS02 | `js-functions-this` |
-| JS03 | `js-async-fetch` |
+| JS02 | `js-types-coerce` |
+| JS03 | `js-types-coerce` |
 | JS04 | `js-dom-events` |
-| JS05 | `js-json-xml` |
-| JS06 | `js-capstone` |
+| JS05 | `js-dom-events` |
+| JS06 | `js-dom-events` |

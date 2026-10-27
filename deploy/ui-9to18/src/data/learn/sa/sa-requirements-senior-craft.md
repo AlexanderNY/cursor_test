@@ -1,5 +1,5 @@
 ---
-slug: sa-requirements-senior-craft
+slug: sa-http-security-basics
 title: Senior craft постановки — качество, трассировка, QA и сложные NFR
 shortTitle: Requirements senior craft
 episode: SA17
@@ -16,7 +16,7 @@ prerequisites: [sa-http-security-basics]
 seoTitle: Senior постановка требований — СА на собеседовании
 seoDescription: Углубление T1: качество постановки, traceability к архитектуре, работа с QA (T6.1.4), сложные NFR для системного аналитика.
 seoKeywords: [постановка, требования, NFR, traceability, QA, собеседование]
-canonicalUrl: https://9to18.ru/game/learn/sa-requirements-senior-craft
+canonicalUrl: https://9to18.ru/game/learn/sa-http-security-basics
 ---
 
 ## Введение

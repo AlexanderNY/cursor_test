@@ -12,7 +12,7 @@ tags: [ГОСТ, SRS, постановка, артефакты, verification, с
 onKnowledgeMap: true
 durationMin: 32
 excerpt: ГОСТ 19 и 34, критерии хороших требований, артефакты СА, шаблон постановки, UI/интеграции, SRS, verification vs validation.
-prerequisites: [sa-user-stories-use-cases]
+prerequisites: [sa-requirements-basics]
 seoTitle: ГОСТ SRS постановка — junior системный аналитик, собеседование
 seoDescription: Ответы T1.13–1.22: ГОСТ 19/34, качество требований, артефакты аналитика, SRS, verification и validation.
 seoKeywords: [ГОСТ 34, SRS, постановка задачи, требования, системный аналитик, собеседование]

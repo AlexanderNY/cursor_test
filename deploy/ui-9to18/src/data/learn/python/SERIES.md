@@ -59,11 +59,11 @@ canonicalUrl: https://9to18.ru/game/learn/py-intro-python
 
 ---
 
-### PY02 · `py-types-collections`
+### PY02 · `py-intro-python`
 
 ```yaml
 ---
-slug: py-types-collections
+slug: py-intro-python
 title: Типы и коллекции — list, tuple, dict, set
 shortTitle: Коллекции
 episode: PY02
@@ -80,7 +80,7 @@ prerequisites: [py-intro-python]
 seoTitle: Python коллекции — junior
 seoDescription: list/tuple/dict/set, срезы, ключи словаря — разбор для собеса.
 seoKeywords: [python, list, dict, tuple, set]
-canonicalUrl: https://9to18.ru/game/learn/py-types-collections
+canonicalUrl: https://9to18.ru/game/learn/py-intro-python
 ---
 ```
 
@@ -113,7 +113,7 @@ tags: [python, strings, files, io, собеседование]
 onKnowledgeMap: true
 durationMin: 30
 excerpt: Операторы, строки, работа с файлами и базовый I/O на собеседовании.
-prerequisites: [py-types-collections]
+prerequisites: [py-intro-python]
 seoTitle: Python строки и файлы — junior
 seoDescription: Операторы, строки, open/read, os — типовые вопросы junior.
 seoKeywords: [python, str, files, operators]
@@ -133,11 +133,11 @@ canonicalUrl: https://9to18.ru/game/learn/py-strings-ops-io
 
 ---
 
-### PY04 · `py-control-flow-functions`
+### PY04 · `py-strings-ops-io`
 
 ```yaml
 ---
-slug: py-control-flow-functions
+slug: py-strings-ops-io
 title: Управление потоком и функции — args, lambda, comprehensions
 shortTitle: Функции
 episode: PY04
@@ -154,7 +154,7 @@ prerequisites: [py-strings-ops-io]
 seoTitle: Python функции и циклы — junior
 seoDescription: for/while, функции, lambda, comprehensions для junior-собеса.
 seoKeywords: [python, functions, lambda, comprehension]
-canonicalUrl: https://9to18.ru/game/learn/py-control-flow-functions
+canonicalUrl: https://9to18.ru/game/learn/py-strings-ops-io
 ---
 ```
 
@@ -170,11 +170,11 @@ canonicalUrl: https://9to18.ru/game/learn/py-control-flow-functions
 
 ---
 
-### PY05 · `py-modules-packages-venv`
+### PY05 · `py-strings-ops-io`
 
 ```yaml
 ---
-slug: py-modules-packages-venv
+slug: py-strings-ops-io
 title: Модули, пакеты, venv и менеджеры зависимостей
 shortTitle: Модули и venv
 episode: PY05
@@ -187,11 +187,11 @@ tags: [python, modules, venv, pip, собеседование]
 onKnowledgeMap: true
 durationMin: 25
 excerpt: Как устроены модули и пакеты, зачем virtualenv и чем отличаются wheels.
-prerequisites: [py-control-flow-functions]
+prerequisites: [py-strings-ops-io]
 seoTitle: Python модули и venv — junior
 seoDescription: import, пакеты, venv, pip, wheels — база для junior.
 seoKeywords: [python, venv, pip, modules]
-canonicalUrl: https://9to18.ru/game/learn/py-modules-packages-venv
+canonicalUrl: https://9to18.ru/game/learn/py-strings-ops-io
 ---
 ```
 
@@ -224,7 +224,7 @@ tags: [python, oop, class, inheritance, собеседование]
 onKnowledgeMap: true
 durationMin: 35
 excerpt: Классы, экземпляры, наследование и property без магии метаклассов.
-prerequisites: [py-modules-packages-venv]
+prerequisites: [py-strings-ops-io]
 seoTitle: Python ООП база — junior
 seoDescription: self, __init__, inheritance, @property — junior OOP.
 seoKeywords: [python, oop, class, property]
@@ -244,11 +244,11 @@ canonicalUrl: https://9to18.ru/game/learn/py-oop-basics
 
 ---
 
-### PY07 · `py-exceptions`
+### PY07 · `py-oop-basics`
 
 ```yaml
 ---
-slug: py-exceptions
+slug: py-oop-basics
 title: Исключения — try, иерархия и свои ошибки
 shortTitle: Исключения
 episode: PY07
@@ -265,7 +265,7 @@ prerequisites: [py-oop-basics]
 seoTitle: Python исключения — junior
 seoDescription: Обработка ошибок и иерархия исключений на собесе.
 seoKeywords: [python, exceptions, try, finally]
-canonicalUrl: https://9to18.ru/game/learn/py-exceptions
+canonicalUrl: https://9to18.ru/game/learn/py-oop-basics
 ---
 ```
 
@@ -281,11 +281,11 @@ canonicalUrl: https://9to18.ru/game/learn/py-exceptions
 
 ---
 
-### PY08 · `py-stdlib-re-json-copy`
+### PY08 · `py-oop-basics`
 
 ```yaml
 ---
-slug: py-stdlib-re-json-copy
+slug: py-oop-basics
 title: Stdlib на собесе — re, json, copy
 shortTitle: re / json / copy
 episode: PY08
@@ -298,11 +298,11 @@ tags: [python, re, json, copy, stdlib, собеседование]
 onKnowledgeMap: true
 durationMin: 30
 excerpt: Регулярки, JSON, shallow/deep copy и соседние утилиты stdlib.
-prerequisites: [py-exceptions]
+prerequisites: [py-oop-basics]
 seoTitle: Python re json copy — junior
 seoDescription: re, json, copy — практический stdlib для junior.
 seoKeywords: [python, regex, json, deepcopy]
-canonicalUrl: https://9to18.ru/game/learn/py-stdlib-re-json-copy
+canonicalUrl: https://9to18.ru/game/learn/py-oop-basics
 ---
 ```
 
@@ -337,7 +337,7 @@ tags: [python, iterators, generators, yield, собеседование]
 onKnowledgeMap: true
 durationMin: 35
 excerpt: Протокол итератора, генераторы и когда comprehensions лучше цикла.
-prerequisites: [py-stdlib-re-json-copy]
+prerequisites: [py-oop-basics]
 seoTitle: Python итераторы и генераторы — middle
 seoDescription: __iter__/__next__, yield, generator expressions на middle.
 seoKeywords: [python, iterator, generator, yield]
@@ -357,11 +357,11 @@ canonicalUrl: https://9to18.ru/game/learn/py-iterators-generators
 
 ---
 
-### PY10 · `py-decorators-context`
+### PY10 · `py-iterators-generators`
 
 ```yaml
 ---
-slug: py-decorators-context
+slug: py-iterators-generators
 title: Декораторы, замыкания и контекстные менеджеры
 shortTitle: Декораторы
 episode: PY10
@@ -378,7 +378,7 @@ prerequisites: [py-iterators-generators]
 seoTitle: Python декораторы и with — middle
 seoDescription: Декораторы, closures, context managers для middle.
 seoKeywords: [python, decorator, with, closure]
-canonicalUrl: https://9to18.ru/game/learn/py-decorators-context
+canonicalUrl: https://9to18.ru/game/learn/py-iterators-generators
 ---
 ```
 
@@ -394,11 +394,11 @@ canonicalUrl: https://9to18.ru/game/learn/py-decorators-context
 
 ---
 
-### PY11 · `py-fp-collections-itertools`
+### PY11 · `py-iterators-generators`
 
 ```yaml
 ---
-slug: py-fp-collections-itertools
+slug: py-iterators-generators
 title: FP в Python — map/filter/reduce, collections, itertools
 shortTitle: FP и itertools
 episode: PY11
@@ -411,11 +411,11 @@ tags: [python, functional, collections, itertools, собеседование]
 onKnowledgeMap: true
 durationMin: 30
 excerpt: Функциональный стиль и готовые структуры из collections/itertools.
-prerequisites: [py-decorators-context]
+prerequisites: [py-iterators-generators]
 seoTitle: Python FP collections itertools — middle
 seoDescription: map/filter/reduce, Counter, itertools на middle-собесе.
 seoKeywords: [python, map, filter, collections, itertools]
-canonicalUrl: https://9to18.ru/game/learn/py-fp-collections-itertools
+canonicalUrl: https://9to18.ru/game/learn/py-iterators-generators
 ---
 ```
 
@@ -448,7 +448,7 @@ tags: [python, mro, dunder, slots, собеседование]
 onKnowledgeMap: true
 durationMin: 35
 excerpt: MRO, множественное наследование, магические методы и __slots__.
-prerequisites: [py-fp-collections-itertools]
+prerequisites: [py-iterators-generators]
 seoTitle: Python MRO и dunder — middle
 seoDescription: MRO, __dict__, __slots__, namespaces для middle.
 seoKeywords: [python, mro, dunder, slots]
@@ -468,11 +468,11 @@ canonicalUrl: https://9to18.ru/game/learn/py-oop-advanced-mro
 
 ---
 
-### PY13 · `py-typing-pep8-static`
+### PY13 · `py-oop-advanced-mro`
 
 ```yaml
 ---
-slug: py-typing-pep8-static
+slug: py-oop-advanced-mro
 title: Стиль и качество — PEP 8, docstring, typing, linters
 shortTitle: PEP 8 и typing
 episode: PY13
@@ -489,7 +489,7 @@ prerequisites: [py-oop-advanced-mro]
 seoTitle: Python PEP 8 typing — middle
 seoDescription: PEP 8, docstring, type hints, flake8/mypy для middle.
 seoKeywords: [python, pep8, typing, mypy]
-canonicalUrl: https://9to18.ru/game/learn/py-typing-pep8-static
+canonicalUrl: https://9to18.ru/game/learn/py-oop-advanced-mro
 ---
 ```
 
@@ -507,11 +507,11 @@ canonicalUrl: https://9to18.ru/game/learn/py-typing-pep8-static
 
 ---
 
-### PY14 · `py-async-io`
+### PY14 · `py-oop-advanced-mro`
 
 ```yaml
 ---
-slug: py-async-io
+slug: py-oop-advanced-mro
 title: Sync vs async — asyncio на middle-собесе
 shortTitle: Asyncio
 episode: PY14
@@ -524,11 +524,11 @@ tags: [python, asyncio, async, io, собеседование]
 onKnowledgeMap: true
 durationMin: 35
 excerpt: Чем sync отличается от async и когда event loop окупается.
-prerequisites: [py-typing-pep8-static]
+prerequisites: [py-oop-advanced-mro]
 seoTitle: Python asyncio — middle
 seoDescription: Синхронный и асинхронный код, non-blocking I/O.
 seoKeywords: [python, asyncio, async, await]
-canonicalUrl: https://9to18.ru/game/learn/py-async-io
+canonicalUrl: https://9to18.ru/game/learn/py-oop-advanced-mro
 ---
 ```
 
@@ -563,7 +563,7 @@ tags: [python, gil, threading, gc, memory, собеседование]
 onKnowledgeMap: true
 durationMin: 40
 excerpt: Threads vs processes, GIL, refcount/GC и отладка утечек памяти.
-prerequisites: [py-async-io]
+prerequisites: [py-oop-advanced-mro]
 seoTitle: Python GIL GC память — middle
 seoDescription: Многопоточность, GIL, управление памятью на middle/senior edge.
 seoKeywords: [python, gil, gc, threading, memory]
@@ -583,11 +583,11 @@ canonicalUrl: https://9to18.ru/game/learn/py-threading-gil-gc
 
 ---
 
-### PY16 · `py-testing-debug`
+### PY16 · `py-threading-gil-gc`
 
 ```yaml
 ---
-slug: py-testing-debug
+slug: py-threading-gil-gc
 title: Тесты и отладка — unittest, pytest, pdb
 shortTitle: Тесты и pdb
 episode: PY16
@@ -604,7 +604,7 @@ prerequisites: [py-threading-gil-gc]
 seoTitle: Python testing pdb — middle
 seoDescription: unittest/pytest-подход и pdb на собеседовании.
 seoKeywords: [python, pytest, unittest, pdb]
-canonicalUrl: https://9to18.ru/game/learn/py-testing-debug
+canonicalUrl: https://9to18.ru/game/learn/py-threading-gil-gc
 ---
 ```
 
@@ -624,11 +624,11 @@ canonicalUrl: https://9to18.ru/game/learn/py-testing-debug
 
 ## Senior · `level: senior` · PY17–PY24
 
-### PY17 · `py-descriptors-metaclasses`
+### PY17 · `py-threading-gil-gc`
 
 ```yaml
 ---
-slug: py-descriptors-metaclasses
+slug: py-threading-gil-gc
 title: Дескрипторы и метаклассы
 shortTitle: Метаклассы
 episode: PY17
@@ -641,11 +641,11 @@ tags: [python, descriptors, metaclasses, собеседование]
 onKnowledgeMap: true
 durationMin: 40
 excerpt: Когда нужны дескрипторы и метаклассы — и когда это overkill.
-prerequisites: [py-testing-debug]
+prerequisites: [py-threading-gil-gc]
 seoTitle: Python дескрипторы и метаклассы — senior
 seoDescription: descriptors, metaclasses, type() без class на senior-собесе.
 seoKeywords: [python, descriptor, metaclass]
-canonicalUrl: https://9to18.ru/game/learn/py-descriptors-metaclasses
+canonicalUrl: https://9to18.ru/game/learn/py-threading-gil-gc
 ---
 ```
 
@@ -678,7 +678,7 @@ tags: [python, performance, pypy, cython, packaging, собеседование]
 onKnowledgeMap: true
 durationMin: 40
 excerpt: Как ускорять Python, упаковывать код и когда смотреть на PyPy/Cython.
-prerequisites: [py-descriptors-metaclasses]
+prerequisites: [py-threading-gil-gc]
 seoTitle: Python perf packaging runtimes — senior
 seoDescription: Ускорение, wheels, C-API, Cython/PyPy для senior.
 seoKeywords: [python, pypy, cython, wheels, performance]
@@ -698,11 +698,11 @@ canonicalUrl: https://9to18.ru/game/learn/py-perf-packaging-alt-runtimes
 
 ---
 
-### PY19 · `py-web-flask-django`
+### PY19 · `py-perf-packaging-alt-runtimes`
 
 ```yaml
 ---
-slug: py-web-flask-django
+slug: py-perf-packaging-alt-runtimes
 title: Веб-фреймворки — Flask, Django, Pyramid
 shortTitle: Flask / Django
 episode: PY19
@@ -719,7 +719,7 @@ prerequisites: [py-perf-packaging-alt-runtimes]
 seoTitle: Python Flask Django — senior
 seoDescription: Flask vs Django/Pyramid, sessions, middleware.
 seoKeywords: [python, flask, django, middleware]
-canonicalUrl: https://9to18.ru/game/learn/py-web-flask-django
+canonicalUrl: https://9to18.ru/game/learn/py-perf-packaging-alt-runtimes
 ---
 ```
 
@@ -735,11 +735,11 @@ canonicalUrl: https://9to18.ru/game/learn/py-web-flask-django
 
 ---
 
-### PY20 · `py-db-cache-memcached`
+### PY20 · `py-perf-packaging-alt-runtimes`
 
 ```yaml
 ---
-slug: py-db-cache-memcached
+slug: py-perf-packaging-alt-runtimes
 title: БД и кеш — SQL из Python и Memcached pitfalls
 shortTitle: БД и Memcached
 episode: PY20
@@ -752,11 +752,11 @@ tags: [python, sql, memcached, cache, собеседование]
 onKnowledgeMap: true
 durationMin: 30
 excerpt: Доступ к БД из Python и типовые ловушки распределённого кеша.
-prerequisites: [py-web-flask-django]
+prerequisites: [py-perf-packaging-alt-runtimes]
 seoTitle: Python DB Memcached — senior
 seoDescription: MySQL/SQL из Python и Memcached dogpile/failover.
 seoKeywords: [python, sql, memcached, cache]
-canonicalUrl: https://9to18.ru/game/learn/py-db-cache-memcached
+canonicalUrl: https://9to18.ru/game/learn/py-perf-packaging-alt-runtimes
 ---
 ```
 
@@ -789,7 +789,7 @@ tags: [python, concurrency, production, debugging, собеседование]
 onKnowledgeMap: true
 durationMin: 35
 excerpt: Неблокирующий I/O, утечки, сигналы и диагностика на Linux.
-prerequisites: [py-db-cache-memcached]
+prerequisites: [py-perf-packaging-alt-runtimes]
 seoTitle: Python prod concurrency — senior
 seoDescription: Memory leaks, signals, remote files, non-blocking I/O.
 seoKeywords: [python, concurrency, memory-leak, linux]
@@ -809,11 +809,11 @@ canonicalUrl: https://9to18.ru/game/learn/py-concurrency-io-patterns
 
 ---
 
-### PY22 · `py-design-dry-architecture`
+### PY22 · `py-concurrency-io-patterns`
 
 ```yaml
 ---
-slug: py-design-dry-architecture
+slug: py-concurrency-io-patterns
 title: Дизайн — DRY, границы языка, когда не брать Python
 shortTitle: DRY и границы
 episode: PY22
@@ -830,7 +830,7 @@ prerequisites: [py-concurrency-io-patterns]
 seoTitle: Python DRY architecture — senior
 seoDescription: DRY, когда использовать и не использовать Python.
 seoKeywords: [python, dry, architecture]
-canonicalUrl: https://9to18.ru/game/learn/py-design-dry-architecture
+canonicalUrl: https://9to18.ru/game/learn/py-concurrency-io-patterns
 ---
 ```
 
@@ -846,11 +846,11 @@ canonicalUrl: https://9to18.ru/game/learn/py-design-dry-architecture
 
 ---
 
-### PY23 · `py-interview-tricky`
+### PY23 · `py-concurrency-io-patterns`
 
 ```yaml
 ---
-slug: py-interview-tricky
+slug: py-concurrency-io-patterns
 title: Трюки собеса — «что выведет код»
 shortTitle: Tricky drill
 episode: PY23
@@ -863,11 +863,11 @@ tags: [python, interview, tricky, quiz, собеседование]
 onKnowledgeMap: true
 durationMin: 40
 excerpt: Сжатый drill по выражениям, замыканиям и неочевидным результатам.
-prerequisites: [py-design-dry-architecture]
+prerequisites: [py-concurrency-io-patterns]
 seoTitle: Python interview tricky — senior
 seoDescription: Разбор «что выведет» и классических ловушек Python.
 seoKeywords: [python, interview, quiz, mutable-default]
-canonicalUrl: https://9to18.ru/game/learn/py-interview-tricky
+canonicalUrl: https://9to18.ru/game/learn/py-concurrency-io-patterns
 ---
 ```
 
@@ -883,11 +883,11 @@ canonicalUrl: https://9to18.ru/game/learn/py-interview-tricky
 
 ---
 
-### PY24 · `py-senior-capstone`
+### PY24 · `py-concurrency-io-patterns`
 
 ```yaml
 ---
-slug: py-senior-capstone
+slug: py-concurrency-io-patterns
 title: Карта собеса Python — чеклист Junior→Senior
 shortTitle: Capstone
 episode: PY24
@@ -900,11 +900,11 @@ tags: [python, checklist, interview, собеседование]
 onKnowledgeMap: true
 durationMin: 30
 excerpt: Сводка трека: что закрыто серией и где искать пробелы.
-prerequisites: [py-interview-tricky]
+prerequisites: [py-concurrency-io-patterns]
 seoTitle: Python interview checklist — senior capstone
 seoDescription: Чеклист Junior→Senior и ссылка на полный список вопросов.
 seoKeywords: [python, interview, checklist, senior]
-canonicalUrl: https://9to18.ru/game/learn/py-senior-capstone
+canonicalUrl: https://9to18.ru/game/learn/py-concurrency-io-patterns
 ---
 ```
 
@@ -927,222 +927,222 @@ canonicalUrl: https://9to18.ru/game/learn/py-senior-capstone
 | Q | slug |
 |---|------|
 | 1–2 | py-intro-python |
-| 3 | py-types-collections |
-| 4 | py-control-flow-functions |
-| 5–7 | py-typing-pep8-static |
-| 8–9 | py-types-collections |
-| 10 | py-control-flow-functions |
+| 3 | py-intro-python |
+| 4 | py-strings-ops-io |
+| 5–7 | py-oop-advanced-mro |
+| 8–9 | py-intro-python |
+| 10 | py-strings-ops-io |
 | 11 | py-threading-gil-gc |
-| 12 | py-typing-pep8-static |
-| 13 | py-control-flow-functions |
+| 12 | py-oop-advanced-mro |
+| 13 | py-strings-ops-io |
 | 14 | py-oop-basics |
 | 15–16 | py-oop-advanced-mro |
-| 17 | py-typing-pep8-static |
+| 17 | py-oop-advanced-mro |
 | 18 | py-oop-basics |
-| 19 | py-decorators-context |
-| 20 | py-types-collections |
-| 21 | py-modules-packages-venv |
+| 19 | py-iterators-generators |
+| 20 | py-intro-python |
+| 21 | py-strings-ops-io |
 | 22 | py-strings-ops-io |
 | 23 | py-oop-basics |
-| 24–25 | py-types-collections |
-| 26 | py-control-flow-functions |
+| 24–25 | py-intro-python |
+| 26 | py-strings-ops-io |
 | 27 | py-oop-basics |
-| 28–29 | py-async-io |
-| 30 | py-interview-tricky |
+| 28–29 | py-oop-advanced-mro |
+| 30 | py-concurrency-io-patterns |
 | 31 | py-threading-gil-gc |
 | 32–35 | py-iterators-generators |
-| 36 | py-decorators-context |
-| 38 | py-stdlib-re-json-copy |
+| 36 | py-iterators-generators |
+| 38 | py-oop-basics |
 | 39 | py-threading-gil-gc |
 | 41–42 | py-oop-advanced-mro |
 | 43 | py-threading-gil-gc |
-| 44 | py-descriptors-metaclasses |
-| 45 | py-testing-debug |
-| 46 | py-interview-tricky |
-| 47 | py-descriptors-metaclasses |
-| 48 | py-modules-packages-venv |
-| 49 | py-decorators-context |
-| 50 | py-interview-tricky |
+| 44 | py-threading-gil-gc |
+| 45 | py-threading-gil-gc |
+| 46 | py-concurrency-io-patterns |
+| 47 | py-threading-gil-gc |
+| 48 | py-strings-ops-io |
+| 49 | py-iterators-generators |
+| 50 | py-concurrency-io-patterns |
 | 51–52 | py-intro-python |
-| 53 | py-exceptions |
+| 53 | py-oop-basics |
 | 54 | py-oop-advanced-mro |
 | 55 | py-threading-gil-gc |
 | 56 | py-oop-advanced-mro |
 | 57 | py-threading-gil-gc |
-| 58 | py-typing-pep8-static |
-| 59 | py-interview-tricky |
+| 58 | py-oop-advanced-mro |
+| 59 | py-concurrency-io-patterns |
 | 60–61 | py-threading-gil-gc |
 | 62 | py-perf-packaging-alt-runtimes |
-| 63 | py-descriptors-metaclasses |
+| 63 | py-threading-gil-gc |
 | 64 | py-threading-gil-gc |
-| 65 | py-interview-tricky |
+| 65 | py-concurrency-io-patterns |
 | 66 | py-threading-gil-gc |
 | 67–71 | py-perf-packaging-alt-runtimes |
-| 72–73 | py-modules-packages-venv |
+| 72–73 | py-strings-ops-io |
 | 74 | py-intro-python |
-| 75 | py-modules-packages-venv |
+| 75 | py-strings-ops-io |
 | 76 | py-perf-packaging-alt-runtimes |
-| 78 | py-interview-tricky |
-| 81–83 | py-modules-packages-venv (81); py-perf-packaging-alt-runtimes (83) |
-| 82 | py-fp-collections-itertools |
-| 84 | py-interview-tricky |
-| 85 | py-modules-packages-venv |
+| 78 | py-concurrency-io-patterns |
+| 81–83 | py-strings-ops-io (81); py-perf-packaging-alt-runtimes (83) |
+| 82 | py-iterators-generators |
+| 84 | py-concurrency-io-patterns |
+| 85 | py-strings-ops-io |
 | 86 | py-perf-packaging-alt-runtimes |
 | 87–88 | py-iterators-generators |
-| 89 | py-interview-tricky |
-| 90 | py-web-flask-django |
+| 89 | py-concurrency-io-patterns |
+| 90 | py-perf-packaging-alt-runtimes |
 | 91 | py-perf-packaging-alt-runtimes |
 | 92 | py-threading-gil-gc / py-concurrency-io-patterns |
-| 93 | py-exceptions |
-| 94–96 | py-interview-tricky |
+| 93 | py-oop-basics |
+| 94–96 | py-concurrency-io-patterns |
 | 95 | py-oop-advanced-mro |
-| 98 | py-modules-packages-venv |
-| 99 | py-interview-tricky |
+| 98 | py-strings-ops-io |
+| 99 | py-concurrency-io-patterns |
 | 102–105 | py-intro-python |
 | 106–108 | py-oop-basics |
-| 109 | py-modules-packages-venv |
+| 109 | py-strings-ops-io |
 | 110 | py-perf-packaging-alt-runtimes |
 | 111 | py-strings-ops-io |
 | 112 | py-threading-gil-gc |
 | 113 | py-strings-ops-io |
-| 115–117 | py-control-flow-functions |
-| 118–120 | py-stdlib-re-json-copy |
+| 115–117 | py-strings-ops-io |
+| 118–120 | py-oop-basics |
 | 121–124 | py-threading-gil-gc |
-| 125–129 | py-control-flow-functions |
-| 130 | py-modules-packages-venv |
-| 131 | py-decorators-context |
-| 133 | py-stdlib-re-json-copy |
-| 134 | py-fp-collections-itertools |
-| 135 | py-stdlib-re-json-copy |
+| 125–129 | py-strings-ops-io |
+| 130 | py-strings-ops-io |
+| 131 | py-iterators-generators |
+| 133 | py-oop-basics |
+| 134 | py-iterators-generators |
+| 135 | py-oop-basics |
 | 136–138 | py-oop-basics |
-| 140–141 | py-types-collections |
-| 142 | py-stdlib-re-json-copy |
-| 143 | py-fp-collections-itertools |
-| 145–146 | py-modules-packages-venv |
-| 147 | py-types-collections |
+| 140–141 | py-intro-python |
+| 142 | py-oop-basics |
+| 143 | py-iterators-generators |
+| 145–146 | py-strings-ops-io |
+| 147 | py-intro-python |
 | 148 | py-strings-ops-io |
-| 150 | py-types-collections |
+| 150 | py-intro-python |
 | 151 | py-strings-ops-io |
 | 154–156 | py-oop-basics |
-| 157 | py-types-collections |
-| 158 | py-fp-collections-itertools |
-| 159–161 | py-interview-tricky |
-| 164 | py-db-cache-memcached |
+| 157 | py-intro-python |
+| 158 | py-iterators-generators |
+| 159–161 | py-concurrency-io-patterns |
+| 164 | py-perf-packaging-alt-runtimes |
 | 167 | py-intro-python |
 | 169 | py-threading-gil-gc |
-| 171–172 | py-types-collections |
-| 174 | py-stdlib-re-json-copy |
+| 171–172 | py-intro-python |
+| 174 | py-oop-basics |
 | 175–188 | py-strings-ops-io |
 | 189 | py-oop-advanced-mro |
-| 191–193 | py-types-collections |
+| 191–193 | py-intro-python |
 | 194–200 | py-strings-ops-io |
-| 201–204 | py-control-flow-functions |
+| 201–204 | py-strings-ops-io |
 | 205–207 | py-strings-ops-io |
-| 208 | py-interview-tricky |
-| 209–210 | py-decorators-context |
-| 211 | py-control-flow-functions |
-| 212–214 | py-testing-debug |
-| 215 | py-fp-collections-itertools |
-| 221 | py-stdlib-re-json-copy |
-| 223–224 | py-types-collections (223); py-oop-basics (224) |
-| 225 | py-stdlib-re-json-copy |
-| 227–228 | py-exceptions |
+| 208 | py-concurrency-io-patterns |
+| 209–210 | py-iterators-generators |
+| 211 | py-strings-ops-io |
+| 212–214 | py-threading-gil-gc |
+| 215 | py-iterators-generators |
+| 221 | py-oop-basics |
+| 223–224 | py-intro-python (223); py-oop-basics (224) |
+| 225 | py-oop-basics |
+| 227–228 | py-oop-basics |
 | 229–231 | py-oop-advanced-mro |
-| 233–234 | py-modules-packages-venv |
+| 233–234 | py-strings-ops-io |
 | 235 | py-concurrency-io-patterns |
-| 238–249 | py-control-flow-functions |
-| 250–251 | py-types-collections |
-| 252–253 | py-modules-packages-venv |
+| 238–249 | py-strings-ops-io |
+| 250–251 | py-intro-python |
+| 252–253 | py-strings-ops-io |
 | 254 | py-strings-ops-io |
-| 255–257 | py-exceptions |
+| 255–257 | py-oop-basics |
 | 258–259 | py-oop-basics |
-| 260 | py-db-cache-memcached |
+| 260 | py-perf-packaging-alt-runtimes |
 | 261–262 | py-threading-gil-gc |
-| 263 | py-interview-tricky |
+| 263 | py-concurrency-io-patterns |
 | 264 | py-strings-ops-io |
 | 266 | py-intro-python |
-| 267 | py-typing-pep8-static |
+| 267 | py-oop-advanced-mro |
 | 268–272 | py-iterators-generators |
-| 273 | py-stdlib-re-json-copy |
-| 275 | py-modules-packages-venv |
+| 273 | py-oop-basics |
+| 275 | py-strings-ops-io |
 | 277 | py-strings-ops-io |
 | 279 | py-intro-python |
-| 280 | py-web-flask-django |
-| 281–285 | py-db-cache-memcached |
-| 286–287 | py-control-flow-functions / py-iterators-generators |
-| 288 | py-interview-tricky |
+| 280 | py-perf-packaging-alt-runtimes |
+| 281–285 | py-perf-packaging-alt-runtimes |
+| 286–287 | py-strings-ops-io / py-iterators-generators |
+| 288 | py-concurrency-io-patterns |
 | 289 | py-intro-python |
 | 290 | py-perf-packaging-alt-runtimes |
-| 291–292 | py-testing-debug |
-| 294–299 | py-web-flask-django |
+| 291–292 | py-threading-gil-gc |
+| 294–299 | py-perf-packaging-alt-runtimes |
 | 301 | py-threading-gil-gc / py-concurrency-io-patterns |
-| 302–303 | py-control-flow-functions |
+| 302–303 | py-strings-ops-io |
 | 304 | py-threading-gil-gc |
-| 305 | py-control-flow-functions |
+| 305 | py-strings-ops-io |
 | 308 | py-strings-ops-io |
-| 309 | py-modules-packages-venv |
+| 309 | py-strings-ops-io |
 | 310 | py-threading-gil-gc |
-| 311 | py-stdlib-re-json-copy |
+| 311 | py-oop-basics |
 | 312 | py-threading-gil-gc |
-| 313–314 | py-types-collections |
+| 313–314 | py-intro-python |
 | 316 | py-concurrency-io-patterns |
-| 317 | py-control-flow-functions / py-iterators-generators |
+| 317 | py-strings-ops-io / py-iterators-generators |
 | 319 | py-concurrency-io-patterns |
 | 321 | py-intro-python |
 | 322 | py-threading-gil-gc |
-| 323–325 | py-types-collections (323–324); py-control-flow-functions (325) |
+| 323–325 | py-intro-python (323–324); py-strings-ops-io (325) |
 | 326–329 | py-oop-basics |
-| 330 | py-fp-collections-itertools |
+| 330 | py-iterators-generators |
 | 331–335 | py-iterators-generators |
 | 336 | py-oop-advanced-mro |
-| 337 | py-types-collections |
-| 338 | py-fp-collections-itertools |
+| 337 | py-intro-python |
+| 338 | py-iterators-generators |
 | 339 | py-perf-packaging-alt-runtimes |
 | 340 | py-oop-basics |
-| 341 | py-descriptors-metaclasses |
+| 341 | py-threading-gil-gc |
 | 343 | py-strings-ops-io |
 | 344 | py-iterators-generators |
 | 345 | py-oop-basics |
-| 346 | py-modules-packages-venv / py-perf-packaging-alt-runtimes |
+| 346 | py-strings-ops-io / py-perf-packaging-alt-runtimes |
 | 347 | py-intro-python |
 | 348 | py-oop-advanced-mro |
-| 349 | py-modules-packages-venv |
-| 350–353 | py-intro-python / py-design-dry-architecture (351–353) |
-| 354 | py-web-flask-django |
+| 349 | py-strings-ops-io |
+| 350–353 | py-intro-python / py-concurrency-io-patterns (351–353) |
+| 354 | py-perf-packaging-alt-runtimes |
 | 355 | py-intro-python |
-| 356 | py-types-collections |
-| 357 | py-control-flow-functions |
-| 358 | py-types-collections |
+| 356 | py-intro-python |
+| 357 | py-strings-ops-io |
+| 358 | py-intro-python |
 | 359 | py-strings-ops-io |
 | 360–361 | py-intro-python |
-| 362 | py-web-flask-django |
-| 363–364 | py-control-flow-functions / py-iterators-generators |
+| 362 | py-perf-packaging-alt-runtimes |
+| 363–364 | py-strings-ops-io / py-iterators-generators |
 | 366 | py-strings-ops-io |
-| 367–368 | py-exceptions |
-| 369 | py-types-collections |
-| 370 | py-modules-packages-venv |
-| 371 | py-decorators-context |
+| 367–368 | py-oop-basics |
+| 369 | py-intro-python |
+| 370 | py-strings-ops-io |
+| 371 | py-iterators-generators |
 | 372–374 | py-oop-basics |
-| 375 | py-control-flow-functions / py-fp-collections-itertools |
+| 375 | py-strings-ops-io / py-iterators-generators |
 | 376 | py-oop-advanced-mro |
 | 377 | py-intro-python |
-| 378 | py-web-flask-django |
+| 378 | py-perf-packaging-alt-runtimes |
 | 380 | py-strings-ops-io |
 | 381 | py-iterators-generators |
 | 382 | py-strings-ops-io |
-| 383–384 | py-descriptors-metaclasses |
+| 383–384 | py-threading-gil-gc |
 | 385–386 | py-oop-advanced-mro |
-| 387–388 | py-control-flow-functions / py-fp-collections-itertools |
-| 391 | py-exceptions |
-| 392 | py-modules-packages-venv (`__main__`) |
-| 393 | py-exceptions |
+| 387–388 | py-strings-ops-io / py-iterators-generators |
+| 391 | py-oop-basics |
+| 392 | py-strings-ops-io (`__main__`) |
+| 393 | py-oop-basics |
 | 394 | py-threading-gil-gc |
-| 395 | py-async-io / py-concurrency-io-patterns |
-| 396 | py-exceptions |
-| 397 | py-modules-packages-venv |
-| 398 | py-control-flow-functions |
+| 395 | py-oop-advanced-mro / py-concurrency-io-patterns |
+| 396 | py-oop-basics |
+| 397 | py-strings-ops-io |
+| 398 | py-strings-ops-io |
 | 399–400 | py-oop-basics |
-| 401+ | py-senior-capstone (обзор; детали по теме return/instance — PY04/PY06) |
+| 401+ | py-concurrency-io-patterns (обзор; детали по теме return/instance — PY04/PY06) |
 
 ### Дубликаты источника (схлопнуты)
 

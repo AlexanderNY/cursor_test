@@ -12,7 +12,7 @@ tags: [api, contract, mock, performance, load, собеседование]
 onKnowledgeMap: true
 durationMin: 45
 excerpt: Моки и стабы, инструменты API, contract testing, load/stress и стратегия нагрузки для middle QA.
-prerequisites: [qa-test-design-advanced]
+prerequisites: [qa-middle-process]
 seoTitle: API contract performance testing — middle
 seoDescription: Mocks/stubs, contract tests, что проверять в API automation, load strategy и когда нужен stress.
 seoKeywords: [api testing, contract, k6, jmeter, mock, middle]
@@ -172,4 +172,4 @@ Back: тело/схему, заголовки, бизнес-правила, пр
 
 - [QA-interview-250](https://github.com/Konstantine23/QA-interview-250)
 - [jsonschema](https://python-jsonschema.readthedocs.io/)
-- Learn | /game/learn/qa-test-design-advanced
+- Learn | /game/learn/qa-middle-process

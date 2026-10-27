@@ -12,7 +12,7 @@ tags: [aqa, oop, solid, page-object, собеседование]
 onKnowledgeMap: true
 durationMin: 40
 excerpt: OOP, SOLID, DRY/KISS/YAGNI, Page Object и краткий Java-блок для junior AQA-собеседования.
-prerequisites: [qa-junior-practice-lab]
+prerequisites: [qa-sql-db-basics]
 seoTitle: OOP SOLID Page Object — QA junior
 seoDescription: Принципы ООП, SOLID, паттерны и Page Object на Python; кратко interface vs abstract в Java.
 seoKeywords: [aqa, solid, page object, oop, pytest]
@@ -181,4 +181,4 @@ Back: DRY — не копировать локаторы/waits; YAGNI — не �
 
 - [QA-interview-250](https://github.com/Konstantine23/QA-interview-250)
 - [Selenium Page Object Models](https://www.selenium.dev/documentation/test_practices/encouraged/page_object_models/)
-- Learn | /game/learn/qa-junior-practice-lab
+- Learn | /game/learn/qa-sql-db-basics

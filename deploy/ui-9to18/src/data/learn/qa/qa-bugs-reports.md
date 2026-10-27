@@ -1,5 +1,5 @@
 ---
-slug: qa-bugs-reports
+slug: qa-test-design
 title: Баги и отчёты — error, severity, priority
 shortTitle: Bugs Reports
 episode: QA04
@@ -16,7 +16,7 @@ prerequisites: [qa-test-design]
 seoTitle: Баг-репорты и severity — junior QA, собеседование
 seoDescription: Чем баг отличается от ошибки, как писать репорт, severity vs priority с примерами для собеседования.
 seoKeywords: [баг-репорт, severity, priority, junior QA, собеседование]
-canonicalUrl: https://9to18.ru/game/learn/qa-bugs-reports
+canonicalUrl: https://9to18.ru/game/learn/qa-test-design
 ---
 
 ## Введение

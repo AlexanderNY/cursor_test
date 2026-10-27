@@ -1,5 +1,5 @@
 ---
-slug: rd-eviction-cluster
+slug: rd-pubsub-vs-queue
 title: Eviction, Sentinel и Cluster — обзор
 shortTitle: Eviction cluster
 episode: RD07
@@ -16,7 +16,7 @@ prerequisites: [rd-pubsub-vs-queue]
 seoTitle: Redis eviction Sentinel Cluster — senior
 seoDescription: Политики вытеснения памяти и обзор HA: Sentinel vs Cluster.
 seoKeywords: [eviction, sentinel, redis cluster, собеседование]
-canonicalUrl: https://9to18.ru/game/learn/rd-eviction-cluster
+canonicalUrl: https://9to18.ru/game/learn/rd-pubsub-vs-queue
 ---
 
 ## Введение
@@ -117,4 +117,4 @@ Back: ключ → слот → нода
 
 - [Redis Cluster spec](https://redis.io/docs/reference/cluster-spec/)
 - Learn | [pub/sub](/game/learn/rd-pubsub-vs-queue)
-- Далее: [Capstone Redis](/game/learn/rd-capstone)
+- Далее: [Capstone Redis](/game/learn/rd-pubsub-vs-queue)

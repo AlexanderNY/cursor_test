@@ -13,7 +13,7 @@ export const deckTesting: TopicDeck = {
       id: 'pool:testing:e2e-local',
       front: `E2E локально?`,
       back: `Сквозной сценарий на стенде: UI+API+БД. Дорогой, но ловит склейку. Держите тонкий набор.`,
-      learnSlug: 'qa-selenium-webdriver',
+      learnSlug: 'qa-aqa-principles',
     },
     {
       id: 'pool:testing:pyramid-map',
@@ -25,7 +25,7 @@ export const deckTesting: TopicDeck = {
       id: 'pool:testing:fixture',
       front: `Фикстуры данных?`,
       back: `Предсказуемое начальное состояние. Изоляция тестов друг от друга обязательна.`,
-      learnSlug: 'qa-selenium-webdriver',
+      learnSlug: 'qa-aqa-principles',
     },
     {
       id: 'pool:testing:assert',
@@ -37,7 +37,7 @@ export const deckTesting: TopicDeck = {
       id: 'pool:testing:env-parity',
       front: `Паритет окружений?`,
       back: `Чем ближе staging к prod (данные/конфиг), тем меньше «у нас работает». Контейнеры помогают.`,
-      learnSlug: 'qa-selenium-webdriver',
+      learnSlug: 'qa-aqa-principles',
     },
     {
       id: 'pool:testing:smoke-ci',
@@ -55,7 +55,7 @@ export const deckTesting: TopicDeck = {
       id: 'pool:testing:flaky-e2e',
       front: `Почему e2e flaky?`,
       back: `Тайминги UI, общие данные, внешние сервисы. Явные ожидания и изоляция.`,
-      learnSlug: 'qa-selenium-webdriver',
+      learnSlug: 'qa-aqa-principles',
     },
     {
       id: 'pool:testing:coverage',
@@ -67,7 +67,7 @@ export const deckTesting: TopicDeck = {
       id: 'pool:testing:contract-map',
       front: `Контракт API в тестах?`,
       back: `Схема ответа/статусы как тест. Ломающие изменения видны до полного UI e2e.`,
-      learnSlug: 'qa-selenium-webdriver',
+      learnSlug: 'qa-aqa-principles',
     },
     {
       id: 'pool:testing:manual',
@@ -79,7 +79,7 @@ export const deckTesting: TopicDeck = {
       id: 'pool:testing:data-cleanup',
       front: `Очистка после теста?`,
       back: `finally/fixtures teardown, транзакции rollback, уникальные префиксы данных.`,
-      learnSlug: 'qa-selenium-webdriver',
+      learnSlug: 'qa-aqa-principles',
     },
     {
       id: 'pool:testing:shift-left-map',
@@ -91,7 +91,7 @@ export const deckTesting: TopicDeck = {
       id: 'pool:testing:report',
       front: `Отчёт о прогоне?`,
       back: `Что бежало, что упало, артефакты (логи/скрины), воспроизведение. Без этого CI бесполезен людям.`,
-      learnSlug: 'qa-selenium-webdriver',
+      learnSlug: 'qa-aqa-principles',
     },
   ],
 }

@@ -185,4 +185,4 @@ Back: В репозиторий рядом с описанием API.
 ## Ссылки
 
 - [REST основы](/game/learn/sa-rest-basics)
-- [Insomnia](/game/learn/s01e06-insomnia)
+- [Insomnia](/game/learn/s01e05-fastapi)

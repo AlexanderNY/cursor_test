@@ -1,5 +1,5 @@
 ---
-slug: qa-test-design-advanced
+slug: qa-middle-process
 title: Продвинутый тест-дизайн: таблицы, pairwise, риск
 shortTitle: Test design+
 episode: QA14
@@ -16,7 +16,7 @@ prerequisites: [qa-middle-process]
 seoTitle: Advanced test design — pairwise DRE RBT
 seoDescription: Decision table, pairwise, ATM states, cyclomatic complexity, DDP/DRE и risk-based testing для middle QA.
 seoKeywords: [pairwise, decision table, dre, risk-based, middle qa]
-canonicalUrl: https://9to18.ru/game/learn/qa-test-design-advanced
+canonicalUrl: https://9to18.ru/game/learn/qa-middle-process
 ---
 
 ## Введение

@@ -12,7 +12,7 @@ tags: [product, cjm, собеседование]
 onKnowledgeMap: true
 durationMin: 30
 excerpt: Этапы CJM, боли и метрики шага.
-prerequisites: [pm-prioritization]
+prerequisites: [pm-product-management]
 seoTitle: CJM — junior
 seoDescription: Этапы CJM, боли и метрики шага.
 seoKeywords: [product, cjm, собеседование]
@@ -29,7 +29,7 @@ CJM показывает путь клиента и точки боли.
 
 ## Раздел: Практика
 
-Связь с USM: [sa-user-stories-use-cases](/game/learn/sa-user-stories-use-cases). Упоминание в [sa-requirements-basics](/game/learn/sa-requirements-basics).
+Связь с USM: [sa-requirements-basics](/game/learn/sa-requirements-basics). Упоминание в [sa-requirements-basics](/game/learn/sa-requirements-basics).
 
 ## Раздел: На собесе
 
@@ -107,5 +107,5 @@ Back: story map
 ## Ссылки
 
 - Learn | [SA01](/game/learn/sa-requirements-basics)
-- Learn | [SA02](/game/learn/sa-user-stories-use-cases)
-- Далее: [Agile PO](/game/learn/pm-agile-po)
+- Learn | [SA02](/game/learn/sa-requirements-basics)
+- Далее: [Agile PO](/game/learn/pm-cjm)

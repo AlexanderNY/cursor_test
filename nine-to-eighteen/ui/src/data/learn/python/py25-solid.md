@@ -194,4 +194,4 @@ Back: В коротком скрипте без второй причины из
 ## Ссылки
 
 - [ООП база](/game/learn/py-oop-basics)
-- [PEP 8 и typing](/game/learn/py-typing-pep8-static)
+- [PEP 8 и typing](/game/learn/py-oop-advanced-mro)

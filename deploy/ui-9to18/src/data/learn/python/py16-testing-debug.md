@@ -1,5 +1,5 @@
 ---
-slug: py-testing-debug
+slug: py-threading-gil-gc
 title: Тесты и отладка — unittest, pytest, pdb
 shortTitle: Тесты и pdb
 episode: PY16
@@ -16,7 +16,7 @@ prerequisites: [py-threading-gil-gc]
 seoTitle: Python testing pdb — middle
 seoDescription: unittest/pytest-подход и pdb на собеседовании.
 seoKeywords: [python, pytest, unittest, pdb]
-canonicalUrl: https://9to18.ru/game/learn/py-testing-debug
+canonicalUrl: https://9to18.ru/game/learn/py-threading-gil-gc
 ---
 
 ## Введение
@@ -127,4 +127,4 @@ Back: s
 - [DEBAGanov — тесты / pdb](https://github.com/DEBAGanov/interview_questions/blob/main/400%20вопросов%20с%20ответами%2C%20которые%20должен%20знать%20Python-разработчик.md)
 - Learn | /game/learn
 - См. также: [pytest CI Git для QA](/game/learn/qa-pytest-ci-git)
-- Далее: [Дескрипторы](/game/learn/py-descriptors-metaclasses)
+- Далее: [Дескрипторы](/game/learn/py-threading-gil-gc)

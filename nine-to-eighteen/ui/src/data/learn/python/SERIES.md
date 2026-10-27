@@ -1,3 +1,5 @@
+> Короткие выпуски этой серии объединены в сводные статьи. Живой файл — первый выпуск группы, его текст включает соседние темы. Старые slug в таблицах ниже отдельно больше не открываются и заново их заводить не нужно. Ссылки из таблиц ведут на сводный выпуск.
+
 # Серия Python Learn: Junior → Senior
 
 Карта 24 выпусков для трека разработчика. Пишите тела по [`../article-template.md`](../article-template.md).
@@ -80,7 +82,7 @@ prerequisites: [py-intro-python]
 seoTitle: Python коллекции — junior
 seoDescription: list/tuple/dict/set, срезы, ключи словаря — разбор для собеса.
 seoKeywords: [python, list, dict, tuple, set]
-canonicalUrl: https://9to18.ru/game/learn/py-types-collections
+canonicalUrl: https://9to18.ru/game/learn/py-intro-python
 ---
 ```
 
@@ -154,7 +156,7 @@ prerequisites: [py-strings-ops-io]
 seoTitle: Python функции и циклы — junior
 seoDescription: for/while, функции, lambda, comprehensions для junior-собеса.
 seoKeywords: [python, functions, lambda, comprehension]
-canonicalUrl: https://9to18.ru/game/learn/py-control-flow-functions
+canonicalUrl: https://9to18.ru/game/learn/py-strings-ops-io
 ---
 ```
 
@@ -191,7 +193,7 @@ prerequisites: [py-control-flow-functions]
 seoTitle: Python модули и venv — junior
 seoDescription: import, пакеты, venv, pip, wheels — база для junior.
 seoKeywords: [python, venv, pip, modules]
-canonicalUrl: https://9to18.ru/game/learn/py-modules-packages-venv
+canonicalUrl: https://9to18.ru/game/learn/py-strings-ops-io
 ---
 ```
 
@@ -265,7 +267,7 @@ prerequisites: [py-oop-basics]
 seoTitle: Python исключения — junior
 seoDescription: Обработка ошибок и иерархия исключений на собесе.
 seoKeywords: [python, exceptions, try, finally]
-canonicalUrl: https://9to18.ru/game/learn/py-exceptions
+canonicalUrl: https://9to18.ru/game/learn/py-oop-basics
 ---
 ```
 
@@ -302,7 +304,7 @@ prerequisites: [py-exceptions]
 seoTitle: Python re json copy — junior
 seoDescription: re, json, copy — практический stdlib для junior.
 seoKeywords: [python, regex, json, deepcopy]
-canonicalUrl: https://9to18.ru/game/learn/py-stdlib-re-json-copy
+canonicalUrl: https://9to18.ru/game/learn/py-oop-basics
 ---
 ```
 
@@ -378,7 +380,7 @@ prerequisites: [py-iterators-generators]
 seoTitle: Python декораторы и with — middle
 seoDescription: Декораторы, closures, context managers для middle.
 seoKeywords: [python, decorator, with, closure]
-canonicalUrl: https://9to18.ru/game/learn/py-decorators-context
+canonicalUrl: https://9to18.ru/game/learn/py-iterators-generators
 ---
 ```
 
@@ -415,7 +417,7 @@ prerequisites: [py-decorators-context]
 seoTitle: Python FP collections itertools — middle
 seoDescription: map/filter/reduce, Counter, itertools на middle-собесе.
 seoKeywords: [python, map, filter, collections, itertools]
-canonicalUrl: https://9to18.ru/game/learn/py-fp-collections-itertools
+canonicalUrl: https://9to18.ru/game/learn/py-iterators-generators
 ---
 ```
 
@@ -489,7 +491,7 @@ prerequisites: [py-oop-advanced-mro]
 seoTitle: Python PEP 8 typing — middle
 seoDescription: PEP 8, docstring, type hints, flake8/mypy для middle.
 seoKeywords: [python, pep8, typing, mypy]
-canonicalUrl: https://9to18.ru/game/learn/py-typing-pep8-static
+canonicalUrl: https://9to18.ru/game/learn/py-oop-advanced-mro
 ---
 ```
 
@@ -528,7 +530,7 @@ prerequisites: [py-typing-pep8-static]
 seoTitle: Python asyncio — middle
 seoDescription: Синхронный и асинхронный код, non-blocking I/O.
 seoKeywords: [python, asyncio, async, await]
-canonicalUrl: https://9to18.ru/game/learn/py-async-io
+canonicalUrl: https://9to18.ru/game/learn/py-oop-advanced-mro
 ---
 ```
 
@@ -604,7 +606,7 @@ prerequisites: [py-threading-gil-gc]
 seoTitle: Python testing pdb — middle
 seoDescription: unittest/pytest-подход и pdb на собеседовании.
 seoKeywords: [python, pytest, unittest, pdb]
-canonicalUrl: https://9to18.ru/game/learn/py-testing-debug
+canonicalUrl: https://9to18.ru/game/learn/py-threading-gil-gc
 ---
 ```
 
@@ -645,7 +647,7 @@ prerequisites: [py-testing-debug]
 seoTitle: Python дескрипторы и метаклассы — senior
 seoDescription: descriptors, metaclasses, type() без class на senior-собесе.
 seoKeywords: [python, descriptor, metaclass]
-canonicalUrl: https://9to18.ru/game/learn/py-descriptors-metaclasses
+canonicalUrl: https://9to18.ru/game/learn/py-threading-gil-gc
 ---
 ```
 
@@ -719,7 +721,7 @@ prerequisites: [py-perf-packaging-alt-runtimes]
 seoTitle: Python Flask Django — senior
 seoDescription: Flask vs Django/Pyramid, sessions, middleware.
 seoKeywords: [python, flask, django, middleware]
-canonicalUrl: https://9to18.ru/game/learn/py-web-flask-django
+canonicalUrl: https://9to18.ru/game/learn/py-perf-packaging-alt-runtimes
 ---
 ```
 
@@ -756,7 +758,7 @@ prerequisites: [py-web-flask-django]
 seoTitle: Python DB Memcached — senior
 seoDescription: MySQL/SQL из Python и Memcached dogpile/failover.
 seoKeywords: [python, sql, memcached, cache]
-canonicalUrl: https://9to18.ru/game/learn/py-db-cache-memcached
+canonicalUrl: https://9to18.ru/game/learn/py-perf-packaging-alt-runtimes
 ---
 ```
 
@@ -830,7 +832,7 @@ prerequisites: [py-concurrency-io-patterns]
 seoTitle: Python DRY architecture — senior
 seoDescription: DRY, когда использовать и не использовать Python.
 seoKeywords: [python, dry, architecture]
-canonicalUrl: https://9to18.ru/game/learn/py-design-dry-architecture
+canonicalUrl: https://9to18.ru/game/learn/py-concurrency-io-patterns
 ---
 ```
 
@@ -867,7 +869,7 @@ prerequisites: [py-design-dry-architecture]
 seoTitle: Python interview tricky — senior
 seoDescription: Разбор «что выведет» и классических ловушек Python.
 seoKeywords: [python, interview, quiz, mutable-default]
-canonicalUrl: https://9to18.ru/game/learn/py-interview-tricky
+canonicalUrl: https://9to18.ru/game/learn/py-concurrency-io-patterns
 ---
 ```
 
@@ -904,7 +906,7 @@ prerequisites: [py-interview-tricky]
 seoTitle: Python interview checklist — senior capstone
 seoDescription: Чеклист Junior→Senior и ссылка на полный список вопросов.
 seoKeywords: [python, interview, checklist, senior]
-canonicalUrl: https://9to18.ru/game/learn/py-senior-capstone
+canonicalUrl: https://9to18.ru/game/learn/py-concurrency-io-patterns
 ---
 ```
 

@@ -12,7 +12,7 @@ tags: [java, shell, linux, собеседование]
 onKnowledgeMap: true
 durationMin: 25
 excerpt: env, PID, скрипт запуска jar; ссылка на QA17.
-prerequisites: [jv-oop-vs-python]
+prerequisites: [jv-se-jvm]
 seoTitle: Shell JVM — junior
 seoDescription: env, PID, скрипт запуска jar; ссылка на QA17.
 seoKeywords: [java, shell, linux, собеседование]
@@ -108,4 +108,4 @@ Back: Linux/Docker для QA
 ## Ссылки
 
 - Learn | [QA17 Linux](/game/learn/qa-infra-linux-containers)
-- Далее: [JDBC basics](/game/learn/jv-jdbc-basics)
+- Далее: [JDBC basics](/game/learn/jv-shell-process)

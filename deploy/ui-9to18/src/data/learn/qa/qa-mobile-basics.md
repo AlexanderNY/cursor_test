@@ -1,5 +1,5 @@
 ---
-slug: qa-mobile-basics
+slug: qa-pytest-ci-git
 title: Мобильное тестирование и Appium-концепт
 shortTitle: Mobile basics
 episode: QA12
@@ -16,7 +16,7 @@ prerequisites: [qa-pytest-ci-git]
 seoTitle: Mobile testing Appium — QA junior
 seoDescription: Android/iOS, native/hybrid/web, ADB, логи, биометрия и концепция Appium для собеседования.
 seoKeywords: [mobile, appium, adb, android, ios]
-canonicalUrl: https://9to18.ru/game/learn/qa-mobile-basics
+canonicalUrl: https://9to18.ru/game/learn/qa-pytest-ci-git
 ---
 
 ## Введение

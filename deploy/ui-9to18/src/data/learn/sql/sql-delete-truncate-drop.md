@@ -12,7 +12,7 @@ tags: [sql, delete, truncate, drop, транзакции, собеседован
 onKnowledgeMap: true
 durationMin: 26
 excerpt: Разница DELETE и TRUNCATE, отличие DROP от TRUNCATE, откат в PostgreSQL и подводные камни SQL Server/MySQL.
-prerequisites: [sql-tables-keys-constraints]
+prerequisites: [sql-ddl-dml-dcl]
 seoTitle: DELETE vs TRUNCATE vs DROP — SQL собеседование
 seoDescription: Когда использовать DELETE, TRUNCATE и DROP. Откат транзакций в PostgreSQL и отличия MS SQL/MySQL. Оригинальный разбор для junior.
 seoKeywords: [DELETE, TRUNCATE, DROP, PostgreSQL, SQL Server, транзакции, собеседование]
@@ -174,4 +174,4 @@ Back: Можно выполнить в транзакции и откатить 
 - [OTUS / Хабр — топ вопросов по SQL, часть I](https://habr.com/ru/companies/otus/articles/461067/)
 - [PostgreSQL: TRUNCATE](https://www.postgresql.org/docs/current/sql-truncate.html)
 - Learn | /game/learn
-- Далее: [JOIN в SQL](/game/learn/sql-joins)
+- Далее: [JOIN в SQL](/game/learn/sql-delete-truncate-drop)

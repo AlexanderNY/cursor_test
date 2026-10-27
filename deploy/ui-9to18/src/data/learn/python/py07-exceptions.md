@@ -1,5 +1,5 @@
 ---
-slug: py-exceptions
+slug: py-oop-basics
 title: Исключения — try, иерархия и свои ошибки
 shortTitle: Исключения
 episode: PY07
@@ -16,7 +16,7 @@ prerequisites: [py-oop-basics]
 seoTitle: Python исключения — junior
 seoDescription: Обработка ошибок и иерархия исключений на собесе.
 seoKeywords: [python, exceptions, try, finally]
-canonicalUrl: https://9to18.ru/game/learn/py-exceptions
+canonicalUrl: https://9to18.ru/game/learn/py-oop-basics
 ---
 
 ## Введение
@@ -147,4 +147,4 @@ Back: сохранить причинно-следственную цепочк�
 - [Errors and Exceptions](https://docs.python.org/3/tutorial/errors.html)
 - [DEBAGanov — исключения](https://github.com/DEBAGanov/interview_questions/blob/main/400%20вопросов%20с%20ответами%2C%20которые%20должен%20знать%20Python-разработчик.md)
 - Learn | /game/learn
-- Далее: [re / json / copy](/game/learn/py-stdlib-re-json-copy)
+- Далее: [re / json / copy](/game/learn/py-oop-basics)

@@ -193,4 +193,4 @@ Back: Один сценарий злоупотребления и контрол
 ## Ссылки
 
 - [Модель угроз](/game/learn/sec-threat-model)
-- [Пайплайн](/game/learn/ops-ci-pipeline)
+- [Пайплайн](/game/learn/ops-linux-process)

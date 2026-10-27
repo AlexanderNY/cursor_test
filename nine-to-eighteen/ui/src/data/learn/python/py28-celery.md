@@ -12,7 +12,7 @@ tags: [python, celery, rabbitmq, redis, очередь, собеседовани
 onKnowledgeMap: true
 durationMin: 45
 excerpt: Тяжёлую работу выносят из HTTP. Celery забирает сообщение из RabbitMQ или Redis и обязана пережить повтор.
-prerequisites: [py-async-io]
+prerequisites: [py-oop-advanced-mro]
 seoTitle: Celery RabbitMQ Redis — middle
 seoDescription: Задача, брокер, retry и идемпотентность для Python-разработчика.
 seoKeywords: [celery, rabbitmq, redis, python]
@@ -190,5 +190,5 @@ Back: Нет. Async остаётся внутри процесса, очеред
 
 ## Ссылки
 
-- [Asyncio](/game/learn/py-async-io)
+- [Asyncio](/game/learn/py-oop-advanced-mro)
 - [Очереди для аналитика](/game/learn/sa-sync-async-queues)

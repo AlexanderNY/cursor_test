@@ -1,5 +1,5 @@
 ---
-slug: sa-orchestration-cap-gateway
+slug: sa-architecture-styles
 title: Оркестрация, CAP, API Gateway, балансировка, Event Sourcing
 shortTitle: Orchestration CAP Gateway
 episode: SA15
@@ -16,7 +16,7 @@ prerequisites: [sa-architecture-styles]
 seoTitle: Хореография, CAP, API Gateway — middle СА на собеседовании
 seoDescription: T5.7–5.15: хореография и оркестрация, AJAX, CAP, API Gateway, load balancer, Event Sourcing — ответы для системного аналитика.
 seoKeywords: [хореография, оркестрация, CAP, API Gateway, Event Sourcing, собеседование]
-canonicalUrl: https://9to18.ru/game/learn/sa-orchestration-cap-gateway
+canonicalUrl: https://9to18.ru/game/learn/sa-architecture-styles
 ---
 
 ## Введение

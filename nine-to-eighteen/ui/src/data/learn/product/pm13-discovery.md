@@ -183,4 +183,4 @@ Back: В список гипотез, не в обязательство дат�
 ## Ссылки
 
 - [Стратегия](/game/learn/pm-product-strategy)
-- [Приоритизация](/game/learn/pm-prioritization)
+- [Приоритизация](/game/learn/pm-product-management)

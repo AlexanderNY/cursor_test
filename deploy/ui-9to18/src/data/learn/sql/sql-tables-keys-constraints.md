@@ -1,5 +1,5 @@
 ---
-slug: sql-tables-keys-constraints
+slug: sql-ddl-dml-dcl
 title: Таблицы, ключи и ограничения целостности
 shortTitle: Ключи и constraints
 episode: SQL02
@@ -16,7 +16,7 @@ prerequisites: [sql-ddl-dml-dcl]
 seoTitle: PK UK FK и constraints SQL — junior собеседование
 seoDescription: Что такое таблица и поле, первичный и уникальный ключ, внешний ключ, ограничения и целостность данных. Примеры PostgreSQL.
 seoKeywords: [SQL, PRIMARY KEY, FOREIGN KEY, UNIQUE, constraints, целостность, PostgreSQL, собеседование]
-canonicalUrl: https://9to18.ru/game/learn/sql-tables-keys-constraints
+canonicalUrl: https://9to18.ru/game/learn/sql-ddl-dml-dcl
 ---
 
 ## Введение

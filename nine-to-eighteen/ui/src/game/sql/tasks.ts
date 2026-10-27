@@ -53,7 +53,7 @@ SELECT 1 AS todo;
     id: 'tables-keys-fk',
     title: 'PK и FK',
     episode: 'SQL02',
-    learnSlug: 'sql-tables-keys-constraints',
+    learnSlug: 'sql-ddl-dml-dcl',
     level: 'junior',
     prompt:
       'Создайте users(id INTEGER PRIMARY KEY, name TEXT NOT NULL) и orders(id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id), total REAL NOT NULL). Вставьте одного пользователя и один заказ. Проверка смотрит sqlite_master и наличие FK.',
@@ -114,7 +114,7 @@ SELECT id, name FROM products ORDER BY id;
     id: 'inner-join-orders',
     title: 'INNER JOIN заказов',
     episode: 'SQL04',
-    learnSlug: 'sql-joins',
+    learnSlug: 'sql-delete-truncate-drop',
     level: 'junior',
     prompt:
       'Верните id заказа, имя пользователя и total для всех заказов через INNER JOIN users и orders. Столбцы: order_id, user_name, total. Порядок: ORDER BY order_id.',
@@ -143,7 +143,7 @@ SELECT id, name FROM products ORDER BY id;
     id: 'left-join-no-orders',
     title: 'LEFT JOIN без заказов',
     episode: 'SQL04',
-    learnSlug: 'sql-joins',
+    learnSlug: 'sql-delete-truncate-drop',
     level: 'junior',
     prompt:
       'Через LEFT JOIN от users к orders найдите пользователей без заказов. Верните name. Ожидается одна строка: Bob.',
@@ -187,7 +187,7 @@ SELECT id, name FROM products ORDER BY id;
     id: 'create-index',
     title: 'CREATE INDEX',
     episode: 'SQL06',
-    learnSlug: 'sql-indexes-basics',
+    learnSlug: 'sql-types-null',
     level: 'junior',
     prompt:
       'На таблице orders уже есть данные. Создайте индекс idx_orders_user_id на столбце user_id. Проверка смотрит sqlite_master.',
@@ -247,7 +247,7 @@ WHERE /* TODO: IS NULL / OR */;
     id: 'orders-above-avg',
     title: 'Подзапрос: выше среднего',
     episode: 'SQL10',
-    learnSlug: 'sql-subqueries',
+    learnSlug: 'sql-triggers-operators',
     level: 'middle',
     prompt:
       'Выберите id и total заказов, у которых total больше среднего total по всей таблице orders. Столбцы: id, total. Порядок: ORDER BY id.',
@@ -299,7 +299,7 @@ ORDER BY user_id;
     id: 'paid-sum-by-customer',
     title: 'Сводный отчёт paid',
     episode: 'SQL12',
-    learnSlug: 'sql-practice-lab',
+    learnSlug: 'sql-agg-dates-count',
     level: 'middle',
     prompt:
       'Для каждого клиента посчитайте сумму total только по заказам status = \'paid\'. Столбцы: customer_id, paid_sum. Только клиенты с хотя бы одним paid. ORDER BY customer_id.',

@@ -1,5 +1,5 @@
 ---
-slug: js-functions-this
+slug: js-types-coerce
 title: Функции и this
 shortTitle: Functions this
 episode: JS02
@@ -16,7 +16,7 @@ prerequisites: [js-types-coerce]
 seoTitle: Functions this — junior
 seoDescription: function vs arrow; this.
 seoKeywords: [javascript, functions, собеседование]
-canonicalUrl: https://9to18.ru/game/learn/js-functions-this
+canonicalUrl: https://9to18.ru/game/learn/js-types-coerce
 ---
 
 ## Введение
@@ -108,4 +108,4 @@ Back: как вызвали
 ## Ссылки
 
 - Learn | [JS01](/game/learn/js-types-coerce)
-- Далее: [Async fetch](/game/learn/js-async-fetch)
+- Далее: [Async fetch](/game/learn/js-types-coerce)

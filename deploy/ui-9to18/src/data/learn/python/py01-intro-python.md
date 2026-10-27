@@ -133,4 +133,4 @@ Back: GIL ограничивает CPU-threads; слабее для realtime/mob
 - [Документация Python — Tutorial](https://docs.python.org/3/tutorial/)
 - [DEBAGanov — список вопросов (темы 1, 51–52, 102–105…)](https://github.com/DEBAGanov/interview_questions/blob/main/400%20вопросов%20с%20ответами%2C%20которые%20должен%20знать%20Python-разработчик.md)
 - Learn | /game/learn
-- Далее: [Типы и коллекции](/game/learn/py-types-collections)
+- Далее: [Типы и коллекции](/game/learn/py-intro-python)

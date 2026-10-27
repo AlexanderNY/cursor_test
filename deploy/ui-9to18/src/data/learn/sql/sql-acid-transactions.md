@@ -1,5 +1,5 @@
 ---
-slug: sql-acid-transactions
+slug: sql-normalization
 title: ACID и транзакции — глубокий разбор с примерами
 shortTitle: ACID транзакции
 episode: SQL08
@@ -16,7 +16,7 @@ prerequisites: [sql-normalization]
 seoTitle: ACID транзакции SQL — middle собеседование PostgreSQL
 seoDescription: Глубокий разбор ACID с примерами: атомарность, согласованность, изоляция, долговечность. PostgreSQL, заметки про SQL Server/MySQL.
 seoKeywords: [ACID, транзакции, isolation, PostgreSQL, COMMIT, ROLLBACK, собеседование]
-canonicalUrl: https://9to18.ru/game/learn/sql-acid-transactions
+canonicalUrl: https://9to18.ru/game/learn/sql-normalization
 ---
 
 ## Введение

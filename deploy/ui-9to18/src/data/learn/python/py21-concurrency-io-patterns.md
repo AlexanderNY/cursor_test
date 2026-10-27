@@ -12,7 +12,7 @@ tags: [python, concurrency, production, debugging, собеседование]
 onKnowledgeMap: true
 durationMin: 35
 excerpt: Неблокирующий I/O, утечки, сигналы и диагностика на Linux.
-prerequisites: [py-db-cache-memcached]
+prerequisites: [py-perf-packaging-alt-runtimes]
 seoTitle: Python prod concurrency — senior
 seoDescription: Memory leaks, signals, remote files, non-blocking I/O.
 seoKeywords: [python, concurrency, memory-leak, linux]
@@ -125,4 +125,4 @@ Back: перестать принимать → дождаться inflight → 
 - [tracemalloc](https://docs.python.org/3/library/tracemalloc.html)
 - [DEBAGanov — утечки / сигналы / I/O](https://github.com/DEBAGanov/interview_questions/blob/main/400%20вопросов%20с%20ответами%2C%20которые%20должен%20знать%20Python-разработчик.md)
 - Learn | /game/learn
-- Далее: [DRY и границы](/game/learn/py-design-dry-architecture)
+- Далее: [DRY и границы](/game/learn/py-concurrency-io-patterns)

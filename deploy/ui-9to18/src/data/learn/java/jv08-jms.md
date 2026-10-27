@@ -12,7 +12,7 @@ tags: [java, jms, messaging, собеседование]
 onKnowledgeMap: true
 durationMin: 30
 excerpt: Java Message Service: queue vs topic, ack, DLQ.
-prerequisites: [jv-jpa-nplus1]
+prerequisites: [jv-orm-concepts]
 seoTitle: JMS — middle
 seoDescription: Java Message Service: queue vs topic, ack, DLQ.
 seoKeywords: [java, jms, messaging, собеседование]
@@ -112,4 +112,4 @@ Back: dead letter
 
 - Learn | [SA10](/game/learn/sa-sync-async-queues)
 - Learn | [RD06](/game/learn/rd-pubsub-vs-queue)
-- Далее: [ESB adapter](/game/learn/jv-esb-adapter)
+- Далее: [ESB adapter](/game/learn/jv-jms)

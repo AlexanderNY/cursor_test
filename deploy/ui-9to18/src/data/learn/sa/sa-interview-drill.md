@@ -1,5 +1,5 @@
 ---
-slug: sa-interview-drill
+slug: sa-profession-levels
 title: Interview drill — кросс-опрос T1–T7 и 10 быстрых ответов
 shortTitle: Interview drill
 episode: SA23
@@ -16,7 +16,7 @@ prerequisites: [sa-profession-levels]
 seoTitle: Drill собеседование системный аналитик T1–T7
 seoDescription: SA23: тренировка ответов по требованиям, моделям, БД, интеграциям, архитектуре, процессу и безопасности для senior СА.
 seoKeywords: [собеседование СА, drill, требования, интеграции, CAP, собеседование]
-canonicalUrl: https://9to18.ru/game/learn/sa-interview-drill
+canonicalUrl: https://9to18.ru/game/learn/sa-profession-levels
 ---
 
 ## Введение
@@ -187,4 +187,4 @@ Back: нужен ли sync-ответ; ретраи/идемпотентност
 
 - [Топ-150 вопросов СА (Хабр)](https://habr.com/ru/articles/963708/)
 - Learn | /game/learn
-- Далее: [Capstone чеклист](/game/learn/sa-capstone-checklist)
+- Далее: [Capstone чеклист](/game/learn/sa-profession-levels)

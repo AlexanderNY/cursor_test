@@ -10,14 +10,14 @@
 | Ep | slug |
 |----|------|
 | PM01 | `pm-product-management` |
-| PM02 | `pm-prioritization` |
+| PM02 | `pm-product-management` |
 | PM03 | `pm-cjm` |
-| PM04 | `pm-agile-po` |
+| PM04 | `pm-cjm` |
 | PM05 | `pm-product-strategy` |
-| PM06 | `pm-roadmapping` |
+| PM06 | `pm-product-strategy` |
 | PM07 | `pm-okr` |
-| PM08 | `pm-stakeholders` |
+| PM08 | `pm-okr` |
 | PM09 | `pm-pnl-unit-econ` |
-| PM10 | `pm-portfolio` |
+| PM10 | `pm-pnl-unit-econ` |
 | PM11 | `pm-interview-drill` |
-| PM12 | `pm-capstone` |
+| PM12 | `pm-interview-drill` |

@@ -107,4 +107,4 @@ Back: поиск классов
 ## Ссылки
 
 - Learn | [PY01 Intro Python](/game/learn/py-intro-python)
-- Далее: [ООП Java vs Python](/game/learn/jv-oop-vs-python)
+- Далее: [ООП Java vs Python](/game/learn/jv-se-jvm)

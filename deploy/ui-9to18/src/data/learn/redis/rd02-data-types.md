@@ -1,5 +1,5 @@
 ---
-slug: rd-data-types
+slug: rd-kv-model
 title: Типы данных Redis — string, hash, list, set, zset
 shortTitle: Типы Redis
 episode: RD02
@@ -16,7 +16,7 @@ prerequisites: [rd-kv-model]
 seoTitle: Типы данных Redis — junior
 seoDescription: string/hash/list/set/zset: когда какой тип на собеседовании.
 seoKeywords: [redis, hash, zset, list, собеседование]
-canonicalUrl: https://9to18.ru/game/learn/rd-data-types
+canonicalUrl: https://9to18.ru/game/learn/rd-kv-model
 ---
 
 ## Введение

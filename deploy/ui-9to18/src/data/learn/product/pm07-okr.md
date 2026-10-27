@@ -12,7 +12,7 @@ tags: [product, okr, собеседование]
 onKnowledgeMap: true
 durationMin: 30
 excerpt: Objective vs KR; антипаттерн тасков в KR.
-prerequisites: [pm-roadmapping]
+prerequisites: [pm-product-strategy]
 seoTitle: OKR — middle
 seoDescription: Objective vs KR; антипаттерн тасков в KR.
 seoKeywords: [product, okr, собеседование]
@@ -110,4 +110,4 @@ Back: таски в KR
 ## Ссылки
 
 - Learn | [Strategy](/game/learn/pm-product-strategy)
-- Далее: [Stakeholders](/game/learn/pm-stakeholders)
+- Далее: [Stakeholders](/game/learn/pm-okr)

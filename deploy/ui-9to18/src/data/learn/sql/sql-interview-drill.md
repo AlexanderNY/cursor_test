@@ -12,7 +12,7 @@ tags: [sql, drill, собеседование, Q1-Q30, PostgreSQL]
 onKnowledgeMap: true
 durationMin: 40
 excerpt: Скоростной drill по Q1–Q30: короткие модельные ответы своими словами для устного собеседования SQL.
-prerequisites: [sql-performance-explain]
+prerequisites: [sql-cte-window]
 seoTitle: Drill собеседование SQL Q1–Q30 — модельные ответы
 seoDescription: SQL15: быстрые оригинальные ответы на вопросы топ-списка Части I с акцентом на PostgreSQL и типичные ловушки.
 seoKeywords: [SQL, собеседование, drill, Q1, Q30, PostgreSQL]
@@ -157,5 +157,5 @@ Back: CTE, window functions, EXPLAIN/N+1
 ## Ссылки
 
 - [OTUS / Хабр — топ SQL, часть I (Q1–Q30)](https://habr.com/ru/companies/otus/articles/461067/)
-- Learn | /game/learn/sql-performance-explain
-- Learn | /game/learn/sql-capstone-checklist
+- Learn | /game/learn/sql-cte-window
+- Learn | /game/learn/sql-interview-drill

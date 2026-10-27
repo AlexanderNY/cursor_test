@@ -1,5 +1,5 @@
 ---
-slug: jv-jdbc-basics
+slug: jv-shell-process
 title: JDBC основы — Driver, Connection, PreparedStatement
 shortTitle: JDBC basics
 episode: JV04
@@ -16,7 +16,7 @@ prerequisites: [jv-shell-process]
 seoTitle: JDBC basics — junior
 seoDescription: Подключение к БД из Java без ORM.
 seoKeywords: [java, jdbc, sql, собеседование]
-canonicalUrl: https://9to18.ru/game/learn/jv-jdbc-basics
+canonicalUrl: https://9to18.ru/game/learn/jv-shell-process
 ---
 
 ## Введение
@@ -112,4 +112,4 @@ Back: лечить параметрами
 ## Ссылки
 
 - Learn | [SQL01](/game/learn/sql-ddl-dml-dcl)
-- Далее: [Пул и транзакции](/game/learn/jv-jdbc-pool-tx)
+- Далее: [Пул и транзакции](/game/learn/jv-shell-process)

@@ -12,7 +12,7 @@ tags: [product, pnl, unit-economics, собеседование]
 onKnowledgeMap: true
 durationMin: 30
 excerpt: Выручка, маржа, contribution без MBA-простыни.
-prerequisites: [pm-stakeholders]
+prerequisites: [pm-okr]
 seoTitle: P&L — senior
 seoDescription: Выручка, маржа, contribution без MBA-простыни.
 seoKeywords: [product, pnl, unit-economics, собеседование]
@@ -108,4 +108,4 @@ Back: стоимость привлечения
 ## Ссылки
 
 - Learn | [OKR](/game/learn/pm-okr)
-- Далее: [Portfolio](/game/learn/pm-portfolio)
+- Далее: [Portfolio](/game/learn/pm-pnl-unit-econ)

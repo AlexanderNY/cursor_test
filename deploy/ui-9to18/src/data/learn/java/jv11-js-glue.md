@@ -12,7 +12,7 @@ tags: [java, javascript, собеседование]
 onKnowledgeMap: true
 durationMin: 25
 excerpt: Зачем JS в энтерпрайз-стеке рядом с JVM.
-prerequisites: [jv-soap-client]
+prerequisites: [jv-jms]
 seoTitle: JS glue — middle
 seoDescription: Зачем JS в энтерпрайз-стеке рядом с JVM.
 seoKeywords: [java, javascript, собеседование]
@@ -108,5 +108,5 @@ Back: React list
 ## Ссылки
 
 - Learn | [JS01](/game/learn/js-types-coerce)
-- Learn | [B08](/game/learn/b08-react-list)
-- Далее: [JVM hosting](/game/learn/jv-jvm-hosting)
+- Learn | [B08](/game/learn/b05-api-check)
+- Далее: [JVM hosting](/game/learn/jv-js-glue)

@@ -1,5 +1,5 @@
 ---
-slug: py-decorators-context
+slug: py-iterators-generators
 title: Декораторы, замыкания и контекстные менеджеры
 shortTitle: Декораторы
 episode: PY10
@@ -16,7 +16,7 @@ prerequisites: [py-iterators-generators]
 seoTitle: Python декораторы и with — middle
 seoDescription: Декораторы, closures, context managers для middle.
 seoKeywords: [python, decorator, with, closure]
-canonicalUrl: https://9to18.ru/game/learn/py-decorators-context
+canonicalUrl: https://9to18.ru/game/learn/py-iterators-generators
 ---
 
 ## Введение
@@ -155,4 +155,4 @@ Back: __enter__ и __exit__
 - [contextlib](https://docs.python.org/3/library/contextlib.html)
 - [DEBAGanov — декораторы / with](https://github.com/DEBAGanov/interview_questions/blob/main/400%20вопросов%20с%20ответами%2C%20которые%20должен%20знать%20Python-разработчик.md)
 - Learn | /game/learn
-- Далее по треку: [FP / collections](/game/learn/py-fp-collections-itertools)
+- Далее по треку: [FP / collections](/game/learn/py-iterators-generators)

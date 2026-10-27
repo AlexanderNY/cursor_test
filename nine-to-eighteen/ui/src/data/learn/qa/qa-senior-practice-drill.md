@@ -1,43 +1,53 @@
 ---
 slug: qa-senior-practice-drill
-title: Senior practice drill: баги, HTTP, регресс под давлением
-shortTitle: Senior practice drill: баги,
+title: "Senior practice drill: баги, · Capstone QA: чеклист"
+shortTitle: "Senior practice drill: баги,"
 episode: QA23
 rubric: tools
 order: 423
-publishedAt: 2027-01-02T10:00:00+03:00
+publishedAt: "2027-01-02T10:00:00+03:00"
 profiles: [tester]
 level: senior
-tags: [qa, practice, debugging, http, regression, interview-drill, собеседование]
+tags: [qa, practice, debugging, http, regression, interview-drill, "собеседование", capstone, checklist, career, appendix, index]
 onKnowledgeMap: true
-durationMin: 45
-excerpt: Негативный POST, отладка 1+1=3, HTTP-ловушки, проверки без бэкенда, мёртвая кнопка логина, регресс за 2 дня и кроссбраузер.
-prerequisites: [qa-leadership-conflicts]
-seoTitle: Senior QA drill собеседование практика
-seoDescription: S30, S34–38, M88–90, M98–100, M102–103: разбор практических кейсов senior-собеседования тестировщика.
-seoKeywords: [qa interview, debugging, regression, http status, practice]
-canonicalUrl: https://9to18.ru/game/learn/qa-senior-practice-drill
+durationMin: 85
+excerpt: "Негативный POST, отладка 1+1=3, HTTP-ловушки, проверки без бэкенда, мёртвая кнопка логина, регресс за 2 дня и кроссбраузер."
+prerequisites: [qa-security-perf-senior]
+author: ""
+authorUrl: ""
+coverUrl: ""
+seoTitle: "Senior practice drill: баги, · Capstone QA: чеклист"
+seoDescription: "S30, S34–38, M88–90, M98–100, M102–103: разбор практических кейсов senior-собеседования тестировщика."
+seoKeywords: ["qa interview", debugging, regression, "http status", practice]
+canonicalUrl: "https://9to18.ru/game/learn/qa-senior-practice-drill"
 ---
-
 ## Введение
 
 S30, S34–38, M88–90, M98–100, M102–103: собес любит «разберите ситуацию». Ниже — оригинальные разборы с порядком действий, которые звучат как опыт lead/senior, а не список теорий.
 
 Термины и определения согласованы с **ISTQB CTFL v4** и [глоссарием ISTQB](https://glossary.istqb.org/); номера J/M/S — опциональный индекс типовых вопросов собеса.
 
-## Раздел: Ответ вслух
+**Capstone QA: чеклист.** Финальный выпуск серии: собрать траекторию Junior → Middle → Senior (+AQA), понять как пользоваться материалами 9to18 Learn и закрыть appendix-темы вне основной цепочки. Это навигатор и честный self-check перед собесом, а не новый учебник с нуля.
+
+Термины и определения согласованы с **ISTQB CTFL v4** и [глоссарием ISTQB](https://glossary.istqb.org/); номера J/M/S — опциональный индекс типовых вопросов собеса.
+
+## Раздел: Как отвечать одним блоком
+
+Этот выпуск собрал соседние короткие темы трека: «Senior practice drill: баги,», «Capstone QA: чеклист». Раньше каждая занимала отдельную карточку на несколько минут, а на собеседовании их спрашивают одним блоком. Ниже у каждой темы свой раздел, затем общие лабы, один тест и одна колода карточек. В ответе сначала назовите, какую тему спросили, потом определение и один пример. Не проговаривайте все разделы, если спросили один. Лабы можно пройти по порядку исходного трека. Если времени мало, сделайте первую и последнюю: первая ставит язык, последняя проверяет, что соседние темы вы не перепутали.
+
+## Раздел: Senior practice drill: баги,: Ответ вслух
 
 Я беру баг и отделяю факт от оценки: шаги, ожидание, что увидели. Потом риск релиза: кого заденет и есть ли обход. Стратегию не читаю с листа, привязываю к этому примеру.
 
-## Раздел: Плохой ответ
+## Раздел: Senior practice drill: баги,: Плохой ответ
 
 «Надо больше тестировать». Нет уровня, нет риска, нет того, что вы предложили не тестировать.
 
-## Раздел: Термины
+## Раздел: Senior practice drill: баги,: Термины
 
 Риск — risk. Обход — workaround. Ожидание — expected result.
 
-## Раздел: Негативы API, отладка логики, HTTP-ловушки
+## Раздел: Senior practice drill: баги,: Негативы API, отладка логики, HTTP-ловушки
 
 **Негативный POST создания пользователя.** Проверяйте системно, не одним «пустым телом»:
 
@@ -71,7 +81,7 @@ S30, S34–38, M88–90, M98–100, M102–103: собес любит «разб
 - **401 vs 500.** 401 — клиент не аутентифицирован (или токен протух). 500 — сервер упал; для клиента это не «попробуй залогиниться», а инцидент. Путать их — ломать клиентов и мониторинг.
 - **SSL/TLS.** Шифрование канала; проверяйте сертификат, смешанный контент, редирект HTTP→HTTPS, HSTS на проде. QA: expired cert на стейдже ломает автотесты — это тоже сигнал процесса.
 
-## Раздел: Без бэкенда, мёртвый логин, регресс за 2 дня, мессенджер, кроссбраузер
+## Раздел: Senior practice drill: баги,: Без бэкенда, мёртвый логин, регресс за 2 дня, мессенджер, кроссбраузер
 
 **Проверка формы и БД без доступа к бэкенд-коду.** Есть UI и БД (или только API+БД): создать запись через UI → SELECT по уникальному ключу; проверить тримминг, кодировку, default-значения, мягкое удаление; негатив UI и отсутствие строки; транзакционность (обрыв сети посередине). Контракт поля: маска телефона на UI vs как лежит в БД.
 
@@ -100,7 +110,7 @@ S30, S34–38, M88–90, M98–100, M102–103: собес любит «разб
 
 **Кроссбраузер при нехватке времени.** Матрица по аналитике: топ браузеров/ОС клиентов. Обязательно: последний Chrome + Safari iOS (часто болевой) + один Firefox/Edge. Остальное — на критических визуальных страницах или canary. Используйте Playwright multi-project точечно; не обещайте «все версии IE».
 
-## Раздел: Частые вопросы с собеседования
+## Раздел: Senior practice drill: баги,: Частые вопросы с собеседования
 
 **Вопрос.** Как приоритизировать дефекты перед релизом?
 **Ответ.** Сначала блокеры критичного пути и безопасность, затем высокий ущерб при высокой вероятности. Severity — вред, priority — когда чинить.
@@ -111,7 +121,118 @@ S30, S34–38, M88–90, M98–100, M102–103: собес любит «разб
 **Вопрос.** Чем exploratory отличается от случайных кликов?
 **Ответ.** У сессии есть чартер, время и заметки. Это опытная техника, а не отсутствие дизайна.
 
+## Раздел: Capstone QA: чеклист: Ответ вслух
+
+Я могу назвать уровень теста, одну технику дизайна и что не войдёт в прогон за час до релиза. Smoke критичного пути честнее, чем обещание полного регресса, который не успеть.
+
+## Раздел: Capstone QA: чеклист: Плохой ответ
+
+Прочитать оглавление QA01–QA24. Вопрос будет про выбор на этом релизе.
+
+## Раздел: Capstone QA: чеклист: Термины
+
+Дымовая проверка — smoke. Регресс — regression. Критичный путь — critical path.
+
+## Раздел: Capstone QA: чеклист: Чеклисты уровней и как читать серию
+
+**Как пользоваться серией.**
+
+1. Идите по `order` 401→424 или по пробелам в своём опыте (карта в таблице ниже).
+2. Каждый выпуск: теория → лаба → тест → Anki; не пропускайте лабу — на собесе звучит практика.
+3. Опирайтесь на термины **ISTQB CTFL v4** и [глоссарий](https://glossary.istqb.org/); опционально — [QA-interview-250](https://github.com/Konstantine23/QA-interview-250) как индекс формулировок вопросов.
+4. После Middle (QA18) обязательно пройдите strategy/ROI/security (QA19–21) до drill (QA23).
+5. Повторяйте Anki и свой конспект багов/метрик с работы — сильнее любой зубрёжки.
+
+**Чеклист Junior (ориентир QA01–QA08 + мост QA09–QA12).**
+
+- [ ] Объясняет тестирование, STLC, entry/exit без воды
+- [ ] Типы/уровни, smoke/sanity, позитив/негатив
+- [ ] Эквивалентность, границы, простой bug report
+- [ ] Тест-кейс, чеклист, базовый план
+- [ ] HTTP/REST руками (DevTools, статус-коды)
+- [ ] SQL: SELECT/JOIN/агрегаты на учебном уровне
+- [ ] Понимает зачем автоматизация; пишет простые pytest
+- [ ] Selenium/Playwright: найти элемент, assert, ожидания
+- [ ] Git: branch, commit, PR; читает пайплайн
+- [ ] Mobile: отличия, эмулятор vs девайс, базовый чеклист
+
+**Чеклист Middle (QA13–QA18).**
+
+- [ ] Процесс: coverage, leakage, риски фичи
+- [ ] Продвинутый дизайн: decision table, pairwise, RBT
+- [ ] API: контракты, моки, зачатки load
+- [ ] Agile: Scrum/Kanban, DoD, препятствия QA
+- [ ] Инфра: Docker, SSH, логи, IaaS/PaaS на уровне разговора
+- [ ] AuthN/AuthZ, OWASP intro, WebSocket, SQL mid, mobile middle
+- [ ] Самостоятельно ведёт тест-анализ фичи end-to-end
+
+**Чеклист Senior + AQA (QA19–QA23 и углубление QA09–QA11).**
+
+- [ ] Стратегия, exit criteria, метрики без vanity
+- [ ] Shift-left, ROI автоматизации, пирамида, CI/CD дисциплина
+- [ ] Security/perf: OWASP с защитами, stress с гипотезой
+- [ ] Лидерство: конфликты, RCA, стейкхолдеры, legacy
+- [ ] Drill: отладка слоями, регресс под давлением
+- [ ] Проектирует automation strategy и владение suites
+- [ ] Говорит с бизнесом языком риска и денег
+
+**AQA-акцент.** Язык команды (в серии — Python), устойчивые локаторы/API-first, отчёты, параллель, данные, борьба с flaky, вклад в DoD/CI — не «запись кликов».
+
+## Раздел: Capstone QA: чеклист: Appendix и индекс выпусков
+
+**Appendix (вне основной нумерации собеса, знать обзорно).**
+
+**J104–108 · NIC / RTP / SIP (телефония/сеть).** NIC — сетевой интерфейс; для QA VoIP важны задержки, packet loss, jitter. RTP — транспорт медиапотока; SIP — сигнализация сессии (приглашение, ответить, завершить). Тест: регистрация, call setup/teardown, one-way audio, NAT, кодеки. На общем web-собесе достаточно «знать, что это сигнализация vs медиа» и куда смотреть логи.
+
+**M40 · Electron.** Десктоп на Chromium + Node: по сути web UI с доступом к ОС. Риски: XSS → RCE через Node, автообновления, нативные диалоги, разные ОС. Тест: Playwright/Spectron-подобные подходы, установка/обновление, офлайн, права файловой системы.
+
+**M69 · SQL replication.** Primary/replica: асинхронная репликация даёт lag — тест только что записанных данных чтением с replica может «не видеть» строку. Проверяйте read-your-writes, failover, consistency expectations продукта.
+
+**Опциональный индекс вопросов:** [QA-interview-250](https://github.com/Konstantine23/QA-interview-250).
+
+**Индекс серии QA Learn (обзор).**
+
+| Ep | slug | Фокус |
+|----|------|--------|
+| QA01 | qa-intro-testing | Основы, STLC |
+| QA02 | qa-intro-testing | Типы и уровни |
+| QA03 | qa-test-design | Дизайн junior |
+| QA04 | qa-test-design | Баги |
+| QA05 | qa-docs-plan-cases | Документы |
+| QA06 | qa-docs-plan-cases | HTTP/API |
+| QA07 | qa-sql-db-basics | SQL |
+| QA08 | qa-sql-db-basics | Практика junior |
+| QA09 | qa-aqa-principles | AQA принципы |
+| QA10 | qa-aqa-principles | Selenium |
+| QA11 | qa-pytest-ci-git | pytest, CI, Git |
+| QA12 | qa-pytest-ci-git | Mobile |
+| QA13 | qa-middle-process | Процесс middle |
+| QA14 | qa-middle-process | Дизайн middle |
+| QA15 | qa-api-contract-perf | API/perf |
+| QA16 | qa-api-contract-perf | Agile |
+| QA17 | qa-infra-linux-containers | Инфра |
+| QA18 | qa-infra-linux-containers | Web/mobile/SQL mid |
+| QA19 | qa-strategy-metrics | Стратегия |
+| QA20 | qa-strategy-metrics | Shift-left/ROI |
+| QA21 | qa-security-perf-senior | Security/stress |
+| QA22 | qa-security-perf-senior | Лидерство |
+| QA23 | qa-senior-practice-drill | Drill |
+| QA24 | qa-senior-practice-drill | Capstone |
+
+## Раздел: Capstone QA: чеклист: Частые вопросы с собеседования
+
+**Вопрос.** Чем smoke отличается от регресса?
+**Ответ.** Smoke — узкий набор «сборка жива». Регресс проверяет, что изменения не сломали уже работавшее.
+
+**Вопрос.** Какие техники тест-дизайна назвать первыми?
+**Ответ.** Классы эквивалентности, границы, таблица решений и переходы состояний.
+
+**Вопрос.** Зачем чеклист, если темы уже читали?
+**Ответ.** Он показывает пробелы: термины, SQL, API и автоматизация должны звучать своими примерами.
+
 ## Лаба
+
+**Senior practice drill: баги,.**
 
 **Цель.** Пройти drill как на собесе: таймер и артефакты.
 
@@ -147,7 +268,45 @@ for idx, layer in enumerate(layers, start=1):
 - [ ] Отладка гипотезами, не гаданием
 - [ ] Регресс под давлением — risk-based с residual risk
 
-## Схема: Слои отладки «не отправилось»
+**Capstone QA: чеклист.**
+
+**Цель.** Личный gap-analysis и план на 4 недели до собеса.
+
+**Шаги.**
+1. Пройдите три чеклиста выше, отметьте ❌/⚠️/✅.
+2. Выберите 5 ❌ и привяжите к выпускам серии (slug).
+3. Составьте расписание: 3 выпуска/неделя или 2 лабы + Anki.
+4. Напишите 60-секундный pitch: «кто я как QA и чем усиливаю команду».
+5. Разберите 1 appendix-тему (VoIP / Electron / replication) на полстраницы своими словами.
+6. Соберите «папку доказательств»: 3 баг-репорта, 1 тест-анализ, 1 кусок автотеста (ссылки/файлы).
+
+```python
+# Gap-analysis → план на 4 недели
+series = [
+    ("QA01-08", "junior", "basics"),
+    ("QA09-12", "aqa", "automation bridge"),
+    ("QA13-18", "middle", "process+web+sql"),
+    ("QA19-23", "senior", "strategy+leadership"),
+    ("QA24", "capstone", "checklist+appendix"),
+]
+gaps = {"QA15": "api contract", "QA21": "owasp stress", "QA22": "rca"}
+for ep, level, topic in series:
+    mark = "⚠️" if any(g.startswith(ep[:4]) or g in ep for g in gaps) else "✅"
+    print(f"{mark} {ep:8} {level:8} {topic}")
+
+appendix = {"SIP": "signaling", "RTP": "media", "Electron": "Chromium+Node", "replica": "lag"}
+for key, value in appendix.items():
+    print(f"appendix {key}: {value}")
+```
+
+**В группу:** что важнее за месяц до собеса — закрыть все Junior-дыры или один сильный Senior-рассказ про инцидент?
+
+**Готово, если…**
+- [ ] Есть письменный gap-list и план
+- [ ] Pitch звучит 60 секунд без шпаргалки
+- [ ] Знаете, где в серии искать каждую слабую тему
+
+## Схема: Senior practice drill: баги,: Слои отладки «не отправилось»
 
 ```mermaid
 flowchart TB
@@ -162,6 +321,18 @@ flowchart TB
   Q -.-> Logs
 ```
 
+## Схема: Capstone QA: чеклист: Траектория серии
+
+```mermaid
+flowchart LR
+  J[Junior QA01-08] --> AQA[AQA bridge QA09-12]
+  AQA --> M[Middle QA13-18]
+  M --> S[Senior QA19-23]
+  S --> C[Capstone QA24]
+  C --> Job[Собес / рост на проекте]
+  App[Appendix VoIP Electron Replication] -.-> C
+```
+
 ## Тест
 
 ### Почему GET защищённого ресурса всё равно требует auth?
@@ -170,11 +341,23 @@ flowchart TB
 
 **Пояснение:** authorization проверяется на любом методе, включая GET/HEAD.
 
+### Чем smoke отличается от полного регресса перед релизом?
+
+**Ответ:** smoke — минимум критичных путей
+
+**Пояснение:** полный регресс шире; smoke решает «можно ли тестировать/выпускать дальше».
+
 ### Что делать с регрессом из 1000 кейсов за 2 дня?
 
 **Ответ:** приоритизировать по риску и изменениям, опереться на авто-smoke, согласовать out-of-scope с PO
 
 **Пояснение:** обещание «прогоним всё руками» создаёт ложную уверенность и выгорание.
+
+### Что из appendix важно помнить про read replica?
+
+**Ответ:** lag после записи
+
+**Пояснение:** чтение сразу после write может не увидеть данные — тест-дизайн и consistency.
 
 ### С чего начать, если кнопка логина не реагирует?
 
@@ -182,36 +365,9 @@ flowchart TB
 
 **Пояснение:** дальше валидация, перекрытия, окружение; без Network легко лечить не ту причину.
 
-### Prod incident — первые 15 минут QA?
-
-**Ответ:** воспроизведение, scope, severity, коммуникация, сбор логов
-
-**Пояснение:** не «найти виновного», а сузить blast radius.
-
-### Feature flag off — что регрессить?
-
-**Ответ:** путь без флага и rollback-сценарий
-
-**Пояснение:** флаг меняет поведение; регресс на обе ветки конфигурации.
-
-
-
 ## Шпаргалка
 
-<h3>API негатив</h3>
-<ul>
-<li>поля, типы, дубли, authZ, mass assignment, payload size</li>
-<li>стабильная схема ошибок без утечек</li>
-</ul>
-<h3>HTTP</h3>
-<ul>
-<li>401 ≠ 500; GET может требовать auth</li>
-<li>TLS: cert, redirect, mixed content</li>
-</ul>
-<h3>Давление по срокам</h3>
-<pre><code>risk → smoke/API → exploratory на diff
-explicit residual risk + мониторинг после релиза
-</code></pre>
+<ul><li>поля, типы, дубли, authZ, mass assignment, payload size</li><li>стабильная схема ошибок без утечек</li><li>401 ≠ 500; GET может требовать auth</li><li>TLS: cert, redirect, mixed content</li><li>Junior — основы и дисциплина артефактов</li><li>Middle — анализ, API/инфра, осознанный риск</li><li>Senior — стратегия, люди, ROI, инциденты</li><li>order 401–424 · profiles tester · тег собеседование</li><li>Лаба + Anki обязательны</li></ul>
 
 ## Anki
 
@@ -219,27 +375,25 @@ explicit residual risk + мониторинг после релиза
 
 Back: нельзя выставить привилегированные поля (role=admin) через тело запроса
 
+### Front: Порядок блоков серии QA Learn?
+
+Back: Junior → AQA bridge → Middle → Senior → Capstone (QA01…QA24)
+
 ### Front: 401 vs 500 для клиента логина
 
 Back: 401 — повторить аутентификацию; 500 — серверная ошибка, нужен инцидент/ретраи с осторожностью
+
+### Front: SIP vs RTP одной фразой
+
+Back: SIP управляет сессией звонка; RTP несёт аудио/видео поток
 
 ### Front: Кроссбраузер при малом бюджете
 
 Back: топ по аналитике + мобильный Safari + точечно остальное на критических экранах
 
-### Front: Bisect для flaky
+### Front: Что положить в «папку доказательств» к собесу?
 
-Back: сузить коммит/изменение env, после которого тест стал нестабилен
-
-### Front: Canary release — роль QA
-
-Back: мониторинг метрик/ошибок на доле трафика до full rollout
-
-### Front: Contract change без notice
-
-Back: consumer tests в CI должны поймать до прода; эскалация к API owner
-
-
+Back: сильные баг-репорты, пример тест-анализа и фрагмент осмысленной автоматизации
 
 ## Итоги
 
@@ -247,12 +401,15 @@ Back: consumer tests в CI должны поймать до прода; эска
 - HTTP-семантика и негативы API — частый фильтр senior
 - Под давлением сроков работает risk-based прозрачность, не героизм
 - Мессенджеры и формы требуют трассировки end-to-end, не только клика UI
+- Capstone сшивает Junior→Senior+AQA в проверяемые чеклисты
+- Серия + ISTQB glossary = единый словарь; QA-interview-250 — опциональный индекс
+- Appendix (VoIP, Electron, replication) — обзор для редких вопросов
+- Дальше — практика лаб и свой опыт, а не бесконечное чтение
 
 ## Ссылки
 
 - [ISTQB Glossary](https://glossary.istqb.org/)
 - [CTFL v4 — Certified Tester Foundation Level](https://istqb.org/certifications/certified-tester-foundation-level-ctfl-v4-0/)
 - [OWASP Top 10](https://owasp.org/www-project-top-ten/)
-- Опционально: [QA-interview-250](https://github.com/Konstantine23/QA-interview-250) — полный список формулировок вопросов
-- Learn | /game/learn
-- Далее: [Capstone checklist](/game/learn/qa-capstone-checklist)
+- [QA-interview-250](https://github.com/Konstantine23/QA-interview-250)
+- [Learn](/game/learn)

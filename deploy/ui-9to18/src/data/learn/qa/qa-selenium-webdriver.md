@@ -1,5 +1,5 @@
 ---
-slug: qa-selenium-webdriver
+slug: qa-aqa-principles
 title: Selenium WebDriver на Python
 shortTitle: Selenium
 episode: QA10
@@ -16,7 +16,7 @@ prerequisites: [qa-aqa-principles]
 seoTitle: Selenium WebDriver Python — QA junior
 seoDescription: Locators, explicit waits, JSExecutor, Actions, frames, cookies, capabilities и Selenium Grid на Python.
 seoKeywords: [selenium, python, waits, webdriver, grid]
-canonicalUrl: https://9to18.ru/game/learn/qa-selenium-webdriver
+canonicalUrl: https://9to18.ru/game/learn/qa-aqa-principles
 ---
 
 ## Введение

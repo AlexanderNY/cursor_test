@@ -1,5 +1,5 @@
 ---
-slug: qa-agile-scrum-kanban
+slug: qa-api-contract-perf
 title: Agile для тестировщика: Scrum, Kanban, DoD
 shortTitle: Agile Scrum Kanban
 episode: QA16
@@ -16,7 +16,7 @@ prerequisites: [qa-api-contract-perf]
 seoTitle: Scrum Kanban DoD для QA middle
 seoDescription: Сравнение Scrum и Kanban, ценности, sprint zero окружения,obstacles тестировщика и Definition of Done.
 seoKeywords: [scrum, kanban, agile testing, definition of done]
-canonicalUrl: https://9to18.ru/game/learn/qa-agile-scrum-kanban
+canonicalUrl: https://9to18.ru/game/learn/qa-api-contract-perf
 ---
 
 ## Введение

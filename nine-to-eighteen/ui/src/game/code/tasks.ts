@@ -16,7 +16,7 @@ export const CODE_TASKS: CodeTask[] = [
     id: 'word-freq',
     title: 'Частоты слов',
     episode: 'PY02',
-    learnSlug: 'py-types-collections',
+    learnSlug: 'py-intro-python',
     level: 'junior',
     prompt:
       'Напишите функцию word_freq(words: list[str]) -> dict[str, int]: число вхождений каждого слова. Порядок ключей не важен.',
@@ -50,7 +50,7 @@ __check()
     id: 'unique-preserve',
     title: 'Уникальные с сохранением порядка',
     episode: 'PY02',
-    learnSlug: 'py-types-collections',
+    learnSlug: 'py-intro-python',
     level: 'junior',
     prompt:
       'Напишите unique_preserve(items: list) -> list: первое вхождение каждого элемента, без set→list (порядок set не гарантирован).',
@@ -142,7 +142,7 @@ __check()
     id: 'group-by-len',
     title: 'Группировка по длине',
     episode: 'PY04',
-    learnSlug: 'py-control-flow-functions',
+    learnSlug: 'py-strings-ops-io',
     level: 'junior',
     prompt:
       'Напишите group_by_len(*words: str, upper: bool = False) -> dict[int, list[str]]. Ключ — длина слова; при upper=True слова в верхнем регистре. Не используйте mutable default.',
@@ -177,7 +177,7 @@ __check()
     id: 'safe-default',
     title: 'Без mutable default',
     episode: 'PY04',
-    learnSlug: 'py-control-flow-functions',
+    learnSlug: 'py-strings-ops-io',
     level: 'junior',
     prompt:
       'Напишите append_item(value, acc=None) -> list: добавляет value в список и возвращает его. Дефолт acc должен быть безопасным (None), чтобы вызовы не делили один список.',
@@ -211,7 +211,7 @@ __check()
     id: 'public-names',
     title: 'Публичные имена модуля',
     episode: 'PY05',
-    learnSlug: 'py-modules-packages-venv',
+    learnSlug: 'py-strings-ops-io',
     level: 'junior',
     prompt:
       'Напишите public_names(mapping: dict[str, object]) -> list[str]: имена без ведущего «_», отсортированные.',
@@ -279,7 +279,7 @@ __check()
     id: 'parse-positive',
     title: 'parse_positive',
     episode: 'PY07',
-    learnSlug: 'py-exceptions',
+    learnSlug: 'py-oop-basics',
     level: 'junior',
     prompt:
       'Напишите parse_positive(text: str) -> int: целое > 0. Невалидный текст или число ≤ 0 → ValueError.',
@@ -312,7 +312,7 @@ __check()
     id: 'filter-emails',
     title: 'Фильтр email regex',
     episode: 'PY08',
-    learnSlug: 'py-stdlib-re-json-copy',
+    learnSlug: 'py-oop-basics',
     level: 'junior',
     prompt:
       'Напишите filter_emails(items: list[str]) -> list[str]: строки, целиком похожие на простой email (буквы/цифры/._+ до @, домен с точкой). Используйте re.fullmatch.',
@@ -344,7 +344,7 @@ __check()
     id: 'deep-meta-copy',
     title: 'Deep copy meta',
     episode: 'PY08',
-    learnSlug: 'py-stdlib-re-json-copy',
+    learnSlug: 'py-oop-basics',
     level: 'junior',
     prompt:
       'Напишите clone_user(user: dict) -> dict: глубокая копия (copy.deepcopy), чтобы правка clone["meta"]["role"] не меняла оригинал.',
@@ -375,7 +375,7 @@ __check()
     id: 'first-even',
     title: 'Первое чётное (for/else)',
     episode: 'PY04',
-    learnSlug: 'py-control-flow-functions',
+    learnSlug: 'py-strings-ops-io',
     level: 'junior',
     prompt:
       'Напишите first_even(nums: list[int]) -> int | None: первое чётное или None. Используйте for/else (без флага found).',

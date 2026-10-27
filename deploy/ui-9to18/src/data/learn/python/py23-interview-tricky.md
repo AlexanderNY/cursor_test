@@ -1,5 +1,5 @@
 ---
-slug: py-interview-tricky
+slug: py-concurrency-io-patterns
 title: Трюки собеса — «что выведет код»
 shortTitle: Tricky drill
 episode: PY23
@@ -12,11 +12,11 @@ tags: [python, interview, tricky, quiz, собеседование]
 onKnowledgeMap: true
 durationMin: 40
 excerpt: Сжатый drill по выражениям, замыканиям и неочевидным результатам.
-prerequisites: [py-design-dry-architecture]
+prerequisites: [py-concurrency-io-patterns]
 seoTitle: Python interview tricky — senior
 seoDescription: Разбор «что выведет» и классических ловушек Python.
 seoKeywords: [python, interview, quiz, mutable-default]
-canonicalUrl: https://9to18.ru/game/learn/py-interview-tricky
+canonicalUrl: https://9to18.ru/game/learn/py-concurrency-io-patterns
 ---
 
 ## Введение
@@ -124,4 +124,4 @@ Back: может быть False даже при равных значениях 
 
 - [DEBAGanov — «что выведет»](https://github.com/DEBAGanov/interview_questions/blob/main/400%20вопросов%20с%20ответами%2C%20которые%20должен%20знать%20Python-разработчик.md)
 - Learn | /game/learn
-- Далее: [Capstone](/game/learn/py-senior-capstone)
+- Далее: [Capstone](/game/learn/py-concurrency-io-patterns)

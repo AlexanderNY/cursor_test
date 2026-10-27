@@ -1,5 +1,5 @@
 ---
-slug: qa-junior-practice-lab
+slug: qa-sql-db-basics
 title: Junior QA practice — корзина, логин, возраст, smoke
 shortTitle: Junior Practice
 episode: QA08
@@ -16,7 +16,7 @@ prerequisites: [qa-sql-db-basics]
 seoTitle: Практика junior QA — чеклисты и негативные кейсы
 seoDescription: Сводная лаба: корзина, логин, возраст 18–99, smoke Telegram-like и тестирование MVP калькулятора для собеседования.
 seoKeywords: [практика QA, чеклист, негативные тесты, smoke, собеседование]
-canonicalUrl: https://9to18.ru/game/learn/qa-junior-practice-lab
+canonicalUrl: https://9to18.ru/game/learn/qa-sql-db-basics
 ---
 
 ## Введение

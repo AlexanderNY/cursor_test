@@ -191,4 +191,4 @@ Back: SQL — стандартизированный язык запросов; 
 - [OTUS / Хабр — топ вопросов по SQL, часть I](https://habr.com/ru/companies/otus/articles/461067/)
 - [PostgreSQL: SQL Commands](https://www.postgresql.org/docs/current/sql-commands.html)
 - Learn | /game/learn
-- Далее: [Таблицы, ключи и ограничения](/game/learn/sql-tables-keys-constraints)
+- Далее: [Таблицы, ключи и ограничения](/game/learn/sql-ddl-dml-dcl)

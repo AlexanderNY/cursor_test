@@ -12,7 +12,7 @@ tags: [SOAP, XML, XSD, WSDL, интеграции, собеседование]
 onKnowledgeMap: true
 durationMin: 30
 excerpt: HTML vs XML, содержимое XML, XSD, пространства имён, инструменты, SOAP-сообщение, WSDL и отличия SOAP от REST.
-prerequisites: [sa-rest-advanced]
+prerequisites: [sa-sync-async-queues]
 seoTitle: SOAP, XML, WSDL — middle СА на собеседовании
 seoDescription: T4.3.1–4.3.9: HTML и XML, XSD, namespaces, SOAP-сообщение, WSDL, сравнение SOAP и REST для системного аналитика.
 seoKeywords: [SOAP, XML, XSD, WSDL, REST, системный аналитик, собеседование]
@@ -165,4 +165,4 @@ Back: допустимую структуру и типы XML-документа
 
 - [Топ-150 вопросов СА (Хабр)](https://habr.com/ru/articles/963708/)
 - Learn | /game/learn
-- Далее: [ESB и современные интеграции](/game/learn/sa-esb-integrations)
+- Далее: [ESB и современные интеграции](/game/learn/sa-soap-xml)

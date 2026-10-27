@@ -12,7 +12,7 @@ tags: [python, mro, dunder, slots, собеседование]
 onKnowledgeMap: true
 durationMin: 35
 excerpt: MRO, множественное наследование, магические методы и __slots__.
-prerequisites: [py-fp-collections-itertools]
+prerequisites: [py-iterators-generators]
 seoTitle: Python MRO и dunder — middle
 seoDescription: MRO, __dict__, __slots__, namespaces для middle.
 seoKeywords: [python, mro, dunder, slots]
@@ -125,4 +125,4 @@ Back: атрибуты экземпляра (если нет slots)
 - [Data model](https://docs.python.org/3/reference/datamodel.html)
 - [DEBAGanov — MRO / dunder / slots](https://github.com/DEBAGanov/interview_questions/blob/main/400%20вопросов%20с%20ответами%2C%20которые%20должен%20знать%20Python-разработчик.md)
 - Learn | /game/learn
-- Далее: [PEP8 и typing](/game/learn/py-typing-pep8-static)
+- Далее: [PEP8 и typing](/game/learn/py-oop-advanced-mro)

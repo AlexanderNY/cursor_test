@@ -1,5 +1,5 @@
 ---
-slug: sql-joins
+slug: sql-delete-truncate-drop
 title: JOIN в SQL — типы соединений и CROSS vs NATURAL
 shortTitle: JOIN типы
 episode: SQL04
@@ -16,7 +16,7 @@ prerequisites: [sql-delete-truncate-drop]
 seoTitle: Типы JOIN SQL — INNER LEFT FULL CROSS NATURAL
 seoDescription: Разбор JOIN для собеседования: типы соединений, CROSS JOIN и NATURAL JOIN. Примеры PostgreSQL, оригинальные формулировки.
 seoKeywords: [SQL, JOIN, INNER, LEFT, FULL, CROSS, NATURAL, PostgreSQL, собеседование]
-canonicalUrl: https://9to18.ru/game/learn/sql-joins
+canonicalUrl: https://9to18.ru/game/learn/sql-delete-truncate-drop
 ---
 
 ## Введение

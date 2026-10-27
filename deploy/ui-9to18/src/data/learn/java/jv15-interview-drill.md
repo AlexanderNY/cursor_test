@@ -1,5 +1,5 @@
 ---
-slug: jv-interview-drill
+slug: jv-adr-bus-vs-broker
 title: Interview drill Java/enterprise
 shortTitle: JV drill
 episode: JV15
@@ -16,7 +16,7 @@ prerequisites: [jv-adr-bus-vs-broker]
 seoTitle: JV drill — senior
 seoDescription: Быстрые ответы JDBC/ORM/JMS/ESB.
 seoKeywords: [java, drill, собеседование]
-canonicalUrl: https://9to18.ru/game/learn/jv-interview-drill
+canonicalUrl: https://9to18.ru/game/learn/jv-adr-bus-vs-broker
 ---
 
 ## Введение
@@ -109,5 +109,5 @@ Back: главный ORM trap
 
 ## Ссылки
 
-- Learn | [JV07](/game/learn/jv-jpa-nplus1)
-- Далее: [Capstone](/game/learn/jv-capstone)
+- Learn | [JV07](/game/learn/jv-orm-concepts)
+- Далее: [Capstone](/game/learn/jv-adr-bus-vs-broker)

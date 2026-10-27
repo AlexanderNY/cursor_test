@@ -1,5 +1,5 @@
 ---
-slug: pm-portfolio
+slug: pm-pnl-unit-econ
 title: Портфель продуктов и ставок
 shortTitle: Portfolio
 episode: PM10
@@ -16,7 +16,7 @@ prerequisites: [pm-pnl-unit-econ]
 seoTitle: Portfolio — senior
 seoDescription: Несколько продуктов/ставок и распределение внимания.
 seoKeywords: [product, portfolio, собеседование]
-canonicalUrl: https://9to18.ru/game/learn/pm-portfolio
+canonicalUrl: https://9to18.ru/game/learn/pm-pnl-unit-econ
 ---
 
 ## Введение

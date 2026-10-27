@@ -146,4 +146,4 @@ Back: verification — соответствие спецификации/арт�
 
 - [QA-interview-250](https://github.com/Konstantine23/QA-interview-250)
 - Learn | /game/learn
-- Далее: [Типы и уровни тестирования](/game/learn/qa-types-levels)
+- Далее: [Типы и уровни тестирования](/game/learn/qa-intro-testing)

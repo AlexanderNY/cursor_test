@@ -1,3 +1,5 @@
+> Короткие выпуски этой серии объединены в сводные статьи. Живой файл — первый выпуск группы, его текст включает соседние темы. Старые slug в таблицах ниже отдельно больше не открываются и заново их заводить не нужно. Ссылки из таблиц ведут на сводный выпуск.
+
 # Серия JavaScript Learn (язык)
 
 Карта **6 выпусков** языковой базы перед React. React — сезон B (`b08-react-list` и далее), не в этой папке.
@@ -42,4 +44,4 @@
 | JS05 | `js-json-xml` | [`js05-json-xml.md`](js05-json-xml.md) | JSON.parse/stringify, DOMParser |
 | JS06 | `js-capstone` | [`js06-capstone.md`](js06-capstone.md) | Drill JS01–JS05 → мост к React B08 |
 
-**После серии:** [b08-react-list](/game/learn/b08-react-list).
+**После серии:** [b08-react-list](/game/learn/b05-api-check).

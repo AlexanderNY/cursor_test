@@ -12,7 +12,7 @@ tags: [frontend, react, redux, zustand, rtk-query, собеседование]
 onKnowledgeMap: true
 durationMin: 45
 excerpt: Локальное состояние, клиентский склад и кэш сервера — три разные полки. Библиотеку выбирают по полке.
-prerequisites: [fe-react-state]
+prerequisites: [fe-event-loop]
 seoTitle: Redux Toolkit RTK Query Zustand
 seoDescription: Когда хватает useState, когда Zustand, когда Redux и кэш запроса.
 seoKeywords: [redux toolkit, rtk query, zustand, react]
@@ -176,5 +176,5 @@ Back: Появляется второй источник факта, котор�
 
 ## Ссылки
 
-- [Состояние React](/game/learn/fe-react-state)
-- [Список с API](/game/learn/b08-react-list)
+- [Состояние React](/game/learn/fe-event-loop)
+- [Список с API](/game/learn/b05-api-check)

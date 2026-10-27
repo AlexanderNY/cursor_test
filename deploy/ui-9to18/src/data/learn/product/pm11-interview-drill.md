@@ -12,7 +12,7 @@ tags: [product, drill, собеседование]
 onKnowledgeMap: true
 durationMin: 30
 excerpt: Быстрые ответы CPO/PM.
-prerequisites: [pm-portfolio]
+prerequisites: [pm-pnl-unit-econ]
 seoTitle: PM drill — senior
 seoDescription: Быстрые ответы CPO/PM.
 seoKeywords: [product, drill, собеседование]
@@ -112,4 +112,4 @@ Back: roadmap
 ## Ссылки
 
 - Learn | [PM07](/game/learn/pm-okr)
-- Далее: [Capstone](/game/learn/pm-capstone)
+- Далее: [Capstone](/game/learn/pm-interview-drill)

@@ -1,5 +1,5 @@
 ---
-slug: rd-cache-aside
+slug: rd-ttl-persistence
 title: Паттерн cache-aside в Redis
 shortTitle: cache-aside
 episode: RD04
@@ -16,7 +16,7 @@ prerequisites: [rd-ttl-persistence]
 seoTitle: Redis cache-aside — middle
 seoDescription: Паттерн cache-aside: miss, hit, инвалидация ключей.
 seoKeywords: [redis, cache-aside, инвалидация, собеседование]
-canonicalUrl: https://9to18.ru/game/learn/rd-cache-aside
+canonicalUrl: https://9to18.ru/game/learn/rd-ttl-persistence
 ---
 
 ## Введение
@@ -37,7 +37,7 @@ Middle ждут не «поставим Redis», а паттерн чтения/
 
 Сложнее записи: кто и когда сбрасывает кэш? Варианты: TTL, явный DEL при UPDATE, событие из очереди. Антипаттерн — вечный ключ без политики обновления.
 
-См. также: [Python БД и Memcached](/game/learn/py-db-cache-memcached).
+См. также: [Python БД и Memcached](/game/learn/py-perf-packaging-alt-runtimes).
 
 ## Лаба
 
@@ -122,6 +122,6 @@ Back: стабильный id или hash параметров
 
 ## Ссылки
 
-- Learn | [PY20 кеш](/game/learn/py-db-cache-memcached)
+- Learn | [PY20 кеш](/game/learn/py-perf-packaging-alt-runtimes)
 - Learn | [TTL](/game/learn/rd-ttl-persistence)
-- Далее: [Stampede и locks](/game/learn/rd-stampede-locks)
+- Далее: [Stampede и locks](/game/learn/rd-ttl-persistence)

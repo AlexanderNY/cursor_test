@@ -12,7 +12,7 @@ tags: [sql, триггеры, операторы, PostgreSQL, собеседов
 onKnowledgeMap: true
 durationMin: 30
 excerpt: Q24–Q25: что такое триггер, когда его применять; арифметические, логические и сравнения в SQL — с фокусом на PostgreSQL.
-prerequisites: [sql-acid-transactions]
+prerequisites: [sql-normalization]
 seoTitle: Триггеры и операторы SQL — собеседование middle
 seoDescription: Разбор триггеров и операторов SQL (Q24, Q25) для PostgreSQL: BEFORE/AFTER, NEW/OLD, AND/OR/NOT, приоритет и ловушки NULL.
 seoKeywords: [SQL, триггер, операторы, PostgreSQL, собеседование]
@@ -173,4 +173,4 @@ Back: IS DISTINCT FROM / IS NOT DISTINCT FROM вместо = / &lt;&gt;
 
 - [OTUS / Хабр — топ SQL, часть I (Q24–Q25)](https://habr.com/ru/companies/otus/articles/461067/)
 - [PostgreSQL: CREATE TRIGGER](https://www.postgresql.org/docs/current/sql-createtrigger.html)
-- Learn | /game/learn/sql-acid-transactions
+- Learn | /game/learn/sql-normalization

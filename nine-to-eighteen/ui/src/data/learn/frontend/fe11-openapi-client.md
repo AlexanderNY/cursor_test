@@ -12,7 +12,7 @@ tags: [frontend, openapi, typescript, rest, собеседование]
 onKnowledgeMap: true
 durationMin: 40
 excerpt: Спецификация — источник типов запроса и ответа. Ручной интерфейс рядом с ней расходится в первый же спринт.
-prerequisites: [fe-typescript]
+prerequisites: [fe-event-loop]
 seoTitle: OpenAPI клиент для React
 seoDescription: Генерация типов, ошибки и что делать при смене контракта.
 seoKeywords: [openapi, typescript, react, rest]
@@ -181,5 +181,5 @@ Back: Выключает проверку полей, ошибка всплыв�
 
 ## Ссылки
 
-- [TypeScript](/game/learn/fe-typescript)
+- [TypeScript](/game/learn/fe-event-loop)
 - [FastAPI и Pydantic](/game/learn/s01e05-fastapi)

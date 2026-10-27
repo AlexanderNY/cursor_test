@@ -1,5 +1,5 @@
 ---
-slug: qa-web-http-api-basics
+slug: qa-docs-plan-cases
 title: Web и HTTP для QA — REST, статусы, DevTools
 shortTitle: Web HTTP API
 episode: QA06
@@ -16,7 +16,7 @@ prerequisites: [qa-docs-plan-cases]
 seoTitle: HTTP и REST для junior QA — собеседование
 seoDescription: Методы HTTP, статус-коды, REST vs SOAP, JSON/XML, cookies, DevTools, HTML/CSS/JS для QA-собеседования.
 seoKeywords: [HTTP, REST, API, DevTools, junior QA, собеседование]
-canonicalUrl: https://9to18.ru/game/learn/qa-web-http-api-basics
+canonicalUrl: https://9to18.ru/game/learn/qa-docs-plan-cases
 ---
 
 ## Введение

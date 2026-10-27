@@ -12,7 +12,7 @@ tags: [python, gil, threading, gc, memory, собеседование]
 onKnowledgeMap: true
 durationMin: 40
 excerpt: Threads vs processes, GIL, refcount/GC и отладка утечек памяти.
-prerequisites: [py-async-io]
+prerequisites: [py-oop-advanced-mro]
 seoTitle: Python GIL GC память — middle
 seoDescription: Многопоточность, GIL, управление памятью на middle/senior edge.
 seoKeywords: [python, gil, gc, threading, memory]
@@ -134,4 +134,4 @@ Back: generational garbage collector (модуль gc)
 - [gc — docs](https://docs.python.org/3/library/gc.html)
 - [DEBAGanov — GIL / память / threads](https://github.com/DEBAGanov/interview_questions/blob/main/400%20вопросов%20с%20ответами%2C%20которые%20должен%20знать%20Python-разработчик.md)
 - Learn | /game/learn
-- Ранее по смыслу: [Asyncio](/game/learn/py-async-io)
+- Ранее по смыслу: [Asyncio](/game/learn/py-oop-advanced-mro)

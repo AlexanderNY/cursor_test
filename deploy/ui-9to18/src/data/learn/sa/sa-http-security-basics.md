@@ -12,7 +12,7 @@ tags: [HTTP, HTTPS, аутентификация, авторизация, шиф
 onKnowledgeMap: true
 durationMin: 25
 excerpt: Протоколы, HTTP vs HTTPS, authN vs authZ, что происходит при переходе по URL, основы шифрования данных.
-prerequisites: [sa-orchestration-cap-gateway]
+prerequisites: [sa-architecture-styles]
 seoTitle: HTTP, HTTPS, authN/authZ — middle СА на собеседовании
 seoDescription: T7.1–7.5: протоколы, HTTP и HTTPS, аутентификация и авторизация, навигация по URL, шифрование для системного аналитика.
 seoKeywords: [HTTP, HTTPS, аутентификация, авторизация, шифрование, собеседование]
@@ -154,4 +154,4 @@ Back: DNS → TCP+TLS → HTTP-запрос → ответ сервера → о
 
 - [Топ-150 вопросов СА (Хабр)](https://habr.com/ru/articles/963708/)
 - Learn | /game/learn
-- Далее: [Senior craft постановки](/game/learn/sa-requirements-senior-craft)
+- Далее: [Senior craft постановки](/game/learn/sa-http-security-basics)

@@ -1,5 +1,5 @@
 ---
-slug: py-typing-pep8-static
+slug: py-oop-advanced-mro
 title: Стиль и качество — PEP 8, docstring, typing, linters
 shortTitle: PEP 8 и typing
 episode: PY13
@@ -16,7 +16,7 @@ prerequisites: [py-oop-advanced-mro]
 seoTitle: Python PEP 8 typing — middle
 seoDescription: PEP 8, docstring, type hints, flake8/mypy для middle.
 seoKeywords: [python, pep8, typing, mypy]
-canonicalUrl: https://9to18.ru/game/learn/py-typing-pep8-static
+canonicalUrl: https://9to18.ru/game/learn/py-oop-advanced-mro
 ---
 
 ## Введение
@@ -124,4 +124,4 @@ Back: обычно нет существенного эффекта; это по
 - [typing](https://docs.python.org/3/library/typing.html)
 - [DEBAGanov — PEP8 / docstring / анализ](https://github.com/DEBAGanov/interview_questions/blob/main/400%20вопросов%20с%20ответами%2C%20которые%20должен%20знать%20Python-разработчик.md)
 - Learn | /game/learn
-- Далее: [Asyncio](/game/learn/py-async-io)
+- Далее: [Asyncio](/game/learn/py-oop-advanced-mro)

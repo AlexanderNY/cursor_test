@@ -13,7 +13,7 @@ export const deckData: TopicDeck = {
       id: 'pool:data:sql-join-agg',
       front: `JOIN и агрегаты?`,
       back: `Связь таблиц и GROUP BY/агрегатные функции. Частый практический блок собеса.`,
-      learnSlug: 's01e08-sql',
+      learnSlug: 's01e07-postgres',
     },
     {
       id: 'pool:data:normalization-map',
@@ -25,7 +25,7 @@ export const deckData: TopicDeck = {
       id: 'pool:data:sql-nosql',
       front: `SQL vs NoSQL?`,
       back: `Реляционная модель/транзакции vs гибкость/шардирование документных/KV. Выбор от запросов и consistency.`,
-      learnSlug: 'sd-data-choice',
+      learnSlug: 'sd-one-service',
     },
     {
       id: 'pool:data:redis-cache',
@@ -43,7 +43,7 @@ export const deckData: TopicDeck = {
       id: 'pool:data:index-data',
       front: `Когда добавить индекс?`,
       back: `Когда фильтр/join селективны и профилирование показывает seq scan. Пишите стоимость записи.`,
-      learnSlug: 's01e08-sql',
+      learnSlug: 's01e07-postgres',
     },
     {
       id: 'pool:data:fk',
@@ -61,7 +61,7 @@ export const deckData: TopicDeck = {
       id: 'pool:data:migration',
       front: `Миграции схемы?`,
       back: `Версионируемые DDL, обратная совместимость expand/contract. Без них хаос на стендах.`,
-      learnSlug: 'sd-data-choice',
+      learnSlug: 'sd-one-service',
     },
     {
       id: 'pool:data:backup',
@@ -73,7 +73,7 @@ export const deckData: TopicDeck = {
       id: 'pool:data:read-replica',
       front: `Read replica?`,
       back: `Масштаб чтения, лаг репликации. Не для строго свежих критичных чтений без учёта лага.`,
-      learnSlug: 'sd-data-choice',
+      learnSlug: 'sd-one-service',
     },
     {
       id: 'pool:data:cache-invalid',
@@ -85,7 +85,7 @@ export const deckData: TopicDeck = {
       id: 'pool:data:etl',
       front: `ETL/ELT кратко?`,
       back: `Извлечение и преобразование данных в хранилище. ELT переносит трансформацию ближе к DWH.`,
-      learnSlug: 'sd-data-choice',
+      learnSlug: 'sd-one-service',
     },
     {
       id: 'pool:data:cardinality',
@@ -97,7 +97,7 @@ export const deckData: TopicDeck = {
       id: 'pool:data:explain-data',
       front: `Когда смотреть EXPLAIN?`,
       back: `Медленный запрос, неожиданный seq scan, рост данных. ANALYZE — с осторожностью на проде.`,
-      learnSlug: 's01e08-sql',
+      learnSlug: 's01e07-postgres',
     },
     {
       id: 'pool:data:pooling',
@@ -115,7 +115,7 @@ export const deckData: TopicDeck = {
       id: 'pool:data:nosql-keys',
       front: `Ключи в KV/документных?`,
       back: `Паттерн доступа определяет ключ. Скан «как SQL» обычно дорог — проектируйте под запросы.`,
-      learnSlug: 'sd-data-choice',
+      learnSlug: 'sd-one-service',
     },
     {
       id: 'pool:data:data-quality',

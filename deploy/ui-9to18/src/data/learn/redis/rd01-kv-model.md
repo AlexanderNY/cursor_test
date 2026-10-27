@@ -122,5 +122,5 @@ Back: user:{id}:profile или hash запроса
 
 - [Redis docs — Data types](https://redis.io/docs/data-types/)
 - Learn | [SQL DDL / NoSQL обзор](/game/learn/sql-ddl-dml-dcl)
-- Learn | [Python БД и кеш](/game/learn/py-db-cache-memcached)
-- Далее: [Типы данных Redis](/game/learn/rd-data-types)
+- Learn | [Python БД и кеш](/game/learn/py-perf-packaging-alt-runtimes)
+- Далее: [Типы данных Redis](/game/learn/rd-kv-model)

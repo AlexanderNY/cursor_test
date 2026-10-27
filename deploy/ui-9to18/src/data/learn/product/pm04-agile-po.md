@@ -1,5 +1,5 @@
 ---
-slug: pm-agile-po
+slug: pm-cjm
 title: Agile глазами Product Owner
 shortTitle: Agile PO
 episode: PM04
@@ -16,7 +16,7 @@ prerequisites: [pm-cjm]
 seoTitle: Agile PO — junior
 seoDescription: Scrum для PO: backlog, DoR/DoD.
 seoKeywords: [product, scrum, po, собеседование]
-canonicalUrl: https://9to18.ru/game/learn/pm-agile-po
+canonicalUrl: https://9to18.ru/game/learn/pm-cjm
 ---
 
 ## Введение
@@ -25,7 +25,7 @@ PO не «пишет задачи разработчикам», а владее�
 
 ## Раздел: Основы
 
-Backlog упорядочен; Sprint Goal; Review принимает инкремент. DoR/DoD — канон [sa-methods-scrum-kanban](/game/learn/sa-methods-scrum-kanban), [qa-agile-scrum-kanban](/game/learn/qa-agile-scrum-kanban).
+Backlog упорядочен; Sprint Goal; Review принимает инкремент. DoR/DoD — канон [sa-rest-basics](/game/learn/sa-rest-basics), [qa-api-contract-perf](/game/learn/qa-api-contract-perf).
 
 ## Раздел: Практика
 
@@ -108,6 +108,6 @@ Back: Scrum канон
 
 ## Ссылки
 
-- Learn | [SA08](/game/learn/sa-methods-scrum-kanban)
-- Learn | [QA16](/game/learn/qa-agile-scrum-kanban)
+- Learn | [SA08](/game/learn/sa-rest-basics)
+- Learn | [QA16](/game/learn/qa-api-contract-perf)
 - Далее: [Strategy](/game/learn/pm-product-strategy)

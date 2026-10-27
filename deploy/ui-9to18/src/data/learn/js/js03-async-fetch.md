@@ -1,5 +1,5 @@
 ---
-slug: js-async-fetch
+slug: js-types-coerce
 title: Promise, async/await и fetch
 shortTitle: Async fetch
 episode: JS03
@@ -12,11 +12,11 @@ tags: [javascript, async, fetch, собеседование]
 onKnowledgeMap: true
 durationMin: 28
 excerpt: Асинхронность в браузере/клиенте.
-prerequisites: [js-functions-this]
+prerequisites: [js-types-coerce]
 seoTitle: Async fetch — junior
 seoDescription: Асинхронность в браузере/клиенте.
 seoKeywords: [javascript, async, fetch, собеседование]
-canonicalUrl: https://9to18.ru/game/learn/js-async-fetch
+canonicalUrl: https://9to18.ru/game/learn/js-types-coerce
 ---
 
 ## Введение
@@ -110,5 +110,5 @@ Back: HTTP успех
 
 ## Ссылки
 
-- Learn | [JS02](/game/learn/js-functions-this)
+- Learn | [JS02](/game/learn/js-types-coerce)
 - Далее: [DOM](/game/learn/js-dom-events)

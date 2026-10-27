@@ -1,5 +1,5 @@
 ---
-slug: sa-user-stories-use-cases
+slug: sa-requirements-basics
 title: User story, USM и use case на собесе СА
 shortTitle: User Stories
 episode: SA02
@@ -16,7 +16,7 @@ prerequisites: [sa-requirements-basics]
 seoTitle: User story и use case — junior системный аналитик, собеседование
 seoDescription: Ответы T1.7–1.12: user story, USM, INVEST, преимущества историй, use case и отличие от story.
 seoKeywords: [user story, USM, INVEST, use case, системный аналитик, собеседование]
-canonicalUrl: https://9to18.ru/game/learn/sa-user-stories-use-cases
+canonicalUrl: https://9to18.ru/game/learn/sa-requirements-basics
 ---
 
 ## Введение

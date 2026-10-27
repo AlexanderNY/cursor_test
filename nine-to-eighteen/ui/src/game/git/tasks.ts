@@ -61,7 +61,7 @@ write b.txt bbb
     id: 'branch-switch',
     title: 'Ветка и commit',
     episode: 'B06',
-    learnSlug: 'b06-git-branch',
+    learnSlug: 'b05-api-check',
     level: 'junior',
     prompt:
       'Создайте ветку feature, переключитесь на неё, добавьте docs.md и закоммитьте. HEAD должен быть на feature.',
@@ -86,7 +86,7 @@ git commit -m "docs: layers"
     id: 'branch-rename',
     title: 'Переименовать ветку',
     episode: 'GIT02',
-    learnSlug: 'git-remotes-fetch-pull',
+    learnSlug: 'git-commit-anatomy',
     level: 'junior',
     prompt: 'Переименуйте текущую ветку old-name в new-name через git branch -m.',
     examples: ['git branch -m new-name'],
@@ -106,7 +106,7 @@ git branch -m old-name
     id: 'remote-set-url',
     title: 'remote add + set-url',
     episode: 'GIT02',
-    learnSlug: 'git-remotes-fetch-pull',
+    learnSlug: 'git-commit-anatomy',
     level: 'junior',
     prompt:
       'Добавьте remote origin с любым URL, затем смените URL на https://github.com/you/notes.git',
@@ -130,7 +130,7 @@ git commit -m "init"
     id: 'fetch-vs-pull',
     title: 'pull подтягивает remote',
     episode: 'GIT02',
-    learnSlug: 'git-remotes-fetch-pull',
+    learnSlug: 'git-commit-anatomy',
     level: 'middle',
     prompt:
       'Remote origin уже впереди (есть remote-only.txt). Сделайте git pull origin, чтобы файл появился в HEAD.',
@@ -152,7 +152,7 @@ seed-remote-ahead origin
     id: 'stash-roundtrip',
     title: 'stash → clean → pop',
     episode: 'GIT03',
-    learnSlug: 'git-stash-reset-rm',
+    learnSlug: 'git-commit-anatomy',
     level: 'junior',
     prompt:
       'Есть грязный worktree (dirty.txt). Сделайте stash так, чтобы working tree стал clean и stashCount=1. Не делайте pop в этом задании.',
@@ -174,7 +174,7 @@ write dirty.txt wip
     id: 'reset-soft-local',
     title: 'reset HEAD~ (mixed)',
     episode: 'GIT03',
-    learnSlug: 'git-stash-reset-rm',
+    learnSlug: 'git-commit-anatomy',
     level: 'middle',
     prompt:
       'Отмените последний локальный commit через git reset HEAD~. Файл extra.txt должен остаться в working tree, но не в HEAD.',
@@ -199,7 +199,7 @@ git commit -m "add extra"
     id: 'rm-cached',
     title: 'rm --cached',
     episode: 'GIT03',
-    learnSlug: 'git-stash-reset-rm',
+    learnSlug: 'git-commit-anatomy',
     level: 'junior',
     prompt:
       'Уберите secret.env из index через git rm --cached, но файл должен остаться в working tree.',
@@ -221,7 +221,7 @@ git commit -m "init with secret"
     id: 'merge-feature',
     title: 'merge feature → main',
     episode: 'GIT04',
-    learnSlug: 'git-merge-rebase',
+    learnSlug: 'git-commit-anatomy',
     level: 'junior',
     prompt: 'Смержите ветку feature в main (сейчас вы на main).',
     examples: ['git merge feature'],
@@ -247,7 +247,7 @@ git switch main
     id: 'tag-release',
     title: 'Создать tag',
     episode: 'GIT05',
-    learnSlug: 'git-tags-bisect-hooks',
+    learnSlug: 'git-commit-anatomy',
     level: 'junior',
     prompt: 'Поставьте тег v1.0 на текущий HEAD.',
     examples: ['git tag v1.0', 'или git tag -a v1.0 -m "release"'],
@@ -266,7 +266,7 @@ git commit -m "init"
     id: 'bisect-find',
     title: 'bisect: первый bad',
     episode: 'GIT05',
-    learnSlug: 'git-tags-bisect-hooks',
+    learnSlug: 'git-commit-anatomy',
     level: 'middle',
     prompt:
       'Цепочка уже в репо. Запустите git bisect start, отметьте HEAD как bad, а commit good0 как good. Симулятор найдёт первый bad.',
@@ -316,16 +316,23 @@ export function gitTasksForLearnSlug(slug: string): GitTask[] {
 }
 
 const RELATED: Record<string, string[]> = {
-  'b02-git': ['init-commit', 'stage-index'],
-  'b06-git-branch': ['branch-switch', 'merge-feature'],
+  'b01-karta': ['init-commit', 'stage-index'],
+  'b05-api-check': ['branch-switch', 'merge-feature'],
   's01e03-git': ['init-commit', 'stage-index', 'branch-switch'],
   'qa-pytest-ci-git': ['stash-roundtrip', 'branch-switch'],
-  'git-commit-anatomy': ['init-commit', 'stage-index'],
-  'git-remotes-fetch-pull': ['remote-set-url', 'fetch-vs-pull', 'branch-rename'],
-  'git-stash-reset-rm': ['stash-roundtrip', 'reset-soft-local', 'rm-cached'],
-  'git-merge-rebase': ['merge-feature'],
-  'git-tags-bisect-hooks': ['tag-release', 'bisect-find'],
-  'git-flow-config-show': ['tag-release', 'merge-feature'],
+  'git-commit-anatomy': [
+    'init-commit',
+    'stage-index',
+    'remote-set-url',
+    'fetch-vs-pull',
+    'branch-rename',
+    'stash-roundtrip',
+    'reset-soft-local',
+    'rm-cached',
+    'merge-feature',
+    'tag-release',
+    'bisect-find',
+  ],
 }
 
 export function gitTasksForLearnEpisode(

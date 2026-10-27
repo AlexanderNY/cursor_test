@@ -1,31 +1,41 @@
 ---
 slug: qa-security-perf-senior
-title: Senior security и performance: OWASP, сокеты, stress
-shortTitle: Senior security и
+title: "Senior security и · Лидерство QA: конфликты,"
+shortTitle: "Senior security и"
 episode: QA21
 rubric: tools
 order: 421
-publishedAt: 2026-12-28T10:00:00+03:00
+publishedAt: "2026-12-28T10:00:00+03:00"
 profiles: [tester]
 level: senior
-tags: [qa, owasp, security, sockets, stress, performance, собеседование]
+tags: [qa, owasp, security, sockets, stress, performance, "собеседование", leadership, conflict, rca, stakeholders, deadline]
 onKnowledgeMap: true
-durationMin: 45
-excerpt: OWASP Top и защиты, ручное и авто-тестирование сокетов, когда нужен stress и как проектировать сценарии нагрузки.
-prerequisites: [qa-shift-left-automation-roi]
-seoTitle: OWASP sockets stress testing — senior QA
-seoDescription: S26, S28–29: Top рисков OWASP с защитами, тестирование WebSocket/TCP, выбор инструментов stress и дизайн сценариев.
-seoKeywords: [owasp, stress testing, websocket, security testing, k6, jmeter]
-canonicalUrl: https://9to18.ru/game/learn/qa-security-perf-senior
+durationMin: 85
+excerpt: "OWASP Top и защиты, ручное и авто-тестирование сокетов, когда нужен stress и как проектировать сценарии нагрузки."
+prerequisites: [qa-strategy-metrics]
+author: ""
+authorUrl: ""
+coverUrl: ""
+seoTitle: "Senior security и · Лидерство QA: конфликты,"
+seoDescription: "S26, S28–29: Top рисков OWASP с защитами, тестирование WebSocket/TCP, выбор инструментов stress и дизайн сценариев."
+seoKeywords: [owasp, "stress testing", websocket, "security testing", k6, jmeter]
+canonicalUrl: "https://9to18.ru/game/learn/qa-security-perf-senior"
 ---
-
 ## Введение
 
 S26, S28–29: senior-уровень безопасности и перформанса. Не «слышали про XSS», а как защищаться и как доказывать устойчивость под нагрузкой и на сокетах — руками и в автоматизации.
 
 Термины и определения согласованы с **ISTQB CTFL v4** и [глоссарием ISTQB](https://glossary.istqb.org/); номера J/M/S — опциональный индекс типовых вопросов собеса.
 
-## Раздел: OWASP Top и линии защиты
+**Лидерство QA: конфликты,.** M85–87, S6, S8, S31–33: на senior собесе проверяют зрелость коммуникации. Баг «не баг», релизы без QA, выгоревшая команда без документов — нужны рабочие протоколы, а не лозунги «качество важно».
+
+Термины и определения согласованы с **ISTQB CTFL v4** и [глоссарием ISTQB](https://glossary.istqb.org/); номера J/M/S — опциональный индекс типовых вопросов собеса.
+
+## Раздел: Как отвечать одним блоком
+
+Этот выпуск собрал соседние короткие темы трека: «Senior security и», «Лидерство QA: конфликты,». Раньше каждая занимала отдельную карточку на несколько минут, а на собеседовании их спрашивают одним блоком. Ниже у каждой темы свой раздел, затем общие лабы, один тест и одна колода карточек. В ответе сначала назовите, какую тему спросили, потом определение и один пример. Не проговаривайте все разделы, если спросили один. Лабы можно пройти по порядку исходного трека. Если времени мало, сделайте первую и последнюю: первая ставит язык, последняя проверяет, что соседние темы вы не перепутали.
+
+## Раздел: Senior security и: OWASP Top и линии защиты
 
 Ориентир — актуальный [OWASP Top 10](https://owasp.org/www-project-top-ten/). Ниже — рабочие формулировки «риск → как ловим → как закрывают».
 
@@ -46,7 +56,7 @@ S26, S28–29: senior-уровень безопасности и перформ�
 
 **Минимальный security-чеклист релиза:** нет секретов в клиенте; HTTPS везде; cookies флаги; IDOR-кейсы на критических сущностях; зависимость без известных Critical; логин/bruteforce политика.
 
-## Раздел: Сокеты и stress: когда, чем, как проектировать
+## Раздел: Senior security и: Сокеты и stress: когда, чем, как проектировать
 
 **Сокеты (WebSocket / TCP raw) — ручное тестирование.**
 
@@ -101,7 +111,7 @@ async def test_ws_echo_auth(token: str, url: str) -> None:
 6. Abort criteria (error storm, диск full).
 7. Отчёт: узкое место и рекомендация, не только график.
 
-## Раздел: Частые вопросы с собеседования
+## Раздел: Senior security и: Частые вопросы с собеседования
 
 **Вопрос.** Чем уровень тестирования отличается от типа (вида) тестирования?
 
@@ -123,7 +133,69 @@ async def test_ws_echo_auth(token: str, url: str) -> None:
 
 **Ответ.** Много быстрых дешёвых проверок внизу (unit, контракт API), меньше медленных UI/e2e наверху. Цель — быстрая обратная связь в CI, а не «всё через Selenium». Пирамида не запрет на e2e: сквозные сценарии оставляют на критичные деньги-потоки.
 
+## Раздел: Лидерство QA: конфликты,: Конфликты, дедлайны и поздний вход
+
+**Конфликт с разработчиком о баге.** Разделяйте факты и интерпретации. Протокол:
+
+1. Воспроизведение, окружение, ожидаемое vs фактическое, логи/скрины.
+2. Ссылка на требование/AC/контракт или явную дыру в спецификации.
+3. Severity/priority по договорённой шкале, не по эмоциям.
+4. Если спор о «так задумано» — эскалация к PO/аналитику с вариантами риска.
+5. Тон: «давайте снимем неопределённость», не «вы сломали».
+
+Антипаттерн: война в треде на 40 комментариев. Паттерн: короткий sync + решение владельца продукта.
+
+**Deadline crunch.** Честно сужайте scope тестирования по риску: must-have smoke и деньги/безопасность; остальное — explicit skip с подписью PO. Усильте парное тестирование, feature flags, canary. Не обещайте «успеем всё» — предложите меню: дата / объём / риск. Документируйте принятый residual risk.
+
+**Позднее вовлечение QA.** Симптом: «вот билд, завтра релиз». Ответ senior:
+
+- Немедленно: exploratory критического пути + чеклист рисков.
+- Фиксация: без тестability и времени — качество не гарантируем (письменно).
+- Системно: DoR включает QA на refinement; DoD — проверки; метрика escaped defects как аргумент.
+- Параллельно: шаблоны smoke, контрактные тесты, чтобы следующий раз не начинать с нуля.
+
+Цель — встроить качество в поток, а не стать героем ночного прогона.
+
+## Раздел: Лидерство QA: конфликты,: RCA, mitigation, продажа тестирования, legacy без документов
+
+**RCA (root cause analysis).** После инцидента: что случилось → timeline → contributing factors (не только «человеческий фактор») → root cause(s) → corrective + preventive actions → владельцы и сроки → проверка эффективности. Инструменты: 5 Whys, fishbone, fault tree — выбирайте по сложности. Важно: blameless culture; иначе правду скроют.
+
+**Mitigation plan.** Набор действий, снижающих вероятность/удар: hotfix, rollback, feature flag off, мониторинг, доп. тесты, процессные изменения (чек-листы релиза, парное ревью schema). План = конкретные задачи с датами, не «будем внимательнее».
+
+**Как «продать» тестирование клиенту/заказчику.** Говорите на языке бизнеса: стоимость простоя, штрафы, репутация, скорость безопасных релизов, прозрачный риск. Покажите до/после (escaped defects, время отката). Предложите MVP качества: smoke + мониторинг + критический регресс за понятную цену. Избегайте страшилок без цифр и «нам нужны ещё 10 QA».
+
+**Год проекту, нет документов, команда выгорела.**
+
+1. Признать долг: не обвинять, а инвентаризировать.
+2. Быстрая карта системы (C4 L1/L2), критические потоки, владельцы.
+3. Собрать «живой» smoke и runbook инцидентов — ценность за неделю.
+4. Выборочная документация только hot paths; остальное — по мере изменения.
+5. Снизить WIP и героизм: устойчивый ритм, парные сессии знаний.
+6. Малые победы и публичное признание — против выгорания.
+7. Автоматизировать самый болезненный ручной регресс точечно.
+8. Договорённость со стейкхолдерами: качество улучшаем итерациями, не big bang docs.
+
+## Раздел: Лидерство QA: конфликты,: Частые вопросы с собеседования
+
+**Вопрос.** Чем уровень тестирования отличается от типа (вида) тестирования?
+
+**Ответ.** Уровень отвечает на «где режем систему»: модуль, стык, продукт целиком, приёмка. Тип — «с какой целью гоняем»: smoke, regression, exploratory, security и т.д. На собесе покажите пример: один checkout можно проверить на integration (API+БД) и оформить прогон как regression после фикса — оси независимы.
+
+**Вопрос.** Зачем на собесе спрашивают equivalence partitioning и граничные значения?
+
+**Ответ.** EP сжимает бесконечные входы в классы «ведут себя одинаково»; BVA бьёт по стыкам классов — там чаще ломается сравнение и валидация. Для поля 18–99 достаточно классов «ниже», «внутри», «выше» и точек 17–18–19, 98–99–100; не нужно 82 случайных числа.
+
+**Вопрос.** Что имеют в виду под «пирамидой тестирования» на собеседовании?
+
+**Ответ.** Много быстрых дешёвых проверок внизу (unit, контракт API), меньше медленных UI/e2e наверху. Цель — быстрая обратная связь в CI, а не «всё через Selenium». Пирамида не запрет на e2e: сквозные сценарии оставляют на критичные деньги-потоки.
+
+**Вопрос.** Почему flaky e2e — отдельная тема на middle/senior QA?
+
+**Ответ.** Flaky — тест то зелёный, то красный без изменения кода: тайминги, данные, сеть, параллельность. Команда перестаёт верить CI. Лечат изоляцией данных, явными ожиданиями, стабильными селекторами, отсечением внешних сервисов; иногда понижают уровень — проверяют API вместо хрупкого UI.
+
 ## Лаба
+
+**Senior security и.**
 
 **Цель.** Security+perf пакет для API чата с WebSocket.
 
@@ -159,7 +231,42 @@ for probe in xss_probes:
 - [ ] WS покрыты ручным чеклистом и ideей авто
 - [ ] Stress-план с гипотезой и abort, не «жмём до падения»
 
-## Схема: Load vs stress vs soak
+**Лидерство QA: конфликты,.**
+
+**Цель.** Разобрать учебный инцидент «оплата прошла дважды» как lead QA.
+
+**Шаги.**
+1. Напишите баг-репорт и «скрипт» 3-минутного разговора с dev, который говорит «не баг».
+2. Для релиза завтра составьте risk-based scope: in / out / accepted risk (таблица).
+3. Timeline RCA на одну страницу + 3 preventive actions.
+4. Mitigation plan на 14 дней с владельцами.
+5. Письмо заказчику (10–12 предложений): зачем платить за тест-анализ в следующем квартале.
+6. 30-дневный план спасения legacy-команды без документов (недельные вехи).
+
+```python
+# Risk-based scope под дедлайн: in / out / accepted
+items = [
+    ("pay_happy_path", "in", 5),
+    ("pay_idempotency", "in", 5),
+    ("admin_reports_ui", "out", 2),
+    ("dark_theme", "accepted", 1),
+]
+for name, bucket, severity in sorted(items, key=lambda row: -row[2]):
+    print(f"[{bucket:8}] Sev{severity} {name}")
+
+timeline = ["detect", "contain", "fix", "rca", "prevent"]
+for step, label in enumerate(timeline, start=1):
+    print(f"RCA step {step}: {label}")
+```
+
+**В группу:** PO давит «подпишите, что протестировано» при срезанном scope — что делаете?
+
+**Готово, если…**
+- [ ] Конфликт переведён в факты и владельца решения
+- [ ] RCA без blame, с preventive actions
+- [ ] Есть язык ценности для заказчика
+
+## Схема: Senior security и: Load vs stress vs soak
 
 ```mermaid
 flowchart LR
@@ -181,6 +288,19 @@ flowchart LR
   Decision -->|релизный риск| load
 ```
 
+## Схема: Лидерство QA: конфликты,: От инцидента к улучшению
+
+```mermaid
+flowchart TB
+  Inc[Инцидент / спор о баге] --> Facts[Факты: repro, логи, AC]
+  Facts --> Owner[Владелец решения: PO/tech lead]
+  Owner --> Fix[Fix / flag / rollback]
+  Fix --> RCA[Blameless RCA]
+  RCA --> Mit[Mitigation plan]
+  Mit --> Process[DoR/DoD / тесты / мониторинг]
+  Process --> Trust[Доверие стейкхолдеров]
+```
+
 ## Тест
 
 ### Чем broken authentication отличается от broken access control?
@@ -189,11 +309,23 @@ flowchart LR
 
 **Пояснение:** украсть сессию и открыть чужой `/orders/{id}` — разные классы; оба в OWASP, разные тесты.
 
+### Как вести спор «баг / не баг» со senior-разработчиком?
+
+**Ответ:** через воспроизведение, ожидаемое по AC/контракту и эскалацию неопределённости к PO, без перехода на личности
+
+**Пояснение:** цель — снять риск для пользователя; решение о приоритете продукта принадлежит владельцу продукта.
+
 ### Когда оправдан stress, а не обычный load?
 
 **Ответ:** когда нужно понять предел системы и поведение за пределами SLA, а не подтвердить целевую нагрузку
 
 **Пояснение:** load проверяет норму; stress исследует край и recovery на безопасном контуре.
+
+### Что должно быть в mitigation plan после инцидента?
+
+**Ответ:** конкретные действия с владельцами и сроками, снижающие вероятность повтора и удар при повторе
+
+**Пояснение:** фразы «улучшим процесс» без задач не являются планом.
 
 ### Что обязательно в автотесте WebSocket кроме happy-path?
 
@@ -201,37 +333,9 @@ flowchart LR
 
 **Пояснение:** сокеты живут долго — ошибки состояния и авторизации комнат критичнее одноразового echo.
 
-### Content Security Policy — роль против XSS?
-
-**Ответ:** ограничивает источники скриптов и inline
-
-**Пояснение:** defense in depth вместе с encoding и sanitization.
-
-### Soak/endurance test — когда?
-
-**Ответ:** утечки памяти, деградация за часы под умеренной нагрузкой
-
-**Пояснение:** stress ищет предел; soak — стабильность во времени.
-
-
-
 ## Шпаргалка
 
-<h3>OWASP</h3>
-<ul>
-<li>Injection → параметризация; IDOR → object-level authZ</li>
-<li>XSS → encode + CSP; CSRF → SameSite + token</li>
-<li>Misconfig / deps → hardening + SCA</li>
-</ul>
-<h3>Sockets</h3>
-<ul>
-<li>Auth handshake, rooms, heartbeat, reconnect</li>
-<li>Авто: assert по событиям, не sleep</li>
-</ul>
-<h3>Stress</h3>
-<pre><code>hypothesis → ramp/spike → metrics → abort → bottleneck report
-load ≠ stress ≠ soak
-</code></pre>
+<ul><li>Injection → параметризация; IDOR → object-level authZ</li><li>XSS → encode + CSP; CSRF → SameSite + token</li><li>Misconfig / deps → hardening + SCA</li><li>Auth handshake, rooms, heartbeat, reconnect</li><li>Авто: assert по событиям, не sleep</li><li>Факты → AC → severity → PO</li><li>Scope / дата / риск — меню, не героизм</li><li>Blameless timeline → root cause → corrective + preventive</li><li>Mitigation = задачи с датами</li></ul>
 
 ## Anki
 
@@ -239,27 +343,25 @@ load ≠ stress ≠ soak
 
 Back: output encoding, CSP, валидация ввода, отказ от опасного innerHTML/eval
 
+### Front: Что сказать вместо «успеем протестировать всё»?
+
+Back: предложить варианты scope с явным residual risk и решением PO
+
 ### Front: Abort criteria в stress — зачем?
 
 Back: остановить прогон до разрушения стенда и сохранить интерпретируемые данные
+
+### Front: Blameless RCA — зачем?
+
+Back: чтобы люди говорили правду о системных причинах, а не защищали себя
 
 ### Front: SSRF — что проверяет QA?
 
 Back: что сервер не ходит по произвольным URL на internal/metadata по вводу пользователя
 
-### Front: STRIDE — зачем QA обзорно
+### Front: Первый шаг на проекте без документов?
 
-Back: модель угроз: spoofing, tampering, repudiation, info disclosure, DoS, elevation
-
-### Front: OWASP A03 Injection — не только SQL
-
-Back: command, LDAP, template injection — смотреть все точки ввода
-
-### Front: Percentile latency p95
-
-Back: 95% запросов быстрее порога — важнее среднего для UX
-
-
+Back: карта критических потоков и рабочий smoke, а не год писать wiki
 
 ## Итоги
 
@@ -267,12 +369,16 @@ Back: 95% запросов быстрее порога — важнее сред
 - Сокеты требуют сценариев состояния, auth и восстановления сети
 - Stress проектируют вокруг гипотезы, метрик и abort criteria
 - Senior связывает security и perf с мониторингом и безопасным контуром
+- Конфликты закрывают фактами и владельцем продукта, не давлением
+- Дедлайн — честный trade-off scope/риска
+- RCA и mitigation превращают инцидент в системное улучшение
+- Ценность QA объясняется языком бизнеса; legacy лечат маленькими победами
 
 ## Ссылки
 
 - [ISTQB Glossary](https://glossary.istqb.org/)
 - [CTFL v4 — Certified Tester Foundation Level](https://istqb.org/certifications/certified-tester-foundation-level-ctfl-v4-0/)
 - [OWASP Top 10](https://owasp.org/www-project-top-ten/)
-- Опционально: [QA-interview-250](https://github.com/Konstantine23/QA-interview-250) — полный список формулировок вопросов
-- Learn | /game/learn
-- Далее: [Leadership conflicts](/game/learn/qa-leadership-conflicts)
+- [QA-interview-250](https://github.com/Konstantine23/QA-interview-250)
+- [Learn](/game/learn)
+- [Senior practice drill](/game/learn/qa-senior-practice-drill)

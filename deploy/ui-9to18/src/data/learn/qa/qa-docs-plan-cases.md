@@ -12,7 +12,7 @@ tags: [qa, test-plan, test-case, rtm, собеседование]
 onKnowledgeMap: true
 durationMin: 30
 excerpt: RTM, тест-план, отличие чеклиста от кейса, признаки хорошего тест-кейса и лабы по корзине/оплате.
-prerequisites: [qa-bugs-reports]
+prerequisites: [qa-test-design]
 seoTitle: Тест-план и тест-кейсы — junior QA, собеседование
 seoDescription: RTM, структура тест-плана, checklist vs test case, хорошие кейсы и практика для корзины и карты оплаты.
 seoKeywords: [тест-план, тест-кейс, RTM, чеклист, собеседование]
@@ -154,4 +154,4 @@ Back: размытый ожидаемый результат, нет данны�
 
 - [QA-interview-250](https://github.com/Konstantine23/QA-interview-250)
 - Learn | /game/learn
-- Далее: [Web, HTTP и API basics](/game/learn/qa-web-http-api-basics)
+- Далее: [Web, HTTP и API basics](/game/learn/qa-docs-plan-cases)

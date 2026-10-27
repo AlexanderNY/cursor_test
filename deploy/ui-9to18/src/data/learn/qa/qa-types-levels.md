@@ -1,5 +1,5 @@
 ---
-slug: qa-types-levels
+slug: qa-intro-testing
 title: Типы и уровни тестирования — smoke, boxes, риски
 shortTitle: Types Levels
 episode: QA02
@@ -16,7 +16,7 @@ prerequisites: [qa-intro-testing]
 seoTitle: Типы и уровни тестирования — junior QA
 seoDescription: Smoke, sanity, regression, black/white box, exploratory, security и performance intro для собеседования.
 seoKeywords: [типы тестирования, smoke, regression, junior QA, собеседование]
-canonicalUrl: https://9to18.ru/game/learn/qa-types-levels
+canonicalUrl: https://9to18.ru/game/learn/qa-intro-testing
 ---
 
 ## Введение

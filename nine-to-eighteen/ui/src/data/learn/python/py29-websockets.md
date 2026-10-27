@@ -12,7 +12,7 @@ tags: [python, fastapi, websocket, собеседование]
 onKnowledgeMap: true
 durationMin: 40
 excerpt: Постоянный канал оправдан, если сервер сам говорит клиенту. Иначе хватает обычного запроса.
-prerequisites: [py-async-io]
+prerequisites: [py-oop-advanced-mro]
 seoTitle: WebSocket FastAPI — middle
 seoDescription: Рукопожатие, авторизация и срок жизни соединения.
 seoKeywords: [websocket, fastapi, python]
@@ -187,5 +187,5 @@ Back: Теряются коды HTTP, идемпотентность запро�
 
 ## Ссылки
 
-- [Asyncio](/game/learn/py-async-io)
-- [JWT](/game/learn/sec-jwt-storage)
+- [Asyncio](/game/learn/py-oop-advanced-mro)
+- [JWT](/game/learn/sec-authn-authz)

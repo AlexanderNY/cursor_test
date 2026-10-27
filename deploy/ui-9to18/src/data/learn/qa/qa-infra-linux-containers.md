@@ -12,7 +12,7 @@ tags: [linux, docker, containers, ssh, iaas, собеседование]
 onKnowledgeMap: true
 durationMin: 45
 excerpt: VM vs simulator vs emulator, контейнеры, IaaS/PaaS, provisioning, shell для логов, SSH и скрипты в автоматизации.
-prerequisites: [qa-agile-scrum-kanban]
+prerequisites: [qa-api-contract-perf]
 seoTitle: VM Docker Linux SSH для QA middle
 seoDescription: M43–52: виртуальные машины, эмуляторы, Docker, облака IaaS/PaaS, find логов, SSH и bash/batch в тест-инфре.
 seoKeywords: [docker, vm, linux, ssh, iaas, paas, qa]

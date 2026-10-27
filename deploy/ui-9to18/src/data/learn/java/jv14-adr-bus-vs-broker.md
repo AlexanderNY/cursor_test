@@ -12,7 +12,7 @@ tags: [java, adr, esb, собеседование]
 onKnowledgeMap: true
 durationMin: 30
 excerpt: Короткий ADR выбора ESB или брокера.
-prerequisites: [jv-integration-lab]
+prerequisites: [jv-js-glue]
 seoTitle: ADR bus/broker — senior
 seoDescription: Короткий ADR выбора ESB или брокера.
 seoKeywords: [java, adr, esb, собеседование]
@@ -29,7 +29,7 @@ canonicalUrl: https://9to18.ru/game/learn/jv-adr-bus-vs-broker
 
 ## Раздел: Практика
 
-См. [sa-architecture-decisions](/game/learn/sa-architecture-decisions) и [sa-integration-design](/game/learn/sa-integration-design).
+См. [sa-architecture-decisions](/game/learn/sa-architecture-decisions) и [sa-modeling-workshop](/game/learn/sa-modeling-workshop).
 
 ## Раздел: На собесе
 
@@ -109,5 +109,5 @@ Back: выбор интеграции
 ## Ссылки
 
 - Learn | [SA20](/game/learn/sa-architecture-decisions)
-- Learn | [SA19](/game/learn/sa-integration-design)
-- Далее: [Interview drill](/game/learn/jv-interview-drill)
+- Learn | [SA19](/game/learn/sa-modeling-workshop)
+- Далее: [Interview drill](/game/learn/jv-adr-bus-vs-broker)

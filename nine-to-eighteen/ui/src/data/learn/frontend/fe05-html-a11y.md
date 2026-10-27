@@ -12,7 +12,7 @@ tags: [frontend, html, css, a11y, собеседование]
 onKnowledgeMap: true
 durationMin: 45
 excerpt: Семантика, раскладка и клавиатура. Кнопка, которая только выглядит кнопкой, на собесе не проходит.
-prerequisites: [fe-typescript]
+prerequisites: [fe-event-loop]
 seoTitle: HTML CSS доступность — React
 seoDescription: Семантические теги, flex и grid, подпись поля и фокус.
 seoKeywords: [html, css, accessibility, react]
@@ -177,5 +177,5 @@ Back: Когда нативного тега не хватает для роли
 
 ## Ссылки
 
-- [Состояние React](/game/learn/fe-react-state)
-- [TypeScript](/game/learn/fe-typescript)
+- [Состояние React](/game/learn/fe-event-loop)
+- [TypeScript](/game/learn/fe-event-loop)

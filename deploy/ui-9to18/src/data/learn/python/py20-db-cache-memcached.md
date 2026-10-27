@@ -1,5 +1,5 @@
 ---
-slug: py-db-cache-memcached
+slug: py-perf-packaging-alt-runtimes
 title: БД и кеш — SQL из Python и Memcached pitfalls
 shortTitle: БД и Memcached
 episode: PY20
@@ -12,11 +12,11 @@ tags: [python, sql, memcached, cache, собеседование]
 onKnowledgeMap: true
 durationMin: 30
 excerpt: Доступ к БД из Python и типовые ловушки распределённого кеша.
-prerequisites: [py-web-flask-django]
+prerequisites: [py-perf-packaging-alt-runtimes]
 seoTitle: Python DB Memcached — senior
 seoDescription: MySQL/SQL из Python и Memcached dogpile/failover.
 seoKeywords: [python, sql, memcached, cache]
-canonicalUrl: https://9to18.ru/game/learn/py-db-cache-memcached
+canonicalUrl: https://9to18.ru/game/learn/py-perf-packaging-alt-runtimes
 ---
 
 ## Введение
@@ -133,5 +133,5 @@ Back: один загрузчик на ключ при промахе, оста�
 - [DB-API 2.0](https://peps.python.org/pep-0249/)
 - [DEBAGanov — SQL / Memcached](https://github.com/DEBAGanov/interview_questions/blob/main/400%20вопросов%20с%20ответами%2C%20которые%20должен%20знать%20Python-разработчик.md)
 - Learn | /game/learn
-- См. также: [Redis KV модель](/game/learn/rd-kv-model), [cache-aside](/game/learn/rd-cache-aside)
+- См. также: [Redis KV модель](/game/learn/rd-kv-model), [cache-aside](/game/learn/rd-ttl-persistence)
 - Далее: [Prod concurrency](/game/learn/py-concurrency-io-patterns)

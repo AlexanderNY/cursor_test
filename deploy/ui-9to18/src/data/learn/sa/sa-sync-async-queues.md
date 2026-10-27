@@ -171,4 +171,4 @@ Back: не больше одного (можно потерять) / хотя б
 
 - [Топ-150 вопросов СА (Хабр)](https://habr.com/ru/articles/963708/)
 - Learn | /game/learn
-- Далее: [REST advanced: кэш, идемпотентность, версии](/game/learn/sa-rest-advanced)
+- Далее: [REST advanced: кэш, идемпотентность, версии](/game/learn/sa-sync-async-queues)

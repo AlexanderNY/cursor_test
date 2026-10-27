@@ -1,5 +1,5 @@
 ---
-slug: py-types-collections
+slug: py-intro-python
 title: Типы и коллекции — list, tuple, dict, set
 shortTitle: Коллекции
 episode: PY02
@@ -16,7 +16,7 @@ prerequisites: [py-intro-python]
 seoTitle: Python коллекции — junior
 seoDescription: list/tuple/dict/set, срезы, ключи словаря — разбор для собеса.
 seoKeywords: [python, list, dict, tuple, set]
-canonicalUrl: https://9to18.ru/game/learn/py-types-collections
+canonicalUrl: https://9to18.ru/game/learn/py-intro-python
 ---
 
 ## Введение

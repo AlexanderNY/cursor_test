@@ -1,5 +1,5 @@
 ---
-slug: rd-capstone
+slug: rd-pubsub-vs-queue
 title: Capstone Redis — drill и чеклист
 shortTitle: Capstone Redis
 episode: RD08
@@ -12,11 +12,11 @@ tags: [redis, capstone, собеседование]
 onKnowledgeMap: true
 durationMin: 35
 excerpt: Итоговый drill Redis vs PostgreSQL и чеклист RD01–RD07.
-prerequisites: [rd-eviction-cluster]
+prerequisites: [rd-pubsub-vs-queue]
 seoTitle: Redis capstone checklist — senior
 seoDescription: Чеклист серии Redis и drill сравнения с PostgreSQL.
 seoKeywords: [redis, capstone, чеклист, собеседование]
-canonicalUrl: https://9to18.ru/game/learn/rd-capstone
+canonicalUrl: https://9to18.ru/game/learn/rd-pubsub-vs-queue
 ---
 
 ## Введение
@@ -40,13 +40,13 @@ PostgreSQL — схема, JOIN, транзакции, отчёты. Redis — �
 | Ep | slug |
 |----|------|
 | RD01 | rd-kv-model |
-| RD02 | rd-data-types |
+| RD02 | rd-kv-model |
 | RD03 | rd-ttl-persistence |
-| RD04 | rd-cache-aside |
-| RD05 | rd-stampede-locks |
+| RD04 | rd-ttl-persistence |
+| RD05 | rd-ttl-persistence |
 | RD06 | rd-pubsub-vs-queue |
-| RD07 | rd-eviction-cluster |
-| RD08 | rd-capstone |
+| RD07 | rd-pubsub-vs-queue |
+| RD08 | rd-pubsub-vs-queue |
 
 ## Лаба
 
@@ -111,7 +111,7 @@ Back: rd-kv-model
 
 ### Front: Индекс RD04
 
-Back: rd-cache-aside
+Back: rd-ttl-persistence
 
 ### Front: Гибрид
 
@@ -127,5 +127,5 @@ Back: PG пишет правду, Redis ускоряет
 
 - Learn | [SERIES](/game/learn)
 - Learn | [SQL01](/game/learn/sql-ddl-dml-dcl)
-- Learn | [PY20](/game/learn/py-db-cache-memcached)
+- Learn | [PY20](/game/learn/py-perf-packaging-alt-runtimes)
 - Learn | [SA10](/game/learn/sa-sync-async-queues)

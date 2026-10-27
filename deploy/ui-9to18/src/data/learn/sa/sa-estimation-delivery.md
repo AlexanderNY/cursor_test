@@ -1,5 +1,5 @@
 ---
-slug: sa-estimation-delivery
+slug: sa-architecture-decisions
 title: Оценка и поставка — декомпозиция, часы vs SP, роль аналитика и провалы Scrum
 shortTitle: Estimation delivery
 episode: SA21
@@ -16,7 +16,7 @@ prerequisites: [sa-architecture-decisions]
 seoTitle: Оценка поставки Scrum SP — senior СА
 seoDescription: SA21: декомпозиция, hours vs story points, оценка аналитиком, типичные провалы Scrum для системного аналитика на собеседовании.
 seoKeywords: [оценка, story points, декомпозиция, Scrum, Kanban, собеседование]
-canonicalUrl: https://9to18.ru/game/learn/sa-estimation-delivery
+canonicalUrl: https://9to18.ru/game/learn/sa-architecture-decisions
 ---
 
 ## Введение

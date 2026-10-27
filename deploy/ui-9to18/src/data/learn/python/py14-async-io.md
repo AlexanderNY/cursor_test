@@ -1,5 +1,5 @@
 ---
-slug: py-async-io
+slug: py-oop-advanced-mro
 title: Sync vs async — asyncio на middle-собесе
 shortTitle: Asyncio
 episode: PY14
@@ -12,11 +12,11 @@ tags: [python, asyncio, async, io, собеседование]
 onKnowledgeMap: true
 durationMin: 35
 excerpt: Чем sync отличается от async и когда event loop окупается.
-prerequisites: [py-typing-pep8-static]
+prerequisites: [py-oop-advanced-mro]
 seoTitle: Python asyncio — middle
 seoDescription: Синхронный и асинхронный код, non-blocking I/O.
 seoKeywords: [python, asyncio, async, await]
-canonicalUrl: https://9to18.ru/game/learn/py-async-io
+canonicalUrl: https://9to18.ru/game/learn/py-oop-advanced-mro
 ---
 
 ## Введение

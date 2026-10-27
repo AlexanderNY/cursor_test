@@ -12,7 +12,7 @@ tags: [python, oop, class, inheritance, собеседование]
 onKnowledgeMap: true
 durationMin: 35
 excerpt: Классы, экземпляры, наследование и property без магии метаклассов.
-prerequisites: [py-modules-packages-venv]
+prerequisites: [py-strings-ops-io]
 seoTitle: Python ООП база — junior
 seoDescription: self, __init__, inheritance, @property — junior OOP.
 seoKeywords: [python, oop, class, property]
@@ -131,4 +131,4 @@ Back: позволяет читать метод как атрибут; можн
 - [Classes](https://docs.python.org/3/tutorial/classes.html)
 - [DEBAGanov — ООП](https://github.com/DEBAGanov/interview_questions/blob/main/400%20вопросов%20с%20ответами%2C%20которые%20должен%20знать%20Python-разработчик.md)
 - Learn | /game/learn
-- Далее: [Исключения](/game/learn/py-exceptions)
+- Далее: [Исключения](/game/learn/py-oop-basics)

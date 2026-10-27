@@ -1,5 +1,5 @@
 ---
-slug: py-modules-packages-venv
+slug: py-strings-ops-io
 title: Модули, пакеты, venv и менеджеры зависимостей
 shortTitle: Модули и venv
 episode: PY05
@@ -12,11 +12,11 @@ tags: [python, modules, venv, pip, собеседование]
 onKnowledgeMap: true
 durationMin: 25
 excerpt: Как устроены модули и пакеты, зачем virtualenv и чем отличаются wheels.
-prerequisites: [py-control-flow-functions]
+prerequisites: [py-strings-ops-io]
 seoTitle: Python модули и venv — junior
 seoDescription: import, пакеты, venv, pip, wheels — база для junior.
 seoKeywords: [python, venv, pip, modules]
-canonicalUrl: https://9to18.ru/game/learn/py-modules-packages-venv
+canonicalUrl: https://9to18.ru/game/learn/py-strings-ops-io
 ---
 
 ## Введение

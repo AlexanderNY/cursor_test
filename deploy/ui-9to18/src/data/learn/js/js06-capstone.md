@@ -1,5 +1,5 @@
 ---
-slug: js-capstone
+slug: js-dom-events
 title: Capstone JavaScript — drill
 shortTitle: JS capstone
 episode: JS06
@@ -12,11 +12,11 @@ tags: [javascript, capstone, собеседование]
 onKnowledgeMap: true
 durationMin: 28
 excerpt: Drill JS01–JS05 и мост к React B08.
-prerequisites: [js-json-xml]
+prerequisites: [js-dom-events]
 seoTitle: JS capstone — middle
 seoDescription: Drill JS01–JS05 и мост к React B08.
 seoKeywords: [javascript, capstone, собеседование]
-canonicalUrl: https://9to18.ru/game/learn/js-capstone
+canonicalUrl: https://9to18.ru/game/learn/js-dom-events
 ---
 
 ## Введение
@@ -29,7 +29,7 @@ canonicalUrl: https://9to18.ru/game/learn/js-capstone
 
 ## Раздел: Практика
 
-Дальше UI-компоненты: [b08-react-list](/game/learn/b08-react-list).
+Дальше UI-компоненты: [b05-api-check](/game/learn/b05-api-check).
 
 ## Раздел: На собесе
 
@@ -109,4 +109,4 @@ Back: React list
 
 ## Ссылки
 
-- Learn | [B08 React](/game/learn/b08-react-list)
+- Learn | [B08 React](/game/learn/b05-api-check)

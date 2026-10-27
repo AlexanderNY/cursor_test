@@ -1,5 +1,5 @@
 ---
-slug: qa-middle-web-mobile-sql
+slug: qa-infra-linux-containers
 title: Middle web, mobile и SQL: auth, OWASP, GraphQL
 shortTitle: Web mobile SQL
 episode: QA18
@@ -16,7 +16,7 @@ prerequisites: [qa-infra-linux-containers]
 seoTitle: Auth OWASP SQL mobile для QA middle
 seoDescription: M53–84: авторизация, статусы, responsive, WebSocket, OWASP, sniffers, GraphQL, OLTP/OLAP, lifecycle Android/iOS.
 seoKeywords: [auth, owasp, graphql, sql, mobile testing, websocket]
-canonicalUrl: https://9to18.ru/game/learn/qa-middle-web-mobile-sql
+canonicalUrl: https://9to18.ru/game/learn/qa-infra-linux-containers
 ---
 
 ## Введение

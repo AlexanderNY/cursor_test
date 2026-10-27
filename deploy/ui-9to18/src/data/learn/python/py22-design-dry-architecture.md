@@ -1,5 +1,5 @@
 ---
-slug: py-design-dry-architecture
+slug: py-concurrency-io-patterns
 title: Дизайн — DRY, границы языка, когда не брать Python
 shortTitle: DRY и границы
 episode: PY22
@@ -16,7 +16,7 @@ prerequisites: [py-concurrency-io-patterns]
 seoTitle: Python DRY architecture — senior
 seoDescription: DRY, когда использовать и не использовать Python.
 seoKeywords: [python, dry, architecture]
-canonicalUrl: https://9to18.ru/game/learn/py-design-dry-architecture
+canonicalUrl: https://9to18.ru/game/learn/py-concurrency-io-patterns
 ---
 
 ## Введение
@@ -121,4 +121,4 @@ Back: для CPU-parallel в одном процессе Python слабее —
 - [The Zen of Python — import this](https://peps.python.org/pep-0020/)
 - [DEBAGanov — когда Python / DRY](https://github.com/DEBAGanov/interview_questions/blob/main/400%20вопросов%20с%20ответами%2C%20которые%20должен%20знать%20Python-разработчик.md)
 - Learn | /game/learn
-- Далее: [Tricky drill](/game/learn/py-interview-tricky)
+- Далее: [Tricky drill](/game/learn/py-concurrency-io-patterns)

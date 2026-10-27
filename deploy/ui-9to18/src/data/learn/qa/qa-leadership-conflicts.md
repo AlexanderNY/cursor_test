@@ -1,5 +1,5 @@
 ---
-slug: qa-leadership-conflicts
+slug: qa-security-perf-senior
 title: Лидерство QA: конфликты, дедлайны, RCA
 shortTitle: Leadership conflicts
 episode: QA22
@@ -16,7 +16,7 @@ prerequisites: [qa-security-perf-senior]
 seoTitle: Конфликты дедлайны RCA для senior QA
 seoDescription: M85–87, S6, S8, S31–33: спор о багах, crunch, later QA, root cause, mitigation и работа с заказчиком и выгоревшей командой.
 seoKeywords: [qa leadership, conflict, rca, stakeholder, mitigation]
-canonicalUrl: https://9to18.ru/game/learn/qa-leadership-conflicts
+canonicalUrl: https://9to18.ru/game/learn/qa-security-perf-senior
 ---
 
 ## Введение

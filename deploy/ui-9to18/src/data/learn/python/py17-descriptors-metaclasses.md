@@ -1,5 +1,5 @@
 ---
-slug: py-descriptors-metaclasses
+slug: py-threading-gil-gc
 title: Дескрипторы и метаклассы
 shortTitle: Метаклассы
 episode: PY17
@@ -12,11 +12,11 @@ tags: [python, descriptors, metaclasses, собеседование]
 onKnowledgeMap: true
 durationMin: 40
 excerpt: Когда нужны дескрипторы и метаклассы — и когда это overkill.
-prerequisites: [py-testing-debug]
+prerequisites: [py-threading-gil-gc]
 seoTitle: Python дескрипторы и метаклассы — senior
 seoDescription: descriptors, metaclasses, type() без class на senior-собесе.
 seoKeywords: [python, descriptor, metaclass]
-canonicalUrl: https://9to18.ru/game/learn/py-descriptors-metaclasses
+canonicalUrl: https://9to18.ru/game/learn/py-threading-gil-gc
 ---
 
 ## Введение
@@ -148,4 +148,4 @@ Back: фреймворки с регистрацией/DSL; в прикладн�
 - [Metaclasses — data model](https://docs.python.org/3/reference/datamodel.html#metaclasses)
 - [DEBAGanov — дескрипторы / метаклассы](https://github.com/DEBAGanov/interview_questions/blob/main/400%20вопросов%20с%20ответами%2C%20которые%20должен%20знать%20Python-разработчик.md)
 - Learn | /game/learn
-- Ранее: [Тесты и pdb](/game/learn/py-testing-debug)
+- Ранее: [Тесты и pdb](/game/learn/py-threading-gil-gc)

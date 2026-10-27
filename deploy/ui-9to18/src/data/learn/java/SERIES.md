@@ -14,28 +14,28 @@
 | Ep | slug | rubric |
 |----|------|--------|
 | JV01 | `jv-se-jvm` | tools |
-| JV02 | `jv-oop-vs-python` | tools |
+| JV02 | `jv-se-jvm` | tools |
 | JV03 | `jv-shell-process` | tools |
-| JV04 | `jv-jdbc-basics` | data |
-| JV05 | `jv-jdbc-pool-tx` | data |
+| JV04 | `jv-shell-process` | data |
+| JV05 | `jv-shell-process` | data |
 | JV06 | `jv-orm-concepts` | data |
 
 ## Middle JV07–JV12
 
 | Ep | slug | rubric |
 |----|------|--------|
-| JV07 | `jv-jpa-nplus1` | data |
+| JV07 | `jv-orm-concepts` | data |
 | JV08 | `jv-jms` | api |
-| JV09 | `jv-esb-adapter` | architecture |
-| JV10 | `jv-soap-client` | api |
+| JV09 | `jv-jms` | architecture |
+| JV10 | `jv-jms` | api |
 | JV11 | `jv-js-glue` | frontend |
-| JV12 | `jv-jvm-hosting` | tools |
+| JV12 | `jv-js-glue` | tools |
 
 ## Senior JV13–JV16
 
 | Ep | slug | rubric |
 |----|------|--------|
-| JV13 | `jv-integration-lab` | architecture |
+| JV13 | `jv-js-glue` | architecture |
 | JV14 | `jv-adr-bus-vs-broker` | architecture |
-| JV15 | `jv-interview-drill` | tools |
-| JV16 | `jv-capstone` | architecture |
+| JV15 | `jv-adr-bus-vs-broker` | tools |
+| JV16 | `jv-adr-bus-vs-broker` | architecture |

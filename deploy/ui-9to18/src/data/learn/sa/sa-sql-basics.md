@@ -1,5 +1,5 @@
 ---
-slug: sa-sql-basics
+slug: sa-db-basics
 title: SQL для системного аналитика — JOIN, HAVING, UNION
 shortTitle: SQL основы
 episode: SA06
@@ -16,7 +16,7 @@ prerequisites: [sa-db-basics]
 seoTitle: SQL основы для СА — junior, собеседование
 seoDescription: Ответы T3.2.1–3.2.7: SQL-команды, JOIN, TRUNCATE/DELETE, HAVING vs WHERE, anti-join, UNION.
 seoKeywords: [SQL, JOIN, HAVING, UNION, системный аналитик, собеседование]
-canonicalUrl: https://9to18.ru/game/learn/sa-sql-basics
+canonicalUrl: https://9to18.ru/game/learn/sa-db-basics
 ---
 
 ## Введение
@@ -154,4 +154,4 @@ Back: UNION удаляет дубликаты между выборками; UNI
 
 - [Топ-150 вопросов СА на Хабре](https://habr.com/ru/articles/963708/)
 - Learn | /game/learn
-- См. также: [SQL DDL/DML](/game/learn/sql-ddl-dml-dcl), [SQL JOIN](/game/learn/sql-joins)
+- См. также: [SQL DDL/DML](/game/learn/sql-ddl-dml-dcl), [SQL JOIN](/game/learn/sql-delete-truncate-drop)

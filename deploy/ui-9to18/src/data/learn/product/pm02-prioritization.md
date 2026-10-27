@@ -1,5 +1,5 @@
 ---
-slug: pm-prioritization
+slug: pm-product-management
 title: Приоритизация — RICE и WSJF
 shortTitle: Prioritization
 episode: PM02
@@ -16,7 +16,7 @@ prerequisites: [pm-product-management]
 seoTitle: Prioritization — junior
 seoDescription: Фреймворки приоритизации бэклога.
 seoKeywords: [product, rice, wsjf, собеседование]
-canonicalUrl: https://9to18.ru/game/learn/pm-prioritization
+canonicalUrl: https://9to18.ru/game/learn/pm-product-management
 ---
 
 ## Введение
@@ -29,7 +29,7 @@ RICE: Reach, Impact, Confidence, Effort. WSJF: Cost of Delay / Job Size (SAFe).
 
 ## Раздел: Практика
 
-См. также USM: [sa-user-stories-use-cases](/game/learn/sa-user-stories-use-cases); severity≠priority у QA: [qa-bugs-reports](/game/learn/qa-bugs-reports).
+См. также USM: [sa-requirements-basics](/game/learn/sa-requirements-basics); severity≠priority у QA: [qa-test-design](/game/learn/qa-test-design).
 
 ## Раздел: На собесе
 
@@ -109,6 +109,6 @@ Back: SA02
 
 ## Ссылки
 
-- Learn | [SA02](/game/learn/sa-user-stories-use-cases)
-- Learn | [QA04](/game/learn/qa-bugs-reports)
+- Learn | [SA02](/game/learn/sa-requirements-basics)
+- Learn | [QA04](/game/learn/qa-test-design)
 - Далее: [CJM](/game/learn/pm-cjm)

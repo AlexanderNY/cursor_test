@@ -7,7 +7,7 @@ export const deckAnalytics: TopicDeck = {
       id: 'pool:analytics:sa-intro',
       front: `Системный анализ на карте — фокус?`,
       back: `Требования, границы системы, интеграции. Связка с серией СА глубже — здесь вход для смешанных профилей.`,
-      learnSlug: 's01e04-sa',
+      learnSlug: 's01e03-git',
     },
     {
       id: 'pool:analytics:requirements',
@@ -19,7 +19,7 @@ export const deckAnalytics: TopicDeck = {
       id: 'pool:analytics:backlog-prio',
       front: `Приоритизация бэклога?`,
       back: `Ценность/риск/effort, прозрачные правила (RICE/WSJF). Регулярный refinement.`,
-      learnSlug: 'pm-prioritization',
+      learnSlug: 'pm-product-management',
     },
     {
       id: 'pool:analytics:acceptance',
@@ -31,13 +31,13 @@ export const deckAnalytics: TopicDeck = {
       id: 'pool:analytics:stakeholder-map',
       front: `Карта стейкхолдеров?`,
       back: `Кто влияет/интересуется; каналы коммуникации. Снижает сюрпризы на демо.`,
-      learnSlug: 'pm-prioritization',
+      learnSlug: 'pm-product-management',
     },
     {
       id: 'pool:analytics:as-is-to-be',
       front: `AS-IS / TO-BE?`,
       back: `Текущий и целевой процесс. Разрыв = объём изменений и риски.`,
-      learnSlug: 's01e04-sa',
+      learnSlug: 's01e03-git',
     },
     {
       id: 'pool:analytics:nonfunctional',
@@ -49,7 +49,7 @@ export const deckAnalytics: TopicDeck = {
       id: 'pool:analytics:mvp-scope',
       front: `Scope MVP с аналитиком?`,
       back: `Отрезаем must для обучения/ценности, явный out-of-scope. Защита от расползания.`,
-      learnSlug: 'pm-prioritization',
+      learnSlug: 'pm-product-management',
     },
     {
       id: 'pool:analytics:traceability',
@@ -61,7 +61,7 @@ export const deckAnalytics: TopicDeck = {
       id: 'pool:analytics:workshop',
       front: `Зачем discovery-сессия?`,
       back: `Синхронизировать язык домена и цели до детальной спецификации.`,
-      learnSlug: 's01e04-sa',
+      learnSlug: 's01e03-git',
     },
     {
       id: 'pool:analytics:risk-req',
@@ -73,19 +73,19 @@ export const deckAnalytics: TopicDeck = {
       id: 'pool:analytics:demo',
       front: `Демо как обратная связь?`,
       back: `Показать инкремент стейкхолдерам, собрать правки в backlog — не «отчёт о статусе».`,
-      learnSlug: 'pm-prioritization',
+      learnSlug: 'pm-product-management',
     },
     {
       id: 'pool:analytics:invariants',
       front: `Бизнес-инварианты?`,
       back: `Правила, которые всегда истинны (баланс, статусы). Их тестируют и кодируют явно.`,
-      learnSlug: 's01e04-sa',
+      learnSlug: 's01e03-git',
     },
     {
       id: 'pool:analytics:change-request',
       front: `CR vs новый scope?`,
       back: `Оценка влияния на срок/бюджет/риски, приоритизация. Прозрачность важнее скорости «да».`,
-      learnSlug: 'pm-prioritization',
+      learnSlug: 'pm-product-management',
     },
     {
       id: 'pool:analytics:glossary',

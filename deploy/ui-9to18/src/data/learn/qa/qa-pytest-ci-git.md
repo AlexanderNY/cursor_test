@@ -12,7 +12,7 @@ tags: [pytest, git, ci, allure, собеседование]
 onKnowledgeMap: true
 durationMin: 40
 excerpt: Зачем test runner, pytest vs JUnit/TestNG, параллель, Git-база, CI и содержимое Allure-отчёта.
-prerequisites: [qa-selenium-webdriver]
+prerequisites: [qa-aqa-principles]
 seoTitle: pytest Git CI Allure — QA junior
 seoDescription: Test runners, assertions, параллельный pytest, основы Git и встраивание автотестов в CI/CD.
 seoKeywords: [pytest, ci, git, allure, testng]
@@ -182,5 +182,5 @@ Back: после сборки/unit, до или сразу после выкла
 
 - [QA-interview-250](https://github.com/Konstantine23/QA-interview-250)
 - [pytest documentation](https://docs.pytest.org/)
-- Learn | /game/learn/qa-selenium-webdriver
-- См. также: [Python unittest/pytest](/game/learn/py-testing-debug)
+- Learn | /game/learn/qa-aqa-principles
+- См. также: [Python unittest/pytest](/game/learn/py-threading-gil-gc)

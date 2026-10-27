@@ -12,7 +12,7 @@ tags: [REST, API, HTTP, idempotent, кэш, собеседование]
 onKnowledgeMap: true
 durationMin: 32
 excerpt: API и REST, RESTful и Stateless, кэширование, методы, параметры, URL, заголовки, 200/201, GET/POST, PUT/PATCH, идемпотентность.
-prerequisites: [sa-sql-basics]
+prerequisites: [sa-db-basics]
 seoTitle: REST API основы — junior системный аналитик, собеседование
 seoDescription: Ответы T4.2.1–4.2.14: REST, stateless, методы HTTP, коды 200/201, PUT/PATCH, идемпотентность.
 seoKeywords: [REST, API, HTTP методы, идемпотентность, системный аналитик, собеседование]
@@ -157,4 +157,4 @@ Back: Path идентифицирует ресурс/иерархию; query —
 
 - [Топ-150 вопросов СА на Хабре](https://habr.com/ru/articles/963708/)
 - Learn | /game/learn
-- См. также: [HTTP/REST для QA](/game/learn/qa-web-http-api-basics)
+- См. также: [HTTP/REST для QA](/game/learn/qa-docs-plan-cases)

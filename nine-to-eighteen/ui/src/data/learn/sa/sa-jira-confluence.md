@@ -12,7 +12,7 @@ tags: [analyst, jira, confluence, собеседование]
 onKnowledgeMap: true
 durationMin: 40
 excerpt: Задача несёт работу и критерии. Страница несёт решение, которое переживёт спринт. Одно другим не заменяют.
-prerequisites: [sa-methods-scrum-kanban]
+prerequisites: [sa-rest-basics]
 seoTitle: Jira и Confluence системного аналитика
 seoDescription: Что писать в задаче, а что на странице решения.
 seoKeywords: [jira, confluence, системный аналитик]
@@ -183,5 +183,5 @@ Back: Его закроют, а текст перестанут поддержи
 
 ## Ссылки
 
-- [Scrum и Kanban](/game/learn/sa-methods-scrum-kanban)
+- [Scrum и Kanban](/game/learn/sa-rest-basics)
 - [Критерии приёмки](/game/learn/pm-acceptance)

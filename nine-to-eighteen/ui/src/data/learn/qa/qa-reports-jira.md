@@ -12,7 +12,7 @@ tags: [qa, allure, jira, tms, собеседование]
 onKnowledgeMap: true
 durationMin: 40
 excerpt: Прогон, набор кейсов и дефект живут в разных системах. Смешение превращает отчёт в склад задач.
-prerequisites: [qa-bugs-reports]
+prerequisites: [qa-test-design]
 seoTitle: Allure TMS Jira для QA
 seoDescription: Чем отчёт прогона отличается от тест-кейса и бага.
 seoKeywords: [allure, jira, tms, qa]
@@ -177,5 +177,5 @@ Back: Нельзя собрать набор релиза и увидеть по
 
 ## Ссылки
 
-- [Баг-репорт](/game/learn/qa-bugs-reports)
+- [Баг-репорт](/game/learn/qa-test-design)
 - [План и кейсы](/game/learn/qa-docs-plan-cases)

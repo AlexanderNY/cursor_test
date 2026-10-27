@@ -12,7 +12,7 @@ tags: [python, performance, pypy, cython, packaging, собеседование]
 onKnowledgeMap: true
 durationMin: 40
 excerpt: Как ускорять Python, упаковывать код и когда смотреть на PyPy/Cython.
-prerequisites: [py-descriptors-metaclasses]
+prerequisites: [py-threading-gil-gc]
 seoTitle: Python perf packaging runtimes — senior
 seoDescription: Ускорение, wheels, C-API, Cython/PyPy для senior.
 seoKeywords: [python, pypy, cython, wheels, performance]
@@ -124,4 +124,4 @@ Back: включает -O: убирает assert и __debug__ ветки
 - [Packaging Python Projects](https://packaging.python.org/en/latest/tutorials/packaging-projects/)
 - [DEBAGanov — perf / wheels / PyPy](https://github.com/DEBAGanov/interview_questions/blob/main/400%20вопросов%20с%20ответами%2C%20которые%20должен%20знать%20Python-разработчик.md)
 - Learn | /game/learn
-- Далее: [Flask / Django](/game/learn/py-web-flask-django)
+- Далее: [Flask / Django](/game/learn/py-perf-packaging-alt-runtimes)

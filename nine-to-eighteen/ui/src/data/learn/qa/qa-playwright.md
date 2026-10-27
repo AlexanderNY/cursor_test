@@ -12,7 +12,7 @@ tags: [qa, playwright, e2e, python, собеседование]
 onKnowledgeMap: true
 durationMin: 45
 excerpt: Локатор, автоожидание и один путь пользователя. Это не замена Selenium в резюме, а отдельный ответ, почему инструмент выбран.
-prerequisites: [qa-selenium-webdriver]
+prerequisites: [qa-aqa-principles]
 seoTitle: Playwright для тестировщика
 seoDescription: Локаторы, trace и чем прогон отличается от Selenium.
 seoKeywords: [playwright, qa, e2e, pytest]
@@ -182,5 +182,5 @@ Back: Тест — обычная функция pytest, фикстура под
 
 ## Ссылки
 
-- [Selenium](/game/learn/qa-selenium-webdriver)
+- [Selenium](/game/learn/qa-aqa-principles)
 - [Тесты UI](/game/learn/fe-ui-testing)

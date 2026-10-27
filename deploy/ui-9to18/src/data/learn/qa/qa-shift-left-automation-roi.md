@@ -1,5 +1,5 @@
 ---
-slug: qa-shift-left-automation-roi
+slug: qa-strategy-metrics
 title: Shift-left, ROI автоматизации и CI/CD
 shortTitle: Shift-left ROI
 episode: QA20
@@ -16,7 +16,7 @@ prerequisites: [qa-strategy-metrics]
 seoTitle: Shift-left ROI BDD CI/CD для senior QA
 seoDescription: S19–25, S27, M34: предотвращение регресса, shift-left, ROI автотестов, плюсы/минусы CI/CD и когда BDD уместен.
 seoKeywords: [shift left, roi, bdd, cicd, test automation strategy]
-canonicalUrl: https://9to18.ru/game/learn/qa-shift-left-automation-roi
+canonicalUrl: https://9to18.ru/game/learn/qa-strategy-metrics
 ---
 
 ## Введение

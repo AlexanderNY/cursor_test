@@ -1,5 +1,5 @@
 ---
-slug: sa-methods-scrum-kanban
+slug: sa-rest-basics
 title: Scrum, Kanban и роль аналитика в поставке
 shortTitle: Scrum и Kanban
 episode: SA08
@@ -16,7 +16,7 @@ prerequisites: [sa-rest-basics]
 seoTitle: Scrum Kanban DoR DoD — junior системный аналитик, собеседование
 seoDescription: Ответы T6.1.1–6.1.14: SDLC, роль аналитика, оценка, DoR/DoD, Scrum events, Kanban, сравнение подходов.
 seoKeywords: [Scrum, Kanban, DoR, DoD, story points, системный аналитик, собеседование]
-canonicalUrl: https://9to18.ru/game/learn/sa-methods-scrum-kanban
+canonicalUrl: https://9to18.ru/game/learn/sa-rest-basics
 ---
 
 ## Введение

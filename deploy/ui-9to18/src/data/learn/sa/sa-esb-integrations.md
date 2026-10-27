@@ -1,5 +1,5 @@
 ---
-slug: sa-esb-integrations
+slug: sa-soap-xml
 title: ESB и интеграции — GraphQL, gRPC, webhook, файлы
 shortTitle: ESB Integrations
 episode: SA13
@@ -16,7 +16,7 @@ prerequisites: [sa-soap-xml]
 seoTitle: ESB, GraphQL, gRPC, webhook — middle СА на собеседовании
 seoDescription: T4.4.6–4.4.9 и T4.5: корпоративная шина, отличие от очереди и ETL, GraphQL, WebSocket, gRPC, webhook, файловый обмен.
 seoKeywords: [ESB, GraphQL, gRPC, webhook, WebSocket, системный аналитик, собеседование]
-canonicalUrl: https://9to18.ru/game/learn/sa-esb-integrations
+canonicalUrl: https://9to18.ru/game/learn/sa-soap-xml
 ---
 
 ## Введение

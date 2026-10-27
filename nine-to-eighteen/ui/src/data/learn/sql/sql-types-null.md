@@ -1,29 +1,37 @@
 ---
 slug: sql-types-null
-title: CHAR vs VARCHAR и семантика NULL
-shortTitle: CHAR vs VARCHAR и семантика
+title: "CHAR vs VARCHAR и семантика · Индексы basics"
+shortTitle: "CHAR vs VARCHAR и семантика"
 episode: SQL05
 rubric: data
 order: 605
-publishedAt: 2027-04-09T10:00:00+03:00
+publishedAt: "2027-04-09T10:00:00+03:00"
 profiles: [developer, analyst, tester]
 level: junior
-tags: [sql, char, varchar, null, типы-данных, собеседование]
+tags: [sql, char, varchar, "null", "типы-данных", "собеседование", index, btree, clustered, postgresql]
 onKnowledgeMap: true
-durationMin: 24
-excerpt: Разница CHAR и VARCHAR, почему NULL не равен 0 и пробелу, трёхзначная логика и IS NULL в PostgreSQL.
-prerequisites: [sql-joins]
-seoTitle: CHAR vs VARCHAR и NULL в SQL — собеседование
-seoDescription: Чем CHAR отличается от VARCHAR, что такое NULL и почему сравнения с NULL коварны. Примеры PostgreSQL для junior SQL.
-seoKeywords: [CHAR, VARCHAR, NULL, SQL, PostgreSQL, трёхзначная логика, собеседование]
-canonicalUrl: https://9to18.ru/game/learn/sql-types-null
+durationMin: 54
+excerpt: "Разница CHAR и VARCHAR, почему NULL не равен 0 и пробелу, трёхзначная логика и IS NULL в PostgreSQL."
+prerequisites: [sql-delete-truncate-drop]
+author: ""
+authorUrl: ""
+coverUrl: ""
+seoTitle: "CHAR vs VARCHAR и семантика · Индексы basics"
+seoDescription: "Чем CHAR отличается от VARCHAR, что такое NULL и почему сравнения с NULL коварны. Примеры PostgreSQL для junior SQL."
+seoKeywords: [CHAR, VARCHAR, "NULL", SQL, PostgreSQL, "трёхзначная логика", "собеседование"]
+canonicalUrl: "https://9to18.ru/game/learn/sql-types-null"
 ---
-
 ## Введение
 
 Два частых «простых» вопроса: чем `CHAR` отличается от `VARCHAR` и чем `NULL` отличается от нуля и пробела. Ошибки здесь дорогие — неправильные сравнения в `WHERE`, ложные уникальности и раздутые строки фиксированной длины. Разбираем на PostgreSQL с короткими заметками про другие диалекты.
 
-## Раздел: CHAR и VARCHAR
+**Индексы basics.** Индекс ускоряет поиск ценой дополнительных структур на запись и места на диске. На junior-собесе ждут определение, разницу clustered/nonclustered и перечень типов. Важно не переносить термины SQL Server на PostgreSQL один в один — модели хранения отличаются.
+
+## Раздел: Как отвечать одним блоком
+
+Этот выпуск собрал соседние короткие темы трека: «CHAR vs VARCHAR и семантика», «Индексы basics». Раньше каждая занимала отдельную карточку на несколько минут, а на собеседовании их спрашивают одним блоком. Ниже у каждой темы свой раздел, затем общие лабы, один тест и одна колода карточек. В ответе сначала назовите, какую тему спросили, потом определение и один пример. Не проговаривайте все разделы, если спросили один. Лабы можно пройти по порядку исходного трека. Если времени мало, сделайте первую и последнюю: первая ставит язык, последняя проверяет, что соседние темы вы не перепутали.
+
+## Раздел: CHAR vs VARCHAR и семантика: CHAR и VARCHAR
 
 Оба типа хранят текстовые строки, но контракт разный.
 
@@ -50,7 +58,7 @@ CREATE TABLE sql05_codes (
 );
 ```
 
-## Раздел: NULL, ноль и пробел
+## Раздел: CHAR vs VARCHAR и семантика: NULL, ноль и пробел
 
 **NULL** означает «значение отсутствует / неизвестно». Это не данные, а маркер отсутствия.
 
@@ -84,7 +92,8 @@ SELECT * FROM users WHERE middle_name = '';
 
 На собесе полезно добавить: в уникальном индексе PostgreSQL несколько NULL допустимы; пустая строка — одна.
 
-## Раздел: Частые вопросы с собеседования
+## Раздел: CHAR vs VARCHAR и семантика: Частые вопросы с собеседования
+
 **Вопрос.** Почему `NOT IN (subquery)` опасен с NULL?
 
 **Ответ.** Если подзапрос вернул NULL среди значений, результат NOT IN может стать UNKNOWN для всех строк — фильтр «ничего не прошло». Безопаснее `NOT EXISTS` или явная фильтрация NULL в подзапросе.
@@ -101,7 +110,87 @@ SELECT * FROM users WHERE middle_name = '';
 
 **Ответ.** Сравнение с NULL даёт UNKNOWN, не TRUE; строки не проходят WHERE. Нужен `IS NULL`. Трёхзначная логика — базовый ответ junior SQL.
 
+## Раздел: Индексы basics: Что такое индекс
+
+**Индекс** — вспомогательная структура (чаще всего сбалансированное дерево), которая хранит упорядоченные ключи и указатели на строки таблицы (или включает нужные поля целиком).
+
+Зачем:
+- быстро находить строки по равенству и диапазону (`WHERE id =`, `WHERE created_at BETWEEN`);
+- поддерживать уникальность (`UNIQUE INDEX` / ограничения PK/UK);
+- иногда отдавать результат без обращения к heap (covering / index-only scan в PG при видимости по visibility map).
+
+Цена:
+- замедление `INSERT`/`UPDATE`/`DELETE` — нужно обновлять индекс;
+- место на диске;
+- риск «лишних» индексов, которые не используются планировщиком.
+
+```sql
+CREATE INDEX idx_orders_user_id ON orders (user_id);
+CREATE UNIQUE INDEX idx_users_email ON users (email);
+-- частичный индекс (PostgreSQL)
+CREATE INDEX idx_orders_open ON orders (created_at) WHERE status = 'new';
+```
+
+Планировщик решает, читать индекс или seq scan: при малой таблице полный скан часто дешевле.
+
+## Раздел: Индексы basics: Clustered и nonclustered
+
+Термины классически из **SQL Server / ряд учебных курсов**:
+
+**Clustered index** задаёт физический порядок строк в структуре таблицы: данные «лежат в индексе». На таблицу обычно один clustered (часто на PK). Поиск по ключу кластера быстро находит страницу данных.
+
+**Nonclustered index** — отдельная структура: ключ индекса + указатель на строку (RID или ключ кластера). Таких индексов много. Чтобы получить остальные столбцы, движок делает lookup в основную структуру.
+
+**Как это выглядит в PostgreSQL:**
+- таблицы по умолчанию — **heap** (неупорядоченное хранилище строк);
+- вторичные индексы (по умолчанию **B-tree**) хранят ключ + `tid` (указатель на версию строки в heap);
+- отдельного «clustered index» как обязательной организации таблицы, как в SQL Server, **нет**;
+- команда `CLUSTER` один раз переписывает heap в порядке индекса, но порядок **не поддерживается** автоматически при дальнейших записях;
+- `INDEX … INCLUDE` и index-only scan частично закрывают сценарии covering.
+
+На собесе хороший ответ: «В SQL Server кластерный индекс часто определяет физический layout; в PostgreSQL индекс — отдельная структура над heap, а CLUSTER — разовое упорядочивание».
+
+## Раздел: Индексы basics: Типы индексов
+
+Обзор с привязкой к PostgreSQL:
+
+| Тип | Когда полезен |
+|-----|----------------|
+| **B-tree** | Равенство и диапазоны, сортировка, PK/UK — основной тип по умолчанию |
+| **Hash** | В PG ограниченные сценарии равенства; реже нужен вручную |
+| **GiST / SP-GiST** | Геометрия, диапазоны, полнотекстные/нестандартные ключи |
+| **GIN** | Массивы, jsonb, полнотекст — много значений на строку |
+| **BRIN** | Очень большие таблицы с физически коррелированными значениями (время) |
+
+В **SQL Server** в разговоре про типы часто звучат clustered/nonclustered, unique/nonunique, filtered, columnstore — другая таксономия поверх storage engine.
+
+Практические правила junior-уровня:
+1. индекс под реальные `WHERE`/`JOIN`/`ORDER BY`, не «на все столбцы»;
+2. селективность важна: индекс по `boolean is_active` часто бесполезен без условия/частичности;
+3. составной индекс: порядок столбцов = порядок отбора (`(user_id, created_at)` ≠ `(created_at, user_id)` для разных запросов);
+4. смотреть план (`EXPLAIN` / `EXPLAIN ANALYZE`) — тема следующих выпусков серии.
+
+## Раздел: Индексы basics: Частые вопросы с собеседования
+
+**Вопрос.** Когда индекс не поможет?
+
+**Ответ.** Малая таблица (seq scan дешевле), низкая селективность (`WHERE is_active` без условия), функция на столбце без expression index (`WHERE lower(email)`), несовпадение порядка составного индекса с запросом, OR по разным столбцам без union trick.
+
+**Вопрос.** Зачем partial index в PostgreSQL?
+
+**Ответ.** Индекс только на подмножестве строк (`WHERE status = 'open'`) — меньше размер и быстрее обслуживание для частых запросов к «открытым» заказам. На собесе показывает знание PG beyond generic B-tree.
+
+**Вопрос.** Составной индекс `(a, b)` — запрос только по `b`?
+
+**Ответ.** Обычно индекс не используется для фильтра только по второму столбцу — нужен leading column `a` или отдельный индекс на `b`. Исключения — index-only scan и специфика плана.
+
+**Вопрос.** Цена индекса на INSERT?
+
+**Ответ.** Каждая вставка/обновление ключей поддерживает B-tree (и другие структуры) — дополнительный I/O и WAL. Лишние индексы замедляют write-heavy OLTP.
+
 ## Лаба
+
+**CHAR vs VARCHAR и семантика.**
 
 **Цель.** Наглядно увидеть padding/длину CHAR/VARCHAR и поведение NULL в фильтрах и агрегатах.
 
@@ -119,7 +208,25 @@ SELECT * FROM users WHERE middle_name = '';
 - [ ] Никогда не пишете `= NULL` для поиска пустых
 - [ ] Отличаете 0, '', ' ' и NULL на примере
 
-## Схема: Значение vs отсутствие
+**Индексы basics.**
+
+**Цель.** Создать индекс под JOIN/фильтр и сравнить план до/после на учебной таблице.
+
+**Шаги.**
+1. Создайте `sql06_events(id bigserial, user_id bigint, created_at timestamptz, payload text)` и вставьте заметный объём (тысячи строк скриптом).
+2. Выполните `EXPLAIN ANALYZE SELECT * FROM sql06_events WHERE user_id = 42;` без индекса — зафиксируйте Seq Scan.
+3. Создайте `CREATE INDEX ON sql06_events (user_id);` и повторите план — ожидайте Index Scan / Bitmap Index Scan.
+4. Добавьте составной `(user_id, created_at)` и запрос с диапазоном дат для одного user_id.
+5. Кратко запишите 3 пункта: выгода, цена на INSERT, отличие PG heap от clustered в SQL Server.
+
+**В группу:** один предлагает «давайте clustered index на email как в SQL Server» — второй объясняет, как сказать это корректно для PostgreSQL.
+
+**Готово, если…**
+- [ ] Определяете индекс и его trade-off за 30 секунд
+- [ ] Не путаете clustered SQL Server с индексами PostgreSQL
+- [ ] Называете B-tree как основной тип и по одному примеру GiST/GIN
+
+## Схема: CHAR vs VARCHAR и семантика: Значение vs отсутствие
 
 ```mermaid
 flowchart TB
@@ -132,6 +239,16 @@ flowchart TB
   E --> EQ
 ```
 
+## Схема: Индексы basics: Поиск через индекс
+
+```mermaid
+flowchart LR
+  Q["WHERE user_id = 42"] --> I[B-tree индекс]
+  I --> T[tid / ключ строки]
+  T --> H[Heap таблица PG]
+  H --> R[Строки результата]
+```
+
 ## Тест
 
 ### Чем VARCHAR(10) отличается от CHAR(10)?
@@ -140,11 +257,23 @@ flowchart TB
 
 **Пояснение:** CHAR дополняет пробелами; в PostgreSQL для текста чаще text/varchar.
 
+### Зачем нужен индекс, если можно Seq Scan?
+
+**Ответ:** селективный поиск быстрее
+
+**Пояснение:** на маленьких таблицах Seq Scan может быть дешевле; решает планировщик по статистике.
+
 ### Почему WHERE age = NULL не находит строки без возраста?
 
 **Ответ:** сравнение с NULL даёт UNKNOWN, а WHERE пропускает только TRUE; нужен IS NULL
 
 **Пояснение:** NULL — не обычное значение, а маркер отсутствия.
+
+### Есть ли в PostgreSQL clustered index как в SQL Server?
+
+**Ответ:** нет прямой аналогии; по умолчанию heap + вторичные индексы, CLUSTER лишь разово упорядочивает
+
+**Пояснение:** путать термины диалектов — частая ошибка на собесе.
 
 ### NULL и 0 — одно и то же?
 
@@ -152,35 +281,9 @@ flowchart TB
 
 **Пояснение:** SUM и бизнес-логика трактуют их по-разному; путать нельзя.
 
-### Результат `TRUE AND NULL` в SQL?
-
-**Ответ:** UNKNOWN (NULL)
-
-**Пояснение:** трёхзначная логика; WHERE оставляет только TRUE.
-
-### COUNT(*) учитывает строки с NULL?
-
-**Ответ:** да, все строки
-
-**Пояснение:** COUNT(column) пропускает NULL в этом столбце — типичная ловушка Q30.
-
 ## Шпаргалка
 
-<h3>Типы строк</h3>
-<ul>
-<li><b>CHAR(n)</b> — фиксированная длина</li>
-<li><b>VARCHAR(n)</b> — переменная до n</li>
-<li>В PG часто <b>text</b> без лимита</li>
-</ul>
-<h3>NULL</h3>
-<ul>
-<li>NULL ≠ 0 ≠ '' ≠ ' '</li>
-<li>Проверка: <code>IS NULL</code> / <code>IS NOT NULL</code></li>
-<li><code>COUNT(col)</code> пропускает NULL</li>
-</ul>
-<pre><code>WHERE col IS NULL;     -- правильно
-WHERE col = NULL;      -- почти всегда бесполезно
-</code></pre>
+<ul><li><b>CHAR(n)</b> — фиксированная длина</li><li><b>VARCHAR(n)</b> — переменная до n</li><li>В PG часто <b>text</b> без лимита</li><li>NULL ≠ 0 ≠ '' ≠ ' '</li><li>Проверка: <code>IS NULL</code> / <code>IS NOT NULL</code></li><li><code>COUNT(col)</code> пропускает NULL</li><li>Индекс ускоряет чтение, замедляет запись, занимает место</li><li>PG: heap + B-tree (и другие access methods)</li><li>SQL Server: clustered часто = организация данных таблицы</li><li>B-tree · Hash · GiST · SP-GiST · GIN · BRIN</li></ul>
 
 ## Anki
 
@@ -188,35 +291,40 @@ WHERE col = NULL;      -- почти всегда бесполезно
 
 Back: Для кодов фиксированной ширины; для обычного текста обычно varchar/text
 
+### Front: Что такое индекс в СУБД?
+
+Back: Вспомогательная структура для ускорения поиска по ключу ценой накладных расходов на изменение данных
+
 ### Front: Как найти строки с неизвестным значением столбца?
 
 Back: Предикатом IS NULL, не через = NULL
+
+### Front: Clustered vs nonclustered в классическом смысле?
+
+Back: Clustered определяет порядок/организацию данных таблицы (обычно один); nonclustered — отдельная структура с указателями на строки
 
 ### Front: Чем пустая строка отличается от NULL?
 
 Back: '' — значение нулевой длины; NULL — отсутствие значения; сравнения и уникальность ведут себя иначе
 
-### Front: COALESCE — зачем?
+### Front: Чем PostgreSQL отличается в теме «кластерный индекс»?
 
-Back: Подставить первое не-NULL значение из списка аргументов
-
-### Front: Тип text в PostgreSQL?
-
-Back: Строка без лимита длины; частая замена varchar в приложениях
-
-### Front: NOT NULL на столбце?
-
-Back: Запрет NULL; каждая строка должна иметь значение (или DEFAULT)
+Back: Таблица — heap; индексы вторичные; CLUSTER не поддерживает порядок автоматически как clustered index в SQL Server
 
 ## Итоги
 
 - CHAR фиксирует ширину, VARCHAR — переменная длина; в PostgreSQL text — рабочая лошадка
 - NULL — отдельная семантика, не «ноль» и не «пробел»
 - Трёхзначная логика объясняет половину багов в WHERE и JOIN
+- Индекс — инструмент под конкретные запросы, не серебряная пуля
+- B-tree закрывает большинство junior-сценариев в PostgreSQL
+- Clustered/nonclustered рассказывайте с пометкой диалекта — иначе ответ засчитывают как путаницу
 
 ## Ссылки
 
 - [PostgreSQL: Character Types](https://www.postgresql.org/docs/current/datatype-character.html)
 - [PostgreSQL: NULL](https://www.postgresql.org/docs/current/functions-comparison.html)
-- Индекс Q6, Q26: [OTUS / Хабр — часть I](https://habr.com/ru/companies/otus/articles/461067/)
-- Далее: [Основы индексов](/game/learn/sql-indexes-basics)
+- [OTUS / Хабр — часть I](https://habr.com/ru/companies/otus/articles/461067/)
+- [PostgreSQL: Indexes](https://www.postgresql.org/docs/current/indexes.html)
+- [Use The Index, Luke!](https://use-the-index-luke.com/)
+- [Нормализация и денормализация](/game/learn/sql-normalization)

@@ -1,5 +1,5 @@
 ---
-slug: jv-integration-lab
+slug: jv-js-glue
 title: Лаба: JDBC + JMS учебный контур
 shortTitle: Integration lab
 episode: JV13
@@ -12,11 +12,11 @@ tags: [java, jdbc, jms, lab, собеседование]
 onKnowledgeMap: true
 durationMin: 40
 excerpt: Сквозная учебная интеграция записи в БД и сообщения.
-prerequisites: [jv-jvm-hosting]
+prerequisites: [jv-js-glue]
 seoTitle: Integration lab — senior
 seoDescription: Сквозная учебная интеграция записи в БД и сообщения.
 seoKeywords: [java, jdbc, jms, lab, собеседование]
-canonicalUrl: https://9to18.ru/game/learn/jv-integration-lab
+canonicalUrl: https://9to18.ru/game/learn/jv-js-glue
 ---
 
 ## Введение
@@ -110,5 +110,5 @@ Back: ядовитые
 ## Ссылки
 
 - Learn | [JMS](/game/learn/jv-jms)
-- Learn | [JDBC](/game/learn/jv-jdbc-basics)
+- Learn | [JDBC](/game/learn/jv-shell-process)
 - Далее: [ADR bus vs broker](/game/learn/jv-adr-bus-vs-broker)

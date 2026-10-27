@@ -1,5 +1,5 @@
 ---
-slug: sa-capstone-checklist
+slug: sa-profession-levels
 title: Capstone СА — чеклист Junior→Senior и индекс T→slug
 shortTitle: Capstone checklist
 episode: SA24
@@ -12,11 +12,11 @@ tags: [capstone, checklist, индекс, карьера, собеседован
 onKnowledgeMap: true
 durationMin: 40
 excerpt: Итоговый чеклист роста системного аналитика Junior→Senior, обзор индекса тем T к выпускам Learn и ссылка на Хабр 963708.
-prerequisites: [sa-interview-drill]
+prerequisites: [sa-profession-levels]
 seoTitle: Capstone чеклист системный аналитик Junior Senior
 seoDescription: SA24: чеклисты уровней СА, маршрут по серии Learn, индекс T→slug и ссылка на топ-150 вопросов на Хабре.
 seoKeywords: [системный аналитик, checklist, capstone, собеседование, Learn]
-canonicalUrl: https://9to18.ru/game/learn/sa-capstone-checklist
+canonicalUrl: https://9to18.ru/game/learn/sa-profession-levels
 ---
 
 ## Введение
@@ -70,14 +70,14 @@ canonicalUrl: https://9to18.ru/game/learn/sa-capstone-checklist
 
 | Тема | Фокус | Выпуски (slug) |
 |------|-------|----------------|
-| T1 | Требования, постановка | `sa-requirements-basics`, `sa-user-stories-use-cases`, `sa-gost-srs-artifacts`, `sa-requirements-senior-craft` |
-| T2 | BPMN/UML | `sa-notations-bpmn-uml`, `sa-modeling-workshop` |
-| T3 | БД и SQL | `sa-db-basics`, `sa-sql-basics`, `sa-db-advanced`, `sa-modeling-workshop` |
-| T4 | Интеграции и API | `sa-rest-basics`, `sa-sync-async-queues`, `sa-rest-advanced`, `sa-soap-xml`, `sa-esb-integrations`, `sa-integration-design` |
-| T5 | Архитектура | `sa-architecture-styles`, `sa-orchestration-cap-gateway`, `sa-architecture-decisions` |
-| T6 | Процесс и роль | `sa-methods-scrum-kanban`, `sa-estimation-delivery`, `sa-profession-levels` |
+| T1 | Требования, постановка | `sa-requirements-basics`, `sa-requirements-basics`, `sa-gost-srs-artifacts`, `sa-http-security-basics` |
+| T2 | BPMN/UML | `sa-gost-srs-artifacts`, `sa-modeling-workshop` |
+| T3 | БД и SQL | `sa-db-basics`, `sa-db-basics`, `sa-db-advanced`, `sa-modeling-workshop` |
+| T4 | Интеграции и API | `sa-rest-basics`, `sa-sync-async-queues`, `sa-sync-async-queues`, `sa-soap-xml`, `sa-soap-xml`, `sa-modeling-workshop` |
+| T5 | Архитектура | `sa-architecture-styles`, `sa-architecture-styles`, `sa-architecture-decisions` |
+| T6 | Процесс и роль | `sa-rest-basics`, `sa-architecture-decisions`, `sa-profession-levels` |
 | T7 | HTTP/security база | `sa-http-security-basics` |
-| Кросс | Drill + capstone | `sa-interview-drill`, `sa-capstone-checklist` |
+| Кросс | Drill + capstone | `sa-profession-levels`, `sa-profession-levels` |
 
 **Полный список вопросов:** [habr.com/ru/articles/963708/](https://habr.com/ru/articles/963708/).
 
@@ -86,29 +86,29 @@ canonicalUrl: https://9to18.ru/game/learn/sa-capstone-checklist
 | Ep | slug | Фокус |
 |----|------|--------|
 | SA01 | sa-requirements-basics | FR/NFR, сбор |
-| SA02 | sa-user-stories-use-cases | Stories, UC |
+| SA02 | sa-requirements-basics | Stories, UC |
 | SA03 | sa-gost-srs-artifacts | ГОСТ, SRS |
-| SA04 | sa-notations-bpmn-uml | BPMN, UML |
+| SA04 | sa-gost-srs-artifacts | BPMN, UML |
 | SA05 | sa-db-basics | БД база |
-| SA06 | sa-sql-basics | SQL |
+| SA06 | sa-db-basics | SQL |
 | SA07 | sa-rest-basics | REST |
-| SA08 | sa-methods-scrum-kanban | Scrum/Kanban |
+| SA08 | sa-rest-basics | Scrum/Kanban |
 | SA09 | sa-db-advanced | ACID, индекс |
 | SA10 | sa-sync-async-queues | Sync/async |
-| SA11 | sa-rest-advanced | Идемпотентность |
+| SA11 | sa-sync-async-queues | Идемпотентность |
 | SA12 | sa-soap-xml | SOAP |
-| SA13 | sa-esb-integrations | ESB и др. |
+| SA13 | sa-soap-xml | ESB и др. |
 | SA14 | sa-architecture-styles | Стили |
-| SA15 | sa-orchestration-cap-gateway | CAP, gateway |
+| SA15 | sa-architecture-styles | CAP, gateway |
 | SA16 | sa-http-security-basics | HTTP, auth |
-| SA17 | sa-requirements-senior-craft | Senior постановка |
+| SA17 | sa-http-security-basics | Senior постановка |
 | SA18 | sa-modeling-workshop | BPMN+Seq+ER |
-| SA19 | sa-integration-design | Выбор интеграции |
+| SA19 | sa-modeling-workshop | Выбор интеграции |
 | SA20 | sa-architecture-decisions | ADR |
-| SA21 | sa-estimation-delivery | Оценка |
+| SA21 | sa-architecture-decisions | Оценка |
 | SA22 | sa-profession-levels | Уровни роли |
-| SA23 | sa-interview-drill | Drill T1–T7 |
-| SA24 | sa-capstone-checklist | Capstone |
+| SA23 | sa-profession-levels | Drill T1–T7 |
+| SA24 | sa-profession-levels | Capstone |
 
 ## Раздел: План на 4 недели до собеса
 
@@ -194,7 +194,7 @@ Back: постановка+NFR+traceability, modeling workshop, выбор ин�
 
 ### Front: Как закрывать пробел по теме T4?
 
-Back: вернуться к slug из индекса: REST/async/SOAP/ESB и sa-integration-design; сделать лабу и Anki
+Back: вернуться к slug из индекса: REST/async/SOAP/ESB и sa-modeling-workshop; сделать лабу и Anki
 
 ## Итоги
 

@@ -1,5 +1,5 @@
 ---
-slug: sql-capstone-checklist
+slug: sql-interview-drill
 title: Capstone SQL — чеклист Junior→Senior и индекс Q→slug
 shortTitle: Capstone checklist
 episode: SQL16
@@ -16,7 +16,7 @@ prerequisites: [sql-interview-drill]
 seoTitle: Capstone SQL чеклист Junior Senior и индекс вопросов
 seoDescription: SQL16: чеклисты уровней, полный индекс Q→выпуск Learn, маршрут повторения и примечание о пропавшей Части II OTUS/Хабр.
 seoKeywords: [SQL, checklist, capstone, собеседование, PostgreSQL, индекс]
-canonicalUrl: https://9to18.ru/game/learn/sql-capstone-checklist
+canonicalUrl: https://9to18.ru/game/learn/sql-interview-drill
 ---
 
 ## Введение
@@ -67,64 +67,64 @@ canonicalUrl: https://9to18.ru/game/learn/sql-capstone-checklist
 | Q1 | DELETE vs TRUNCATE | `sql-delete-truncate-drop` |
 | Q2 | DDL/DML/DCL | `sql-ddl-dml-dcl` |
 | Q3 | SQL vs MySQL | `sql-ddl-dml-dcl` |
-| Q4 | Таблица / поле | `sql-tables-keys-constraints` |
-| Q5 | JOIN | `sql-joins` |
+| Q4 | Таблица / поле | `sql-ddl-dml-dcl` |
+| Q5 | JOIN | `sql-delete-truncate-drop` |
 | Q6 | CHAR vs VARCHAR | `sql-types-null` |
-| Q7 | Primary key | `sql-tables-keys-constraints` |
-| Q8 | Constraints / связанные | `sql-tables-keys-constraints` |
+| Q7 | Primary key | `sql-ddl-dml-dcl` |
+| Q8 | Constraints / связанные | `sql-ddl-dml-dcl` |
 | Q9 | Зачем СУБД | `sql-ddl-dml-dcl` |
-| Q10 | Constraints | `sql-tables-keys-constraints` |
-| Q11 | Unique vs PK | `sql-tables-keys-constraints` |
-| Q12 | Целостность | `sql-tables-keys-constraints` |
-| Q13 | Индекс | `sql-indexes-basics` |
+| Q10 | Constraints | `sql-ddl-dml-dcl` |
+| Q11 | Unique vs PK | `sql-ddl-dml-dcl` |
+| Q12 | Целостность | `sql-ddl-dml-dcl` |
+| Q13 | Индекс | `sql-types-null` |
 | Q14 | Текущая дата | `sql-agg-dates-count` |
-| Q15 | Виды JOIN | `sql-joins` |
+| Q15 | Виды JOIN | `sql-delete-truncate-drop` |
 | Q16 | Нормализация | `sql-normalization` |
 | Q17 | 1–3 НФ | `sql-normalization` |
-| Q18 | Clustered index | `sql-indexes-basics` |
-| Q19 | Nonclustered | `sql-indexes-basics` |
+| Q18 | Clustered index | `sql-types-null` |
+| Q19 | Nonclustered | `sql-types-null` |
 | Q20 | Денормализация | `sql-normalization` |
 | Q21 | DROP | `sql-delete-truncate-drop` |
 | Q22 | Сущность | `sql-normalization` |
-| Q23 | ACID | `sql-acid-transactions` |
+| Q23 | ACID | `sql-normalization` |
 | Q24 | Триггер | `sql-triggers-operators` |
 | Q25 | Операторы | `sql-triggers-operators` |
 | Q26 | NULL | `sql-types-null` |
-| Q27 | CROSS vs NATURAL | `sql-joins` |
-| Q28 | Подзапрос | `sql-subqueries` |
-| Q29 | Correlated | `sql-subqueries` |
+| Q27 | CROSS vs NATURAL | `sql-delete-truncate-drop` |
+| Q28 | Подзапрос | `sql-triggers-operators` |
+| Q29 | Correlated | `sql-triggers-operators` |
 | Q30 | COUNT | `sql-agg-dates-count` |
 
 **Расширения сверх Части I (вместо отсутствующей Части II).**
 
 | Тема | slug |
 |------|------|
-| Практика сводная | `sql-practice-lab` |
+| Практика сводная | `sql-agg-dates-count` |
 | CTE + window | `sql-cte-window` |
-| EXPLAIN, индексы на практике, N+1 | `sql-performance-explain` |
+| EXPLAIN, индексы на практике, N+1 | `sql-cte-window` |
 | Устный drill | `sql-interview-drill` |
-| Capstone / этот индекс | `sql-capstone-checklist` |
+| Capstone / этот индекс | `sql-interview-drill` |
 
 **Обзор серии SQL Learn.**
 
 | Ep | slug | Фокус |
 |----|------|--------|
 | SQL01 | sql-ddl-dml-dcl | Подмножества, СУБД |
-| SQL02 | sql-tables-keys-constraints | Ключи, constraints |
+| SQL02 | sql-ddl-dml-dcl | Ключи, constraints |
 | SQL03 | sql-delete-truncate-drop | DELETE/TRUNCATE/DROP |
-| SQL04 | sql-joins | JOIN |
+| SQL04 | sql-delete-truncate-drop | JOIN |
 | SQL05 | sql-types-null | Типы, NULL |
-| SQL06 | sql-indexes-basics | Индексы |
+| SQL06 | sql-types-null | Индексы |
 | SQL07 | sql-normalization | НФ |
-| SQL08 | sql-acid-transactions | ACID |
+| SQL08 | sql-normalization | ACID |
 | SQL09 | sql-triggers-operators | Триггеры, операторы |
-| SQL10 | sql-subqueries | Подзапросы |
+| SQL10 | sql-triggers-operators | Подзапросы |
 | SQL11 | sql-agg-dates-count | Дата, COUNT |
-| SQL12 | sql-practice-lab | Сводная лаба |
+| SQL12 | sql-agg-dates-count | Сводная лаба |
 | SQL13 | sql-cte-window | CTE, окна |
-| SQL14 | sql-performance-explain | Планы, perf |
+| SQL14 | sql-cte-window | Планы, perf |
 | SQL15 | sql-interview-drill | Drill Q1–30 |
-| SQL16 | sql-capstone-checklist | Capstone |
+| SQL16 | sql-interview-drill | Capstone |
 
 ## Раздел: План на 2 недели до собеса
 
@@ -167,7 +167,7 @@ flowchart LR
 
 ### Куда смотреть ответ на Q24 и Q29 в серии Learn?
 
-**Ответ:** Q24 → `sql-triggers-operators`; Q29 → `sql-subqueries`
+**Ответ:** Q24 → `sql-triggers-operators`; Q29 → `sql-triggers-operators`
 
 **Пояснение:** индекс выше — основной навигатор перед собесом.
 
@@ -223,4 +223,4 @@ Back: SQL01–12 чеклист + руки на схеме customers/orders + dr
 - [OTUS / Хабр — топ SQL, часть I (Q1–Q30)](https://habr.com/ru/companies/otus/articles/461067/)
 - Learn | /game/learn/sql-interview-drill
 - Learn | /game/learn/sql-cte-window
-- Learn | /game/learn/sql-performance-explain
+- Learn | /game/learn/sql-cte-window

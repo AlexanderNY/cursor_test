@@ -1,5 +1,5 @@
 ---
-slug: jv-jvm-hosting
+slug: jv-js-glue
 title: Хостинг JVM — systemd и IIS обзор
 shortTitle: JVM hosting
 episode: JV12
@@ -16,7 +16,7 @@ prerequisites: [jv-js-glue]
 seoTitle: JVM hosting — middle
 seoDescription: Как держат JVM-процесс в проде; без дубля QA17.
 seoKeywords: [java, linux, iis, собеседование]
-canonicalUrl: https://9to18.ru/game/learn/jv-jvm-hosting
+canonicalUrl: https://9to18.ru/game/learn/jv-js-glue
 ---
 
 ## Введение
@@ -109,4 +109,4 @@ Back: infra deep dive
 ## Ссылки
 
 - Learn | [QA17](/game/learn/qa-infra-linux-containers)
-- Далее: [Integration lab](/game/learn/jv-integration-lab)
+- Далее: [Integration lab](/game/learn/jv-js-glue)
