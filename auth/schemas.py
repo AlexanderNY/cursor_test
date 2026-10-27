@@ -59,6 +59,7 @@ class UserProfile(BaseModel):
     billing_subscription_id: Optional[str] = None
     subscription_status: Optional[str] = None
     subscription_current_period_end: Optional[datetime] = None
+    avatar_url: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -272,6 +273,7 @@ def user_profile_from_user_dict(
         billing_subscription_id=user.get("billing_subscription_id"),
         subscription_status=user.get("subscription_status"),
         subscription_current_period_end=user.get("subscription_current_period_end"),
+        avatar_url=user.get("avatar_url"),
     )
 
 

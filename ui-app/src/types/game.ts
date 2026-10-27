@@ -8,7 +8,20 @@ export interface GameOption extends GameOptionInput {
   id: number
 }
 
-export type GameModeType = 'quiz' | 'menu'
+export type GameModeType =
+  | 'quiz'
+  | 'menu'
+  | 'country_training'
+  | 'country_flags'
+  | 'country_map'
+
+export function isCountryModeType(modeType: string): boolean {
+  return (
+    modeType === 'country_training' ||
+    modeType === 'country_flags' ||
+    modeType === 'country_map'
+  )
+}
 
 export interface GameMode {
   id: number
@@ -34,6 +47,40 @@ export interface GameModeUpdate {
   is_active?: boolean
   questions_per_game?: number
   mode_type?: GameModeType
+}
+
+export interface GameCountry {
+  id: number
+  iso2: string
+  name_ru: string
+  capital_ru: string
+  area_km2?: number | null
+  population?: number | null
+  flag_image_url?: string | null
+  map_image_url?: string | null
+  is_active: boolean
+  is_ready: boolean
+}
+
+export interface GameCountryCreate {
+  iso2: string
+  name_ru: string
+  capital_ru?: string
+  area_km2?: number | null
+  population?: number | null
+  flag_image_url?: string | null
+  map_image_url?: string | null
+  is_active?: boolean
+}
+
+export interface GameCountryUpdate {
+  name_ru?: string
+  capital_ru?: string
+  area_km2?: number | null
+  population?: number | null
+  is_active?: boolean
+  flag_image_url?: string | null
+  map_image_url?: string | null
 }
 
 export interface GameQuestion {
@@ -203,5 +250,7 @@ export interface GameMenuOrder {
   created_at?: string | null
   total_amount?: number
   total_quantity: number
+  delivery_address?: string | null
+  payment_method?: string | null
   items?: GameMenuOrderItem[]
 }

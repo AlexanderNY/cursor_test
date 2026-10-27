@@ -45,6 +45,15 @@ export const forumService = {
     await apiClient.delete(`/core/forum/posts/${postId}`)
   },
 
+  async uploadAvatar(file: File): Promise<{ avatar_url: string }> {
+    const body = new FormData()
+    body.append('file', file)
+    const response = await apiClient.post<{ avatar_url: string }>('/core/forum/avatar', body, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    return response.data
+  },
+
   async toggleVote(threadId: number): Promise<ForumVoteResponse> {
     const response = await apiClient.post<ForumVoteResponse>(`/core/forum/threads/${threadId}/vote`)
     return response.data

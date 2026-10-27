@@ -83,6 +83,32 @@ class GameCountryRow:
 
 
 @dataclass(slots=True)
+class GameCountryAdminRow:
+    id: int
+    iso2: str
+    name_ru: str
+    capital_ru: str
+    area_km2: Optional[float]
+    population: Optional[int]
+    flag_image_url: Optional[str]
+    map_image_url: Optional[str]
+    is_active: bool
+
+
+_COUNTRY_UPDATE_COLUMNS = frozenset(
+    {
+        "name_ru",
+        "capital_ru",
+        "area_km2",
+        "population",
+        "is_active",
+        "flag_image_url",
+        "map_image_url",
+    }
+)
+
+
+@dataclass(slots=True)
 class GameCountryStepRow:
     session_id: int
     step_index: int
@@ -1746,6 +1772,153 @@ class GameRepository:
                 await rollback_connection(conn)
             except Exception:
                 pass
+            raise
+        finally:
+            await release_db_connection(conn)
+
+    def _country_admin_row(self, row: Any) -> GameCountryAdminRow:
+        return GameCountryAdminRow(
+            id=int(row[0]),
+            iso2=str(row[1]).strip().upper(),
+            name_ru=str(row[2]),
+            capital_ru=str(row[3] or ""),
+            area_km2=float(row[4]) if row[4] is not None else None,
+            population=int(row[5]) if row[5] is not None else None,
+            flag_image_url=row[6],
+            map_image_url=row[7],
+            is_active=bool(row[8]),
+        )
+
+    async def admin_list_countries(self) -> list[GameCountryAdminRow]:
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT id, iso2, name_ru, capital_ru, area_km2, population,
+                           flag_image_url, map_image_url, is_active
+                    FROM game_countries
+                    ORDER BY name_ru, id
+                    """
+                )
+                rows = await cur.fetchall()
+                result = [self._country_admin_row(row) for row in rows]
+                await commit_connection(conn)
+                return result
+        finally:
+            await release_db_connection(conn)
+
+    async def admin_get_country(self, country_id: int) -> Optional[GameCountryAdminRow]:
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT id, iso2, name_ru, capital_ru, area_km2, population,
+                           flag_image_url, map_image_url, is_active
+                    FROM game_countries
+                    WHERE id = %s
+                    """,
+                    (country_id,),
+                )
+                row = await cur.fetchone()
+                await commit_connection(conn)
+                return self._country_admin_row(row) if row else None
+        finally:
+            await release_db_connection(conn)
+
+    async def admin_create_country(
+        self,
+        *,
+        iso2: str,
+        name_ru: str,
+        capital_ru: str,
+        area_km2: Optional[float],
+        population: Optional[int],
+        flag_image_url: Optional[str],
+        map_image_url: Optional[str],
+        is_active: bool,
+    ) -> int:
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    INSERT INTO game_countries (
+                        iso2, name_ru, capital_ru, area_km2, population,
+                        flag_image_url, map_image_url, is_active
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id
+                    """,
+                    (
+                        iso2.upper(),
+                        name_ru,
+                        capital_ru,
+                        area_km2,
+                        population,
+                        flag_image_url,
+                        map_image_url,
+                        is_active,
+                    ),
+                )
+                row = await cur.fetchone()
+                await commit_connection(conn)
+                return int(row[0])
+        except Exception:
+            await rollback_connection(conn)
+            raise
+        finally:
+            await release_db_connection(conn)
+
+    async def admin_delete_country(self, country_id: int) -> bool:
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "DELETE FROM game_countries WHERE id = %s",
+                    (country_id,),
+                )
+                deleted = cur.rowcount > 0
+                await commit_connection(conn)
+                return deleted
+        except Exception:
+            await rollback_connection(conn)
+            raise
+        finally:
+            await release_db_connection(conn)
+
+    async def admin_update_country(self, country_id: int, updates: dict[str, Any]) -> bool:
+        fields: list[str] = []
+        values: list[Any] = []
+        for column, value in updates.items():
+            if column not in _COUNTRY_UPDATE_COLUMNS:
+                continue
+            fields.append(f"{column} = %s")
+            values.append(value)
+
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                if not fields:
+                    await cur.execute(
+                        "SELECT 1 FROM game_countries WHERE id = %s",
+                        (country_id,),
+                    )
+                    found = await cur.fetchone()
+                    await commit_connection(conn)
+                    return found is not None
+
+                values.append(country_id)
+                await cur.execute(
+                    f"UPDATE game_countries SET {', '.join(fields)} WHERE id = %s",
+                    values,
+                )
+                updated = cur.rowcount > 0
+                await commit_connection(conn)
+                return updated
+        except Exception:
+            await rollback_connection(conn)
             raise
         finally:
             await release_db_connection(conn)

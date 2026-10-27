@@ -1,6 +1,9 @@
-import { useState, FormEvent, useEffect, useMemo, useCallback } from 'react'
+import { useState, FormEvent, useEffect, useMemo, useCallback, useRef, type ChangeEvent } from 'react'
 import { Link, Navigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '@/contexts/auth-context'
+import { forumService } from '@/services/forum-service'
+import { getErrorMessage } from '@/services/api-client'
+import { avatarPublicSrc } from '@/utils/avatar'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -128,8 +131,38 @@ export function ProfilePage() {
   const [email, setEmail] = useState(user?.email || '')
   const [password, setPassword] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false)
+  const [avatarTick, setAvatarTick] = useState(0)
+  const avatarInputRef = useRef<HTMLInputElement>(null)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+
+  async function handleAvatarPick(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    if (!file.type.startsWith('image/')) {
+      addToast('Выберите изображение', 'error')
+      return
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      addToast('Фото больше 2 МБ', 'error')
+      return
+    }
+    setIsUploadingAvatar(true)
+    try {
+      await forumService.uploadAvatar(file)
+      await refreshUserData()
+      setAvatarTick(Date.now())
+      addToast('Фото профиля обновлено', 'success')
+    } catch (err) {
+      addToast(getErrorMessage(err), 'error')
+    } finally {
+      setIsUploadingAvatar(false)
+    }
+  }
+
+  const avatarSrc = avatarPublicSrc(user?.avatar_url, avatarTick || undefined)
   
   const [verificationCode, setVerificationCode] = useState('')
   const [isVerifying, setIsVerifying] = useState(false)
@@ -294,9 +327,27 @@ export function ProfilePage() {
         <Card className="animate-slide-up animate-stagger-1">
           <CardHeader>
             <CardTitle className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary-500 to-accent-500 flex items-center justify-center text-white text-xl font-bold">
-                {user?.username?.charAt(0).toUpperCase()}
-              </div>
+              <button
+                type="button"
+                onClick={() => avatarInputRef.current?.click()}
+                disabled={isUploadingAvatar}
+                aria-label="Загрузить фото профиля"
+                title="Загрузить фото"
+                className="relative w-12 h-12 rounded-xl overflow-hidden bg-gradient-to-br from-primary-500 to-accent-500 flex items-center justify-center text-white text-xl font-bold shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/50 disabled:opacity-60"
+              >
+                {avatarSrc ? (
+                  <img src={avatarSrc} alt="" className="h-full w-full object-cover" />
+                ) : (
+                  user?.username?.charAt(0).toUpperCase()
+                )}
+              </button>
+              <input
+                ref={avatarInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/gif"
+                className="hidden"
+                onChange={(event) => void handleAvatarPick(event)}
+              />
               <div>
                 <span className="block">{user?.username}</span>
                 <span className="text-sm font-normal text-[var(--text-secondary)]">

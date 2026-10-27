@@ -113,6 +113,13 @@ def build_training_order(country_ids: Sequence[int]) -> list[int]:
     return pool
 
 
+def clip_to_questions_per_game(country_ids: Sequence[int], questions_per_game: int) -> list[int]:
+    """Оставляет не больше questions_per_game стран, сохраняя уже выбранный порядок."""
+    if questions_per_game <= 0:
+        return []
+    return list(country_ids)[:questions_per_game]
+
+
 def format_int_ru(value: int) -> str:
     """Число с пробелом как разделителем тысяч."""
     return f"{value:,}".replace(",", " ")

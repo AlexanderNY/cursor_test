@@ -124,6 +124,10 @@ export function getSeasonTracks(posts: LearnPost[]): {
   const seasonS01 = published.filter((post) => post.episode.startsWith('S01'))
   const seasonPy = published.filter((post) => post.episode.startsWith('PY'))
   const seasonQa = published.filter((post) => post.episode.startsWith('QA'))
+  const seasonSa = published.filter((post) => post.episode.startsWith('SA'))
+  const seasonPm = published.filter((post) => post.episode.startsWith('PM'))
+  const seasonFe = published.filter((post) => post.episode.startsWith('FE'))
+  const seasonSec = published.filter((post) => post.episode.startsWith('SEC'))
   const seasonMap = published.filter((post) => post.episode.startsWith('MAP'))
   const other = published.filter((post) => {
     const ep = post.episode
@@ -132,6 +136,10 @@ export function getSeasonTracks(posts: LearnPost[]): {
       !ep.startsWith('S01') &&
       !ep.startsWith('PY') &&
       !ep.startsWith('QA') &&
+      !ep.startsWith('SA') &&
+      !ep.startsWith('PM') &&
+      !ep.startsWith('FE') &&
+      !ep.startsWith('SEC') &&
       !ep.startsWith('MAP')
     )
   })
@@ -171,6 +179,38 @@ export function getSeasonTracks(posts: LearnPost[]): {
       title: 'QA · Junior → Senior',
       note: 'QA01–QA24: тестирование, AQA, middle и senior.',
       episodes: seasonQa,
+    })
+  }
+  if (seasonSa.length > 0) {
+    tracks.push({
+      id: 'sa',
+      title: 'Системный аналитик',
+      note: 'Требования, контракты, интеграции и инструменты постановки.',
+      episodes: seasonSa,
+    })
+  }
+  if (seasonPm.length > 0) {
+    tracks.push({
+      id: 'pm',
+      title: 'Владелец продукта',
+      note: 'Ценность, discovery, критерии приёмки и метрики.',
+      episodes: seasonPm,
+    })
+  }
+  if (seasonFe.length > 0) {
+    tracks.push({
+      id: 'fe',
+      title: 'Frontend React',
+      note: 'Интерфейс, состояние, тесты и контракт с API.',
+      episodes: seasonFe,
+    })
+  }
+  if (seasonSec.length > 0) {
+    tracks.push({
+      id: 'sec',
+      title: 'Безопасность приложений',
+      note: 'Дыры React и Python и практики AppSec.',
+      episodes: seasonSec,
     })
   }
   if (seasonMap.length > 0) {

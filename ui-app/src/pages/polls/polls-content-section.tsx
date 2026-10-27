@@ -7,6 +7,8 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { TableSkeleton } from '@/components/ui/skeleton'
 import { gameService } from '@/services/game-service'
 import type { GameMode, GameModeType, GameOptionInput, GameQuestion } from '@/types/game'
+import { isCountryModeType } from '@/types/game'
+import { CountryCatalogSection, QuestionsPerGameEditor } from './country-catalog-section'
 import { CsvImportSection } from './csv-import-section'
 import { MediaLibrarySection } from './media-library-section'
 import { MenuNodesSection } from './menu-nodes-section'
@@ -39,6 +41,8 @@ export function PollsContentSection() {
     isLoadingModes,
     loadModes,
   } = usePollsContext()
+
+  const isCountryMode = selectedMode ? isCountryModeType(selectedMode.mode_type) : false
 
   const [questions, setQuestions] = useState<GameQuestion[]>([])
   const [isLoadingQuestions, setIsLoadingQuestions] = useState(false)
@@ -78,10 +82,10 @@ export function PollsContentSection() {
   }, [])
 
   useEffect(() => {
-    if (selectedModeId && !isMenuMode) {
+    if (selectedModeId && !isMenuMode && !isCountryMode) {
       loadQuestions(selectedModeId)
     }
-  }, [selectedModeId, isMenuMode, loadQuestions])
+  }, [selectedModeId, isMenuMode, isCountryMode, loadQuestions])
 
   function resetQuestionForm() {
     setEditingQuestionId(null)
@@ -441,6 +445,12 @@ export function PollsContentSection() {
             modeTitle={selectedMode?.title}
             modeCode={selectedMode?.code}
           />
+        ) : isCountryMode && selectedMode ? (
+          <CountryCatalogSection
+            key={selectedMode.id}
+            mode={selectedMode}
+            onModeSaved={() => loadModes()}
+          />
         ) : (
         <Card>
           <CardHeader>
@@ -451,6 +461,7 @@ export function PollsContentSection() {
                 </CardTitle>
                 <CardDescription>
                   Каждый вопрос — 6 вариантов, один правильный. Без полного набора вопрос не попадёт в игру.
+                  За партию берётся не больше числа ниже, из активных вопросов.
                 </CardDescription>
               </div>
               {selectedModeId && (
@@ -461,6 +472,10 @@ export function PollsContentSection() {
             </div>
           </CardHeader>
           <CardContent className="space-y-6">
+            {selectedMode && (
+              <QuestionsPerGameEditor mode={selectedMode} onSaved={() => loadModes()} />
+            )}
+
             <MediaLibrarySection
               onSelectUrl={(url) => {
                 if (!showQuestionForm) {

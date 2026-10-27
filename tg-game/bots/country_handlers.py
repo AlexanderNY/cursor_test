@@ -12,6 +12,7 @@ from services.game_engine import (
     BuildCountryQuizInput,
     build_country_quiz_rounds,
     build_training_order,
+    clip_to_questions_per_game,
     format_country_card,
     iso2_to_flag_emoji,
 )
@@ -109,7 +110,13 @@ async def start_country_mode(
     country_ids = [c.id for c in countries]
 
     if mode.mode_type == "country_training":
-        ordered = build_training_order(country_ids)
+        ordered = clip_to_questions_per_game(
+            build_training_order(country_ids),
+            mode.questions_per_game,
+        )
+        if not ordered:
+            await bot.send_message(chat_id, "В тренировке нет стран для показа.")
+            return
         steps = [(cid, []) for cid in ordered]
         session_id = await game_repository.create_country_session_with_steps(
             player_id=player_id,

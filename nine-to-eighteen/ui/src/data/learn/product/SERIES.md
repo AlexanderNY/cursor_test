@@ -42,3 +42,11 @@
 | PM10 | `pm-portfolio` | Портфель ставок (CPO) |
 | PM11 | `pm-interview-drill` | Interview drill |
 | PM12 | `pm-capstone` | Capstone-чеклист |
+
+## Добор по вакансиям · PM13–PM15
+
+| Ep | slug | Тема |
+|----|------|------|
+| PM13 | `pm-discovery` | Discovery, гипотеза и MVP |
+| PM14 | `pm-acceptance` | Критерии приёмки |
+| PM15 | `pm-metrics` | Северная звезда и ограждения |

@@ -31,6 +31,14 @@ function formatDate(iso?: string | null): string {
   return formatDateTime(iso)
 }
 
+function paymentLabel(code?: string | null): string {
+  if (code === 'cash') return 'Наличные'
+  if (code === 'card') return 'Карта'
+  if (code === 'transfer') return 'Перевод'
+  if (!code) return '—'
+  return code
+}
+
 export function OrdersSection({
   modeId,
   modeTitle,
@@ -98,14 +106,14 @@ export function OrdersSection({
 
   const description = filterByMode && modeTitle
     ? `Заказы режима «${modeTitle}»`
-    : 'Все оформленные заказы бота из режимов «Меню»'
+    : 'Заказы из бота: адрес доставки и способ оплаты'
 
   return (
     <Card className={className}>
       <CardHeader>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <CardTitle className="text-lg">Заказы</CardTitle>
+            <CardTitle className="text-lg">Стол заказов</CardTitle>
             <CardDescription>{description}. Нажмите «Обновить» после оформления в боте.</CardDescription>
           </div>
           <Button type="button" variant="secondary" size="sm" onClick={loadOrders} disabled={isLoading}>
@@ -135,6 +143,8 @@ export function OrdersSection({
                   <th className="pb-2 pr-3 font-medium">Номер</th>
                   {!filterByMode && <th className="pb-2 pr-3 font-medium">Режим</th>}
                   <th className="pb-2 pr-3 font-medium">Клиент</th>
+                  <th className="pb-2 pr-3 font-medium">Адрес</th>
+                  <th className="pb-2 pr-3 font-medium">Оплата</th>
                   <th className="pb-2 pr-3 font-medium">Позиций</th>
                   <th className="pb-2 pr-3 font-medium">Сумма</th>
                   <th className="pb-2 pr-3 font-medium">Дата</th>
@@ -145,7 +155,7 @@ export function OrdersSection({
                 {orders.map((order) => {
                   const isExpanded = expandedOrderId === order.id
                   const detail = orderDetails[order.id]
-                  const colSpan = filterByMode ? 6 : 7
+                  const colSpan = filterByMode ? 8 : 9
                   return (
                     <Fragment key={order.id}>
                       <tr className="border-b border-[var(--border-color)]/60">
@@ -163,6 +173,12 @@ export function OrdersSection({
                             order.first_name,
                             order.telegram_user_id,
                           )}
+                        </td>
+                        <td className="max-w-[16rem] py-3 pr-3 text-[var(--text-secondary)]">
+                          {order.delivery_address?.trim() || '—'}
+                        </td>
+                        <td className="py-3 pr-3 whitespace-nowrap text-[var(--text-secondary)]">
+                          {paymentLabel(order.payment_method)}
                         </td>
                         <td className="py-3 pr-3 text-[var(--text-secondary)]">
                           {order.total_quantity}
@@ -192,6 +208,12 @@ export function OrdersSection({
                               <p className="text-sm text-[var(--text-secondary)]">Загрузка…</p>
                             ) : detail?.items?.length ? (
                               <div className="space-y-2 text-sm">
+                                <p className="text-[var(--text-secondary)]">
+                                  Адрес: {detail.delivery_address?.trim() || '—'}
+                                </p>
+                                <p className="text-[var(--text-secondary)]">
+                                  Оплата: {paymentLabel(detail.payment_method)}
+                                </p>
                                 <table className="w-full max-w-xl text-sm">
                                   <thead>
                                     <tr className="text-left text-[var(--text-secondary)]">

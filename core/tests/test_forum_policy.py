@@ -122,6 +122,7 @@ def test_thread_from_row_maps_fields():
         1,
         created,
         created,
+        "/core/forum/avatars/4",
     )
     item = _mod.thread_from_row(row)
     assert item["id"] == 9
@@ -130,3 +131,11 @@ def test_thread_from_row_maps_fields():
     assert item["vote_count"] == 3
     assert item["voted"] is True
     assert item["author_name"] == "anna"
+    assert item["author_avatar"] == "/core/forum/avatars/4"
+
+
+def test_sniff_image_type_accepts_png_and_rejects_text():
+    png = b"\x89PNG\r\n\x1a\n" + b"rest"
+    assert _mod.sniff_image_type(png) == "image/png"
+    assert _mod.sniff_image_type(b"not an image") is None
+    assert _mod.avatar_public_path(4) == "/core/forum/avatars/4"

@@ -45,6 +45,17 @@ curl.exe -sf http://127.0.0.1:8088/wp-json/wp/v2
 
 Из контейнера `wp-bot`: `http://host.docker.internal:8088`.
 
+## Визитка лаборатории
+
+Страницы главной, проектов, резюме, заметок и контактов заполняет `seed-card-pages.php`. Слаги `about` и `contacts` не меняются: на них завязаны проверки публикации. Главная — статическая страница, лента записей — `/notes/`.
+
+```powershell
+docker cp wp-site/seed-card-pages.php copyparse-wp-site-wordpress-1:/tmp/seed-card-pages.php
+docker exec copyparse-wp-site-wordpress-1 php /tmp/seed-card-pages.php
+```
+
+Повторный запуск обновляет те же страницы. Демо Sample Page и «Пример страницы» уходят в черновик.
+
 ## Порты
 
 | Сервис    | Хост             |

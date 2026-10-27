@@ -1296,6 +1296,7 @@ class ForumPost(BaseModel):
     body: str
     author_id: int
     author_name: str
+    author_avatar: Optional[str] = None
     created_at: datetime
     can_delete: bool = False
 
@@ -1314,6 +1315,7 @@ class ForumThread(BaseModel):
     body: str
     author_id: int
     author_name: str
+    author_avatar: Optional[str] = None
     is_closed: bool
     vote_count: int = 0
     voted: bool = False
@@ -1347,6 +1349,11 @@ class ForumVoteResponse(BaseModel):
     thread_id: int
     voted: bool
     vote_count: int
+
+
+class ForumAvatarResponse(BaseModel):
+    """Путь к фото профиля после загрузки."""
+    avatar_url: str
 
 
 # ==================== Admin (services status, posts tables) ====================

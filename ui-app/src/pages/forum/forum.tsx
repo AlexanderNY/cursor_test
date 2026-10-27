@@ -16,6 +16,7 @@ import { getErrorMessage } from '@/services/api-client'
 import { forumService } from '@/services/forum-service'
 import type { ForumKind, ForumListResponse, ForumScope, ForumThreadDetail } from '@/types/core'
 import { FORUM_KIND_LABELS } from '@/types/core'
+import { avatarPublicSrc } from '@/utils/avatar'
 import { formatDateTime } from '@/utils/date'
 
 const KINDS: ForumKind[] = ['discussion', 'bug_report', 'suggestion', 'contact_author']
@@ -25,6 +26,36 @@ function excerpt(text: string, max = 140): string {
   const flat = text.replace(/\s+/g, ' ').trim()
   if (flat.length <= max) return flat
   return `${flat.slice(0, max - 1)}…`
+}
+
+function AuthorFace({
+  name,
+  avatar,
+  className = 'h-7 w-7 text-[10px]',
+}: {
+  name: string
+  avatar?: string | null
+  className?: string
+}) {
+  const src = avatarPublicSrc(avatar)
+  const initial = (name || '?').slice(0, 1).toUpperCase()
+  if (src) {
+    return (
+      <img
+        src={src}
+        alt=""
+        className={`${className} rounded-full object-cover shrink-0 bg-[var(--bg-tertiary)]`}
+      />
+    )
+  }
+  return (
+    <span
+      className={`${className} rounded-full shrink-0 inline-flex items-center justify-center bg-gradient-to-br from-primary-500 to-accent-500 font-semibold text-white`}
+      aria-hidden
+    >
+      {initial}
+    </span>
+  )
 }
 
 function parseKind(raw: string | null): ForumKind | '' {
@@ -453,8 +484,11 @@ export function ForumPage() {
                         {item.title}
                       </p>
                       <p className="mt-1 text-xs text-[var(--text-muted)] line-clamp-2">{excerpt(item.body)}</p>
-                      <p className="mt-1 text-xs text-[var(--text-muted)]">
-                        {item.author_name} · {item.reply_count} отв.
+                      <p className="mt-1 flex items-center gap-1.5 text-xs text-[var(--text-muted)]">
+                        <AuthorFace name={item.author_name} avatar={item.author_avatar} className="h-4 w-4 text-[8px]" />
+                        <span>
+                          {item.author_name} · {item.reply_count} отв.
+                        </span>
                       </p>
                     </button>
                   </li>
@@ -491,13 +525,16 @@ export function ForumPage() {
             {thread != null && (
               <>
                 <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-xs text-[var(--text-muted)]">
-                      {FORUM_KIND_LABELS[thread.kind]}
-                      {thread.is_closed ? ' · закрыта' : ''} · {formatDateTime(thread.created_at)}
-                    </p>
-                    <h2 className="mt-1 text-xl font-semibold text-[var(--text-primary)]">{thread.title}</h2>
-                    <p className="text-sm text-[var(--text-secondary)]">{thread.author_name}</p>
+                  <div className="flex min-w-0 items-start gap-3">
+                    <AuthorFace name={thread.author_name} avatar={thread.author_avatar} className="h-9 w-9 text-sm" />
+                    <div className="min-w-0">
+                      <p className="text-xs text-[var(--text-muted)]">
+                        {FORUM_KIND_LABELS[thread.kind]}
+                        {thread.is_closed ? ' · закрыта' : ''} · {formatDateTime(thread.created_at)}
+                      </p>
+                      <h2 className="mt-1 text-xl font-semibold text-[var(--text-primary)]">{thread.title}</h2>
+                      <p className="text-sm text-[var(--text-secondary)]">{thread.author_name}</p>
+                    </div>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {thread.can_vote && (
@@ -535,8 +572,10 @@ export function ForumPage() {
                   {thread.posts.map((post) => (
                     <div
                       key={post.id}
-                      className="rounded-xl border border-[var(--border-color)] px-3 py-2"
+                      className="flex gap-2 rounded-xl border border-[var(--border-color)] px-3 py-2"
                     >
+                      <AuthorFace name={post.author_name} avatar={post.author_avatar} />
+                      <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-2">
                         <p className="text-xs text-[var(--text-muted)]">
                           {post.author_name} · {formatDateTime(post.created_at)}
@@ -554,6 +593,7 @@ export function ForumPage() {
                         )}
                       </div>
                       <p className="mt-1 whitespace-pre-wrap text-sm text-[var(--text-primary)]">{post.body}</p>
+                      </div>
                     </div>
                   ))}
                 </div>

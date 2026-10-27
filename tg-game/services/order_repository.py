@@ -13,6 +13,7 @@ from database import (
     rollback_connection,
 )
 from services.cart_repository import cart_repository
+from services.order_desk import is_payment_method
 
 
 class OrderRepository:
@@ -24,7 +25,15 @@ class OrderRepository:
         mode_id: int,
         username: Optional[str],
         first_name: Optional[str],
+        delivery_address: str,
+        payment_method: str,
     ) -> Optional[dict[str, Any]]:
+        address = delivery_address.strip()
+        if not address:
+            raise ValueError("Укажите адрес доставки в профиле")
+        if not is_payment_method(payment_method):
+            raise ValueError("Выберите способ оплаты")
+
         items = await cart_repository.list_items(
             bot_id=bot_id,
             telegram_user_id=telegram_user_id,
@@ -43,8 +52,8 @@ class OrderRepository:
                     """
                     INSERT INTO game_menu_orders
                     (bot_id, mode_id, telegram_user_id, username, first_name,
-                     order_number, status, total_amount)
-                    VALUES (%s, %s, %s, %s, %s, %s, 'placed', %s)
+                     order_number, status, total_amount, delivery_address, payment_method)
+                    VALUES (%s, %s, %s, %s, %s, %s, 'placed', %s, %s, %s)
                     RETURNING id
                     """,
                     (
@@ -55,6 +64,8 @@ class OrderRepository:
                         first_name,
                         placeholder,
                         total_amount,
+                        address,
+                        payment_method,
                     ),
                 )
                 order_row = await cur.fetchone()
@@ -86,12 +97,22 @@ class OrderRepository:
                     """,
                     (bot_id, telegram_user_id, mode_id),
                 )
+                await cur.execute(
+                    """
+                    UPDATE game_menu_carts
+                    SET payment_method = NULL, updated_at = NOW()
+                    WHERE bot_id = %s AND telegram_user_id = %s AND mode_id = %s
+                    """,
+                    (bot_id, telegram_user_id, mode_id),
+                )
 
                 await commit_connection(conn)
                 return {
                     "id": order_id,
                     "order_number": order_number,
                     "total_amount": float(total_amount),
+                    "delivery_address": address,
+                    "payment_method": payment_method,
                     "items": [
                         {
                             "node_id": i.node_id,
@@ -137,7 +158,8 @@ class OrderRepository:
                            COALESCE((
                                SELECT SUM(oi.quantity) FROM game_menu_order_items oi
                                WHERE oi.order_id = o.id
-                           ), 0) AS total_qty
+                           ), 0) AS total_qty,
+                           o.delivery_address, o.payment_method
                     FROM game_menu_orders o
                     JOIN game_modes m ON m.id = o.mode_id
                     {where_sql}
@@ -161,6 +183,8 @@ class OrderRepository:
                         "created_at": r[9].isoformat() if r[9] else None,
                         "total_amount": float(r[10]) if r[10] is not None else 0.0,
                         "total_quantity": int(r[11]),
+                        "delivery_address": r[12],
+                        "payment_method": r[13],
                     }
                     for r in rows
                 ]
@@ -177,7 +201,8 @@ class OrderRepository:
                     """
                     SELECT o.id, o.order_number, o.bot_id, o.mode_id, m.title,
                            o.telegram_user_id, o.username, o.first_name,
-                           o.status, o.created_at, o.total_amount
+                           o.status, o.created_at, o.total_amount,
+                           o.delivery_address, o.payment_method
                     FROM game_menu_orders o
                     JOIN game_modes m ON m.id = o.mode_id
                     WHERE o.id = %s
@@ -211,6 +236,8 @@ class OrderRepository:
                     "status": str(row[8]),
                     "created_at": row[9].isoformat() if row[9] else None,
                     "total_amount": float(row[10]) if row[10] is not None else 0.0,
+                    "delivery_address": row[11],
+                    "payment_method": row[12],
                     "items": [
                         {
                             "id": int(ir[0]),

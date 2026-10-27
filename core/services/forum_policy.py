@@ -10,6 +10,7 @@ OWNER_ROLES = frozenset({"owner", "admin", "manager"})
 
 MAX_TITLE_LENGTH = 255
 MAX_BODY_LENGTH = 8000
+AVATAR_MAX_BYTES = 2 * 1024 * 1024
 
 NO_WORKSPACE = (
     "Нет активного Workspace. Создайте команду или откройте ветку на платформе."
@@ -56,6 +57,29 @@ def clean_title(title: str) -> str:
 
 def clean_body(body: str) -> str:
     return body.strip()[:MAX_BODY_LENGTH]
+
+
+def avatar_storage_key(user_id: int) -> str:
+    """Ключ объекта в хранилище. Один файл на пользователя, новая загрузка заменяет его."""
+    return f"avatars/{int(user_id)}"
+
+
+def avatar_public_path(user_id: int) -> str:
+    """Стабильный путь через gateway. Картинка отдаётся без JWT, чтобы её мог показать <img>."""
+    return f"/core/forum/avatars/{int(user_id)}"
+
+
+def sniff_image_type(data: bytes) -> Optional[str]:
+    """Тип по сигнатуре файла. None, если это не JPEG, PNG, GIF или WEBP."""
+    if data.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if data.startswith(b"GIF87a") or data.startswith(b"GIF89a"):
+        return "image/gif"
+    if len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    return None
 
 
 def can_read_thread(*, scope: str, group_id: Optional[int], is_member: bool) -> bool:
@@ -146,6 +170,7 @@ def thread_from_row(row: Sequence[Any]) -> dict[str, Any]:
         "reply_count": int(row[12] or 0),
         "created_at": row[13],
         "updated_at": row[14],
+        "author_avatar": row[15] or None,
     }
 
 
@@ -157,4 +182,5 @@ def post_from_row(row: Sequence[Any]) -> dict[str, Any]:
         "author_id": int(row[3]),
         "author_name": str(row[4] or "участник"),
         "created_at": row[5],
+        "author_avatar": row[6] or None,
     }

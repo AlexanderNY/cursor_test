@@ -11,6 +11,7 @@ from bots.country_handlers import country_router
 from bots.game_handlers import game_router
 from bots.menu_handlers import menu_router
 from services.game_repository import game_repository
+from services.order_desk_seed import ensure_order_desk
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +41,11 @@ async def run_game_bot_polling(bot_token: str, bot_id: int) -> None:
         await game_repository.ensure_country_modes(bot_id)
     except Exception:
         logger.exception("Failed to ensure country modes for bot_id=%s", bot_id)
+
+    try:
+        await ensure_order_desk(bot_id)
+    except Exception:
+        logger.exception("Failed to ensure order desk for bot_id=%s", bot_id)
 
     bot = Bot(token=token)
     dp = Dispatcher()

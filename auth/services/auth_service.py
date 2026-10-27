@@ -241,7 +241,8 @@ async def get_user_by_id(user_id: int) -> Optional[Dict]:
                 """
                 SELECT id, username, email, role, tariff, is_email_verified, created_at, is_blocked,
                        billing_provider, billing_customer_id, billing_subscription_id,
-                       subscription_status, subscription_current_period_end, active_group_id
+                       subscription_status, subscription_current_period_end, active_group_id,
+                       avatar_url
                 FROM users WHERE id = %s
                 """,
                 (user_id,)
@@ -266,6 +267,7 @@ async def get_user_by_id(user_id: int) -> Optional[Dict]:
                 "subscription_status": user_row[11],
                 "subscription_current_period_end": user_row[12],
                 "active_group_id": user_row[13],
+                "avatar_url": user_row[14],
             }
 
 

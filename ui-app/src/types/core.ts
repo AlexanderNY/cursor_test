@@ -197,6 +197,7 @@ export interface ForumThread {
   body: string
   author_id: number
   author_name: string
+  author_avatar?: string | null
   is_closed: boolean
   vote_count: number
   voted: boolean
@@ -215,6 +216,7 @@ export interface ForumPost {
   body: string
   author_id: number
   author_name: string
+  author_avatar?: string | null
   created_at: string
   can_delete: boolean
 }

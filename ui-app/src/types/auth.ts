@@ -23,6 +23,7 @@ export interface User {
   billing_subscription_id?: string | null
   subscription_status?: string | null
   subscription_current_period_end?: string | null
+  avatar_url?: string | null
 }
 
 export interface BillingPlanDefinition {

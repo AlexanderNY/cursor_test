@@ -278,4 +278,26 @@ GAME_TABLE_DDL: list[str] = [
     """,
     "CREATE INDEX IF NOT EXISTS idx_game_menu_orders_mode ON game_menu_orders(mode_id, created_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_game_menu_orders_bot ON game_menu_orders(bot_id, created_at DESC)",
+    """
+    ALTER TABLE game_menu_orders
+        ADD COLUMN IF NOT EXISTS delivery_address TEXT
+    """,
+    """
+    ALTER TABLE game_menu_orders
+        ADD COLUMN IF NOT EXISTS payment_method TEXT
+    """,
+    """
+    ALTER TABLE game_menu_carts
+        ADD COLUMN IF NOT EXISTS payment_method TEXT
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS game_player_profiles (
+        id SERIAL PRIMARY KEY,
+        bot_id INT NOT NULL REFERENCES game_bots(id) ON DELETE CASCADE,
+        telegram_user_id BIGINT NOT NULL,
+        delivery_address TEXT NOT NULL DEFAULT '',
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (bot_id, telegram_user_id)
+    )
+    """,
 ]

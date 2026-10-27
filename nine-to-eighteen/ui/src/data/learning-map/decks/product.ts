@@ -25,7 +25,7 @@ export const deckProduct: TopicDeck = {
       id: 'pool:product:discovery',
       front: `Product discovery?`,
       back: `Проверка проблем/решений до дорогой delivery: интервью, прототипы, эксперименты. Снижает build-waste.`,
-      learnSlug: 'pm-product-strategy',
+      learnSlug: 'pm-discovery',
     },
     {
       id: 'pool:product:cjm',
@@ -67,7 +67,7 @@ export const deckProduct: TopicDeck = {
       id: 'pool:product:metrics',
       front: `North Star Metric?`,
       back: `Одна метрика, отражающая ценность продукта для пользователей и бизнеса. Не заменяет набор guardrail-метрик.`,
-      learnSlug: 'pm-product-strategy',
+      learnSlug: 'pm-metrics',
     },
     {
       id: 'pool:product:ice',
@@ -91,19 +91,19 @@ export const deckProduct: TopicDeck = {
       id: 'pool:product:experiment',
       front: `A/B как продукт-навык?`,
       back: `Гипотеза, метрика успеха, мощность/длительность, guardrails. Не тестируйте всё подряд без стоимости ошибки.`,
-      learnSlug: 'pm-product-strategy',
+      learnSlug: 'pm-discovery',
     },
     {
       id: 'pool:product:mvp',
       front: `MVP правильно?`,
       back: `Минимум для обучения о рискованной гипотезе, не полуфабрикат «всех фич». Критерий — что узнаем.`,
-      learnSlug: 'pm-product-management',
+      learnSlug: 'pm-discovery',
     },
     {
       id: 'pool:product:delivery-vs-discovery',
       front: `Delivery vs discovery?`,
       back: `Discovery снижает неопределённость; delivery реализует. Баланс двух потоков — зрелость команды.`,
-      learnSlug: 'pm-product-strategy',
+      learnSlug: 'pm-discovery',
     },
     {
       id: 'pool:product:kano',
@@ -163,13 +163,13 @@ export const deckProduct: TopicDeck = {
       id: 'pool:product:leading-lagging',
       front: `Leading vs lagging метрики?`,
       back: `Lagging — итог (revenue); leading — раньше сигналит (activation). Для управления нужны оба слоя.`,
-      learnSlug: 'pm-okr',
+      learnSlug: 'pm-metrics',
     },
     {
       id: 'pool:product:opportunity',
       front: `Opportunity solution tree?`,
       back: `Дерево: outcome → opportunities → solutions → experiments. Держит discovery структурированным.`,
-      learnSlug: 'pm-product-strategy',
+      learnSlug: 'pm-discovery',
     },
   ],
 }

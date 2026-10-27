@@ -12,6 +12,7 @@ from services.game_engine import (
     BuildCountryQuizInput,
     build_country_quiz_rounds,
     build_training_order,
+    clip_to_questions_per_game,
     format_country_card,
     format_int_ru,
     is_scored_mode_type,
@@ -60,6 +61,12 @@ def test_build_training_order_unique() -> None:
     with patch("services.game_engine.random.shuffle", lambda x: x.reverse()):
         ordered = build_training_order(ids)
     assert ordered == [4, 3, 2, 1]
+
+
+def test_clip_to_questions_per_game() -> None:
+    assert clip_to_questions_per_game([1, 2, 3, 4], 2) == [1, 2]
+    assert clip_to_questions_per_game([1, 2], 10) == [1, 2]
+    assert clip_to_questions_per_game([1, 2, 3], 0) == []
 
 
 def test_format_int_ru() -> None:

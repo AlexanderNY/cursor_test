@@ -271,6 +271,8 @@ class GameMenuOrderOut(BaseModel):
     created_at: Optional[str] = None
     total_amount: float = 0
     total_quantity: int = 0
+    delivery_address: Optional[str] = None
+    payment_method: Optional[str] = None
     items: list[GameMenuOrderItemOut] = []
 
 
@@ -288,3 +290,81 @@ class GameBotDiagnosticsOut(BaseModel):
     overall_status: Literal["ok", "warning", "error"]
     checks: list[DiagnosticCheck]
     hints: list[str] = []
+
+
+class GameCountryCreate(BaseModel):
+    iso2: str = Field(min_length=2, max_length=2)
+    name_ru: str = Field(min_length=1, max_length=200)
+    capital_ru: str = Field(default="", max_length=200)
+    area_km2: Optional[float] = Field(default=None, ge=0)
+    population: Optional[int] = Field(default=None, ge=0)
+    flag_image_url: Optional[str] = Field(default=None, max_length=2000)
+    map_image_url: Optional[str] = Field(default=None, max_length=2000)
+    is_active: bool = True
+
+    @field_validator("iso2", mode="before")
+    @classmethod
+    def normalize_iso2(cls, value: object) -> object:
+        if not isinstance(value, str):
+            return value
+        return value.strip().upper()
+
+    @field_validator("iso2")
+    @classmethod
+    def iso2_must_be_letters(cls, value: str) -> str:
+        if len(value) != 2 or not value.isalpha():
+            raise ValueError("iso2 must be two letters")
+        return value
+
+    @field_validator("name_ru", "capital_ru", mode="before")
+    @classmethod
+    def strip_create_text(cls, value: object) -> object:
+        if value is None or not isinstance(value, str):
+            return value
+        return value.strip()
+
+    @field_validator("flag_image_url", "map_image_url", mode="before")
+    @classmethod
+    def blank_create_url_to_none(cls, value: object) -> object:
+        if value is None or not isinstance(value, str):
+            return value
+        stripped = value.strip()
+        return stripped or None
+
+
+class GameCountryUpdate(BaseModel):
+    name_ru: Optional[str] = Field(default=None, min_length=1, max_length=200)
+    capital_ru: Optional[str] = Field(default=None, max_length=200)
+    area_km2: Optional[float] = Field(default=None, ge=0)
+    population: Optional[int] = Field(default=None, ge=0)
+    is_active: Optional[bool] = None
+    flag_image_url: Optional[str] = Field(default=None, max_length=2000)
+    map_image_url: Optional[str] = Field(default=None, max_length=2000)
+
+    @field_validator("name_ru", "capital_ru", mode="before")
+    @classmethod
+    def strip_country_text(cls, value: object) -> object:
+        if value is None or not isinstance(value, str):
+            return value
+        return value.strip()
+
+    @field_validator("flag_image_url", "map_image_url", mode="before")
+    @classmethod
+    def blank_url_to_none(cls, value: object) -> object:
+        if value is None or not isinstance(value, str):
+            return value
+        stripped = value.strip()
+        return stripped or None
+
+
+class GameCountryOut(BaseModel):
+    id: int
+    iso2: str
+    name_ru: str
+    capital_ru: str
+    area_km2: Optional[float] = None
+    population: Optional[int] = None
+    flag_image_url: Optional[str] = None
+    map_image_url: Optional[str] = None
+    is_active: bool
+    is_ready: bool

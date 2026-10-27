@@ -242,6 +242,44 @@ async def replace_game_question_options(
     )
 
 
+@router.post("/tg/game/admin/countries")
+async def create_game_country(
+    request: Request,
+    current_user: dict | None = Depends(get_current_user),
+) -> Response:
+    _require_admin(current_user)
+    return await _forward_game_admin("/tg/game/admin/countries", request)
+
+
+@router.delete("/tg/game/admin/countries/{country_id}")
+async def delete_game_country(
+    country_id: int,
+    request: Request,
+    current_user: dict | None = Depends(get_current_user),
+) -> Response:
+    _require_admin(current_user)
+    return await _forward_game_admin(f"/tg/game/admin/countries/{country_id}", request)
+
+
+@router.get("/tg/game/admin/countries")
+async def list_game_countries(
+    request: Request,
+    current_user: dict | None = Depends(get_current_user),
+) -> Response:
+    _require_admin(current_user)
+    return await _forward_game_admin("/tg/game/admin/countries", request)
+
+
+@router.patch("/tg/game/admin/countries/{country_id}")
+async def update_game_country(
+    country_id: int,
+    request: Request,
+    current_user: dict | None = Depends(get_current_user),
+) -> Response:
+    _require_admin(current_user)
+    return await _forward_game_admin(f"/tg/game/admin/countries/{country_id}", request)
+
+
 @router.get("/tg/game/admin/media")
 async def list_game_media(
     request: Request,

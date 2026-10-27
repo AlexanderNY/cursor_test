@@ -55,6 +55,13 @@
 | SA23 | `sa-interview-drill` | Drill по 7 темам | кросс T1–T7 |
 | SA24 | `sa-capstone-checklist` | Чеклист + индекс | обзор |
 
+## Добор по вакансиям · SA25–SA26
+
+| Ep | slug | Тема |
+|----|------|------|
+| SA25 | `sa-jira-confluence` | Jira и Confluence |
+| SA26 | `sa-postman` | Postman |
+
 ## Обслуживание
 
 ```bash

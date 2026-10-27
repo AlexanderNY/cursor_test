@@ -64,6 +64,14 @@ AQA-лабы и сниппеты — **Python** (pytest, requests/httpx, Seleniu
 | QA23 | `qa-senior-practice-drill` | Drill senior-практики | S30, S34–38; M88–103 |
 | QA24 | `qa-capstone-checklist` | Чеклист + appendix | обзор |
 
+## Добор по вакансиям · QA25–QA27
+
+| Ep | slug | Тема |
+|----|------|------|
+| QA25 | `qa-playwright` | Playwright |
+| QA26 | `qa-reports-jira` | Allure, TMS и Jira |
+| QA27 | `qa-mocks` | Моки и заглушки |
+
 ## Appendix вне цепочки
 
 J104–108 (NIC/RTP/SIP), M40 (Electron), M69 (SQL Server replication) — footnote в QA24.

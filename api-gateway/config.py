@@ -179,6 +179,7 @@ PUBLIC_ENDPOINTS: list[str] = [
 # Exact PUBLIC_ENDPOINTS plus path prefixes that stay public without JWT.
 PUBLIC_PATH_PREFIXES: list[str] = [
     "/dzen/rss/",
+    "/core/forum/avatars/",
 ]
 
 

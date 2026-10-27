@@ -566,6 +566,30 @@ async def toggle_roadmap_vote(
     return await forward_to_core(f"/roadmap/{item_id}/vote", request)
 
 
+@router.post("/forum/avatar")
+async def upload_forum_avatar(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    """Фото профиля.
+
+    POST /core/forum/avatar -> POST /forum/avatar на core сервисе
+    """
+    return await forward_to_core("/forum/avatar", request)
+
+
+@router.get("/forum/avatars/{user_id}")
+async def get_forum_avatar(
+    user_id: int,
+    request: Request,
+) -> Response:
+    """Фото профиля для <img>. Без JWT.
+
+    GET /core/forum/avatars/{id} -> GET /forum/avatars/{id} на core сервисе
+    """
+    return await forward_to_core(f"/forum/avatars/{user_id}", request)
+
+
 @router.get("/forum/threads")
 async def list_forum_threads(
     request: Request,

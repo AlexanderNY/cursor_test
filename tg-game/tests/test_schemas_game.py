@@ -5,7 +5,13 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from schemas_game import GameModeCreate, GameOptionInput, GameQuestionCreate
+from schemas_game import (
+    GameCountryCreate,
+    GameCountryUpdate,
+    GameModeCreate,
+    GameOptionInput,
+    GameQuestionCreate,
+)
 
 
 def _six_options(correct_index: int = 2) -> list[GameOptionInput]:
@@ -53,6 +59,39 @@ def test_game_question_create_no_correct() -> None:
     ]
     with pytest.raises(ValidationError):
         GameQuestionCreate(mode_id=1, prompt_text="What?", options=opts)
+
+
+def test_country_create_normalizes_iso2() -> None:
+    body = GameCountryCreate(iso2=" fr ", name_ru=" Франция ")
+    assert body.iso2 == "FR"
+    assert body.name_ru == "Франция"
+
+
+def test_country_create_rejects_bad_iso2() -> None:
+    with pytest.raises(ValidationError):
+        GameCountryCreate(iso2="FRA", name_ru="Франция")
+
+
+def test_country_update_strips_name() -> None:
+    body = GameCountryUpdate(name_ru="  Франция  ", capital_ru=" Париж ")
+    assert body.name_ru == "Франция"
+    assert body.capital_ru == "Париж"
+
+
+def test_country_update_blank_name_rejected() -> None:
+    with pytest.raises(ValidationError):
+        GameCountryUpdate(name_ru="   ")
+
+
+def test_country_update_blank_url_becomes_none() -> None:
+    body = GameCountryUpdate(flag_image_url="  ")
+    assert body.flag_image_url is None
+    assert "flag_image_url" in body.model_fields_set
+
+
+def test_country_update_negative_population_rejected() -> None:
+    with pytest.raises(ValidationError):
+        GameCountryUpdate(population=-1)
 
 
 def test_game_mode_create_country_types() -> None:

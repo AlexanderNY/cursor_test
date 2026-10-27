@@ -894,4 +894,12 @@ ALL_TABLES: list[str] = [
     LEARN_PROGRESS_TABLE,
     POST_LIFECYCLE_EVENTS_TABLE,
     QUEUE_NOTIFY_TRIGGERS,
+    """
+DO $$ BEGIN
+  ALTER TABLE users ADD COLUMN avatar_url VARCHAR(512);
+EXCEPTION
+  WHEN duplicate_column THEN NULL;
+  WHEN undefined_table THEN NULL;
+END $$;
+""",
 ]

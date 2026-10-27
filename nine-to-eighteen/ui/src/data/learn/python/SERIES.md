@@ -1186,6 +1186,16 @@ canonicalUrl: https://9to18.ru/game/learn/py-senior-capstone
 
 ---
 
+## Добор по вакансиям · PY25–PY29
+
+| Ep | slug | Тема |
+|----|------|------|
+| PY25 | `py-solid` | SOLID |
+| PY26 | `py-code-review` | Code review |
+| PY27 | `py-sqlalchemy` | SQLAlchemy, сессия и N+1 |
+| PY28 | `py-celery` | Celery и брокер |
+| PY29 | `py-websockets` | WebSocket в FastAPI |
+
 ## Обслуживание
 
 ```bash

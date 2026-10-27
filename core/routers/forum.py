@@ -2,9 +2,11 @@
 
 from typing import Optional
 
-from fastapi import APIRouter, Header, HTTPException, Query
+from fastapi import APIRouter, File, Header, HTTPException, Query, UploadFile
+from fastapi.responses import Response
 
 from schemas import (
+    ForumAvatarResponse,
     ForumListResponse,
     ForumPost,
     ForumPostCreate,
@@ -13,10 +15,39 @@ from schemas import (
     ForumThreadUpdate,
     ForumVoteResponse,
 )
-from services.forum_policy import UNKNOWN_KIND, UNKNOWN_SCOPE, parse_kind_filter, parse_scope
+from services.forum_policy import (
+    AVATAR_MAX_BYTES,
+    UNKNOWN_KIND,
+    UNKNOWN_SCOPE,
+    parse_kind_filter,
+    parse_scope,
+)
 from services.forum_service import forum_service
+from upload_limits import read_upload_limited
 
 router = APIRouter(prefix="/forum", tags=["Forum"])
+
+
+@router.post("/avatar", response_model=ForumAvatarResponse)
+async def upload_avatar(
+    file: UploadFile = File(...),
+    x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
+) -> ForumAvatarResponse:
+    """Сохраняет фото профиля текущего пользователя."""
+    user_id = _require_user_id(x_user_id)
+    content = await read_upload_limited(file, max_bytes=AVATAR_MAX_BYTES, label="Фото")
+    return await forum_service.save_avatar(user_id, content)
+
+
+@router.get("/avatars/{user_id}")
+async def get_avatar(user_id: int) -> Response:
+    """Отдаёт фото профиля. Без JWT: тег img не шлёт Authorization."""
+    content, content_type = await forum_service.read_avatar(user_id)
+    return Response(
+        content=content,
+        media_type=content_type,
+        headers={"Cache-Control": "no-cache"},
+    )
 
 
 def _require_user_id(x_user_id: Optional[str]) -> int:

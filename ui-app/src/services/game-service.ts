@@ -20,6 +20,9 @@ import type {
   GameMenuNodeCreate,
   GameMenuNodeUpdate,
   GameMenuOrder,
+  GameCountry,
+  GameCountryCreate,
+  GameCountryUpdate,
 } from '@/types/game'
 
 function sleep(ms: number): Promise<void> {
@@ -336,6 +339,44 @@ export const gameService = {
 
   mediaPreviewUrl(filename: string): string {
     return `/api/tg/game/media/${encodeURIComponent(filename)}`
+  },
+
+  async listCountries(): Promise<GameCountry[]> {
+    try {
+      const response = await apiClient.get<GameCountry[]>('/tg/game/admin/countries')
+      return response.data
+    } catch (error) {
+      throw new Error(getErrorMessage(error))
+    }
+  },
+
+  async createCountry(body: GameCountryCreate): Promise<GameCountry> {
+    try {
+      const response = await apiClient.post<GameCountry>('/tg/game/admin/countries', body)
+      return response.data
+    } catch (error) {
+      throw new Error(getErrorMessage(error))
+    }
+  },
+
+  async updateCountry(countryId: number, body: GameCountryUpdate): Promise<GameCountry> {
+    try {
+      const response = await apiClient.patch<GameCountry>(
+        `/tg/game/admin/countries/${countryId}`,
+        body,
+      )
+      return response.data
+    } catch (error) {
+      throw new Error(getErrorMessage(error))
+    }
+  },
+
+  async deleteCountry(countryId: number): Promise<void> {
+    try {
+      await apiClient.delete(`/tg/game/admin/countries/${countryId}`)
+    } catch (error) {
+      throw new Error(getErrorMessage(error))
+    }
   },
 
   async listLeaderboard(limit = 50): Promise<GameLeaderboardEntry[]> {

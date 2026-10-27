@@ -15,6 +15,7 @@ from config import settings
 from database import close_db, init_db
 from game_schema import GAME_TABLE_DDL
 from routers.game_admin import router as game_admin_router
+from routers.game_countries_admin import router as game_countries_admin_router
 from routers.game_menu_admin import router as game_menu_admin_router
 from routers.game_orders_admin import router as game_orders_admin_router
 from routers.game_bots_admin import router as game_bots_admin_router
@@ -83,6 +84,7 @@ app = FastAPI(title="Telegram Game Bot Service", version="1.0.0", lifespan=lifes
 app.include_router(game_rating_router, prefix="/tg/game")
 app.include_router(game_bots_admin_router, prefix="/tg/game")
 app.include_router(game_admin_router, prefix="/tg/game")
+app.include_router(game_countries_admin_router, prefix="/tg/game")
 app.include_router(game_menu_admin_router, prefix="/tg/game")
 app.include_router(game_orders_admin_router, prefix="/tg/game")
 app.include_router(game_media_admin_router, prefix="/tg/game")

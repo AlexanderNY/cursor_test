@@ -7,7 +7,10 @@ from typing import Any, Optional
 from fastapi import HTTPException
 
 from database import get_db_connection, release_db_connection
+from pathlib import Path
+
 from schemas import (
+    ForumAvatarResponse,
     ForumListResponse,
     ForumPost,
     ForumPostCreate,
@@ -18,6 +21,7 @@ from schemas import (
     ForumVoteResponse,
 )
 from services.forum_policy import (
+    AVATAR_MAX_BYTES,
     EMPTY_TEXT,
     FORBIDDEN,
     NO_WORKSPACE,
@@ -31,13 +35,20 @@ from services.forum_policy import (
     can_read_thread,
     clean_body,
     clean_title,
+    avatar_public_path,
+    avatar_storage_key,
     post_from_row,
+    sniff_image_type,
     thread_from_row,
     thread_permissions,
     votes_allowed,
 )
 from services.roadmap_helpers import next_voted_state
 from services.team_access import get_active_group_id, role_in_group
+from shared import async_fs
+from storage_client import get_storage
+
+_AVATAR_DIR = Path("uploads/avatars")
 
 
 _THREAD_SQL = """
@@ -63,7 +74,8 @@ SELECT
         SELECT COUNT(*)::int FROM forum_posts p WHERE p.thread_id = t.id
     ), 0) AS reply_count,
     t.created_at,
-    t.updated_at
+    t.updated_at,
+    NULLIF(u.avatar_url, '') AS author_avatar
 FROM forum_threads t
 LEFT JOIN users u ON u.id = t.author_id
 LEFT JOIN groups g ON g.id = t.group_id
@@ -262,7 +274,8 @@ class ForumService:
                 )
                 await cur.execute(
                     """
-                    SELECT COALESCE(NULLIF(username, ''), 'участник')
+                    SELECT COALESCE(NULLIF(username, ''), 'участник'),
+                           NULLIF(avatar_url, '')
                     FROM users WHERE id = %s
                     """,
                     (user_id,),
@@ -273,6 +286,7 @@ class ForumService:
         if not row:
             raise HTTPException(status_code=500, detail="Failed to create post")
         author_name = name_row[0] if name_row else "участник"
+        author_avatar = name_row[1] if name_row else None
         flags = can_delete_post(
             post_author_id=user_id,
             user_id=user_id,
@@ -285,6 +299,7 @@ class ForumService:
             body=row[2],
             author_id=row[3],
             author_name=str(author_name),
+            author_avatar=author_avatar,
             created_at=row[4],
             can_delete=flags,
         )
@@ -546,7 +561,8 @@ class ForumService:
                         p.body,
                         p.author_id,
                         COALESCE(NULLIF(u.username, ''), 'участник'),
-                        p.created_at
+                        p.created_at,
+                        NULLIF(u.avatar_url, '')
                     FROM forum_posts p
                     LEFT JOIN users u ON u.id = p.author_id
                     WHERE p.thread_id = %s
@@ -589,6 +605,66 @@ class ForumService:
             kind=data["kind"],
         )
         return ForumThread(**data, **flags)
+
+    async def save_avatar(self, user_id: int, content: bytes) -> ForumAvatarResponse:
+        if len(content) > AVATAR_MAX_BYTES:
+            raise HTTPException(status_code=413, detail="Фото больше 2 МБ")
+        content_type = sniff_image_type(content)
+        if content_type is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Нужен файл JPEG, PNG, WEBP или GIF",
+            )
+        key = avatar_storage_key(user_id)
+        storage = get_storage()
+        if storage:
+            await storage.put(key, content, content_type=content_type)
+        else:
+            await async_fs.makedirs(_AVATAR_DIR)
+            await async_fs.write_bytes(_AVATAR_DIR / str(user_id), content)
+        public_path = avatar_public_path(user_id)
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "UPDATE users SET avatar_url = %s WHERE id = %s RETURNING id",
+                    (public_path, user_id),
+                )
+                row = await cur.fetchone()
+        finally:
+            await release_db_connection(conn)
+        if not row:
+            raise HTTPException(status_code=404, detail="Пользователь не найден")
+        return ForumAvatarResponse(avatar_url=public_path)
+
+    async def read_avatar(self, user_id: int) -> tuple[bytes, str]:
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "SELECT NULLIF(avatar_url, '') FROM users WHERE id = %s",
+                    (user_id,),
+                )
+                row = await cur.fetchone()
+        finally:
+            await release_db_connection(conn)
+        if not row or not row[0]:
+            raise HTTPException(status_code=404, detail="Фото не найдено")
+        key = avatar_storage_key(user_id)
+        data: bytes | None = None
+        storage = get_storage()
+        if storage:
+            data = await storage.get_bytes(key)
+        if not data:
+            path = _AVATAR_DIR / str(user_id)
+            if path.is_file():
+                data = await async_fs.read_bytes(path)
+        if not data:
+            raise HTTPException(status_code=404, detail="Фото не найдено")
+        content_type = sniff_image_type(data)
+        if content_type is None:
+            raise HTTPException(status_code=404, detail="Фото не найдено")
+        return data, content_type
 
 
 forum_service = ForumService()
