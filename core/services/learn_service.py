@@ -21,7 +21,7 @@ POST_COLUMNS = (
 )
 
 VALID_FORMATS = ("markdown", "html")
-VALID_RUBRICS = ("architecture", "api", "data", "frontend", "tools")
+VALID_RUBRICS = ("architecture", "api", "data", "frontend", "tools", "product")
 VALID_PROFILES = ("analyst", "devops", "developer", "tester", "product_owner")
 VALID_LEVELS = ("intern", "junior", "middle", "senior", "lead")
 
