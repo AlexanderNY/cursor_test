@@ -15,6 +15,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 
 from config import settings
 from database import get_db_connection, release_db_connection
+from shared.auth_backoff import AuthAttemptBackoff, next_attempt_suffix, pause_active_message
 
 from .selenium_diag import capture_diag_for_ui, capture_live_jpeg_for_ui, capture_selenium_error_to_s3
 from .selenium_driver import create_chrome_driver
@@ -42,6 +43,8 @@ from .yandex_dzen_flow import (
 from .yandex_session import export_cookies, save_yandex_session
 
 logger = logging.getLogger(__name__)
+
+_login_backoff = AuthAttemptBackoff()
 
 _PUSH_MESSAGE = "На телефон отправлен код. Введите 6 цифр."
 
@@ -636,6 +639,20 @@ async def verify_yandex_start_for_user(
             "diag_image_url": None,
         }
 
+    wait = _login_backoff.retry_after_seconds(user_id)
+    if wait > 0:
+        err = pause_active_message(wait)
+        await set_last_auth_error(user_id, err)
+        return {
+            "ok": False,
+            "need_push_code": False,
+            "subscriptions": [],
+            "error": err,
+            "message": None,
+            "diag_image_url": None,
+            "retry_after_seconds": wait,
+        }
+
     d = await asyncio.to_thread(
         verify_yandex_start_sync,
         user_id,
@@ -650,8 +667,13 @@ async def verify_yandex_start_for_user(
     if d.get("ok") and d.get("need_push_code"):
         await set_last_auth_error(user_id, None)
     elif d.get("error"):
-        await set_last_auth_error(user_id, str(d["error"])[:2000])
+        pause = _login_backoff.record_failure(user_id)
+        err = f"{d['error']} {next_attempt_suffix(pause)}"
+        d["error"] = err
+        d["retry_after_seconds"] = pause
+        await set_last_auth_error(user_id, err[:2000])
     else:
+        _login_backoff.record_success(user_id)
         await set_last_auth_error(user_id, None)
     return d
 
@@ -699,7 +721,14 @@ async def verify_yandex_push_for_user(user_id: int, code: str) -> Dict[str, Any]
     if d.get("ok") and not d.get("need_push_code") and cookies:
         await save_yandex_session(user_id, cookies)
     if d.get("ok") and not d.get("error"):
+        _login_backoff.record_success(user_id)
         await set_last_auth_error(user_id, None)
+    elif d.get("error") and not d.get("need_push_code"):
+        pause = _login_backoff.record_failure(user_id)
+        err = f"{d['error']} {next_attempt_suffix(pause)}"
+        d["error"] = err
+        d["retry_after_seconds"] = pause
+        await set_last_auth_error(user_id, err[:2000])
     elif d.get("error"):
         await set_last_auth_error(user_id, str(d["error"])[:2000])
     return d

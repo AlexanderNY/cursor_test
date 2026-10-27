@@ -3,8 +3,14 @@
 from fastapi import APIRouter, HTTPException, Header
 from typing import Optional
 from database import get_db_connection, release_db_connection
-from schemas import NotificationCreate, Notification, NotificationResponse
+from schemas import (
+    NotificationCreate,
+    Notification,
+    NotificationClearRequest,
+    NotificationResponse,
+)
 from services.notification_html import sanitize_notification_html
+from services.notification_policy import REPLACED_ON_CREATE, normalize_clear_types
 
 
 router = APIRouter(prefix="/notifications", tags=["Notifications"])
@@ -49,6 +55,14 @@ async def create_notification(
     conn = await get_db_connection()
     try:
         async with conn.cursor() as cur:
+            if user_id is not None and notif_type in REPLACED_ON_CREATE:
+                await cur.execute(
+                    """
+                    DELETE FROM notifications
+                    WHERE user_id = %s AND type = %s
+                    """,
+                    (user_id, notif_type),
+                )
             await cur.execute(
                 """
                 INSERT INTO notifications (message, user_id, type)
@@ -69,6 +83,43 @@ async def create_notification(
                 type=row[3] or "general",
                 created_at=row[4]
             )
+    finally:
+        await release_db_connection(conn)
+
+
+@router.post("/clear")
+async def clear_notifications(
+    payload: NotificationClearRequest,
+    x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
+    x_user_role: Optional[str] = Header(None, alias="X-User-Role"),
+):
+    """Удаляет устаревшие уведомления авторизации Telegram для пользователя.
+
+    Вызывается tg-bot после успешного подключения, чтобы тост об ошибке сети
+    не оставался, когда сессия уже работает.
+    """
+    if not x_user_id:
+        raise HTTPException(status_code=401, detail="User ID not provided")
+    if x_user_role != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can clear notifications")
+
+    try:
+        types = normalize_clear_types(payload.types)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    conn = await get_db_connection()
+    try:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                """
+                DELETE FROM notifications
+                WHERE user_id = %s AND type = ANY(%s)
+                """,
+                (payload.user_id, types),
+            )
+            deleted = cur.rowcount
+            return {"deleted": deleted}
     finally:
         await release_db_connection(conn)
 

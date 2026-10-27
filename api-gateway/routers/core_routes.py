@@ -566,6 +566,108 @@ async def toggle_roadmap_vote(
     return await forward_to_core(f"/roadmap/{item_id}/vote", request)
 
 
+@router.get("/forum/threads")
+async def list_forum_threads(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    """Список веток форума.
+
+    GET /core/forum/threads -> GET /forum/threads на core сервисе
+    """
+    return await forward_to_core("/forum/threads", request)
+
+
+@router.post("/forum/threads")
+async def create_forum_thread(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    """Новая ветка форума.
+
+    POST /core/forum/threads -> POST /forum/threads на core сервисе
+    """
+    return await forward_to_core("/forum/threads", request)
+
+
+@router.get("/forum/threads/{thread_id}")
+async def get_forum_thread(
+    thread_id: int,
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    """Ветка форума с ответами.
+
+    GET /core/forum/threads/{id} -> GET /forum/threads/{id} на core сервисе
+    """
+    return await forward_to_core(f"/forum/threads/{thread_id}", request)
+
+
+@router.patch("/forum/threads/{thread_id}")
+async def update_forum_thread(
+    thread_id: int,
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    """Закрыть или открыть ветку.
+
+    PATCH /core/forum/threads/{id} -> PATCH /forum/threads/{id} на core сервисе
+    """
+    return await forward_to_core(f"/forum/threads/{thread_id}", request)
+
+
+@router.delete("/forum/threads/{thread_id}")
+async def delete_forum_thread(
+    thread_id: int,
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    """Удалить ветку.
+
+    DELETE /core/forum/threads/{id} -> DELETE /forum/threads/{id} на core сервисе
+    """
+    return await forward_to_core(f"/forum/threads/{thread_id}", request)
+
+
+@router.post("/forum/threads/{thread_id}/posts")
+async def create_forum_post(
+    thread_id: int,
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    """Ответ в ветке.
+
+    POST /core/forum/threads/{id}/posts -> POST /forum/threads/{id}/posts на core сервисе
+    """
+    return await forward_to_core(f"/forum/threads/{thread_id}/posts", request)
+
+
+@router.post("/forum/threads/{thread_id}/vote")
+async def toggle_forum_vote(
+    thread_id: int,
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    """Голос за идею.
+
+    POST /core/forum/threads/{id}/vote -> POST /forum/threads/{id}/vote на core сервисе
+    """
+    return await forward_to_core(f"/forum/threads/{thread_id}/vote", request)
+
+
+@router.delete("/forum/posts/{post_id}")
+async def delete_forum_post(
+    post_id: int,
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    """Удалить ответ.
+
+    DELETE /core/forum/posts/{id} -> DELETE /forum/posts/{id} на core сервисе
+    """
+    return await forward_to_core(f"/forum/posts/{post_id}", request)
+
+
 @router.get("/guide/blocks")
 async def get_guide_blocks(
     request: Request,

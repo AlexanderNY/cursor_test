@@ -36,6 +36,8 @@ def should_attempt_selenium_fallback(last_error_message: Optional[str]) -> bool:
     if not last_error_message or not str(last_error_message).strip():
         return not network_only
     msg = str(last_error_message).lower()
+    if "пауза после неудачного входа" in msg or "следующая попытка через" in msg:
+        return False
     if network_only:
         return any(m in msg for m in _NETWORK_ERROR_MARKERS)
     return True

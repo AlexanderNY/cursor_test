@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { PageShell } from '@/components/page-shell'
+import { TrainerTabs } from '@/components/trainer-tabs'
 import { CodeSandboxEditor } from '@/components/code-sandbox-editor'
 import {
   clearCodeDraft,
@@ -210,6 +211,7 @@ export function CodeSandboxPage() {
       <Link to="/" className="back-link">
         ← На главную
       </Link>
+      <TrainerTabs />
       <header className="learn-header">
         <p className="learn-eyebrow">Code</p>
         <h1 className="learn-title">Python в браузере</h1>

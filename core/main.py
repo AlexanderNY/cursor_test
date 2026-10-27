@@ -25,6 +25,7 @@ from routers import (
     notifications,
     feedback,
     roadmap,
+    forum,
     admin,
     threads,
     internal,
@@ -74,6 +75,7 @@ app.include_router(cpost.router)
 app.include_router(notifications.router)
 app.include_router(feedback.router)
 app.include_router(roadmap.router)
+app.include_router(forum.router)
 app.include_router(admin.router)
 app.include_router(threads.router)
 app.include_router(internal.router)

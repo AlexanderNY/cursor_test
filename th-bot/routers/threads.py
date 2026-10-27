@@ -4,9 +4,9 @@ import asyncio
 import base64
 import json
 import logging
-import time
 
 from fastapi import APIRouter, Depends, HTTPException, Header
+from shared.auth_backoff import AuthAttemptBackoff, format_pause, pause_active_message
 from pydantic import BaseModel, Field
 from typing import Optional
 
@@ -31,7 +31,8 @@ from services.selenium_session_service import (
 
 logger = logging.getLogger(__name__)
 
-_selenium_last_attempt_ts: dict[int, float] = {}
+_selenium_backoff = AuthAttemptBackoff()
+_SELENIUM_OK_STATUSES = {"completed_unverified"}
 
 
 class SeleniumAttemptBody(BaseModel):
@@ -40,14 +41,6 @@ class SeleniumAttemptBody(BaseModel):
     username: str = Field(..., min_length=1, max_length=512)
     password: str = Field(..., min_length=1, max_length=512)
 
-
-def _selenium_rate_limit_ok(user_id: int) -> bool:
-    now = time.time()
-    last = _selenium_last_attempt_ts.get(user_id, 0.0)
-    if now - last < float(settings.THREADS_SELENIUM_RATE_LIMIT_SECONDS):
-        return False
-    _selenium_last_attempt_ts[user_id] = now
-    return True
 
 router = APIRouter(prefix="/threads", tags=["Threads"])
 
@@ -100,10 +93,11 @@ async def threads_selenium_attempt(
             detail="Selenium fallback disabled (set ENABLE_THREADS_SELENIUM_FALLBACK=true)",
         )
     user_id = _get_user_id(x_user_id)
-    if not _selenium_rate_limit_ok(user_id):
+    wait = _selenium_backoff.retry_after_seconds(user_id)
+    if wait > 0:
         raise HTTPException(
             status_code=429,
-            detail=f"Too many attempts. Wait {settings.THREADS_SELENIUM_RATE_LIMIT_SECONDS}s.",
+            detail=pause_active_message(wait),
         )
     session_id = await insert_session_running(user_id)
     try:
@@ -116,6 +110,11 @@ async def threads_selenium_attempt(
         )
         status = result.get("status") or "failed"
         message = result.get("message") or ""
+        if status in _SELENIUM_OK_STATUSES:
+            _selenium_backoff.record_success(user_id)
+        elif message != "Пустой логин или пароль":
+            pause = _selenium_backoff.record_failure(user_id)
+            message = f"{message} Следующая попытка через {format_pause(pause)}."
         png = result.get("diagnostic_png")
         diag_key = None
         if png:
@@ -146,8 +145,10 @@ async def threads_selenium_attempt(
         }
     except Exception as e:
         logger.exception("Selenium attempt failed")
-        await update_session(session_id, "failed", str(e)[:500])
-        raise HTTPException(status_code=500, detail="Selenium run failed") from e
+        pause = _selenium_backoff.record_failure(user_id)
+        detail = f"{str(e)[:400]} Следующая попытка через {format_pause(pause)}."
+        await update_session(session_id, "failed", detail[:500])
+        raise HTTPException(status_code=500, detail=detail) from e
 
 
 @router.get("/selenium/session/last")

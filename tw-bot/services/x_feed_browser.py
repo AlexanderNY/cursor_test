@@ -24,7 +24,14 @@ from config import settings
 
 from .selenium_driver import create_chrome_driver, get_selenium_semaphore
 from .selenium_errors import format_selenium_exception
-from .x_selenium_verify import _capture_driver_png, _login_x, _normalize_handle
+from .x_selenium_verify import (
+    _capture_driver_png,
+    _login_x,
+    _normalize_handle,
+    note_x_login_failure,
+    note_x_login_success,
+    x_login_block_message,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -327,6 +334,7 @@ def _ensure_logged_in(
     login: str,
     password: str,
     cookies: List[Dict[str, Any]],
+    user_id: Optional[int] = None,
 ) -> Optional[str]:
     """Returns error message or None on success."""
     logged_in = False
@@ -338,13 +346,26 @@ def _ensure_logged_in(
             logged_in = True
 
     if not logged_in:
+        if user_id is not None:
+            blocked = x_login_block_message(user_id)
+            if blocked:
+                return blocked
         err = _login_x(driver, login, password)
         if err:
-            return err
+            if user_id is None:
+                return err
+            return note_x_login_failure(user_id, err)
+        if user_id is not None:
+            note_x_login_success(user_id)
         driver.get("https://x.com/home")
         time.sleep(2.0)
         if _is_login_url(driver.current_url or ""):
-            return "Сессия не установлена после входа (логин/challenge)"
+            if user_id is None:
+                return "Сессия не установлена после входа (логин/challenge)"
+            return note_x_login_failure(
+                user_id,
+                "Сессия не установлена после входа (логин/challenge)",
+            )
     return None
 
 
@@ -360,6 +381,7 @@ def _browser_collect_sync(
     max_tweets: int,
     after_login,
     empty_feed_error: str,
+    user_id: Optional[int] = None,
 ) -> FeedCollectResult:
     """
     Shared Selenium session: login → after_login(driver) → scroll tweet cards.
@@ -401,7 +423,7 @@ def _browser_collect_sync(
 
     try:
         driver = create_chrome_driver(proxy)
-        login_err = _ensure_logged_in(driver, login, password, cookies)
+        login_err = _ensure_logged_in(driver, login, password, cookies, user_id)
         if login_err:
             return _fail(login_err)
 
@@ -453,6 +475,7 @@ def collect_following_feed_sync(
     known_status_ids: Set[str],
     max_scroll: int,
     max_tweets: int,
+    user_id: Optional[int] = None,
 ) -> FeedCollectResult:
     """
     Вход (cookies или логин/пароль) → Home / Following → карточки article.
@@ -477,6 +500,7 @@ def collect_following_feed_sync(
         empty_feed_error=(
             "Лента Following не загрузилась (нет карточек tweet — изменилась вёрстка или пустая лента)."
         ),
+        user_id=user_id,
     )
 
 
@@ -490,6 +514,7 @@ def collect_user_timeline_sync(
     max_scroll: int,
     max_tweets: int,
     handle: str,
+    user_id: Optional[int] = None,
 ) -> FeedCollectResult:
     """
     Вход → профиль https://x.com/{handle} → карточки article.
@@ -523,6 +548,7 @@ def collect_user_timeline_sync(
             f"Лента @{target} не загрузилась (нет карточек tweet — приватный аккаунт, "
             "пустой профиль или изменилась вёрстка)."
         ),
+        user_id=user_id,
     )
 
 
@@ -590,6 +616,7 @@ async def collect_following_feed_for_profile(
             known_status_ids,
             max_scroll,
             max_tweets,
+            user_id,
         )
     finally:
         sem.release()
@@ -623,6 +650,7 @@ async def collect_user_timeline_for_profile(
             max_scroll,
             max_tweets,
             handle,
+            user_id,
         )
     finally:
         sem.release()

@@ -148,26 +148,6 @@ export function MobileNav() {
         </nav>
 
         <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-[var(--border-color)] space-y-3">
-          <Link
-            to="/next"
-            onClick={() => setIsOpen(false)}
-            className="nav-link w-full justify-center border border-[var(--border-color)]"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className={iconClassName} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-            </svg>
-            <span>Что далее</span>
-          </Link>
-          <Link
-            to="/feedback"
-            onClick={() => setIsOpen(false)}
-            className="nav-link w-full justify-center border border-[var(--border-color)]"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className={iconClassName} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-            </svg>
-            <span>Обратная связь</span>
-          </Link>
           <Button variant="secondary" className="w-full" onClick={logout}>
             <LogOutIcon className="h-5 w-5 mr-2" />
             Logout

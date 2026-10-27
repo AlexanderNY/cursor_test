@@ -18,6 +18,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 
 from config import settings
 from database import get_db_connection, release_db_connection
+from shared.auth_backoff import AuthAttemptBackoff, next_attempt_suffix, pause_active_message
 
 from .selenium_driver import create_chrome_driver
 from .selenium_errors import format_selenium_exception
@@ -25,6 +26,26 @@ from .selenium_errors import format_selenium_exception
 logger = logging.getLogger(__name__)
 
 _HANDLE_RE = re.compile(r"^[A-Za-z0-9_]{1,30}$")
+_login_backoff = AuthAttemptBackoff()
+
+
+def x_login_block_message(user_id: int) -> Optional[str]:
+    """Текст паузы, если новый вход в X сейчас нельзя. None — можно."""
+    wait = _login_backoff.retry_after_seconds(user_id)
+    if wait <= 0:
+        return None
+    return pause_active_message(wait)
+
+
+def note_x_login_failure(user_id: int, error: str) -> str:
+    """Запоминает неудачный вход и дописывает срок следующей попытки."""
+    pause = _login_backoff.record_failure(user_id)
+    return f"{error} {next_attempt_suffix(pause)}"
+
+
+def note_x_login_success(user_id: int) -> None:
+    """Успешный вход снимает паузу."""
+    _login_backoff.record_success(user_id)
 
 
 def _capture_driver_png(driver: WebDriver) -> Optional[bytes]:
@@ -210,6 +231,10 @@ def verify_x_following_sync(
     if not handle:
         return False, [], "Укажите логин/ник X (@handle) для перехода к списку подписок.", None
 
+    blocked = x_login_block_message(user_id)
+    if blocked:
+        return False, [], blocked, None
+
     if proxy and proxy.get("use_proxy"):
         pu = (proxy.get("proxy_user") or "").strip()
         pp = (proxy.get("proxy_pass") or "").strip()
@@ -237,7 +262,8 @@ def verify_x_following_sync(
         logger.debug("Selenium verify user_id=%s handle=%s", user_id, (handle[:3] + "***") if handle else "")
         err = _login_x(driver, login, password)
         if err:
-            return _fail_with_shot(err)
+            return _fail_with_shot(note_x_login_failure(user_id, err))
+        note_x_login_success(user_id)
 
         following_url = f"https://x.com/{handle}/following"
         driver.get(following_url)

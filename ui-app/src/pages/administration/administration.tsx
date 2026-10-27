@@ -1,5 +1,5 @@
 import { useState, FormEvent, Fragment, useEffect, useRef, type ReactNode } from 'react'
-import { useSearchParams, Navigate } from 'react-router-dom'
+import { useSearchParams, Navigate, Link } from 'react-router-dom'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
@@ -1963,7 +1963,13 @@ export function AdministrationPage() {
               </svg>
               Обратная связь
             </CardTitle>
-            <CardDescription>Сообщения пользователей: ошибки, предложения, контакты</CardDescription>
+            <CardDescription>
+              Старые сообщения из формы. Новые обращения и идеи — на странице{' '}
+              <Link to="/forum?scope=platform" className="text-primary-400 hover:underline">
+                Беседы
+              </Link>
+              .
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             {feedbackError && (

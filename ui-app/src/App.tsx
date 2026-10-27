@@ -34,8 +34,7 @@ import { AutomationsPage } from '@/pages/automations/automations'
 import { FigmaPreviewPage } from '@/pages/figma-preview'
 import { AboutPage } from '@/pages/about/about'
 import { PricingPage } from '@/pages/pricing/pricing'
-import { FeedbackPage } from '@/pages/feedback'
-import { RoadmapPage } from '@/pages/roadmap'
+import { ForumPage } from '@/pages/forum'
 import { RouteLoader } from '@/components/route-loader'
 import { HomeRedirect } from '@/components/home-redirect'
 
@@ -147,8 +146,9 @@ function App() {
           <Route path="ai" element={<AiCheckSection />} />
         </Route>
         <Route path="pricing" element={<PricingPage />} />
-        <Route path="feedback" element={<FeedbackPage />} />
-        <Route path="next" element={<RoadmapPage />} />
+        <Route path="forum" element={<ForumPage />} />
+        <Route path="feedback" element={<Navigate to="/forum?scope=platform" replace />} />
+        <Route path="next" element={<Navigate to="/forum?scope=platform&kind=suggestion" replace />} />
       </Route>
 
       <Route path="figma-preview" element={<FigmaPreviewPage />} />

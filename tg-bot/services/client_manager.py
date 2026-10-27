@@ -13,6 +13,7 @@ from telethon.errors import (
 )
 from database import get_db_connection, release_db_connection
 from config import settings
+from .auth_backoff import AuthAttemptBackoff, format_pause
 from .code_resend import CodeResendLimiter
 from .notification_service import notification_service
 
@@ -76,6 +77,7 @@ class TelegramClientManager:
         self._pending_clients: Dict[int, TelegramClient] = {}  # Клиенты ожидающие авторизации
         self._code_resend_limiter = CodeResendLimiter()
         self._code_resend_locks: Dict[int, asyncio.Lock] = {}
+        self._auth_backoff = AuthAttemptBackoff()
     
     async def load_profiles(self) -> List[Dict]:
         """Загружает профили из БД (collect_enabled или publish_enabled).
@@ -253,18 +255,26 @@ class TelegramClientManager:
         
         except PhoneNumberInvalidError:
             logger.error(f"Invalid phone number for user {user_id}")
+            pause = self._note_auth_failure(user_id)
             await notification_service.send_error_notification(
                 user_id,
-                "Неверный номер телефона. Проверьте номер и попробуйте снова."
+                "Неверный номер телефона. Проверьте номер и попробуйте снова. "
+                f"Следующая попытка через {format_pause(pause)}."
             )
             await self._update_auth_state(user_id, auth_state='failed')
             return None
         
         except FloodWaitError as e:
-            logger.warning(f"FloodWait error for user {user_id}: {e.seconds} seconds")
+            pause = self._note_auth_failure(user_id, minimum_sec=int(e.seconds))
+            logger.warning(
+                "FloodWait error for user %s: %s seconds, pause %s",
+                user_id,
+                e.seconds,
+                pause,
+            )
             await notification_service.send_error_notification(
                 user_id,
-                f"Слишком много запросов. Попробуйте через {e.seconds} секунд."
+                f"Слишком много запросов. Следующая попытка через {format_pause(pause)}."
             )
             return None
         
@@ -275,12 +285,16 @@ class TelegramClientManager:
                 user_id, err_msg, exc_info=True
             )
             # Сообщение для пользователя — без технических деталей, если они нечитаемы
+            pause = self._note_auth_failure(user_id)
             user_msg = (
                 err_msg
                 if err_msg and len(err_msg) < 200 and "bytes or str" not in err_msg
                 else "Ошибка при запросе кода. Проверьте номер телефона (формат +79001234567) и API credentials."
             )
-            await notification_service.send_error_notification(user_id, user_msg)
+            await notification_service.send_error_notification(
+                user_id,
+                f"{user_msg} Следующая попытка через {format_pause(pause)}."
+            )
             return None
 
     @staticmethod
@@ -293,6 +307,16 @@ class TelegramClientManager:
         else:
             phone_number = str(raw_phone).strip().lstrip("@")
         return phone_number or None
+
+    def _note_auth_failure(self, user_id: int, *, minimum_sec: int = 0) -> int:
+        """Запоминает неудачу и возвращает паузу до следующей попытки."""
+        pause = self._auth_backoff.record_failure(user_id, minimum_sec=minimum_sec)
+        logger.warning(
+            "Telegram auth pause for user %s: next attempt in %s sec",
+            user_id,
+            pause,
+        )
+        return pause
 
     def _code_resend_lock(self, user_id: int) -> asyncio.Lock:
         """Возвращает lock повторного запроса кода для пользователя."""
@@ -329,11 +353,21 @@ class TelegramClientManager:
             Словарь результата для AuthResponse
         """
         async with self._code_resend_lock(user_id):
-            retry_after = self._code_resend_limiter.retry_after_seconds(user_id)
+            retry_after = max(
+                self._code_resend_limiter.retry_after_seconds(user_id),
+                self._auth_backoff.retry_after_seconds(user_id),
+            )
             if retry_after > 0:
+                if self._auth_backoff.retry_after_seconds(user_id) > 0:
+                    error = (
+                        "Пауза после неудачной попытки авторизации. "
+                        f"Повтор через {retry_after} с"
+                    )
+                else:
+                    error = f"Повторный запрос кода возможен через {retry_after} с"
                 return {
                     "success": False,
-                    "error": f"Повторный запрос кода возможен через {retry_after} с",
+                    "error": error,
                     "retry_after_seconds": retry_after,
                 }
 
@@ -381,10 +415,14 @@ class TelegramClientManager:
                 user_id,
             )
             if not phone_code_hash:
+                retry_after = max(
+                    self._code_resend_limiter.retry_after_seconds(user_id),
+                    self._auth_backoff.retry_after_seconds(user_id),
+                )
                 return {
                     "success": False,
                     "error": "Не удалось запросить код. Проверьте номер телефона и прокси.",
-                    "retry_after_seconds": self._code_resend_limiter.retry_after_seconds(user_id),
+                    "retry_after_seconds": retry_after,
                 }
             return {
                 "success": True,
@@ -424,20 +462,27 @@ class TelegramClientManager:
         clean = phone.lstrip('+')
         return clean.isdigit()
 
-    async def _create_client_with_retry(self, profile: Dict) -> Optional[TelegramClient]:
-        """Создает клиент с повторными попытками при FloodWait."""
-        max_retries = 3
-        for attempt in range(max_retries):
-            try:
-                return await self.create_client(profile)
-            except FloodWaitError as e:
-                wait_sec = min(e.seconds, 60) * (2 ** attempt)
-                logger.warning(
-                    "FloodWait for user %s: waiting %s sec (attempt %d/%d)",
-                    profile.get("user_id"), wait_sec, attempt + 1, max_retries
+    async def _create_client_with_retry(
+        self,
+        profile: Dict,
+        *,
+        request_code: bool = True,
+    ) -> Optional[TelegramClient]:
+        """Одна попытка подключения. Следующая — только после паузы.
+
+        Повтор в том же цикле не делается: серия попыток приводит к таймауту Telegram.
+        """
+        user_id = profile.get("user_id")
+        if user_id is not None:
+            retry_after = self._auth_backoff.retry_after_seconds(int(user_id))
+            if retry_after > 0:
+                _log_action(
+                    "Skip Telegram connect for user %s, pause %s sec after failed attempt",
+                    user_id,
+                    retry_after,
                 )
-                await asyncio.sleep(wait_sec)
-        return None
+                return None
+        return await self.create_client(profile, request_code=request_code)
 
     async def create_client(
         self,
@@ -476,6 +521,15 @@ class TelegramClientManager:
             logger.warning(f"Profile {user_id} missing api_id or api_hash")
             return None
 
+        retry_after = self._auth_backoff.retry_after_seconds(user_id)
+        if retry_after > 0:
+            _log_action(
+                "Skip Telegram connect for user %s, pause %s sec after failed attempt",
+                user_id,
+                retry_after,
+            )
+            return None
+
         try:
             # Создаем директорию для сессий если её нет
             os.makedirs('sessions', exist_ok=True)
@@ -487,6 +541,9 @@ class TelegramClientManager:
             )
             client_kwargs: Dict[str, Any] = {
                 "system_version": "4.16.30-vxASPA",
+                # Одна попытка рукопожатия. Серию из нескольких подряд Telegram
+                # воспринимает как неудачи и ставит таймаут; повтор делает пауза.
+                "connection_retries": 1,
             }
             if proxy:
                 client_kwargs["proxy"] = proxy
@@ -508,14 +565,32 @@ class TelegramClientManager:
             # Подключаемся к Telegram
             try:
                 await client.connect()
-            except FloodWaitError:
-                raise
+            except FloodWaitError as exc:
+                pause = self._note_auth_failure(user_id, minimum_sec=int(exc.seconds))
+                logger.warning(
+                    "FloodWait connecting user %s: telegram=%s sec, pause=%s sec",
+                    user_id,
+                    exc.seconds,
+                    pause,
+                )
+                await notification_service.send_error_notification(
+                    user_id,
+                    "Telegram просит подождать. "
+                    f"Следующая попытка через {format_pause(pause)}."
+                )
+                try:
+                    await client.disconnect()
+                except Exception:
+                    pass
+                return None
             except Exception as e:
                 logger.error(f"Error connecting client for user {user_id}: {e}")
+                pause = self._note_auth_failure(user_id)
                 await self._update_auth_state(user_id, auth_state='failed')
                 await notification_service.send_error_notification(
                     user_id,
                     "Не удалось подключиться к Telegram (сеть/блокировка MTProto). "
+                    f"Следующая попытка через {format_pause(pause)}, чтобы не получить таймаут Telegram. "
                     "Задайте SOCKS5/HTTP прокси в профиле Telegram "
                     "(например socks5://host.docker.internal:10808) и сохраните профиль."
                 )
@@ -524,7 +599,14 @@ class TelegramClientManager:
                 except Exception:
                     pass
                 return None
-            
+
+            # Соединение есть — тост про блокировку MTProto уже неверен,
+            # даже если сессия ещё ждёт код.
+            await notification_service.clear_auth_notifications(
+                user_id,
+                authorized=False,
+            )
+
             # Проверяем авторизацию
             try:
                 if not await client.is_user_authorized():
@@ -535,6 +617,7 @@ class TelegramClientManager:
                         # 2FA ожидает пароль — код уже был принят,
                         # просто ждём пароль от пользователя
                         self._pending_clients[user_id] = client
+                        self._auth_backoff.record_success(user_id)
                         return None
 
                     phone_number = self._normalize_phone(profile.get("auth_phone_number"))
@@ -542,6 +625,7 @@ class TelegramClientManager:
                     if phone_number and self._is_valid_phone_number(phone_number):
                         if not request_code:
                             self._pending_clients[user_id] = client
+                            self._auth_backoff.record_success(user_id)
                             return None
                         phone_code_hash = await self._request_authorization_code(
                             client, phone_number, user_id
@@ -549,17 +633,18 @@ class TelegramClientManager:
                         if phone_code_hash:
                             # Сохраняем клиент для последующей авторизации
                             self._pending_clients[user_id] = client
+                            self._auth_backoff.record_success(user_id)
                             return None
-                        else:
-                            # send_code_request не удался
-                            self._pending_clients[user_id] = client
-                            return None
+                        # send_code_request не удался — пауза уже записана
+                        self._pending_clients[user_id] = client
+                        return None
                     else:
                         logger.warning(
                             f"No valid phone number for user {user_id}. "
                             "Set auth_phone_number in tg_profiles (e.g. +79001234567)"
                         )
                         await self._update_auth_state(user_id, auth_state='failed')
+                        self._auth_backoff.record_success(user_id)
                         await client.disconnect()
                         return None
                 
@@ -567,25 +652,48 @@ class TelegramClientManager:
                 # (мог остаться failed/pending_* после прошлой сетевой ошибки)
                 if auth_state != "authorized":
                     await self._update_auth_state(user_id, auth_state="authorized")
+                await notification_service.clear_auth_notifications(
+                    user_id,
+                    authorized=True,
+                )
+                self._auth_backoff.record_success(user_id)
                 _log_action("Created and connected client for user %s", user_id)
                 return client
             
-            except FloodWaitError:
+            except FloodWaitError as exc:
+                pause = self._note_auth_failure(user_id, minimum_sec=int(exc.seconds))
+                logger.warning(
+                    "FloodWait checking auth for user %s: pause %s sec",
+                    user_id,
+                    pause,
+                )
+                await notification_service.send_error_notification(
+                    user_id,
+                    "Telegram просит подождать. "
+                    f"Следующая попытка через {format_pause(pause)}."
+                )
                 try:
                     await client.disconnect()
                 except Exception:
                     pass
-                raise
+                return None
             except Exception as e:
                 logger.error(f"Error checking authorization for user {user_id}: {e}")
+                self._note_auth_failure(user_id)
                 try:
                     await client.disconnect()
                 except Exception:
                     pass
                 return None
             
-        except FloodWaitError:
-            raise
+        except FloodWaitError as exc:
+            pause = self._note_auth_failure(user_id, minimum_sec=int(exc.seconds))
+            logger.warning(
+                "FloodWait creating client for user %s: pause %s sec",
+                user_id,
+                pause,
+            )
+            return None
         except Exception as e:
             logger.error(f"Error creating client for user {user_id}: {e}", exc_info=True)
             return None
@@ -651,7 +759,23 @@ class TelegramClientManager:
                     _log_action("Client for user %s already exists, skipping", user_id)
                     continue
 
-                client = await self._create_client_with_retry(profile)
+                retry_after = self._auth_backoff.retry_after_seconds(int(user_id))
+                if retry_after > 0:
+                    self._profiles[user_id] = profile
+                    _log_action(
+                        "Client for user %s paused %s sec after failed auth attempt",
+                        user_id,
+                        retry_after,
+                    )
+                    continue
+
+                # Пока ждём код или пароль, не запрашиваем новый код на каждом reload.
+                auth_state = profile.get("auth_state") or ""
+                request_code = auth_state not in ("pending_code", "pending_password")
+                client = await self._create_client_with_retry(
+                    profile,
+                    request_code=request_code,
+                )
                 if client:
                     self._clients[user_id] = client
                     self._profiles[user_id] = profile

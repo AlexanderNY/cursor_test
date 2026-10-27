@@ -110,6 +110,10 @@ class AuthHandler:
                     )
                     
                     _log_action("User %s successfully authorized", user_id)
+                    await notification_service.clear_auth_notifications(
+                        user_id,
+                        authorized=True,
+                    )
                     from .platform_recheck import notify_platform_recheck
                     await notify_platform_recheck(user_id)
                     return {
@@ -212,6 +216,10 @@ class AuthHandler:
                     )
                     
                     _log_action("User %s successfully authorized with 2FA", user_id)
+                    await notification_service.clear_auth_notifications(
+                        user_id,
+                        authorized=True,
+                    )
                     from .platform_recheck import notify_platform_recheck
                     await notify_platform_recheck(user_id)
                     return {

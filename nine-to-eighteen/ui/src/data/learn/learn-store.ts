@@ -8,10 +8,12 @@ import {
 } from '@/data/learn/labels'
 import {
   apiDeletePost,
+  apiDownloadLearnBackup,
   apiGetPublishedPost,
   apiListAdminPosts,
   apiListPublishedPosts,
   apiResetToSeed,
+  apiRestoreLearnBackup,
   apiSavePost,
   apiScheduleAll,
 } from '@/data/learn/learn-api'
@@ -197,6 +199,23 @@ export async function deleteLearnPost(slug: string): Promise<void> {
     throw new Error('Требуется вход с ролью admin или author')
   }
   await apiDeletePost(slug)
+}
+
+export async function downloadLearnBackup(): Promise<void> {
+  if (!getLearnAuthSession() || !canEditLearn()) {
+    throw new Error('Нужен вход супер-админа')
+  }
+  await apiDownloadLearnBackup()
+}
+
+export async function restoreLearnBackup(
+  file: File,
+  replace: boolean,
+): Promise<{ upserted: number; deleted: number }> {
+  if (!getLearnAuthSession() || !canEditLearn()) {
+    throw new Error('Нужен вход супер-админа')
+  }
+  return apiRestoreLearnBackup(file, replace)
 }
 
 export async function resetLearnPostsToSeed(): Promise<LearnPost[]> {

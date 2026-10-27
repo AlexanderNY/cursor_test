@@ -1189,6 +1189,12 @@ class NotificationResponse(BaseModel):
     notifications: List[Notification]
 
 
+class NotificationClearRequest(BaseModel):
+    """Удаление устаревших уведомлений авторизации Telegram."""
+    user_id: int
+    types: List[str] = Field(..., min_length=1)
+
+
 # ==================== Feedback ====================
 
 class FeedbackCreate(BaseModel):
@@ -1255,6 +1261,90 @@ class RoadmapListResponse(BaseModel):
 class RoadmapVoteResponse(BaseModel):
     """Результат toggle голоса."""
     item_id: int
+    voted: bool
+    vote_count: int
+
+
+# ==================== Forum (workspace + platform threads) ====================
+
+ForumScope = Literal["workspace", "platform"]
+ForumKind = Literal["discussion", "bug_report", "suggestion", "contact_author"]
+
+
+class ForumThreadCreate(BaseModel):
+    """Новая ветка в Workspace или на платформе."""
+    scope: ForumScope
+    kind: ForumKind = "discussion"
+    title: str = Field(..., min_length=1, max_length=255)
+    body: str = Field(..., min_length=1, max_length=8000)
+
+
+class ForumPostCreate(BaseModel):
+    """Ответ в ветке."""
+    body: str = Field(..., min_length=1, max_length=8000)
+
+
+class ForumThreadUpdate(BaseModel):
+    """Закрыть или снова открыть ветку."""
+    is_closed: bool
+
+
+class ForumPost(BaseModel):
+    """Ответ в ветке."""
+    id: int
+    thread_id: int
+    body: str
+    author_id: int
+    author_name: str
+    created_at: datetime
+    can_delete: bool = False
+
+    class Config:
+        from_attributes = True
+
+
+class ForumThread(BaseModel):
+    """Ветка без списка ответов."""
+    id: int
+    scope: ForumScope
+    group_id: Optional[int] = None
+    group_name: Optional[str] = None
+    kind: ForumKind
+    title: str
+    body: str
+    author_id: int
+    author_name: str
+    is_closed: bool
+    vote_count: int = 0
+    voted: bool = False
+    reply_count: int = 0
+    created_at: datetime
+    updated_at: datetime
+    can_reply: bool = False
+    can_vote: bool = False
+    can_close: bool = False
+    can_delete: bool = False
+
+    class Config:
+        from_attributes = True
+
+
+class ForumThreadDetail(ForumThread):
+    """Ветка вместе с ответами."""
+    posts: List[ForumPost] = []
+
+
+class ForumListResponse(BaseModel):
+    """Список веток выбранной области."""
+    scope: ForumScope
+    group_id: Optional[int] = None
+    group_name: Optional[str] = None
+    threads: List[ForumThread]
+
+
+class ForumVoteResponse(BaseModel):
+    """Результат toggle голоса за идею."""
+    thread_id: int
     voted: bool
     vote_count: int
 

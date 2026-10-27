@@ -26,7 +26,8 @@ function SectionTileContent({ section }: SectionTileProps) {
 }
 
 export function SectionTile({ section }: SectionTileProps) {
-  const needsPyodide = section.slug === 'bowl' || section.slug === 'code'
+  const needsPyodide =
+    section.slug === 'bowl' || section.slug === 'code' || section.slug === 'trainers'
   const tileStyle = { '--tile-accent': section.accent } as CSSProperties
   const prefetchHandlers = {
     onMouseEnter: needsPyodide ? prefetchBowlRuntime : undefined,

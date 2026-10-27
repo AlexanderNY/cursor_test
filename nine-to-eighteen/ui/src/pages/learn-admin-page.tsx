@@ -1,14 +1,16 @@
-import { useState, type ReactNode } from 'react'
+import { useState, type ChangeEvent, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { AdminJumpNav } from '@/components/admin-jump-nav'
 import { PageShell } from '@/components/page-shell'
 import { clearLearnAuthSession, getLearnAuthSession } from '@/data/learn/learn-auth'
 import {
   deleteLearnPost,
+  downloadLearnBackup,
   formatPublishDate,
   fromDatetimeLocalValue,
   isPostPublished,
   resetLearnPostsToSeed,
+  restoreLearnBackup,
   scheduleAllLearnPosts,
   toDatetimeLocalValue,
 } from '@/data/learn/learn-store'
@@ -38,6 +40,7 @@ export function LearnAdminPage({
   )
   const [intervalDays, setIntervalDays] = useState(1)
   const [scheduleMessage, setScheduleMessage] = useState('')
+  const [replaceCatalog, setReplaceCatalog] = useState(false)
   const [busy, setBusy] = useState(false)
   const session = getLearnAuthSession()
 
@@ -63,6 +66,40 @@ export function LearnAdminPage({
         reload()
       })
       .catch((err) => setScheduleMessage(err instanceof Error ? err.message : 'Ошибка сброса'))
+      .finally(() => setBusy(false))
+  }
+
+  const handleBackup = (): void => {
+    setBusy(true)
+    setScheduleMessage('')
+    void downloadLearnBackup()
+      .then(() => setScheduleMessage('Бэкап скачан'))
+      .catch((err) => setScheduleMessage(err instanceof Error ? err.message : 'Не удалось скачать бэкап'))
+      .finally(() => setBusy(false))
+  }
+
+  const handleRestore = (event: ChangeEvent<HTMLInputElement>): void => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) {
+      return
+    }
+    const replace = replaceCatalog
+    const question = replace
+      ? `Заменить каталог файлом «${file.name}»? Статей, которых нет в файле, в базе не останется.`
+      : `Загрузить «${file.name}» в базу? Статьи с тем же slug обновятся, остальные останутся.`
+    if (!window.confirm(question)) {
+      return
+    }
+    setBusy(true)
+    setScheduleMessage('')
+    void restoreLearnBackup(file, replace)
+      .then((result) => {
+        const removed = result.deleted ? `, удалено ${result.deleted}` : ''
+        setScheduleMessage(`Загружено ${result.upserted}${removed}`)
+        reload()
+      })
+      .catch((err) => setScheduleMessage(err instanceof Error ? err.message : 'Не удалось загрузить статьи'))
       .finally(() => setBusy(false))
   }
 
@@ -132,6 +169,7 @@ export function LearnAdminPage({
         <AdminJumpNav
           items={[
             { id: 'learn-schedule', label: 'Расписание' },
+            { id: 'learn-backup', label: 'Бэкап' },
             { id: 'learn-posts', label: 'Записи' },
           ]}
         />
@@ -187,6 +225,44 @@ export function LearnAdminPage({
             {error}
           </p>
         ) : null}
+      </section>
+
+      <section
+        id="learn-backup"
+        className="learn-schedule admin-jump-target"
+        aria-labelledby="learn-backup-heading"
+      >
+        <h2 id="learn-backup-heading" className="learn-section-title">
+          Бэкап статей
+        </h2>
+        <p className="learn-section-note">
+          Скачать все статьи из базы или загрузить JSON либо zip с learn_seed.json. Без замены
+          каталога статьи с тем же slug обновляются, остальные остаются.
+        </p>
+        <div className="learn-admin-actions">
+          <button type="button" className="learn-admin-btn" onClick={handleBackup} disabled={busy}>
+            Скачать бэкап
+          </button>
+          <label className="learn-admin-btn">
+            Загрузить в базу
+            <input
+              type="file"
+              className="learn-admin-file"
+              accept=".json,.zip,application/json,application/zip"
+              onChange={handleRestore}
+              disabled={busy}
+            />
+          </label>
+          <label className="learn-admin-check">
+            <input
+              type="checkbox"
+              checked={replaceCatalog}
+              onChange={(event) => setReplaceCatalog(event.target.checked)}
+              disabled={busy}
+            />
+            Заменить каталог
+          </label>
+        </div>
       </section>
 
       <div id="learn-posts" className="admin-jump-target">

@@ -65,34 +65,14 @@ export const sections: Section[] = [
     appPath: '/game/portfolio',
   },
   {
-    slug: 'code',
-    title: 'Code',
-    subtitle: 'Песочница · задачи PY',
+    slug: 'trainers',
+    title: 'Тренажёры',
+    subtitle: 'Code · SQL · Git',
     description:
-      'Pyodide в браузере: редактор, каталог задач junior (PY02–PY08) с проверкой и заготовки из лаб Learn.',
+      'Песочницы в браузере: Python (Pyodide), SQL (SQLite) и симулятор Git. У каждого — свободный режим и каталог задач из Learn.',
     accent: '#2dd4bf',
     emoji: '⌨️',
     appPath: '/game/code',
-  },
-  {
-    slug: 'sql',
-    title: 'SQL',
-    subtitle: 'Песочница · задачи SQL',
-    description:
-      'SQLite в браузере (sql.js): редактор, каталог задач по лекциям SQL01–SQL13 с проверкой и блоки ```sql из Learn.',
-    accent: '#f59e0b',
-    emoji: '🗄️',
-    appPath: '/game/sql',
-  },
-  {
-    slug: 'git',
-    title: 'Git',
-    subtitle: 'Симулятор · задачи Git',
-    description:
-      'Команды Git в браузере без диска: status/add/commit/branch/stash/merge и Check по состоянию репозитория.',
-    accent: '#f97316',
-    emoji: '🌿',
-    appPath: '/game/git',
   },
   {
     slug: 'copyparse',
@@ -115,6 +95,23 @@ export const sections: Section[] = [
     appPath: '/game/mnemonics',
   },
 ]
+
+/** Old home tiles folded into the single «Тренажёры» plaque. */
+const TRAINER_TILE_SLUGS = new Set(['code', 'sql', 'git', 'trainers'])
+
+export function collapseTrainerTiles(tiles: Section[]): Section[] {
+  const index = tiles.findIndex((tile) => TRAINER_TILE_SLUGS.has(tile.slug))
+  if (index < 0) {
+    return tiles
+  }
+  const trainers = sections.find((section) => section.slug === 'trainers')
+  if (!trainers) {
+    return tiles
+  }
+  const rest = tiles.filter((tile) => !TRAINER_TILE_SLUGS.has(tile.slug))
+  rest.splice(index, 0, trainers)
+  return rest
+}
 
 const sectionBySlug = new Map(sections.map((section) => [section.slug, section]))
 

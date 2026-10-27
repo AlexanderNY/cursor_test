@@ -2,15 +2,17 @@
 from __future__ import annotations
 
 import json
+from datetime import date
 from typing import Any, List, Optional
 
-from fastapi import APIRouter, Header, HTTPException, Query, Request
-from fastapi.responses import PlainTextResponse
+from fastapi import APIRouter, File, Header, HTTPException, Query, Request, UploadFile
+from fastapi.responses import PlainTextResponse, Response
 from pydantic import BaseModel, EmailStr, Field
 
 from database import get_db_connection, release_db_connection
 from rate_limit import enforce_rate_limit
 from services.learn_article_md import load_article_template, parse_learn_article_md
+from services.learn_backup import build_export, parse_learn_backup
 from services.learn_service import VALID_RUBRICS, learn_service
 
 # Reuse site JWT helpers (site_admin only for CMS)
@@ -308,6 +310,37 @@ async def admin_delete_post(
     if not ok:
         raise HTTPException(status_code=404, detail="Post not found")
     return {"ok": True, "slug": slug}
+
+
+@router.get("/admin/backup")
+async def admin_backup(
+    authorization: Optional[str] = Header(None),
+) -> Response:
+    await _require_site_admin(authorization)
+    posts = await learn_service.list_posts(include_unpublished=True)
+    payload = build_export(posts)
+    filename = f"learn-articles-{date.today().isoformat()}.json"
+    return Response(
+        content=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        media_type="application/json; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.post("/admin/restore")
+async def admin_restore(
+    file: UploadFile = File(...),
+    replace: bool = Query(False),
+    authorization: Optional[str] = Header(None),
+) -> dict[str, Any]:
+    await _require_site_admin(authorization)
+    raw = await file.read()
+    try:
+        posts = parse_learn_backup(raw, file.filename or "")
+        result = await learn_service.restore_posts(posts, replace=replace)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return result
 
 
 @router.post("/admin/reset-to-seed")

@@ -1980,6 +1980,13 @@ button.learn-episode-card {
   background: var(--color-accent-fill-mid);
 }
 
+a.learn-tab,
+a.learn-tab:hover,
+a.learn-tab.is-active,
+a.learn-tab.is-active:hover {
+  text-decoration: none;
+}
+
 .learn-panel {
   margin-bottom: 2rem;
 }
@@ -2192,6 +2199,25 @@ button.learn-episode-card {
   flex-wrap: wrap;
   gap: 0.75rem;
   margin-bottom: 1.5rem;
+  align-items: center;
+}
+
+.learn-admin-file {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+
+.learn-admin-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.95rem;
 }
 
 .learn-admin-btn {

@@ -15,6 +15,7 @@ import {
 import { DEFAULT_SITE_PROMO, normalizeSitePromo, type SitePromo } from '@/data/promo'
 import {
   blogHref,
+  collapseTrainerTiles,
   sections as fallbackSections,
   serviceOpenTarget,
   type Section,
@@ -80,7 +81,7 @@ function mergeFallbackTiles(apiTiles: Section[]): Section[] {
 export function HomePage() {
   const location = useLocation()
   const [promo, setPromo] = useState<SitePromo>(DEFAULT_SITE_PROMO)
-  const [tiles, setTiles] = useState<Section[]>(fallbackSections)
+  const [tiles, setTiles] = useState<Section[]>(() => collapseTrainerTiles(fallbackSections))
   const [latest, setLatest] = useState<SiteLatestPost[]>([])
 
   useEffect(() => {
@@ -104,14 +105,14 @@ export function HomePage() {
       .then(([apps, rawPromo, latestPosts]) => {
         if (cancelled) return
         if (apps.length > 0) {
-          setTiles(mergeFallbackTiles(apps.map(appToSection)))
+          setTiles(collapseTrainerTiles(mergeFallbackTiles(apps.map(appToSection))))
         }
         setPromo(normalizeSitePromo(rawPromo as Partial<SitePromo>))
         setLatest(latestPosts)
       })
       .catch(() => {
         if (!cancelled) {
-          setTiles(fallbackSections)
+          setTiles(collapseTrainerTiles(fallbackSections))
           setPromo(DEFAULT_SITE_PROMO)
           setLatest([])
         }

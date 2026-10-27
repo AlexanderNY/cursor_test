@@ -1,4 +1,4 @@
-﻿"""Learn posts service (9to18 blog/course mirror)."""
+"""Learn posts service (9to18 blog/course mirror)."""
 from __future__ import annotations
 
 import json
@@ -314,6 +314,52 @@ def _meta_values(row: dict[str, Any]) -> tuple[Any, ...]:
     )
 
 
+_UPSERT_SQL = f"""
+INSERT INTO learn_posts (
+    {_META_INSERT_COLS},
+    updated_at
+)
+VALUES (
+    %s, %s, %s, %s, %s, %s,
+    %s, %s, %s, %s, %s::jsonb, %s::jsonb,
+    %s, %s, %s,
+    %s::jsonb, %s, %s::jsonb, %s, %s, %s::jsonb,
+    %s, %s, %s, %s, %s,
+    %s::jsonb, %s, %s, NOW()
+)
+ON CONFLICT (slug) DO UPDATE SET
+    episode = EXCLUDED.episode,
+    title = EXCLUDED.title,
+    short_title = EXCLUDED.short_title,
+    rubric_id = EXCLUDED.rubric_id,
+    sort_order = EXCLUDED.sort_order,
+    theory = EXCLUDED.theory,
+    lab = EXCLUDED.lab,
+    cheatsheet = EXCLUDED.cheatsheet,
+    diagram = EXCLUDED.diagram,
+    links = EXCLUDED.links,
+    structured = EXCLUDED.structured,
+    theory_format = EXCLUDED.theory_format,
+    lab_format = EXCLUDED.lab_format,
+    cheatsheet_format = EXCLUDED.cheatsheet_format,
+    profiles = EXCLUDED.profiles,
+    level = EXCLUDED.level,
+    tags = EXCLUDED.tags,
+    excerpt = EXCLUDED.excerpt,
+    duration_min = EXCLUDED.duration_min,
+    prerequisites = EXCLUDED.prerequisites,
+    author = EXCLUDED.author,
+    author_url = EXCLUDED.author_url,
+    cover_url = EXCLUDED.cover_url,
+    seo_title = EXCLUDED.seo_title,
+    seo_description = EXCLUDED.seo_description,
+    seo_keywords = EXCLUDED.seo_keywords,
+    canonical_url = EXCLUDED.canonical_url,
+    published_at = EXCLUDED.published_at,
+    updated_at = NOW()
+"""
+
+
 class LearnService:
     async def count_posts(self) -> int:
         conn = await get_db_connection()
@@ -452,55 +498,40 @@ class LearnService:
         try:
             async with conn.cursor() as cur:
                 await cur.execute(
-                    f"""
-                    INSERT INTO learn_posts (
-                        {_META_INSERT_COLS},
-                        updated_at
-                    )
-                    VALUES (
-                        %s, %s, %s, %s, %s, %s,
-                        %s, %s, %s, %s, %s::jsonb, %s::jsonb,
-                        %s, %s, %s,
-                        %s::jsonb, %s, %s::jsonb, %s, %s, %s::jsonb,
-                        %s, %s, %s, %s, %s,
-                        %s::jsonb, %s, %s, NOW()
-                    )
-                    ON CONFLICT (slug) DO UPDATE SET
-                        episode = EXCLUDED.episode,
-                        title = EXCLUDED.title,
-                        short_title = EXCLUDED.short_title,
-                        rubric_id = EXCLUDED.rubric_id,
-                        sort_order = EXCLUDED.sort_order,
-                        theory = EXCLUDED.theory,
-                        lab = EXCLUDED.lab,
-                        cheatsheet = EXCLUDED.cheatsheet,
-                        diagram = EXCLUDED.diagram,
-                        links = EXCLUDED.links,
-                        structured = EXCLUDED.structured,
-                        theory_format = EXCLUDED.theory_format,
-                        lab_format = EXCLUDED.lab_format,
-                        cheatsheet_format = EXCLUDED.cheatsheet_format,
-                        profiles = EXCLUDED.profiles,
-                        level = EXCLUDED.level,
-                        tags = EXCLUDED.tags,
-                        excerpt = EXCLUDED.excerpt,
-                        duration_min = EXCLUDED.duration_min,
-                        prerequisites = EXCLUDED.prerequisites,
-                        author = EXCLUDED.author,
-                        author_url = EXCLUDED.author_url,
-                        cover_url = EXCLUDED.cover_url,
-                        seo_title = EXCLUDED.seo_title,
-                        seo_description = EXCLUDED.seo_description,
-                        seo_keywords = EXCLUDED.seo_keywords,
-                        canonical_url = EXCLUDED.canonical_url,
-                        published_at = EXCLUDED.published_at,
-                        updated_at = NOW()
-                    RETURNING {POST_COLUMNS}
-                    """,
+                    _UPSERT_SQL + f" RETURNING {POST_COLUMNS}",
                     _meta_values(row),
                 )
                 saved = await cur.fetchone()
                 return _row_post(saved)
+        finally:
+            await release_db_connection(conn)
+            _public_posts_cache.clear()
+
+    async def restore_posts(
+        self, items: list[dict[str, Any]], *, replace: bool
+    ) -> dict[str, int]:
+        rows: list[dict[str, Any]] = []
+        for item in items:
+            row = seed_payload_to_row(item)
+            if not row["slug"] or not row["title"]:
+                raise ValueError("slug and title are required")
+            if row["rubric_id"] not in VALID_RUBRICS:
+                row["rubric_id"] = "architecture"
+            rows.append(row)
+        slugs = [row["slug"] for row in rows]
+        conn = await get_db_connection()
+        deleted = 0
+        try:
+            async with conn.cursor() as cur:
+                for row in rows:
+                    await cur.execute(_UPSERT_SQL, _meta_values(row))
+                if replace:
+                    await cur.execute(
+                        "DELETE FROM learn_posts WHERE NOT (slug = ANY(%s)) RETURNING slug",
+                        (slugs,),
+                    )
+                    deleted = len(await cur.fetchall())
+            return {"upserted": len(rows), "deleted": deleted}
         finally:
             await release_db_connection(conn)
             _public_posts_cache.clear()

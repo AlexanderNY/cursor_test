@@ -8,6 +8,20 @@ from config import settings
 
 logger = logging.getLogger(__name__)
 
+_CONNECTION_ERROR_TYPE = "tg_auth_error"
+_PENDING_AUTH_TYPES = ("tg_auth_code", "tg_auth_2fa")
+
+
+def auth_notification_types_to_clear(*, authorized: bool) -> list[str]:
+    """Типы тостов, которые уже не соответствуют живому клиенту Telegram.
+
+    Ошибка сети снимается, как только MTProto-сессия подключилась.
+    Просьбы ввести код или 2FA снимаются только после авторизации.
+    """
+    if authorized:
+        return [_CONNECTION_ERROR_TYPE, *_PENDING_AUTH_TYPES]
+    return [_CONNECTION_ERROR_TYPE]
+
 
 class NotificationService:
     """Сервис для отправки уведомлений пользователям."""
@@ -112,6 +126,42 @@ class NotificationService:
         """
         message = f"Telegram авторизация: {html.escape(error_message, quote=True)}"
         return await self.send_notification(user_id, message, notif_type="tg_auth_error")
+
+    async def clear_auth_notifications(
+        self,
+        user_id: int,
+        *,
+        authorized: bool,
+    ) -> bool:
+        """Снимает устаревшие тосты авторизации после успешного подключения."""
+        types = auth_notification_types_to_clear(authorized=authorized)
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.post(
+                    f"{self.core_url}/notifications/clear",
+                    json={"user_id": user_id, "types": types},
+                    headers={
+                        "X-User-Id": str(user_id),
+                        "X-User-Role": "admin",
+                    },
+                )
+            if response.status_code == 200:
+                return True
+            logger.warning(
+                "Failed to clear auth notifications for user %s: %s %s",
+                user_id,
+                response.status_code,
+                response.text,
+            )
+            return False
+        except Exception as exc:
+            logger.error(
+                "Error clearing auth notifications for user %s: %s",
+                user_id,
+                exc,
+                exc_info=True,
+            )
+            return False
 
 
 notification_service = NotificationService()

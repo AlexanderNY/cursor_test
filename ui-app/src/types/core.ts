@@ -176,6 +176,73 @@ export interface RoadmapVoteResponse {
   vote_count: number
 }
 
+export type ForumScope = 'workspace' | 'platform'
+
+export type ForumKind = 'discussion' | 'bug_report' | 'suggestion' | 'contact_author'
+
+export const FORUM_KIND_LABELS: Record<ForumKind, string> = {
+  discussion: 'Обсуждение',
+  bug_report: 'Ошибка',
+  suggestion: 'Идея',
+  contact_author: 'Вопрос автору',
+}
+
+export interface ForumThread {
+  id: number
+  scope: ForumScope
+  group_id?: number | null
+  group_name?: string | null
+  kind: ForumKind
+  title: string
+  body: string
+  author_id: number
+  author_name: string
+  is_closed: boolean
+  vote_count: number
+  voted: boolean
+  reply_count: number
+  created_at: string
+  updated_at: string
+  can_reply: boolean
+  can_vote: boolean
+  can_close: boolean
+  can_delete: boolean
+}
+
+export interface ForumPost {
+  id: number
+  thread_id: number
+  body: string
+  author_id: number
+  author_name: string
+  created_at: string
+  can_delete: boolean
+}
+
+export interface ForumThreadDetail extends ForumThread {
+  posts: ForumPost[]
+}
+
+export interface ForumListResponse {
+  scope: ForumScope
+  group_id?: number | null
+  group_name?: string | null
+  threads: ForumThread[]
+}
+
+export interface ForumThreadCreate {
+  scope: ForumScope
+  kind: ForumKind
+  title: string
+  body: string
+}
+
+export interface ForumVoteResponse {
+  thread_id: number
+  voted: boolean
+  vote_count: number
+}
+
 // Admin: services status & posts tables
 
 export interface LoopStatus {

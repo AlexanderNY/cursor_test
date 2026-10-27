@@ -139,43 +139,17 @@ DEFAULT_APPS: list[dict[str, Any]] = [
         "sort_order": 5,
     },
     {
-        "slug": "code",
-        "title": "Code",
-        "subtitle": "Python в браузере",
+        "slug": "trainers",
+        "title": "Тренажёры",
+        "subtitle": "Code · SQL · Git",
         "description": (
-            "Песочница Pyodide: короткие упражнения без IDE. "
-            "Лабы Learn можно запускать отсюда."
+            "Песочницы в браузере: Python (Pyodide), SQL (SQLite) и симулятор Git. "
+            "У каждого — свободный режим и каталог задач из Learn."
         ),
         "accent": "#2dd4bf",
         "emoji": "⌨️",
         "app_path": "/game/code",
         "sort_order": 6,
-    },
-    {
-        "slug": "sql",
-        "title": "SQL",
-        "subtitle": "SQLite в браузере",
-        "description": (
-            "Песочница sql.js: упражнения SQL без сервера. "
-            "Задачи связаны с лекциями Learn SQL01–SQL13."
-        ),
-        "accent": "#f59e0b",
-        "emoji": "🗄️",
-        "app_path": "/game/sql",
-        "sort_order": 7,
-    },
-    {
-        "slug": "git",
-        "title": "Git",
-        "subtitle": "Симулятор команд",
-        "description": (
-            "Учебный Git без диска: add/commit/branch/stash/merge. "
-            "Задачи связаны с B02, B06 и серией GIT01–GIT06."
-        ),
-        "accent": "#f97316",
-        "emoji": "🌿",
-        "app_path": "/game/git",
-        "sort_order": 8,
     },
     {
         "slug": "copyparse",
@@ -655,6 +629,10 @@ async def _ensure_featured_apps(cur: Any) -> None:
         "tasks",
         "quiz",
         "cert",
+        # Сложены в одну плашку trainers (вкладки Code / SQL / Git).
+        "code",
+        "sql",
+        "git",
     }
     for app in DEFAULT_APPS:
         await cur.execute(

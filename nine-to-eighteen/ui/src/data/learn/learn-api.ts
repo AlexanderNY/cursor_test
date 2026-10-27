@@ -175,6 +175,60 @@ export async function apiDeletePost(slug: string): Promise<void> {
   await request(`/learn/admin/posts/${encodeURIComponent(slug)}`, { method: 'DELETE' })
 }
 
+export async function apiDownloadLearnBackup(): Promise<void> {
+  const headers = new Headers()
+  const token = resolveAuthToken()
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`)
+  }
+  const response = await fetch(`${API_BASE}/learn/admin/backup`, { headers })
+  if (!response.ok) {
+    throw new LearnApiError(response.statusText || `HTTP ${response.status}`, response.status)
+  }
+  const blob = await response.blob()
+  const disposition = response.headers.get('Content-Disposition') || ''
+  const match = disposition.match(/filename="([^"]+)"/)
+  const filename = match?.[1] || 'learn-articles.json'
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  link.click()
+  URL.revokeObjectURL(url)
+}
+
+export async function apiRestoreLearnBackup(
+  file: File,
+  replace: boolean,
+): Promise<{ upserted: number; deleted: number }> {
+  const headers = new Headers()
+  const token = resolveAuthToken()
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`)
+  }
+  const body = new FormData()
+  body.append('file', file)
+  const query = replace ? '?replace=true' : ''
+  const response = await fetch(`${API_BASE}/learn/admin/restore${query}`, {
+    method: 'POST',
+    headers,
+    body,
+  })
+  if (!response.ok) {
+    let detail = response.statusText
+    try {
+      const data = (await response.json()) as { detail?: unknown }
+      if (typeof data.detail === 'string') {
+        detail = data.detail
+      }
+    } catch {
+      /* ignore */
+    }
+    throw new LearnApiError(detail || `HTTP ${response.status}`, response.status)
+  }
+  return (await response.json()) as { upserted: number; deleted: number }
+}
+
 export async function apiResetToSeed(): Promise<LearnPost[]> {
   const data = await request<{ posts: Record<string, unknown>[] }>('/learn/admin/reset-to-seed', {
     method: 'POST',

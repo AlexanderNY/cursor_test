@@ -168,6 +168,120 @@ CREATE INDEX IF NOT EXISTS idx_roadmap_votes_item_id ON roadmap_votes(item_id);
 CREATE INDEX IF NOT EXISTS idx_roadmap_votes_user_id ON roadmap_votes(user_id);
 """
 
+FORUM_THREADS_TABLE = """
+CREATE TABLE IF NOT EXISTS forum_threads (
+    id SERIAL PRIMARY KEY,
+    scope VARCHAR(20) NOT NULL CHECK (scope IN ('workspace', 'platform')),
+    group_id INTEGER,
+    kind VARCHAR(30) NOT NULL CHECK (
+        kind IN ('discussion', 'bug_report', 'suggestion', 'contact_author')
+    ),
+    title VARCHAR(255) NOT NULL,
+    body TEXT NOT NULL,
+    author_id INTEGER NOT NULL,
+    is_closed BOOLEAN NOT NULL DEFAULT FALSE,
+    legacy_source VARCHAR(20),
+    legacy_id INTEGER,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT forum_threads_scope_group_check CHECK (
+        (scope = 'workspace' AND group_id IS NOT NULL)
+        OR (scope = 'platform' AND group_id IS NULL)
+    )
+);
+CREATE INDEX IF NOT EXISTS idx_forum_threads_platform_updated
+    ON forum_threads (updated_at DESC, id DESC)
+    WHERE scope = 'platform';
+CREATE INDEX IF NOT EXISTS idx_forum_threads_group_updated
+    ON forum_threads (group_id, updated_at DESC, id DESC)
+    WHERE scope = 'workspace';
+CREATE UNIQUE INDEX IF NOT EXISTS uq_forum_threads_legacy
+    ON forum_threads (legacy_source, legacy_id)
+    WHERE legacy_source IS NOT NULL AND legacy_id IS NOT NULL;
+"""
+
+FORUM_POSTS_TABLE = """
+CREATE TABLE IF NOT EXISTS forum_posts (
+    id SERIAL PRIMARY KEY,
+    thread_id INTEGER NOT NULL REFERENCES forum_threads(id) ON DELETE CASCADE,
+    author_id INTEGER NOT NULL,
+    body TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_forum_posts_thread_created
+    ON forum_posts (thread_id, created_at ASC, id ASC);
+"""
+
+FORUM_VOTES_TABLE = """
+CREATE TABLE IF NOT EXISTS forum_votes (
+    id SERIAL PRIMARY KEY,
+    thread_id INTEGER NOT NULL REFERENCES forum_threads(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (thread_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_forum_votes_thread_id ON forum_votes(thread_id);
+"""
+
+FORUM_LEGACY_IMPORT = """
+INSERT INTO forum_threads (
+    scope, group_id, kind, title, body, author_id, is_closed,
+    created_at, updated_at, legacy_source, legacy_id
+)
+SELECT
+    'platform',
+    NULL,
+    f.type,
+    LEFT(
+        COALESCE(
+            NULLIF(btrim(replace(replace(f.text, chr(10), ' '), chr(13), ' ')), ''),
+            'Сообщение'
+        ),
+        255
+    ),
+    f.text,
+    COALESCE(f.user_id, 0),
+    FALSE,
+    COALESCE(f.created_at, CURRENT_TIMESTAMP),
+    COALESCE(f.created_at, CURRENT_TIMESTAMP),
+    'feedback',
+    f.id
+FROM feedback f
+WHERE NOT EXISTS (
+    SELECT 1 FROM forum_threads t
+    WHERE t.legacy_source = 'feedback' AND t.legacy_id = f.id
+);
+
+INSERT INTO forum_threads (
+    scope, group_id, kind, title, body, author_id, is_closed,
+    created_at, updated_at, legacy_source, legacy_id
+)
+SELECT
+    'platform',
+    NULL,
+    'suggestion',
+    COALESCE(NULLIF(LEFT(btrim(i.title), 255), ''), 'Идея'),
+    COALESCE(NULLIF(btrim(i.description), ''), i.title),
+    COALESCE(i.created_by, 0),
+    NOT COALESCE(i.is_active, TRUE),
+    COALESCE(i.created_at, CURRENT_TIMESTAMP),
+    COALESCE(i.updated_at, i.created_at, CURRENT_TIMESTAMP),
+    'roadmap',
+    i.id
+FROM roadmap_items i
+WHERE NOT EXISTS (
+    SELECT 1 FROM forum_threads t
+    WHERE t.legacy_source = 'roadmap' AND t.legacy_id = i.id
+);
+
+INSERT INTO forum_votes (thread_id, user_id, created_at)
+SELECT t.id, v.user_id, COALESCE(v.created_at, CURRENT_TIMESTAMP)
+FROM roadmap_votes v
+JOIN forum_threads t
+    ON t.legacy_source = 'roadmap' AND t.legacy_id = v.item_id
+ON CONFLICT (thread_id, user_id) DO NOTHING;
+"""
+
 SYSTEM_SETTINGS_TABLE = """
 CREATE TABLE IF NOT EXISTS system_settings (
     key VARCHAR(100) PRIMARY KEY,
@@ -748,6 +862,10 @@ ALL_TABLES: list[str] = [
     FEEDBACK_TABLE,
     ROADMAP_ITEMS_TABLE,
     ROADMAP_VOTES_TABLE,
+    FORUM_THREADS_TABLE,
+    FORUM_POSTS_TABLE,
+    FORUM_VOTES_TABLE,
+    FORUM_LEGACY_IMPORT,
     SYSTEM_SETTINGS_TABLE,
     GUIDE_BLOCKS_TABLE,
     SMM_BRANDS_TABLE,

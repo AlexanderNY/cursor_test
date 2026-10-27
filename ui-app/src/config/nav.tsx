@@ -42,6 +42,7 @@ export const navItems: NavItem[] = [
   { path: '/analytics', label: 'Analytics', Icon: ChartBarIcon },
   { path: '/competitors', label: 'Competitors', Icon: UsersIcon },
   { path: '/automations', label: 'Automations', Icon: SettingsIcon },
+  { path: '/forum', label: 'Беседы', Icon: DocumentTextIcon },
 ]
 
 /** Platform credentials / diagnostics — secondary; desk is Channels flow */

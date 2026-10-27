@@ -17,9 +17,13 @@ from selenium.webdriver.support.ui import WebDriverWait
 
 from config import settings
 from services.selenium_driver import create_chrome_driver
+from shared.auth_backoff import AuthAttemptBackoff, next_attempt_suffix, pause_active_message
 from storage_helper import put_bytes_sync
 
 logger = logging.getLogger(__name__)
+
+_login_backoff = AuthAttemptBackoff()
+_MISSING_CREDENTIALS = "Укажите логин и пароль VK."
 
 
 def _save_diagnostic_screenshot(driver: WebDriver, user_id: Optional[int]) -> Optional[str]:
@@ -271,7 +275,7 @@ def verify_vk_subscriptions_sync(
     login = (login or "").strip()
     password = (password or "").strip()
     if not login or not password:
-        return False, [], "Укажите логин и пароль VK.", None
+        return False, [], _MISSING_CREDENTIALS, None
 
     driver: Optional[WebDriver] = None
 
@@ -333,15 +337,33 @@ async def verify_vk_selenium_async(
     """Обёртка для FastAPI (async)."""
     import asyncio
 
+    if user_id is not None and (login or "").strip() and (password or "").strip():
+        wait = _login_backoff.retry_after_seconds(user_id)
+        if wait > 0:
+            return {
+                "ok": False,
+                "subscriptions": [],
+                "source": "selenium_web",
+                "error": pause_active_message(wait),
+                "retry_after_seconds": wait,
+            }
+
     ok, subs, msg, diag_key = await asyncio.to_thread(
         verify_vk_subscriptions_sync, login, password, user_id
     )
     result: Dict[str, Any] = {"ok": ok, "subscriptions": subs, "source": "selenium_web"}
     if ok:
+        if user_id is not None:
+            _login_backoff.record_success(user_id)
         if msg:
             result["message"] = msg
     else:
-        result["error"] = msg or "Ошибка резервного входа VK"
+        error = msg or "Ошибка резервного входа VK"
+        if user_id is not None and error != _MISSING_CREDENTIALS:
+            pause = _login_backoff.record_failure(user_id)
+            error = f"{error} {next_attempt_suffix(pause)}"
+            result["retry_after_seconds"] = pause
+        result["error"] = error
         if diag_key:
             result["diagnostic_s3_key"] = diag_key
     return result

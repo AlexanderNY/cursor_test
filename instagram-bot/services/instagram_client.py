@@ -8,6 +8,7 @@ import time
 from typing import Any, Dict, List, Optional
 
 from config import settings
+from shared.auth_backoff import AuthAttemptBackoff, format_pause, pause_active_message
 
 from .instagram_session import (
     clear_instagram_verification_code,
@@ -16,6 +17,8 @@ from .instagram_session import (
 )
 
 logger = logging.getLogger(__name__)
+
+_login_backoff = AuthAttemptBackoff()
 
 
 def _session_file_path(user_id: int) -> Optional[str]:
@@ -284,6 +287,12 @@ class InstagramClient:
             await self._auth_error("missing_username_or_password")
             return False
 
+        if self._user_id is not None:
+            wait = _login_backoff.retry_after_seconds(self._user_id)
+            if wait > 0:
+                await self._auth_error(pause_active_message(wait))
+                return False
+
         session = self._session_dict
         if session is None and self._user_id is not None:
             session = _load_session_file(self._user_id)
@@ -300,6 +309,9 @@ class InstagramClient:
             )
         except Exception as e:
             err = f"{type(e).__name__}: {e}"
+            if self._user_id is not None:
+                pause = _login_backoff.record_failure(self._user_id)
+                err = f"{err} Следующая попытка через {format_pause(pause)}."
             logger.error("Instagram login failed for %s: %s", self._username, err, exc_info=True)
             await self._auth_error(err)
             return False
@@ -317,6 +329,8 @@ class InstagramClient:
             if self._user_id is not None:
                 _dump_session_file(self._user_id, settings_dict)
 
+        if self._user_id is not None and self._client is not None:
+            _login_backoff.record_success(self._user_id)
         await self._auth_error(None)
         return self._client is not None
 
