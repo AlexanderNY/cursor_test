@@ -7,8 +7,8 @@ from pydantic import BaseModel, Field
 
 class RunRequest(BaseModel):
     """Тело запроса POST /run (тестовый запуск по запросу)."""
-    url: str = Field(..., description="URL страницы")
-    xpath: str = Field(..., description="XPath селектор элемента")
+    url: str = Field(..., max_length=2000, description="URL страницы")
+    xpath: str = Field(..., max_length=500, description="XPath селектор элемента")
     take_screenshot: bool = Field(False, description="Делать скриншот элемента")
     user_id: Optional[int] = Field(None, description="Если задан — сохранить скриншот в uploads/url/{user_id}/...")
 

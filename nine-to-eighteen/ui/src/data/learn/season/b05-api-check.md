@@ -6,7 +6,7 @@ episode: B05
 rubric: tools
 order: 105
 publishedAt: "2026-09-02T10:00:00Z"
-profiles: [tester, developer, devops]
+profiles: [developer, tester]
 level: junior
 tags: [api, "собеседование", git, frontend, react]
 onKnowledgeMap: true
@@ -479,6 +479,21 @@ Back: B09 · React · POST из формы
 ### Front: Ключевая идея: Проверка API
 
 Back: Пока нет React ([B08](/game/learn/b05-api-check)), API из [B04](/game/learn/b01-karta) уже можно проверить тремя способами.
+
+## Мнемоника
+
+### peg: Проверка с клиента
+
+**Задание:** Три взгляда на одну ручку.
+
+**Элементы:**
+- статус
+- тело
+- экран
+
+**Подсказка:** Экран может нарисовать пустой список при 200.
+
+**Ответ:** 1 status · 2 body · 3 UI
 
 ## Итоги
 

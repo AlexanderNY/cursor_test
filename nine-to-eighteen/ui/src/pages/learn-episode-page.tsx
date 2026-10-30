@@ -24,8 +24,17 @@ import {
 } from '@/data/learn/use-learn-posts'
 import { useSiteLearnProgress } from '@/data/site/use-learn-progress'
 import { hydrateLearnStructured } from '@/data/site/structured-post'
+import { ARTICLE_MNEMONICS } from '@/data/mnemonics/article-mnemonics'
+import { practiceForSlug } from '@/game/practice/links'
 
 type LearnTab = 'article' | 'lab' | 'cheatsheet'
+
+function learnTabFromQuery(value: string | null): LearnTab {
+  if (value === 'lab' || value === 'cheatsheet' || value === 'article') {
+    return value
+  }
+  return 'article'
+}
 
 const tabs: { id: LearnTab; label: string }[] = [
   { id: 'article', label: 'Статья' },
@@ -39,7 +48,9 @@ export function LearnEpisodePage() {
   const isPreview = searchParams.get('preview') === '1'
   const { post: episode, isReady } = useLearnPost(slug, { preview: isPreview })
   const { posts } = useLearnPosts()
-  const [activeTab, setActiveTab] = useState<LearnTab>('article')
+  const [activeTab, setActiveTab] = useState<LearnTab>(() =>
+    learnTabFromQuery(searchParams.get('tab')),
+  )
   const {
     completedSlugs,
     isAuthed,
@@ -49,19 +60,27 @@ export function LearnEpisodePage() {
   const [progressBusy, setProgressBusy] = useState(false)
 
   useEffect(() => {
-    setActiveTab('article')
-  }, [slug])
+    setActiveTab(learnTabFromQuery(searchParams.get('tab')))
+  }, [slug, searchParams])
 
   const hydrated = useMemo(() => {
     if (!episode) {
       return null
     }
-    return hydrateLearnStructured(episode.structured, {
+    const base = hydrateLearnStructured(episode.structured, {
       lab: episode.lab,
       cheatsheet: episode.cheatsheet,
       cheatsheetFormat: episode.cheatsheetFormat,
       diagram: episode.diagram,
     })
+    if ((base.mnemonics || []).length > 0) {
+      return base
+    }
+    const extra = ARTICLE_MNEMONICS[episode.slug]
+    if (!extra) {
+      return base
+    }
+    return { ...base, mnemonics: [extra] }
   }, [episode])
 
   const seoDescription =
@@ -121,6 +140,7 @@ export function LearnEpisodePage() {
     )
   }
 
+  const practiceLink = practiceForSlug(episode.slug)
   const rubricTitle = rubricTitleById(episode.rubricId)
   const adjacent = getAdjacentPosts(getPublishedPosts(posts), episode.slug)
   const isDone = completedSlugs.has(episode.slug)
@@ -135,6 +155,12 @@ export function LearnEpisodePage() {
     if (tab.id === 'cheatsheet') return hasCheatsheet
     return false
   })
+  const shownTab: LearnTab =
+    activeTab === 'lab' && !hasLab
+      ? 'article'
+      : activeTab === 'cheatsheet' && !hasCheatsheet
+        ? 'article'
+        : activeTab
 
   async function toggleProgress() {
     if (!isAuthed) {
@@ -229,13 +255,18 @@ export function LearnEpisodePage() {
           <Link to={`/game/learn/admin/${episode.slug}`} className="learn-admin-btn">
             Редактировать
           </Link>
+          {practiceLink ? (
+            <Link to={practiceLink.href} className="learn-admin-btn">
+              {practiceLink.label}
+            </Link>
+          ) : null}
         </div>
       </header>
 
       {visibleTabs.length > 1 ? (
         <div className="learn-tabs" role="tablist" aria-label="Разделы выпуска">
           {visibleTabs.map((tab) => {
-            const isActive = activeTab === tab.id
+            const isActive = shownTab === tab.id
             return (
               <button
                 key={tab.id}
@@ -255,12 +286,12 @@ export function LearnEpisodePage() {
       ) : null}
 
       <div
-        id={`panel-${activeTab}`}
+        id={`panel-${shownTab}`}
         role="tabpanel"
-        aria-labelledby={`tab-${activeTab}`}
+        aria-labelledby={`tab-${shownTab}`}
         className="learn-panel"
       >
-        {activeTab === 'article' &&
+        {shownTab === 'article' &&
           (hydrated ? (
             <>
               <StructuredPostView
@@ -334,7 +365,7 @@ export function LearnEpisodePage() {
             </>
           ))}
 
-        {activeTab === 'lab' && hasLab && (
+        {shownTab === 'lab' && hasLab && (
           <>
             <LearnContent content={labContent} format={episode.labFormat} />
             {episode.episode.toUpperCase().startsWith('SQL') ? (
@@ -351,7 +382,7 @@ export function LearnEpisodePage() {
           </>
         )}
 
-        {activeTab === 'cheatsheet' && hasCheatsheet && (
+        {shownTab === 'cheatsheet' && hasCheatsheet && (
           <section className="learn-cheatsheet" aria-labelledby="learn-cheat-heading">
             <h2 id="learn-cheat-heading" className="learn-panel-heading">
               Шпаргалка

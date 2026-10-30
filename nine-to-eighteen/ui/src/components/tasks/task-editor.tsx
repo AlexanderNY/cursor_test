@@ -1,4 +1,11 @@
 import { FormEvent, useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
+import {
+  displayNotes,
+  learnEpisodePath,
+  learnSlugFromNotes,
+  notesWithLearnSlug,
+} from '@/components/tasks/learn-link'
 import type {
   SiteTaskBoard,
   SiteTaskChecklistItem,
@@ -40,8 +47,9 @@ export function TaskEditor({
   onDelete,
   onAddSubtask,
 }: TaskEditorProps) {
+  const learnSlug = learnSlugFromNotes(task.notes)
   const [title, setTitle] = useState(task.title)
-  const [notes, setNotes] = useState(task.notes)
+  const [notes, setNotes] = useState(displayNotes(task.notes))
   const [tag, setTag] = useState(task.tag)
   const [dueAt, setDueAt] = useState(task.dueAt || '')
   const [dueTime, setDueTime] = useState(task.dueTime || '')
@@ -59,7 +67,7 @@ export function TaskEditor({
 
   useEffect(() => {
     setTitle(task.title)
-    setNotes(task.notes)
+    setNotes(displayNotes(task.notes))
     setTag(task.tag)
     setDueAt(task.dueAt || '')
     setDueTime(task.dueTime || '')
@@ -78,7 +86,7 @@ export function TaskEditor({
     }
     await onSave(task.id, {
       title: nextTitle,
-      notes: notes.trim(),
+      notes: learnSlug ? notesWithLearnSlug(learnSlug, notes) : notes.trim(),
       tag: tag.trim(),
       due_at: dueAt.trim() || null,
       due_time: dueTime.trim() || null,
@@ -111,6 +119,13 @@ export function TaskEditor({
           Закрыть
         </button>
       </header>
+      {learnSlug ? (
+        <p className="tasks-learn-links">
+          <Link to={learnEpisodePath(learnSlug)}>Выпуск</Link>
+          <Link to={learnEpisodePath(learnSlug, 'lab')}>Лаба</Link>
+          <Link to={learnEpisodePath(learnSlug, 'quiz')}>Тест</Link>
+        </p>
+      ) : null}
       <form className="tasks-editor-form" onSubmit={(event) => void handleSave(event)}>
         <label className="learn-admin-field">
           <span>Название</span>

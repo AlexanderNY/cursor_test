@@ -543,6 +543,9 @@ def scrape_url(
         "error": None,
     }
     try:
+        if len(xpath or "") > 500:
+            result["error"] = "XPath is too long"
+            return result
         safe_url = validate_public_http_url(url)
     except UnsafeUrlError as e:
         logger.warning("SSRF blocked URL=%r: %s", url, e)
@@ -591,7 +594,7 @@ def scrape_url(
             result["error"] = "Scrape hard timeout"
             return result
 
-        result["text"] = element.text or ""
+        result["text"] = (element.text or "")[:150000]
         if take_screenshot:
             png_bytes = _capture_element_screenshot(driver, element, hard_fired)
             if hard_fired.is_set():

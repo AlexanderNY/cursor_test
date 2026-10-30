@@ -15,6 +15,7 @@ class Settings(BaseSettings):
 
     # Интервал опроса (секунды)
     PROCESS_INTERVAL_SEC: int = 30
+    PROCESS_DRAIN_PAUSE_SEC: float = 1.0
 
     # Размер батча и лимиты цикла (AI_MAX_CONCURRENT=1 × 30s не должен держать цикл 25 мин)
     PROCESS_BATCH_SIZE: int = 8

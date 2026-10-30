@@ -5,6 +5,7 @@ const TRAINERS = [
   { id: 'code', label: 'Code', to: '/game/code' },
   { id: 'sql', label: 'SQL', to: '/game/sql' },
   { id: 'git', label: 'Git', to: '/game/git' },
+  { id: 'practice', label: 'Практика', to: '/game/practice' },
 ] as const
 
 export function TrainerTabs() {
@@ -13,7 +14,7 @@ export function TrainerTabs() {
   return (
     <nav className="learn-tabs" aria-label="Тренажёры">
       {TRAINERS.map((trainer) => {
-        const isActive = pathname === trainer.to
+        const isActive = pathname === trainer.to || pathname.startsWith(`${trainer.to}/`)
         return (
           <Link
             key={trainer.id}

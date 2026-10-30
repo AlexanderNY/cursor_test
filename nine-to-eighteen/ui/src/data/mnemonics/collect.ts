@@ -2,6 +2,7 @@ import type { LearnPost } from '@/data/learn/learn-store'
 import { hydrateLearnStructured, learnMnemonicDrills } from '@/data/site/structured-post'
 import type { MindNode } from '@/data/learning-map/parse-outline'
 import { SEED_MNEMONIC_DRILLS } from '@/data/mnemonics/seed-drills'
+import { ARTICLE_MNEMONICS } from '@/data/mnemonics/article-mnemonics'
 import type { MnemonicDrillCard, MnemonicTechniqueId } from '@/data/mnemonics/types'
 
 function slugify(value: string): string {
@@ -21,7 +22,10 @@ export function collectMnemonicDrillsFromPosts(posts: LearnPost[]): MnemonicDril
       cheatsheetFormat: post.cheatsheetFormat,
       diagram: post.diagram,
     })
-    const drills = learnMnemonicDrills(structured)
+    const fromPost = learnMnemonicDrills(structured)
+    const extra = ARTICLE_MNEMONICS[post.slug]
+    const drills =
+      fromPost.length > 0 ? fromPost : extra ? [extra] : []
     drills.forEach((drill, index) => {
       out.push({
         ...drill,

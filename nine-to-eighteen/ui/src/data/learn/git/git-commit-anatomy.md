@@ -6,7 +6,7 @@ episode: GIT01
 rubric: tools
 order: 701
 publishedAt: "2027-05-01T10:00:00+03:00"
-profiles: [developer, analyst, tester]
+profiles: [developer, devops, tester, analyst]
 level: middle
 tags: [git, commit, stage, "собеседование", remote, fetch, pull, stash, reset, merge, rebase, squash, tag, bisect]
 onKnowledgeMap: true
@@ -443,6 +443,22 @@ Back: Указатель на commit с человекочитаемым име�
 ### Front: GitHub Flow?
 
 Back: main + короткие feature + PR
+
+## Мнемоника
+
+### link: Коммит
+
+**Задание:** Из чего состоит снимок.
+
+**Элементы:**
+- рабочее дерево
+- индекс
+- объект
+- указатель ветки
+
+**Подсказка:** Commit не смотрит на файл, пока тот не в индексе.
+
+**Ответ:** worktree → index → object → ref
 
 ## Итоги
 

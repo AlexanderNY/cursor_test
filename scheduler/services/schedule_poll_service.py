@@ -323,6 +323,9 @@ async def run_poll_cycle() -> bool:
                         len(schedules),
                     ),
                 )
+                from shared.service_cycle_log import purge_old_cycle_logs
+
+                await purge_old_cycle_logs(cur)
     except Exception as e:
         logger.debug("service_cycle_log skip: %s", e)
     _last_poll_at = datetime.utcnow()

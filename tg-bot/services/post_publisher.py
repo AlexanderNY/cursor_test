@@ -7,7 +7,6 @@ import os
 import tempfile
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any
-import httpx
 from database import get_db_connection, release_db_connection
 from config import settings
 from storage_helper import get_storage
@@ -301,25 +300,29 @@ class PostPublisher:
         return refs[0] if refs else None
 
     async def _download_image_url(self, url: str) -> Optional[str]:
-        """Скачивает изображение по URL во временный файл."""
+        """Скачивает публичное изображение по URL во временный файл."""
+        from shared.safe_fetch import MAX_DOWNLOAD_BYTES, FetchError, fetch_bounded
+        from shared.url_safety import UnsafeUrlError
+
         if not url or not url.strip().lower().startswith(("http://", "https://")):
             return None
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                resp = await client.get(url)
-                resp.raise_for_status()
-                suffix = ".jpg"
-                if "content-type" in resp.headers:
-                    ct = (resp.headers.get("content-type") or "").lower()
-                    if "png" in ct:
-                        suffix = ".png"
-                    elif "gif" in ct:
-                        suffix = ".gif"
-                    elif "webp" in ct:
-                        suffix = ".webp"
-                path = await async_fs.write_temp_bytes(resp.content, suffix=suffix)
-                return path
-        except Exception as e:
+            body, content_type = await fetch_bounded(
+                url,
+                max_bytes=MAX_DOWNLOAD_BYTES,
+                timeout=30.0,
+            )
+            suffix = ".jpg"
+            ct = (content_type or "").lower()
+            if "png" in ct:
+                suffix = ".png"
+            elif "gif" in ct:
+                suffix = ".gif"
+            elif "webp" in ct:
+                suffix = ".webp"
+            path = await async_fs.write_temp_bytes(body, suffix=suffix)
+            return path
+        except (UnsafeUrlError, FetchError) as e:
             logger.warning("Failed to download image from URL %s: %s", url[:80], e)
         return None
 
@@ -339,7 +342,7 @@ class PostPublisher:
             return []
         result: List[str] = []
         storage = get_storage()
-        for ref in refs:
+        for ref in refs[:10]:
             s = ref.strip()
             local_path: Optional[str] = None
             if s.lower().startswith(("http://", "https://")):

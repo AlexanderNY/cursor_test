@@ -1,18 +1,22 @@
 """Сбор постов из внешних RSS-лент Дзен (channels_to_read) в dzen_posts."""
 
-import asyncio
 import json
 import logging
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from typing import Any
-from urllib.request import urlopen, Request
-from urllib.error import URLError, HTTPError
 
 from database import get_db_connection
 from config import settings
 from shared.db.posts_repo import InboundPostCreate, PostsRepository
 from shared.queue_wakeup import wake_process_http
+from shared.safe_fetch import MAX_TEXT_BYTES, FetchError, fetch_bounded
+from shared.url_safety import UnsafeUrlError
+from shared.xml_safety import assert_safe_xml
+
+_MAX_CHANNELS = 20
+_MAX_ITEMS_PER_FEED = 30
+_MAX_IMAGES = 10
 
 logger = logging.getLogger(__name__)
 
@@ -25,11 +29,17 @@ NS = {
 }
 
 
-def _fetch_rss_sync(url: str, timeout: int = 15) -> str:
-    """Синхронно загружает RSS по URL. Вызывать из asyncio.to_thread."""
-    req = Request(url, headers={"User-Agent": "DzenRssCollector/1.0"})
-    with urlopen(req, timeout=timeout) as resp:
-        return resp.read().decode("utf-8", errors="replace")
+async def _fetch_rss(url: str) -> str:
+    """Загружает публичный RSS с потолком размера и проверкой адреса."""
+    body, _content_type = await fetch_bounded(
+        url,
+        max_bytes=MAX_TEXT_BYTES,
+        timeout=15.0,
+        headers={"User-Agent": "DzenRssCollector/1.0"},
+    )
+    xml_text = body.decode("utf-8", errors="replace")
+    assert_safe_xml(xml_text)
+    return xml_text
 
 
 def _parse_rss_items(xml_text: str) -> list[dict[str, Any]]:
@@ -80,6 +90,19 @@ def _parse_rss_items(xml_text: str) -> list[dict[str, Any]]:
     return items
 
 
+def _bounded_images(raw: Any) -> list[str]:
+    if not isinstance(raw, list):
+        return []
+    images: list[str] = []
+    for item in raw[:_MAX_IMAGES]:
+        if not isinstance(item, str):
+            continue
+        text = item.strip()
+        if text and len(text) <= 2000:
+            images.append(text)
+    return images
+
+
 class DzenRssReaderService:
     """Сервис вычитки внешних RSS-лент в dzen_posts."""
 
@@ -113,16 +136,16 @@ class DzenRssReaderService:
                     channels_to_read = channels_to_read_raw or []
             except (json.JSONDecodeError, TypeError):
                 channels_to_read = []
-            for rss_url in channels_to_read:
+            for rss_url in list(channels_to_read)[:_MAX_CHANNELS]:
                 if not isinstance(rss_url, str) or not rss_url.strip():
                     continue
                 rss_url = rss_url.strip()
                 try:
-                    xml_text = await asyncio.to_thread(_fetch_rss_sync, rss_url)
-                except (URLError, HTTPError, OSError) as e:
-                    logger.warning("Dzen RSS fetch %s: %s", rss_url, e)
+                    xml_text = await _fetch_rss(rss_url)
+                except (UnsafeUrlError, FetchError, ValueError, OSError) as e:
+                    logger.warning("Dzen RSS fetch %s: %s", rss_url[:80], e)
                     continue
-                items = _parse_rss_items(xml_text)
+                items = _parse_rss_items(xml_text)[:_MAX_ITEMS_PER_FEED]
                 for it in items:
                     try:
                         n = await self._insert_item(user_id=user_id, item=it)
@@ -167,7 +190,7 @@ class DzenRssReaderService:
                         title=(item.get("title") or "")[:500],
                         url=link,
                         post_date=post_date,
-                        images=item.get("images") or [],
+                        images=_bounded_images(item.get("images")),
                         extras={"collect_source": "rss"},
                         source_native_id=link,
                         target_platforms=("dzen",),

@@ -7827,12 +7827,20 @@ class SmmService:
 
         from services.public_http import fetch_public_http_text
 
-        raw = await fetch_public_http_text(url)
+        from shared.safe_fetch import FetchError
+        from shared.url_safety import UnsafeUrlError
+        from shared.xml_safety import assert_safe_xml
+
+        try:
+            raw = await fetch_public_http_text(url)
+            assert_safe_xml(raw)
+            root = ET.fromstring(raw)
+        except (UnsafeUrlError, FetchError, ValueError, ET.ParseError) as exc:
+            logger.warning("RSS fetch rejected for %s: %s", url[:80], exc)
+            return []
 
         def _local(tag: str) -> str:
             return tag.split("}")[-1].lower() if tag else ""
-
-        root = ET.fromstring(raw)
         items: list[dict] = []
         # RSS 2.0
         for node in root.iter():
@@ -7842,7 +7850,7 @@ class SmmService:
             for child in list(node):
                 name = _local(child.tag)
                 if name in ("title", "link", "description", "guid", "pubdate"):
-                    data[name] = (child.text or "").strip()
+                    data[name] = (child.text or "").strip()[:150000]
             items.append(
                 {
                     "id": data.get("guid") or data.get("link") or data.get("title") or "",
@@ -7866,11 +7874,11 @@ class SmmService:
             for child in list(node):
                 name = _local(child.tag)
                 if name == "title":
-                    title = (child.text or "").strip()
+                    title = (child.text or "").strip()[:500]
                 elif name == "id":
-                    entry_id = (child.text or "").strip()
+                    entry_id = (child.text or "").strip()[:500]
                 elif name == "summary" or name == "content":
-                    summary = (child.text or "").strip()
+                    summary = (child.text or "").strip()[:150000]
                 elif name == "link":
                     href = child.attrib.get("href") or (child.text or "").strip()
                     if href:

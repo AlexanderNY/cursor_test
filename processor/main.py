@@ -6,11 +6,12 @@ import sys
 from contextlib import asynccontextmanager
 from datetime import datetime
 
-from fastapi import FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, HTTPException, status
 
 from config import settings, PROCESSING_OPTIONS_FOR_ADMIN
 from database import init_db, close_db, get_db_connection
 from services.processing_service import processing_service
+from shared.internal_auth_fastapi import require_internal_token
 from shared.queue_wakeup import CHANNEL_PROCESS, WakeGate, listen_forever, wake_distribute_http
 from schemas import (
     HealthResponse,
@@ -45,6 +46,7 @@ async def _processor_loop() -> None:
             processed = await processing_service.run_processing_cycle()
             if processed > 0:
                 await wake_distribute_http(settings.COLLECTOR_SERVICE_URL)
+                await asyncio.sleep(max(0.2, float(settings.PROCESS_DRAIN_PAUSE_SEC)))
                 continue
         except Exception:
             logger.exception("Error in processor loop")
@@ -127,14 +129,14 @@ async def get_status():
     )
 
 
-@app.post("/internal/process-now", response_model=CycleResult)
+@app.post("/internal/process-now", response_model=CycleResult, dependencies=[Depends(require_internal_token)])
 async def process_now():
     """Пропустить sleep process-цикла (NOTIFY/HTTP wake)."""
     _process_gate.wake()
     return CycleResult(status="success", message="Process loop woken", count=0)
 
 
-@app.post("/process/run", response_model=CycleResult)
+@app.post("/process/run", response_model=CycleResult, dependencies=[Depends(require_internal_token)])
 async def force_process():
     """Принудительный запуск одного цикла обработки."""
     try:

@@ -56,6 +56,20 @@ docker exec copyparse-wp-site-wordpress-1 php /tmp/seed-card-pages.php
 
 Повторный запуск обновляет те же страницы. Демо Sample Page и «Пример страницы» уходят в черновик.
 
+Две заметки о развитии CopyParse в ленту `/notes/`:
+
+```powershell
+docker cp wp-site/seed-copyparse-notes.php copyparse-wp-site-wordpress-1:/tmp/seed-copyparse-notes.php
+docker exec copyparse-wp-site-wordpress-1 php /tmp/seed-copyparse-notes.php
+```
+
+Меню и стили Twenty Twenty-Five (после активации темы):
+
+```powershell
+docker cp wp-site/setup-tt5-appearance.php copyparse-wp-site-wordpress-1:/tmp/setup-tt5-appearance.php
+docker exec copyparse-wp-site-wordpress-1 php /tmp/setup-tt5-appearance.php
+```
+
 ## Порты
 
 | Сервис    | Хост             |

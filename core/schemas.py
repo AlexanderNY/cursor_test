@@ -21,6 +21,21 @@ class TimeInterval(BaseModel):
     end: Optional[str] = Field(None, pattern=r"^\d{2}:\d{2}$")
 
 
+def _limit_image_refs(value: List[Any]) -> List[str]:
+    """Cap image URL/path lists stored on a post."""
+    if len(value) > 10:
+        raise ValueError("at most 10 images")
+    cleaned: List[str] = []
+    for item in value:
+        text = str(item).strip()
+        if not text:
+            continue
+        if len(text) > 2000:
+            raise ValueError("image reference is too long")
+        cleaned.append(text)
+    return cleaned
+
+
 # ==================== Healthcheck ====================
 
 class HealthcheckItem(BaseModel):
@@ -276,14 +291,14 @@ class TelegramProfileBase(BaseModel):
     alert_enabled: bool = False
     alert_rules: List[TelegramAlertRule] = Field(default_factory=list, max_length=10)
     process_enabled: bool = False
-    processing_description: Optional[str] = None
+    processing_description: Optional[str] = Field(None, max_length=8000)
     remove_emojis: bool = False
     remove_images: bool = False
     clean_html: bool = False
     process_services: Optional[List[str]] = None  # ["wordpress", "telegram", "twitter", "vkontakte"]
     status_review_after_process: bool = False
     add_static_html: bool = False
-    static_html_content: Optional[str] = None  # max 1000
+    static_html_content: Optional[str] = Field(None, max_length=1000)
     summarize_enabled: bool = False
     summarize_min_length: int = Field(default=500, ge=100, le=10000)
     digest_interval_min: int = Field(default=30, ge=5, le=1440)
@@ -305,7 +320,13 @@ class TelegramProfileBase(BaseModel):
     def normalize_classification_categories(cls, value: Any) -> List[str]:
         if not isinstance(value, list):
             return ["новости", "реклама", "технологии", "финансы", "другое"]
-        result = [str(item).strip() for item in value if str(item).strip()]
+        result: List[str] = []
+        for item in value:
+            text = str(item).strip()[:80]
+            if text:
+                result.append(text)
+            if len(result) >= 30:
+                break
         return result or ["новости", "реклама", "технологии", "финансы", "другое"]
 
     @field_validator("alert_rules", mode="before")
@@ -491,14 +512,14 @@ class ThreadsProfileBase(BaseModel):
     schedule_type: Optional[str] = "immediate"
     time_intervals: List[TimeInterval] = []
     process_enabled: bool = False
-    processing_description: Optional[str] = None
+    processing_description: Optional[str] = Field(None, max_length=8000)
     remove_emojis: bool = False
     remove_images: bool = False
     clean_html: bool = False
     process_services: Optional[List[str]] = None
     status_review_after_process: bool = False
     add_static_html: bool = False
-    static_html_content: Optional[str] = None
+    static_html_content: Optional[str] = Field(None, max_length=1000)
 
 
 class ThreadsProfileCreate(ThreadsProfileBase):
@@ -630,7 +651,7 @@ class WordPressProfileBase(BaseModel):
     collect_enabled: bool = False
     schedule_type: ScheduleType = ScheduleType.IMMEDIATE
     time_intervals: List[TimeInterval] = []
-    site_url: Optional[str] = None
+    site_url: Optional[str] = Field(None, max_length=500)
     username: Optional[str] = None
     app_password: Optional[str] = None
 
@@ -663,26 +684,26 @@ class WordPressPublishProfileCreate(BaseModel):
     publish_enabled: bool = False
     schedule_type: Optional[str] = "on_new_messages"
     time_intervals: Optional[str] = None  # "HH:MM"
-    site_url: Optional[str] = None
+    site_url: Optional[str] = Field(None, max_length=500)
     username: Optional[str] = None
     app_password: Optional[str] = None
     publish_all_ready: bool = True
     publish_limit: Optional[int] = None
     publish_interval_minutes: Optional[int] = None  # 15–1440, шаг 15
     process_before_publish: bool = False
-    process_description: Optional[str] = None
+    process_description: Optional[str] = Field(None, max_length=8000)
     remove_emojis: bool = False
     remove_images: bool = False
     clean_html: bool = False
     process_services: Optional[List[str]] = None  # ["wordpress", "telegram", "twitter", "vkontakte"]
     status_review_after_process: bool = False
     add_static_html: bool = False
-    static_html_content: Optional[str] = None  # max 1000
+    static_html_content: Optional[str] = Field(None, max_length=1000)
 
 
 class CollectSiteItem(BaseModel):
     """Один сайт сбора: site_url, schedule_type, time_intervals (HH:MM)."""
-    site_url: Optional[str] = None
+    site_url: Optional[str] = Field(None, max_length=500)
     schedule_type: Optional[str] = "on_new_messages"
     time_intervals: Optional[str] = None  # "HH:MM"
 
@@ -791,10 +812,17 @@ class VKontaktePost(BaseModel):
     to_threads: bool = False
     to_dzen: bool = False
     to_instagram: bool = False
-    images: Optional[List[str]] = None
+    images: Optional[List[str]] = Field(None, max_length=10)
     publish_at: Optional[datetime] = None
-    target_groups: Optional[List[str]] = None
-    target_channels: Optional[List[str]] = None
+    target_groups: Optional[List[str]] = Field(None, max_length=20)
+    target_channels: Optional[List[str]] = Field(None, max_length=20)
+
+    @field_validator("images")
+    @classmethod
+    def limit_image_refs(cls, value: Optional[List[str]]) -> Optional[List[str]]:
+        if value is None:
+            return None
+        return _limit_image_refs(value)
 
 
 # ==================== Dzen ====================
@@ -807,14 +835,47 @@ class DzenProfileBase(BaseModel):
     time_intervals: List[TimeInterval] = []
     rss_feed_url: Optional[str] = None
     channel_name: Optional[str] = None
-    channels_to_read: List[str] = []  # RSS URL чужих каналов для вычитки
+    channels_to_read: List[str] = Field(default_factory=list, max_length=20)
     rss_token: Optional[str] = None  # опционально: защита RSS по ?token=...
     yandex_login: Optional[str] = None  # телефон для входа (7XXXXXXXXXX)
     yandex_password: Optional[str] = None  # при сохранении пусто или "***" — не менять в БД
     yandex_first_name: Optional[str] = None  # для экрана «Введите имя и фамилию»
     yandex_last_name: Optional[str] = None
-    dzen_studio_url: Optional[str] = None  # URL студии / списка публикаций для Selenium-сбора
+    dzen_studio_url: Optional[str] = Field(None, max_length=2000)
     collect_source: Optional[str] = "rss"  # rss | selenium | both
+
+    @field_validator("channels_to_read")
+    @classmethod
+    def validate_channels_to_read(cls, value: List[str]) -> List[str]:
+        from shared.url_safety import UnsafeUrlError, validate_http_url_shape
+
+        cleaned: List[str] = []
+        for item in value:
+            raw = str(item).strip()
+            if not raw:
+                continue
+            if len(raw) > 2000:
+                raise ValueError("RSS URL is too long")
+            try:
+                cleaned.append(validate_http_url_shape(raw))
+            except UnsafeUrlError as exc:
+                raise ValueError(f"RSS URL is not allowed: {exc}") from exc
+        return cleaned
+
+    @field_validator("dzen_studio_url")
+    @classmethod
+    def validate_dzen_studio_url(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        raw = str(value).strip()
+        if not raw:
+            return None
+        from shared.url_safety import UnsafeUrlError, validate_http_url_shape
+
+        try:
+            return validate_http_url_shape(raw)
+        except UnsafeUrlError as exc:
+            raise ValueError(f"dzen_studio_url is not allowed: {exc}") from exc
 
 
 class DzenProfileCreate(DzenProfileBase):
@@ -873,14 +934,14 @@ class InstagramProfileBase(BaseModel):
     password: Optional[str] = None
     usernames_to_read: List[str] = []
     process_enabled: bool = False
-    processing_description: Optional[str] = None
+    processing_description: Optional[str] = Field(None, max_length=8000)
     remove_emojis: bool = False
     remove_images: bool = False
     clean_html: bool = False
     process_services: Optional[List[str]] = None
     status_review_after_process: bool = False
     add_static_html: bool = False
-    static_html_content: Optional[str] = None
+    static_html_content: Optional[str] = Field(None, max_length=1000)
     instagram_verification_code: Optional[str] = None
 
 
@@ -938,19 +999,19 @@ class CurlTargetSocialNetworks(BaseModel):
 class CurlUrlItem(BaseModel):
     """Один URL в настройках cURL: сбор, обработка и целевые сети."""
     id: Optional[str] = None
-    url: str = ""
-    xpath: str = ""
+    url: str = Field("", max_length=2000)
+    xpath: str = Field("", max_length=500)
     take_screenshot: bool = False
     screenshot_format: Optional[str] = None  # "base64" | "file"
     target_social_networks: CurlTargetSocialNetworks = Field(default_factory=CurlTargetSocialNetworks)
     # Каналы TG (external_id) и группы VK для публикации
-    target_channels: List[str] = Field(default_factory=list)
-    target_groups: List[str] = Field(default_factory=list)
+    target_channels: List[str] = Field(default_factory=list, max_length=20)
+    target_groups: List[str] = Field(default_factory=list, max_length=20)
     schedule_time: Optional[str] = None  # HH:MM
     run_once: bool = False
     # Per-URL processing (раньше было глобально на curl_settings)
     process_before_publish: bool = False
-    process_description: Optional[str] = None
+    process_description: Optional[str] = Field(None, max_length=8000)
     remove_emojis: bool = False
     remove_images: bool = False
     clean_html: bool = False
@@ -960,14 +1021,27 @@ class CurlUrlItem(BaseModel):
     static_html_content: Optional[str] = Field(None, max_length=1000)
     screenshot_only: bool = False
 
+    @field_validator("url")
+    @classmethod
+    def validate_curl_url(cls, value: str) -> str:
+        raw = (value or "").strip()
+        if not raw:
+            return ""
+        from shared.url_safety import UnsafeUrlError, validate_http_url_shape
+
+        try:
+            return validate_http_url_shape(raw)
+        except UnsafeUrlError as exc:
+            raise ValueError(f"URL is not allowed: {exc}") from exc
+
 
 class CurlSettingsBase(BaseModel):
     """Базовая модель настроек cURL скрапинга (urls + legacy обработка как fallback)."""
     collect_enabled: bool = False
-    urls: List[CurlUrlItem] = []
+    urls: List[CurlUrlItem] = Field(default_factory=list, max_length=30)
     # Legacy global processing (fallback / sync from first URL)
     process_before_publish: bool = False
-    process_description: Optional[str] = None
+    process_description: Optional[str] = Field(None, max_length=8000)
     remove_emojis: bool = False
     remove_images: bool = False
     clean_html: bool = False
@@ -997,10 +1071,10 @@ class CurlSettings(CurlSettingsBase):
 class UrlPostItem(BaseModel):
     """Один пост из url-bot для сохранения в url_posts."""
     user_id: int
-    url: str = ""
-    post_text: str = ""
-    screenshot_path: Optional[str] = None
-    screenshot_base64: Optional[str] = None
+    url: str = Field("", max_length=2000)
+    post_text: str = Field("", max_length=150000)
+    screenshot_path: Optional[str] = Field(None, max_length=500)
+    screenshot_base64: Optional[str] = Field(None, max_length=2_000_000)
     to_tg: bool = False
     to_tw: bool = False
     to_wp: bool = False
@@ -1064,14 +1138,14 @@ class CpostProfile(CpostProfileBase):
 class CpostPost(BaseModel):
     """Модель ручного поста — все поля таблицы posts (кроме id, user_id, created_at, updated_at)."""
     text: str = Field(..., max_length=150000)
-    title: Optional[str] = None
+    title: Optional[str] = Field(None, max_length=500)
     domain: Optional[str] = None
     url: Optional[str] = None
     author: Optional[str] = None
     avatar: Optional[str] = None
     post_date: Optional[datetime] = None
     screenshot: Optional[str] = None
-    images: List[str] = []
+    images: List[str] = Field(default_factory=list, max_length=10)
     image_over_text: Optional[str] = None
     comments: int = 0
     reposts: int = 0
@@ -1086,8 +1160,13 @@ class CpostPost(BaseModel):
     to_threads: bool = False
     to_dzen: bool = False
     to_instagram: bool = False
-    target_channels: List[str] = []
-    target_groups: List[str] = []
+    target_channels: List[str] = Field(default_factory=list, max_length=20)
+    target_groups: List[str] = Field(default_factory=list, max_length=20)
+
+    @field_validator("images")
+    @classmethod
+    def limit_image_refs(cls, value: List[str]) -> List[str]:
+        return _limit_image_refs(value)
 
 
 class CpostPostUpdate(BaseModel):
@@ -1100,7 +1179,7 @@ class CpostPostUpdate(BaseModel):
     avatar: Optional[str] = None
     post_date: Optional[datetime] = None
     screenshot: Optional[str] = None
-    images: Optional[List[str]] = None
+    images: Optional[List[str]] = Field(None, max_length=10)
     image_over_text: Optional[str] = None
     comments: Optional[int] = None
     reposts: Optional[int] = None
@@ -1115,8 +1194,15 @@ class CpostPostUpdate(BaseModel):
     to_threads: Optional[bool] = None
     to_dzen: Optional[bool] = None
     to_instagram: Optional[bool] = None
-    target_channels: Optional[List[str]] = None
-    target_groups: Optional[List[str]] = None
+    target_channels: Optional[List[str]] = Field(None, max_length=20)
+    target_groups: Optional[List[str]] = Field(None, max_length=20)
+
+    @field_validator("images")
+    @classmethod
+    def limit_image_refs(cls, value: Optional[List[str]]) -> Optional[List[str]]:
+        if value is None:
+            return None
+        return _limit_image_refs(value)
 
 
 # ==================== Post (общая модель) ====================
@@ -1129,9 +1215,9 @@ class PostBase(BaseModel):
     author: Optional[str] = None
     avatar: Optional[str] = None
     post_date: Optional[datetime] = None
-    post_text: str
+    post_text: str = Field(..., max_length=150000)
     screenshot: Optional[str] = None
-    images: List[str] = []
+    images: List[str] = Field(default_factory=list, max_length=10)
     image_over_text: Optional[str] = None
     comments: int = 0
     reposts: int = 0
@@ -1145,6 +1231,11 @@ class PostBase(BaseModel):
     to_wp: bool = False
     to_vk: bool = False
     to_dzen: bool = False
+
+    @field_validator("images")
+    @classmethod
+    def limit_image_refs(cls, value: List[str]) -> List[str]:
+        return _limit_image_refs(value)
 
 
 class PostCreate(PostBase):
@@ -1167,7 +1258,7 @@ class Post(PostBase):
 
 class NotificationCreate(BaseModel):
     """Модель для создания уведомления."""
-    message: str = Field(..., min_length=1)
+    message: str = Field(..., min_length=1, max_length=8000)
     user_id: Optional[int] = None
     type: Optional[str] = "general"  # general, tg_auth_code, tg_auth_2fa, tg_auth_error
 
@@ -1200,7 +1291,7 @@ class NotificationClearRequest(BaseModel):
 class FeedbackCreate(BaseModel):
     """Модель для создания обратной связи."""
     type: Literal["bug_report", "suggestion", "contact_author"]
-    text: str = Field(..., min_length=1)
+    text: str = Field(..., min_length=1, max_length=8000)
     email: Optional[EmailStr] = None
 
 
@@ -1269,6 +1360,7 @@ class RoadmapVoteResponse(BaseModel):
 
 ForumScope = Literal["workspace", "platform"]
 ForumKind = Literal["discussion", "bug_report", "suggestion", "contact_author"]
+ForumStatus = Literal["new", "accepted", "in_progress", "done"]
 
 
 class ForumThreadCreate(BaseModel):
@@ -1282,11 +1374,19 @@ class ForumThreadCreate(BaseModel):
 class ForumPostCreate(BaseModel):
     """Ответ в ветке."""
     body: str = Field(..., min_length=1, max_length=8000)
+    quote_post_id: Optional[int] = None
+
+
+class ForumPostUpdate(BaseModel):
+    """Правка своего ответа."""
+    body: str = Field(..., min_length=1, max_length=8000)
 
 
 class ForumThreadUpdate(BaseModel):
-    """Закрыть или снова открыть ветку."""
-    is_closed: bool
+    """Закрытие, статус идеи или закреп. Пустые поля не меняются."""
+    is_closed: Optional[bool] = None
+    status: Optional[ForumStatus] = None
+    is_pinned: Optional[bool] = None
 
 
 class ForumPost(BaseModel):
@@ -1298,7 +1398,11 @@ class ForumPost(BaseModel):
     author_name: str
     author_avatar: Optional[str] = None
     created_at: datetime
+    updated_at: Optional[datetime] = None
+    quote_author: Optional[str] = None
+    quote_body: Optional[str] = None
     can_delete: bool = False
+    can_edit: bool = False
 
     class Config:
         from_attributes = True
@@ -1317,6 +1421,10 @@ class ForumThread(BaseModel):
     author_name: str
     author_avatar: Optional[str] = None
     is_closed: bool
+    status: ForumStatus = "new"
+    is_pinned: bool = False
+    attachment_path: Optional[str] = None
+    unread: bool = False
     vote_count: int = 0
     voted: bool = False
     reply_count: int = 0
@@ -1326,6 +1434,9 @@ class ForumThread(BaseModel):
     can_vote: bool = False
     can_close: bool = False
     can_delete: bool = False
+    can_set_status: bool = False
+    can_pin: bool = False
+    can_attach: bool = False
 
     class Config:
         from_attributes = True
@@ -1352,8 +1463,13 @@ class ForumVoteResponse(BaseModel):
 
 
 class ForumAvatarResponse(BaseModel):
-    """Путь к фото профиля после загрузки."""
-    avatar_url: str
+    """Путь к фото профиля после загрузки. Пустая строка — фото снято."""
+    avatar_url: str = ""
+
+
+class ForumUnreadResponse(BaseModel):
+    """Сколько веток ждут, потому что в них ответил кто-то другой."""
+    count: int
 
 
 # ==================== Admin (services status, posts tables) ====================
@@ -1551,7 +1667,14 @@ class PipelinePostUpdate(BaseModel):
     avatar: Optional[str] = None
     post_date: Optional[datetime] = None
     screenshot: Optional[str] = None
-    images: Optional[List[str]] = None
+    images: Optional[List[str]] = Field(None, max_length=10)
+
+    @field_validator("images")
+    @classmethod
+    def limit_image_refs(cls, value: Optional[List[str]]) -> Optional[List[str]]:
+        if value is None:
+            return None
+        return _limit_image_refs(value)
     image_over_text: Optional[str] = None
     comments: Optional[int] = None
     reposts: Optional[int] = None

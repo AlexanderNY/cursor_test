@@ -10,6 +10,8 @@ import logging
 import re
 from typing import Any, Iterable, Mapping, Optional, Sequence
 
+from shared.publish_html import sanitize_publish_html
+
 logger = logging.getLogger(__name__)
 
 # Soft/hard length caps — single source of truth
@@ -155,19 +157,20 @@ async def adapt_for_networks(
 
     Returns short-key dict, e.g. ``{"tg": {"text": ..., "parse_mode": "HTML", ...}}``.
     """
-    media_list = list(media or [])
+    media_list = [str(item)[:2000] for item in list(media or [])[:10] if str(item).strip()]
     keep_html = {normalize_network(n) for n in keep_html_for}
     nets = _networks_from_input(networks=networks, targets=targets)
     plain = to_plain(text)
+    safe_static = sanitize_publish_html(static_html) if static_html else ""
     result: dict[str, dict[str, Any]] = {}
 
     for net in nets:
         limit = NETWORK_TEXT_LIMITS[net]
         use_html = net in keep_html
-        base = text if use_html else plain
+        base = sanitize_publish_html(text) if use_html else plain
         fitted = await fit_text(base, net, prefer_summarize=prefer_summarize)
-        if static_html:
-            fitted = _append_static_html(fitted, static_html, limit)
+        if safe_static:
+            fitted = _append_static_html(fitted, safe_static, limit)
 
         if net == "tg":
             result["tg"] = {

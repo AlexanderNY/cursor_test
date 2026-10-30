@@ -120,6 +120,24 @@ const GitSandboxPage = lazy(() =>
   })),
 )
 
+const InterviewFeedPage = lazy(() =>
+  import('@/pages/interview-feed-page').then((module) => ({
+    default: module.InterviewFeedPage,
+  })),
+)
+
+const PracticePage = lazy(() =>
+  import('@/pages/practice-page').then((module) => ({
+    default: module.PracticePage,
+  })),
+)
+
+const SlotPage = lazy(() =>
+  import('@/pages/slot-page').then((module) => ({
+    default: module.SlotPage,
+  })),
+)
+
 const PortfolioEditPage = lazy(() =>
   import('@/pages/portfolio-edit-page').then((module) => ({
     default: module.PortfolioEditPage,
@@ -306,6 +324,30 @@ export default function App() {
         element={
           <Suspense fallback={<LearnFallback />}>
             <GitSandboxPage />
+          </Suspense>
+        }
+      />
+      <Route
+        path="/game/interview"
+        element={
+          <Suspense fallback={<LearnFallback />}>
+            <InterviewFeedPage />
+          </Suspense>
+        }
+      />
+      <Route
+        path="/game/practice"
+        element={
+          <Suspense fallback={<LearnFallback />}>
+            <PracticePage />
+          </Suspense>
+        }
+      />
+      <Route
+        path="/game/slot"
+        element={
+          <Suspense fallback={<LearnFallback />}>
+            <SlotPage />
           </Suspense>
         }
       />

@@ -14,6 +14,7 @@ import { isGroupAdmin, roleLabel, canManagePlatformAuth, type GroupRole } from '
 import { parseQuotaError, type QuotaErrorDetail } from '@/lib/quota'
 import { QuotaUpgradeModal } from '@/components/billing/QuotaUpgradeModal'
 import { getErrorMessage } from '@/services/api-client'
+import { UserFace } from '@/components/user-face'
 
 export function TeamPage() {
   const { user, refreshUserData } = useAuth()
@@ -352,11 +353,14 @@ export function TeamPage() {
           <ul className="divide-y divide-[var(--border-color)]">
             {group.members?.map((m) => (
               <li key={m.user_id} className="flex justify-between items-center py-3 text-sm">
-                <div>
+                <div className="flex items-center gap-2 min-w-0">
+                  <UserFace name={m.username} avatar={m.avatar_url} className="h-8 w-8 text-xs" />
+                  <div className="min-w-0">
                   <p className="font-medium">{m.username}</p>
                   <p className="text-[var(--text-muted)]">
                     {m.email} · {roleLabel(m.role_in_group)}
                   </p>
+                  </div>
                 </div>
                 {isAdmin && !isGroupAdmin(m.role_in_group) && (
                   <Button

@@ -2,18 +2,19 @@
 
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 from schemas import RunRequest, RunResponse
 from services.scraping_service import scrape_url_async
 from services.url_safety import UnsafeUrlError, validate_public_http_url
+from shared.internal_auth_fastapi import require_internal_token
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/run", tags=["Run"])
 
 
-@router.post("", response_model=RunResponse)
+@router.post("", response_model=RunResponse, dependencies=[Depends(require_internal_token)])
 async def run_scrape(request: RunRequest) -> RunResponse:
     """
     Запускает один сценарий скрапинга по запросу (без расписания).

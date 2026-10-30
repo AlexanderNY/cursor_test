@@ -190,6 +190,12 @@ async def list_learn_posts(
     return {"posts": posts}
 
 
+@router.get("/upcoming")
+async def list_learn_upcoming() -> dict[str, Any]:
+    posts = await learn_service.list_upcoming()
+    return {"posts": posts}
+
+
 @router.get("/posts/{slug}")
 async def get_learn_post(
     slug: str,

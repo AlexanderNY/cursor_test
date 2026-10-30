@@ -34,6 +34,7 @@ async def send_plain_email(*, to_email: str, subject: str, body: str) -> bool:
             username=(settings.SMTP_USER or "").strip() or None,
             password=(settings.SMTP_PASSWORD or "").strip() or None,
             start_tls=bool(settings.SMTP_STARTTLS),
+            timeout=30,
         )
         return True
     except Exception:

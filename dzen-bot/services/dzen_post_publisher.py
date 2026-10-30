@@ -9,7 +9,6 @@ import os
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
-import httpx
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
@@ -92,15 +91,26 @@ def _resolve_image_url(path_or_url: str) -> str:
     return f"{base}{s}" if s.startswith("/") else f"{base}/{s}"
 
 
-async def _download_to_temp(url: str, suffix: str = ".jpg") -> Optional[str]:
+async def _download_to_temp(
+    url: str,
+    suffix: str = ".jpg",
+    *,
+    trusted_bases: tuple[str, ...] = (),
+) -> Optional[str]:
+    from shared.safe_fetch import MAX_DOWNLOAD_BYTES, FetchError, fetch_bounded
+    from shared.url_safety import UnsafeUrlError
+
     if not url or not url.strip().lower().startswith(("http://", "https://")):
         return None
     try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            resp = await client.get(url)
-            resp.raise_for_status()
-            return await async_fs.write_temp_bytes(resp.content, suffix=suffix)
-    except Exception as e:
+        body, _content_type = await fetch_bounded(
+            url,
+            max_bytes=MAX_DOWNLOAD_BYTES,
+            timeout=60.0,
+            trusted_bases=trusted_bases,
+        )
+        return await async_fs.write_temp_bytes(body, suffix=suffix)
+    except (UnsafeUrlError, FetchError) as e:
         logger.warning("Download failed %s: %s", url[:80], e)
         return None
 
@@ -126,7 +136,9 @@ async def _resolve_image_file(path_or_url: str, post_id: int) -> Optional[str]:
 
     url = _resolve_image_url(s)
     if url.lower().startswith(("http://", "https://")):
-        got = await _download_to_temp(url)
+        core_base = (settings.CORE_SERVICE_URL or "").strip()
+        trusted = (core_base,) if core_base else ()
+        got = await _download_to_temp(url, trusted_bases=trusted)
         if got:
             return got
 
@@ -438,7 +450,7 @@ class DzenPostPublisher:
             await _set_last_auth_error(uid, None)
 
             local_paths: List[str] = []
-            for p in _parse_images(post.get("images")):
+            for p in _parse_images(post.get("images"))[:10]:
                 lp = await _resolve_image_file(p, pid)
                 if lp:
                     local_paths.append(lp)

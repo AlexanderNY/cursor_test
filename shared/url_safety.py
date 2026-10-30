@@ -63,21 +63,13 @@ def _resolve_host_ips(hostname: str) -> list[ipaddress.IPv4Address | ipaddress.I
     return ips
 
 
-def validate_public_http_url(url: str) -> str:
-    """
-    Проверяет URL на SSRF-риски и возвращает нормализованную строку (без credentials/fragment).
-
-    - только http/https
-    - без userinfo
-    - порт только 80/443 (или default схемы)
-    - hostname не из blocklist
-    - все резолвленные IP — публичные
-    """
-    raw = (url or "").strip()
-    if not raw:
+def _normalized_http_url(raw: str) -> tuple[str, str, ipaddress.IPv4Address | ipaddress.IPv6Address | None]:
+    """Shape checks shared by save-time and fetch-time validation. No DNS."""
+    text = (raw or "").strip()
+    if not text:
         raise UnsafeUrlError("URL is empty")
 
-    parsed = urlparse(raw)
+    parsed = urlparse(text)
     scheme = (parsed.scheme or "").lower()
     if scheme not in _ALLOWED_SCHEMES:
         raise UnsafeUrlError("Only http and https URLs are allowed")
@@ -101,13 +93,8 @@ def validate_public_http_url(url: str) -> str:
     except ValueError:
         literal_ip = None
 
-    if literal_ip is not None:
-        if _is_blocked_ip(literal_ip):
-            raise UnsafeUrlError("IP address is not allowed (private or reserved)")
-    else:
-        for ip in _resolve_host_ips(hostname):
-            if _is_blocked_ip(ip):
-                raise UnsafeUrlError("Host resolves to a private or reserved IP")
+    if literal_ip is not None and _is_blocked_ip(literal_ip):
+        raise UnsafeUrlError("IP address is not allowed (private or reserved)")
 
     if isinstance(literal_ip, ipaddress.IPv6Address):
         host_part = f"[{hostname}]"
@@ -121,4 +108,33 @@ def validate_public_http_url(url: str) -> str:
     else:
         netloc = host_part
 
-    return urlunparse((scheme, netloc, parsed.path or "", "", parsed.query, ""))
+    normalized = urlunparse((scheme, netloc, parsed.path or "", "", parsed.query, ""))
+    return normalized, hostname, literal_ip
+
+
+def validate_http_url_shape(url: str) -> str:
+    """Проверяет схему, порт и литеральные адреса без DNS.
+
+    Используется при сохранении профиля: внутренняя сеть отсекается повторно
+    в момент запроса, когда резолв уже известен.
+    """
+    normalized, _hostname, _literal = _normalized_http_url(url)
+    return normalized
+
+
+def validate_public_http_url(url: str) -> str:
+    """
+    Проверяет URL на SSRF-риски и возвращает нормализованную строку (без credentials/fragment).
+
+    - только http/https
+    - без userinfo
+    - порт только 80/443 (или default схемы)
+    - hostname не из blocklist
+    - все резолвленные IP — публичные
+    """
+    normalized, hostname, literal_ip = _normalized_http_url(url)
+    if literal_ip is None:
+        for ip in _resolve_host_ips(hostname):
+            if _is_blocked_ip(ip):
+                raise UnsafeUrlError("Host resolves to a private or reserved IP")
+    return normalized

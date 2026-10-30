@@ -147,6 +147,7 @@ export interface GroupMemberResponse {
   tariff: string
   role_in_group: 'owner' | 'editor' | 'approver' | 'viewer' | 'admin' | 'manager' | 'author' | 'analyst'
   joined_at: string
+  avatar_url?: string | null
 }
 
 export interface GroupResponse {

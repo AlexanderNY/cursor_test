@@ -282,6 +282,43 @@ JOIN forum_threads t
 ON CONFLICT (thread_id, user_id) DO NOTHING;
 """
 
+FORUM_FEATURES_MIGRATION = """
+DO $$ BEGIN
+  ALTER TABLE forum_threads ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'new';
+EXCEPTION WHEN duplicate_column OR undefined_table THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE forum_threads ADD COLUMN is_pinned BOOLEAN NOT NULL DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column OR undefined_table THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE forum_threads ADD COLUMN attachment_path VARCHAR(512);
+EXCEPTION WHEN duplicate_column OR undefined_table THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE forum_posts ADD COLUMN updated_at TIMESTAMPTZ;
+EXCEPTION WHEN duplicate_column OR undefined_table THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE forum_posts ADD COLUMN quote_author VARCHAR(255);
+EXCEPTION WHEN duplicate_column OR undefined_table THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE forum_posts ADD COLUMN quote_body TEXT;
+EXCEPTION WHEN duplicate_column OR undefined_table THEN NULL; END $$;
+
+CREATE TABLE IF NOT EXISTS forum_reads (
+    user_id INTEGER NOT NULL,
+    thread_id INTEGER NOT NULL REFERENCES forum_threads(id) ON DELETE CASCADE,
+    last_read_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id, thread_id)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_forum_threads_one_pin
+    ON forum_threads (group_id)
+    WHERE is_pinned IS TRUE AND scope = 'workspace';
+"""
+
 SYSTEM_SETTINGS_TABLE = """
 CREATE TABLE IF NOT EXISTS system_settings (
     key VARCHAR(100) PRIMARY KEY,
@@ -866,6 +903,7 @@ ALL_TABLES: list[str] = [
     FORUM_POSTS_TABLE,
     FORUM_VOTES_TABLE,
     FORUM_LEGACY_IMPORT,
+    FORUM_FEATURES_MIGRATION,
     SYSTEM_SETTINGS_TABLE,
     GUIDE_BLOCKS_TABLE,
     SMM_BRANDS_TABLE,

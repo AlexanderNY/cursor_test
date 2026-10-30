@@ -123,6 +123,10 @@ def test_thread_from_row_maps_fields():
         created,
         created,
         "/core/forum/avatars/4",
+        "accepted",
+        True,
+        "/core/forum/attachments/9",
+        True,
     )
     item = _mod.thread_from_row(row)
     assert item["id"] == 9
@@ -132,6 +136,63 @@ def test_thread_from_row_maps_fields():
     assert item["voted"] is True
     assert item["author_name"] == "anna"
     assert item["author_avatar"] == "/core/forum/avatars/4"
+    assert item["status"] == "accepted"
+    assert item["is_pinned"] is True
+    assert item["unread"] is True
+
+
+def test_edit_window_and_mentions_and_search():
+    created = datetime(2026, 10, 29, 12, 0, tzinfo=timezone.utc)
+    assert _mod.can_edit_post(
+        post_author_id=3,
+        user_id=3,
+        created_at=created,
+        now=datetime(2026, 10, 29, 12, 14, tzinfo=timezone.utc),
+        is_closed=False,
+    ) is True
+    assert _mod.can_edit_post(
+        post_author_id=3,
+        user_id=3,
+        created_at=created,
+        now=datetime(2026, 10, 29, 12, 16, tzinfo=timezone.utc),
+        is_closed=False,
+    ) is False
+    assert _mod.can_edit_post(
+        post_author_id=3,
+        user_id=4,
+        created_at=created,
+        now=created,
+        is_closed=False,
+    ) is False
+    assert _mod.extract_mentions("Привет @Alex_admin и ещё @alex_admin, а mail@box.com нет") == [
+        "alex_admin"
+    ]
+    assert _mod.search_pattern("  100%_план  ") == "%100\\%\\_план%"
+    assert _mod.search_pattern("   ") == ""
+    assert _mod.can_pin(scope="workspace", workspace_role="owner") is True
+    assert _mod.can_pin(scope="workspace", workspace_role="editor") is False
+    assert _mod.can_pin(scope="platform", workspace_role="owner") is False
+    assert _mod.can_set_status(kind="suggestion", is_platform_admin=True) is True
+    assert _mod.can_set_status(kind="discussion", is_platform_admin=True) is False
+    notice = _mod.reply_notice(
+        author_name="A<b>",
+        title="План",
+        href="/forum?scope=workspace&thread=2",
+        mentioned=True,
+    )
+    assert "<b>" not in notice
+    assert "упомянул вас" in notice
+    assert 'href="/forum?scope=workspace&amp;thread=2"' in notice
+
+
+def test_post_from_row_keeps_quote():
+    created = datetime(2026, 10, 29, tzinfo=timezone.utc)
+    item = _mod.post_from_row(
+        (3, 9, "беру", 4, "anna", created, None, created, "ivan", "цитата")
+    )
+    assert item["quote_author"] == "ivan"
+    assert item["quote_body"] == "цитата"
+    assert item["updated_at"] == created
 
 
 def test_sniff_image_type_accepts_png_and_rejects_text():

@@ -331,8 +331,7 @@
       "developer",
       "devops",
       "tester",
-      "analyst",
-      "product_owner"
+      "analyst"
     ],
     "level": "junior",
     "tags": [
@@ -508,7 +507,6 @@
     "cheatsheetFormat": "html",
     "profiles": [
       "developer",
-      "analyst",
       "tester"
     ],
     "level": "junior",
@@ -685,7 +683,6 @@
     "profiles": [
       "developer",
       "analyst",
-      "devops",
       "tester"
     ],
     "level": "junior",
@@ -865,8 +862,7 @@
     "cheatsheetFormat": "html",
     "profiles": [
       "developer",
-      "tester",
-      "analyst"
+      "tester"
     ],
     "level": "junior",
     "tags": [
@@ -1081,10 +1077,7 @@
     "labFormat": "markdown",
     "cheatsheetFormat": "html",
     "profiles": [
-      "developer",
-      "analyst",
-      "tester",
-      "devops"
+      "developer"
     ],
     "level": "junior",
     "tags": [
@@ -1309,9 +1302,8 @@
     "labFormat": "markdown",
     "cheatsheetFormat": "html",
     "profiles": [
-      "tester",
       "developer",
-      "devops"
+      "tester"
     ],
     "level": "junior",
     "tags": [
@@ -4152,7 +4144,8 @@
     "labFormat": "markdown",
     "cheatsheetFormat": "html",
     "profiles": [
-      "tester"
+      "tester",
+      "developer"
     ],
     "level": "junior",
     "tags": [
@@ -5676,7 +5669,8 @@
     "labFormat": "markdown",
     "cheatsheetFormat": "html",
     "profiles": [
-      "analyst"
+      "analyst",
+      "product_owner"
     ],
     "level": "junior",
     "tags": [
@@ -9610,8 +9604,7 @@
     "labFormat": "markdown",
     "cheatsheetFormat": "html",
     "profiles": [
-      "developer",
-      "analyst"
+      "developer"
     ],
     "level": "junior",
     "tags": [
@@ -9828,8 +9821,7 @@
     "labFormat": "markdown",
     "cheatsheetFormat": "html",
     "profiles": [
-      "developer",
-      "analyst"
+      "developer"
     ],
     "level": "middle",
     "tags": [
@@ -11605,8 +11597,7 @@
     "labFormat": "markdown",
     "cheatsheetFormat": "html",
     "profiles": [
-      "developer",
-      "tester"
+      "developer"
     ],
     "level": "junior",
     "tags": [
@@ -13258,8 +13249,9 @@
     "cheatsheetFormat": "html",
     "profiles": [
       "developer",
-      "analyst",
-      "tester"
+      "devops",
+      "tester",
+      "analyst"
     ],
     "level": "middle",
     "tags": [
@@ -15413,8 +15405,7 @@
     "cheatsheetFormat": "html",
     "profiles": [
       "devops",
-      "developer",
-      "tester"
+      "developer"
     ],
     "level": "middle",
     "tags": [
@@ -17397,7 +17388,8 @@
     "labFormat": "markdown",
     "cheatsheetFormat": "html",
     "profiles": [
-      "tester"
+      "tester",
+      "developer"
     ],
     "level": "middle",
     "tags": [
@@ -17701,7 +17693,8 @@
     "labFormat": "markdown",
     "cheatsheetFormat": "html",
     "profiles": [
-      "tester"
+      "tester",
+      "developer"
     ],
     "level": "middle",
     "tags": [
@@ -17853,7 +17846,8 @@
     "labFormat": "markdown",
     "cheatsheetFormat": "html",
     "profiles": [
-      "analyst"
+      "analyst",
+      "product_owner"
     ],
     "level": "middle",
     "tags": [
@@ -19825,9 +19819,9 @@
     "labFormat": "markdown",
     "cheatsheetFormat": "html",
     "profiles": [
+      "developer",
       "analyst",
       "devops",
-      "developer",
       "tester",
       "product_owner"
     ],

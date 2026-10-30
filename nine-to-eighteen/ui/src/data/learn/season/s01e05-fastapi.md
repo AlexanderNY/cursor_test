@@ -6,7 +6,7 @@ episode: S01E05
 rubric: api
 order: 5
 publishedAt: "2026-08-22T22:49:01.216Z"
-profiles: [developer, analyst, tester]
+profiles: [developer, tester]
 level: junior
 tags: [api, fastapi, "собеседование"]
 onKnowledgeMap: true
@@ -333,6 +333,22 @@ Back: S01E05 · FastAPI · роутер и Pydantic
 ### Front: Ключевая идея: Insomnia
 
 Back: UI ещё нет — и это хорошо. Если ручка жива только «когда открыта страница», вы не отличите баг фронта от бага сервера.
+
+## Мнемоника
+
+### link: Ручка
+
+**Задание:** Порядок первой проверки сервиса.
+
+**Элементы:**
+- схема
+- health
+- ошибка валидации
+- клиент
+
+**Подсказка:** 200 на health не значит, что заказ создаётся.
+
+**Ответ:** schema → health → 422 → client
 
 ## Итоги
 

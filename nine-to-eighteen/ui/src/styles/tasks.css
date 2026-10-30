@@ -828,6 +828,71 @@
   transition: width 0.2s ease;
 }
 
+.tasks-today {
+  display: flex;
+  flex-direction: column;
+  gap: 1.35rem;
+}
+
+.tasks-today-list {
+  list-style: none;
+  margin: 0.55rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.tasks-today-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.55rem 0.85rem;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.75rem;
+  background: var(--color-surface);
+}
+
+.tasks-today-row.is-overdue {
+  border-color: color-mix(in srgb, #f87171 45%, var(--color-border));
+}
+
+.tasks-today-main {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-width: min(100%, 14rem);
+}
+
+.tasks-today-title {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: 600;
+}
+
+.tasks-today-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.tasks-learn-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin: 0 0 0.85rem;
+}
+
+.tasks-queue-btn:disabled {
+  opacity: 0.65;
+  cursor: progress;
+}
+
 .tasks-row-meta {
   display: flex;
   flex-wrap: wrap;

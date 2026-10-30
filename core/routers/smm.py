@@ -6,7 +6,7 @@ import logging
 from typing import Any, List, Literal, Optional
 
 from fastapi import APIRouter, Body, File, Header, HTTPException, Query, UploadFile
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from config import settings
 from upload_limits import read_upload_limited
@@ -147,11 +147,11 @@ class DigestJobUpdate(BaseModel):
 
 
 class InboxEdit(BaseModel):
-    edited_text: str = Field(..., min_length=1)
+    edited_text: str = Field(..., min_length=1, max_length=8000)
 
 
 class InboxRedirect(BaseModel):
-    targets: List[dict[str, Any]] = Field(default_factory=list)
+    targets: List[dict[str, Any]] = Field(default_factory=list, max_length=20)
     use_edited: bool = True
     publish_at: Optional[str] = None
     pending_approval: bool = False
@@ -163,8 +163,8 @@ class InboxCreate(BaseModel):
     channel_id: Optional[int] = None
     thread_id: Optional[str] = None
     type: Literal["dm", "comment", "reaction", "competitor_post"]
-    author: Optional[str] = None
-    text: Optional[str] = None
+    author: Optional[str] = Field(None, max_length=200)
+    text: Optional[str] = Field(None, max_length=8000)
     external_msg_id: Optional[str] = None
     status: Optional[str] = "new"
 
@@ -178,14 +178,26 @@ class ChannelBind(BaseModel):
 
 
 class InboxReply(BaseModel):
-    text: str = Field(..., min_length=1)
+    text: str = Field(..., min_length=1, max_length=8000)
 
 
 class JobCreate(BaseModel):
     brand_id: Optional[int] = None
-    text: str = Field(..., min_length=1)
-    media_urls: List[str] = Field(default_factory=list)
-    targets: List[dict[str, Any]] = Field(default_factory=list)
+    text: str = Field(..., min_length=1, max_length=150000)
+    media_urls: List[str] = Field(default_factory=list, max_length=10)
+    targets: List[dict[str, Any]] = Field(default_factory=list, max_length=20)
+
+    @field_validator("media_urls")
+    @classmethod
+    def limit_media_urls(cls, value: List[str]) -> List[str]:
+        cleaned: List[str] = []
+        for item in value:
+            text = str(item).strip()
+            if len(text) > 2000:
+                raise ValueError("media URL is too long")
+            if text:
+                cleaned.append(text)
+        return cleaned
     publish_at: Optional[str] = None
     adapt: bool = True
     status: Optional[str] = None
@@ -195,9 +207,9 @@ class JobCreate(BaseModel):
 
 
 class JobUpdate(BaseModel):
-    source_text: Optional[str] = None
-    media: Optional[List[str]] = None
-    targets: Optional[List[dict[str, Any]]] = None
+    source_text: Optional[str] = Field(None, max_length=150000)
+    media: Optional[List[str]] = Field(None, max_length=10)
+    targets: Optional[List[dict[str, Any]]] = Field(None, max_length=20)
     publish_at: Optional[str] = None
     status: Optional[str] = None
     adapters_result: Optional[dict[str, Any]] = None
@@ -1011,7 +1023,7 @@ async def update_job(job_id: int, body: JobUpdate, x_user_id: Optional[str] = He
 
 
 class JobCommentCreate(BaseModel):
-    body: str
+    body: str = Field(..., min_length=1, max_length=4000)
     parent_id: Optional[int] = None
     anchor: Optional[dict] = None
 

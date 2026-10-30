@@ -280,7 +280,12 @@ async def url_bot_run(
 ) -> Response:
     """POST /url-bot/run -> url-bot /run. Тестовый скрапинг — только admin JWT."""
     _assert_admin(current_user)
-    return await _forward_to_bot(settings.URL_BOT_SERVICE_URL, "/run", request)
+    return await _forward_to_bot(
+        settings.URL_BOT_SERVICE_URL,
+        "/run",
+        request,
+        extra_headers=_internal_token_headers(),
+    )
 
 
 # ==================== Dzen Bot ====================

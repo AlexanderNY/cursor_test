@@ -2,8 +2,29 @@ import httpx
 from fastapi import Request, Response
 from typing import Optional
 
+from config import settings
 from utils.exceptions import ServiceUnavailableException, BadGatewayException
 from middleware.jwt_validator import jwt_validator
+
+
+async def _read_body_limited(request: Request, limit: int) -> bytes | Response:
+    """Read the inbound body, stopping once it exceeds limit."""
+    header = request.headers.get("content-length")
+    if header:
+        try:
+            declared = int(header)
+        except ValueError:
+            return Response(status_code=400, content=b"Invalid Content-Length")
+        if declared > limit:
+            return Response(status_code=413, content=b"Request body too large")
+    chunks: list[bytes] = []
+    total = 0
+    async for chunk in request.stream():
+        total += len(chunk)
+        if total > limit:
+            return Response(status_code=413, content=b"Request body too large")
+        chunks.append(chunk)
+    return b"".join(chunks)
 
 
 class ProxyService:
@@ -82,12 +103,18 @@ class ProxyService:
                 # Если токен невалидный или отсутствует user_id, просто не добавляем заголовок.
                 # Валидацию и ошибки обрабатывает слой аутентификации.
                 pass
-        request_body = await request.body()
+        request_body = await _read_body_limited(
+            request,
+            int(settings.MAX_PROXY_BODY_BYTES),
+        )
+        if isinstance(request_body, Response):
+            return request_body
         query_params = dict(request.query_params)
         timeout_seconds = timeout if timeout is not None else 30.0
 
+        body_limit = int(settings.MAX_PROXY_BODY_BYTES)
         try:
-            response = await self.http_client.request(
+            async with self.http_client.stream(
                 method=actual_method,
                 url=target_url,
                 headers=request_headers,
@@ -95,17 +122,21 @@ class ProxyService:
                 params=query_params if query_params else None,
                 timeout=timeout_seconds,
                 follow_redirects=False,
-            )
-            
-            # Подготовка headers для ответа
-            response_headers = self.prepare_response_headers(dict(response.headers))
-            
-            return Response(
-                content=response.content,
-                status_code=response.status_code,
-                headers=response_headers,
-                media_type=response.headers.get("content-type")
-            )
+            ) as response:
+                chunks: list[bytes] = []
+                total = 0
+                async for chunk in response.aiter_bytes():
+                    total += len(chunk)
+                    if total > body_limit:
+                        return Response(status_code=502, content=b"Upstream response too large")
+                    chunks.append(chunk)
+                response_headers = self.prepare_response_headers(dict(response.headers))
+                return Response(
+                    content=b"".join(chunks),
+                    status_code=response.status_code,
+                    headers=response_headers,
+                    media_type=response.headers.get("content-type"),
+                )
             
         except httpx.ConnectError as error:
             name = self.extract_service_name(target_url)

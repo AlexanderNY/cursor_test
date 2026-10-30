@@ -161,6 +161,7 @@ class GroupMemberResponse(BaseModel):
     tariff: str
     role_in_group: Literal["owner", "editor", "approver", "viewer", "admin", "manager", "author", "analyst"]
     joined_at: datetime
+    avatar_url: Optional[str] = None
 
     class Config:
         from_attributes = True

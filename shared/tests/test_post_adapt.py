@@ -87,6 +87,18 @@ async def test_static_html_appended_when_fits():
 
 
 @pytest.mark.asyncio
+async def test_static_html_strips_script() -> None:
+    adapters = await adapt_for_networks(
+        "hi",
+        networks=["tg"],
+        static_html='<script>alert(1)</script><i>footer</i>',
+        prefer_summarize=False,
+    )
+    assert "<script" not in adapters["tg"]["text"].lower()
+    assert "footer" in adapters["tg"]["text"]
+
+
+@pytest.mark.asyncio
 async def test_static_html_skipped_when_over_limit():
     body = "y" * (NETWORK_TEXT_LIMITS["tw"] - 2)
     adapters = await adapt_for_networks(

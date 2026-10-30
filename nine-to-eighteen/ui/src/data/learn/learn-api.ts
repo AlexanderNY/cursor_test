@@ -104,6 +104,34 @@ export async function apiListPublishedPosts(): Promise<LearnPost[]> {
   return (data.posts || []).map(normalizePost)
 }
 
+export type LearnUpcomingPost = {
+  slug: string
+  episode: string
+  title: string
+  profiles: LearnPost['profiles']
+  level: LearnPost['level']
+  publishedAt: string
+}
+
+export async function apiListUpcomingPosts(): Promise<LearnUpcomingPost[]> {
+  const data = await request<{ posts: Record<string, unknown>[] }>(
+    '/learn/upcoming',
+    {},
+    { auth: false },
+  )
+  return (data.posts || []).map((raw) => {
+    const meta = normalizeLearnMeta(raw)
+    return {
+      slug: String(raw.slug || ''),
+      episode: String(raw.episode || ''),
+      title: String(raw.title || ''),
+      profiles: meta.profiles,
+      level: meta.level,
+      publishedAt: String(raw.publishedAt || raw.published_at || ''),
+    }
+  })
+}
+
 export async function apiGetPublishedPost(
   slug: string,
   opts?: { preview?: boolean },

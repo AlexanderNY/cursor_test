@@ -6,7 +6,7 @@ episode: S01E07
 rubric: data
 order: 7
 publishedAt: "2026-08-24T22:49:01.216Z"
-profiles: [developer, analyst, devops, tester]
+profiles: [developer, analyst, tester]
 level: junior
 tags: [sql, postgresql, "собеседование"]
 onKnowledgeMap: true
@@ -332,6 +332,22 @@ Back: Одна JSON-простыня «на всё»
 ### Front: Запомните (SQL JOIN) #1
 
 Back: Часто фильтруете / джойните по колонке
+
+## Мнемоника
+
+### acronym: Таблица и связь
+
+**Задание:** Четыре слова первого SQL.
+
+**Элементы:**
+- Таблица
+- Ключ
+- SELECT
+- JOIN
+
+**Подсказка:** JOIN без условия ключа — декартово произведение.
+
+**Ответ:** table, key, select, join
 
 ## Итоги
 

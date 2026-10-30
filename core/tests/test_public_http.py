@@ -10,7 +10,7 @@ from shared.url_safety import UnsafeUrlError
 
 @pytest.mark.asyncio
 async def test_loopback_rss_url_does_not_open_http_client() -> None:
-    with patch("services.public_http.httpx.AsyncClient") as client_cls:
+    with patch("shared.safe_fetch.httpx.AsyncClient") as client_cls:
         with pytest.raises(UnsafeUrlError):
             await fetch_public_http_text("http://127.0.0.1/latest/meta-data/")
         client_cls.assert_not_called()

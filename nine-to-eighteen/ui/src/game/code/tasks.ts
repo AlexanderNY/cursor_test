@@ -400,6 +400,163 @@ def __check():
 __check()
 `,
   },
+  {
+    id: 'mutable-default',
+    title: 'Общий список по умолчанию',
+    episode: 'PY01',
+    learnSlug: 'py-intro-python',
+    level: 'junior',
+    prompt:
+      'Почините append_item(item, bucket=None) -> list. Два вызова без bucket не должны делить один список.',
+    examples: ['append_item(1) → [1]', 'следующий append_item(2) → [2], не [1, 2]'],
+    starterCode: `def append_item(item, bucket=[]):
+    bucket.append(item)
+    return bucket
+`,
+    checker: `
+def __check():
+    first = append_item("a")
+    second = append_item("b")
+    if first == ["a"] and second == ["b"]:
+        print("PASS: у каждого вызова свой список")
+        return
+    print(f"FAIL: append_item вернул {first!r} и {second!r}. Значение по умолчанию создаётся один раз")
+
+__check()
+`,
+  },
+  {
+    id: 'is-vs-eq',
+    title: 'is и ==',
+    episode: 'PY01',
+    learnSlug: 'py-intro-python',
+    level: 'junior',
+    prompt:
+      'Напишите same_value(left, right) -> bool и same_object(left, right) -> bool. Первая сравнивает значение, вторая — один ли это объект.',
+    examples: ['same_value([1], [1]) → True', 'same_object([1], [1]) → False'],
+    starterCode: `def same_value(left, right) -> bool:
+    ...
+
+def same_object(left, right) -> bool:
+    ...
+`,
+    checker: `
+def __check():
+    if same_value([1], [1]) is not True or same_value(1, 2) is not False:
+        print("FAIL: same_value должна сравнивать значения")
+        return
+    left = []
+    if same_object(left, left) is not True or same_object([1], [1]) is not False:
+        print("FAIL: same_object должна проверять идентичность, не равенство")
+        return
+    if same_value(None, None) is not True or same_object(None, None) is not True:
+        print("FAIL: None и равен, и тот же объект")
+        return
+    print("PASS: == и is разведены")
+
+__check()
+`,
+  },
+  {
+    id: 'dict-key',
+    title: 'Ключ словаря',
+    episode: 'PY01',
+    learnSlug: 'py-intro-python',
+    level: 'junior',
+    prompt:
+      'Напишите point_key(x: int, y: int), чтобы координату можно было положить ключом в dict. Список ключом быть не может.',
+    examples: ['points = {point_key(1, 2): "A"}'],
+    starterCode: `def point_key(x: int, y: int):
+    # TODO: верните hashable-координату
+    ...
+`,
+    checker: `
+def __check():
+    key = point_key(1, 2)
+    try:
+        hash(key)
+    except TypeError:
+        print(f"FAIL: {key!r} нельзя положить в dict")
+        return
+    points = {key: "A", point_key(1, 2): "B"}
+    if points[point_key(1, 2)] != "B" or len(points) != 1:
+        print("FAIL: одинаковые координаты должны быть одним ключом")
+        return
+    print("PASS: координата годится в ключ")
+
+__check()
+`,
+  },
+  {
+    id: 'n-plus-one',
+    title: 'Один запрос вместо N',
+    episode: 'PY27',
+    learnSlug: 'py-sqlalchemy',
+    level: 'junior',
+    prompt:
+      'Напишите load_titles(ids: list[int]) -> list[str]. query_one считает запрос на каждый id, query_many — один запрос на весь список. На пяти id должен случиться один вызов query_many и ни одного query_one.',
+    examples: ['load_titles([1, 2]) → ["t1", "t2"]'],
+    starterCode: `CALLS = {"one": 0, "many": 0}
+
+def query_one(order_id: int) -> str:
+    CALLS["one"] += 1
+    return f"t{order_id}"
+
+def query_many(order_ids: list[int]) -> list[str]:
+    CALLS["many"] += 1
+    return [f"t{order_id}" for order_id in order_ids]
+
+def load_titles(ids: list[int]) -> list[str]:
+    # TODO: не вызывайте query_one в цикле
+    ...
+`,
+    checker: `
+def __check():
+    CALLS["one"] = 0
+    CALLS["many"] = 0
+    got = load_titles([1, 2, 3, 4, 5])
+    if got != ["t1", "t2", "t3", "t4", "t5"]:
+        print(f"FAIL: {got!r}")
+        return
+    if CALLS["one"] != 0 or CALLS["many"] != 1:
+        print(f"FAIL: query_one={CALLS['one']}, query_many={CALLS['many']}. Нужен один query_many")
+        return
+    print("PASS: N+1 снят")
+
+__check()
+`,
+  },
+  {
+    id: 'review-split',
+    title: 'Два шва вместо одной функции',
+    episode: 'PY26',
+    learnSlug: 'py-code-review',
+    level: 'junior',
+    prompt:
+      'Разнесите закрытие заявки. save_ticket(ticket_id) -> str возвращает "saved:<id>". notify(ticket_id) -> str возвращает "sent:<id>". close_ticket(ticket_id) -> tuple[str, str] вызывает обе и возвращает пару.',
+    examples: ['close_ticket("a") → ("saved:a", "sent:a")'],
+    starterCode: `def close_ticket(ticket_id: str):
+    saved = "saved:" + ticket_id
+    sent = "sent:" + ticket_id
+    return saved, sent
+`,
+    checker: `
+def __check():
+    for name in ("save_ticket", "notify", "close_ticket"):
+        if name not in globals() or not callable(globals()[name]):
+            print(f"FAIL: нет функции {name}")
+            return
+    if save_ticket("a") != "saved:a" or notify("a") != "sent:a":
+        print("FAIL: save_ticket и notify должны возвращать saved: и sent:")
+        return
+    if close_ticket("a") != ("saved:a", "sent:a"):
+        print(f"FAIL: close_ticket вернул {close_ticket('a')!r}")
+        return
+    print("PASS: сохранение и письмо разведены")
+
+__check()
+`,
+  },
 ]
 
 export function getCodeTask(id: string): CodeTask | undefined {

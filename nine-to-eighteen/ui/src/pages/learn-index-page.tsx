@@ -1,9 +1,12 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { LearnPostBadges } from '@/components/learn-post-badges'
 import { PageShell } from '@/components/page-shell'
 import { getSortedRubrics, LEARN_LEVELS, LEARN_PROFILES } from '@/data/learn'
-import type { LearnLevelId, LearnProfileId } from '@/data/learn/labels'
+import { apiListUpcomingPosts, type LearnUpcomingPost } from '@/data/learn/learn-api'
+import { formatPublishDate } from '@/data/learn/learn-store'
+import { isLearnLevelId, isLearnProfileId, levelLabel, profileLabel, type LearnLevelId, type LearnProfileId } from '@/data/learn/labels'
+import { LEARN_LEVEL_FILTER_KEY, LEARN_PROFILE_FILTER_KEY } from '@/data/learn/recall'
 import {
   getPostsByRubric,
   getPublishedPosts,
@@ -21,8 +24,33 @@ export function LearnIndexPage() {
   const published = getPublishedPosts(posts)
   const seasonTracks = getSeasonTracks(posts)
   const { completedSlugs, isAuthed, isReady: progressReady } = useSiteLearnProgress()
-  const [profileFilter, setProfileFilter] = useState<LearnProfileId | ''>('')
-  const [levelFilter, setLevelFilter] = useState<LearnLevelId | ''>('')
+  const [profileFilter, setProfileFilter] = useState<LearnProfileId | ''>(() => {
+    const saved = window.localStorage.getItem(LEARN_PROFILE_FILTER_KEY) || ''
+    return isLearnProfileId(saved) ? saved : ''
+  })
+  const [levelFilter, setLevelFilter] = useState<LearnLevelId | ''>(() => {
+    const saved = window.localStorage.getItem(LEARN_LEVEL_FILTER_KEY) || ''
+    return isLearnLevelId(saved) ? saved : ''
+  })
+  const [upcoming, setUpcoming] = useState<LearnUpcomingPost[]>([])
+
+  useEffect(() => {
+    let active = true
+    void apiListUpcomingPosts()
+      .then((items) => {
+        if (active) {
+          setUpcoming(items)
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setUpcoming([])
+        }
+      })
+    return () => {
+      active = false
+    }
+  }, [])
 
   const filtered = useMemo(() => {
     return published.filter((post) => {
@@ -40,6 +68,17 @@ export function LearnIndexPage() {
   const doneCount = filtered.filter((p) => completedSlugs.has(p.slug)).length
   const pct = progressPercent(doneCount, filtered.length)
   const continuePost = filtered.find((p) => !completedSlugs.has(p.slug)) || filtered[0]
+  const upcomingFiltered = useMemo(() => {
+    return upcoming.filter((post) => {
+      if (profileFilter && !(post.profiles || []).includes(profileFilter)) {
+        return false
+      }
+      if (levelFilter && post.level !== levelFilter) {
+        return false
+      }
+      return true
+    })
+  }, [upcoming, profileFilter, levelFilter])
 
   return (
     <PageShell>
@@ -67,10 +106,22 @@ export function LearnIndexPage() {
             <Link to="/game/tasks">Чек-лист</Link>
             {' · '}
             <Link to="/game/hh-resume">HH-резюме</Link>
+            {' · '}
+            <Link to="/game/interview">Лента вопросов</Link>
+            {' · '}
+            <Link to="/game/slot">Слот 25 минут</Link>
+            {' · '}
+            <Link to="/game/practice">Практика</Link>
           </p>
         ) : (
           <p className="learn-section-note">
             <Link to="/login">Войдите</Link>, чтобы сохранять прогресс по выпускам.
+            {' · '}
+            <Link to="/game/interview">Лента вопросов</Link>
+            {' · '}
+            <Link to="/game/slot">Слот 25 минут</Link>
+            {' · '}
+            <Link to="/game/practice">Практика</Link>
           </p>
         )}
         <p className="learn-admin-entry">
@@ -82,10 +133,14 @@ export function LearnIndexPage() {
 
       <div className="learn-filters" aria-label="Фильтр по треку и уровню">
         <label className="learn-filter-field">
-          <span>Трек</span>
+          <span>Специальность</span>
           <select
             value={profileFilter}
-            onChange={(event) => setProfileFilter(event.target.value as LearnProfileId | '')}
+            onChange={(event) => {
+              const next = event.target.value as LearnProfileId | ''
+              setProfileFilter(next)
+              window.localStorage.setItem(LEARN_PROFILE_FILTER_KEY, next)
+            }}
           >
             <option value="">Все</option>
             {LEARN_PROFILES.map((profile) => (
@@ -99,7 +154,11 @@ export function LearnIndexPage() {
           <span>Уровень</span>
           <select
             value={levelFilter}
-            onChange={(event) => setLevelFilter(event.target.value as LearnLevelId | '')}
+            onChange={(event) => {
+              const next = event.target.value as LearnLevelId | ''
+              setLevelFilter(next)
+              window.localStorage.setItem(LEARN_LEVEL_FILTER_KEY, next)
+            }}
           >
             <option value="">Все</option>
             {LEARN_LEVELS.map((level) => (
@@ -228,6 +287,33 @@ export function LearnIndexPage() {
           </div>
         </>
       )}
+      {upcomingFiltered.length > 0 ? (
+        <section className="learn-season" aria-labelledby="learn-upcoming">
+          <div className="learn-season-head">
+            <h2 id="learn-upcoming" className="learn-section-title">
+              Дальше по специальности
+            </h2>
+            <p className="learn-section-note">
+              Название и дата. Текст откроется в день публикации.
+            </p>
+          </div>
+          <ul className="learn-episode-list">
+            {upcomingFiltered.map((item) => (
+              <li key={item.slug}>
+                <p className="learn-episode-code">{item.episode}</p>
+                <p className="learn-episode-title">{item.title}</p>
+                <p className="learn-section-note">
+                  {formatPublishDate(item.publishedAt)}
+                  {item.profiles.length
+                    ? ` · ${item.profiles.map((id) => profileLabel(id)).join(', ')}`
+                    : ''}
+                  {item.level ? ` · ${levelLabel(item.level)}` : ''}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
     </PageShell>
   )
 }

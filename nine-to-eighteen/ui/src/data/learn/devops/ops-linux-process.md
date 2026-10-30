@@ -6,7 +6,7 @@ episode: OPS01
 rubric: tools
 order: 1191
 publishedAt: "2026-10-23T17:00:00+03:00"
-profiles: [devops, developer, tester]
+profiles: [devops, developer]
 level: middle
 tags: [linux, process, "собеседование", kubernetes, ci, pipeline]
 onKnowledgeMap: true
@@ -281,6 +281,22 @@ Back: Держит число Pod и выкатывает версию.
 ### Front: Что выкладывать?
 
 Back: Тот артефакт, который прошёл тесты.
+
+## Мнемоника
+
+### link: Процесс и выкладка
+
+**Задание:** Связный ответ про сервер.
+
+**Элементы:**
+- процесс
+- под
+- сервис
+- пайплайн
+
+**Подсказка:** Под без лимита — процесс, которого не остановить предсказуемо.
+
+**Ответ:** process → pod → service → pipeline
 
 ## Итоги
 

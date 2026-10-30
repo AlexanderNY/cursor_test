@@ -571,7 +571,10 @@ class ProcessingService:
             static_html_content=proc_settings.get("static_html_content"),
         )
         if ai_enrichment:
-            platform_texts["_ai_enrichment"] = json.dumps(ai_enrichment, ensure_ascii=False)
+            blob = json.dumps(ai_enrichment, ensure_ascii=False)
+            if len(blob) > 8000:
+                blob = json.dumps({"truncated": True}, ensure_ascii=False)
+            platform_texts["_ai_enrichment"] = blob
 
         final_status = resolve_final_status(
             is_digest_source=False,

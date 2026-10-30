@@ -6,7 +6,7 @@ episode: RD01
 rubric: data
 order: 701
 publishedAt: "2027-05-01T10:00:00+03:00"
-profiles: [developer, analyst]
+profiles: [developer]
 level: junior
 tags: [redis, kv, cache, "собеседование", data-types]
 onKnowledgeMap: true
@@ -220,6 +220,22 @@ Back: user:42:profile или hash полей в hash (RD02)
 ### Front: list в Redis — типичные команды и смысл?
 
 Back: LPUSH/RPOP; упорядоченная последовательность элементов
+
+## Мнемоника
+
+### acronym: Redis как ключ
+
+**Задание:** Четыре свойства, которые называют сразу.
+
+**Элементы:**
+- Ключ
+- Значение
+- Память
+- Однопоточный команды
+
+**Подсказка:** Однопоточность команд не отменяет ожидание сети.
+
+**Ответ:** key, value, RAM, single-thread commands
 
 ## Итоги
 

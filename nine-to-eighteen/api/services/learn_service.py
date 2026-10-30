@@ -447,6 +447,43 @@ class LearnService:
             _public_posts_cache.set(cache_key, posts)
         return posts
 
+    async def list_upcoming(self) -> list[dict[str, Any]]:
+        """Titles of future posts. No theory, lab, or structured body."""
+        cache_key = "list:upcoming"
+        cached = _public_posts_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        await self.ensure_seeded()
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT slug, episode, title, profiles, level, published_at
+                    FROM learn_posts
+                    WHERE published_at > NOW()
+                    ORDER BY published_at ASC, sort_order ASC, id ASC
+                    """
+                )
+                rows = await cur.fetchall()
+        finally:
+            await release_db_connection(conn)
+
+        items = [
+            {
+                "slug": row[0],
+                "episode": row[1] or "",
+                "title": row[2] or "",
+                "profiles": _normalize_profiles(row[3]),
+                "level": _normalize_level(row[4]),
+                "publishedAt": _iso(row[5]),
+            }
+            for row in rows
+        ]
+        _public_posts_cache.set(cache_key, items)
+        return items
+
     async def get_post(
         self, slug: str, *, include_unpublished: bool = False
     ) -> Optional[dict[str, Any]]:

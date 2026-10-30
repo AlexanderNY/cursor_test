@@ -6,12 +6,13 @@ import sys
 from contextlib import asynccontextmanager
 from datetime import datetime
 
-from fastapi import FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, HTTPException, status
 
 from config import settings, COLLECTOR_FUNCTIONS_FOR_ADMIN, PLATFORM_POST_STATUSES_ORDERED
 from database import init_db, close_db, get_db_connection
 from services.dzen_rss_reader_service import dzen_rss_reader_service
 from shared.db.post_model import PUBLISH_PLATFORMS
+from shared.internal_auth_fastapi import require_internal_token
 from shared.queue_wakeup import wake_process_http
 from schemas import (
     HealthResponse,
@@ -138,13 +139,13 @@ async def get_status():
     )
 
 
-@app.post("/internal/collect-now", response_model=CycleResult)
+@app.post("/internal/collect-now", response_model=CycleResult, dependencies=[Depends(require_internal_token)])
 async def collect_now():
     await wake_process_http(settings.PROCESSOR_SERVICE_URL or "")
     return CycleResult(status="success", message="Processor woken (collect ETL removed)", count=0)
 
 
-@app.post("/internal/distribute-now", response_model=CycleResult)
+@app.post("/internal/distribute-now", response_model=CycleResult, dependencies=[Depends(require_internal_token)])
 async def distribute_now():
     return CycleResult(
         status="success",
@@ -153,13 +154,13 @@ async def distribute_now():
     )
 
 
-@app.post("/collect/run", response_model=CycleResult)
+@app.post("/collect/run", response_model=CycleResult, dependencies=[Depends(require_internal_token)])
 async def force_collect():
     await wake_process_http(settings.PROCESSOR_SERVICE_URL or "")
     return CycleResult(status="success", message="Processor woken (collect ETL removed)", count=0)
 
 
-@app.post("/distribute/run", response_model=CycleResult)
+@app.post("/distribute/run", response_model=CycleResult, dependencies=[Depends(require_internal_token)])
 async def force_distribute():
     return CycleResult(
         status="success",
@@ -168,7 +169,7 @@ async def force_distribute():
     )
 
 
-@app.post("/dzen-rss/run", response_model=CycleResult)
+@app.post("/dzen-rss/run", response_model=CycleResult, dependencies=[Depends(require_internal_token)])
 async def force_dzen_rss():
     try:
         count = await dzen_rss_reader_service.run_dzen_rss_cycle()

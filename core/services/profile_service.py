@@ -27,7 +27,11 @@ def _curl_global_processing(settings: Dict[str, Any]) -> Dict[str, Any]:
     """Глобальные флаги обработки curl_settings (legacy / fallback)."""
     return {
         "process_before_publish": bool(settings.get("process_before_publish", False)),
-        "process_description": settings.get("process_description"),
+        "process_description": (
+            str(settings.get("process_description"))[:8000]
+            if isinstance(settings.get("process_description"), str)
+            else settings.get("process_description")
+        ),
         "remove_emojis": bool(settings.get("remove_emojis", False)),
         "remove_images": bool(settings.get("remove_images", False)),
         "clean_html": bool(settings.get("clean_html", False)),
@@ -68,12 +72,12 @@ def _ensure_curl_url_item(
     if not isinstance(tc, list):
         out["target_channels"] = []
     else:
-        out["target_channels"] = [str(x) for x in tc if x is not None and str(x).strip()]
+        out["target_channels"] = [str(x).strip()[:200] for x in tc if x is not None and str(x).strip()][:20]
     tg = out.get("target_groups")
     if not isinstance(tg, list):
         out["target_groups"] = []
     else:
-        out["target_groups"] = [str(x) for x in tg if x is not None and str(x).strip()]
+        out["target_groups"] = [str(x).strip()[:200] for x in tg if x is not None and str(x).strip()][:20]
     for key in _CURL_PROCESSING_KEYS:
         if key not in out:
             out[key] = global_proc.get(key)
@@ -95,6 +99,11 @@ def _ensure_curl_url_item(
         out["static_html_content"] = str(out["static_html_content"])[:1000]
     elif out.get("static_html_content") == "":
         out["static_html_content"] = None
+    out["url"] = str(out.get("url") or "")[:2000]
+    out["xpath"] = str(out.get("xpath") or "")[:500]
+    description = out.get("process_description")
+    if isinstance(description, str):
+        out["process_description"] = description[:8000]
     return out
 
 
@@ -105,7 +114,8 @@ def _normalize_curl_settings_urls(settings: Dict[str, Any]) -> Dict[str, Any]:
     if not isinstance(urls_in, list):
         urls_in = []
     urls_out = [
-        _ensure_curl_url_item(u if isinstance(u, dict) else {}, global_proc) for u in urls_in
+        _ensure_curl_url_item(u if isinstance(u, dict) else {}, global_proc)
+        for u in urls_in[:30]
     ]
     settings["urls"] = urls_out
     if urls_out:

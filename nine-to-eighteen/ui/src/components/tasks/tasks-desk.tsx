@@ -32,7 +32,11 @@ const VIEWS: { id: DeskView; label: string }[] = [
   { id: 'focus', label: 'Фокус' },
 ]
 
-export function TasksDesk() {
+type TasksDeskProps = {
+  focusTaskId?: number | null
+}
+
+export function TasksDesk({ focusTaskId = null }: TasksDeskProps) {
   const [items, setItems] = useState<SiteUserTask[]>([])
   const [ready, setReady] = useState(false)
   const [error, setError] = useState('')
@@ -62,6 +66,17 @@ export function TasksDesk() {
   useEffect(() => {
     void refresh()
   }, [refresh])
+
+  useEffect(() => {
+    if (focusTaskId == null) {
+      return
+    }
+    setSelectedId(focusTaskId)
+    setView('list')
+    setStatusFilter('open')
+    setTagFilter('')
+    setSearch('')
+  }, [focusTaskId])
 
   useEffect(() => {
     const id = window.setInterval(() => setNowTick(Date.now()), 60_000)

@@ -6,7 +6,7 @@ episode: S01E03
 rubric: tools
 order: 3
 publishedAt: "2026-08-20T22:49:01.216Z"
-profiles: [developer, devops, tester, analyst, product_owner]
+profiles: [developer, devops, tester, analyst]
 level: junior
 tags: [git, "собеседование", sa, "требования"]
 onKnowledgeMap: true
@@ -427,6 +427,22 @@ Back: Код без истории — черновик на Рабочем ст
 ### Front: Что такое «PATCH»?
 
 Back: /tickets/{id}
+
+## Мнемоника
+
+### link: Ветка и договор
+
+**Задание:** Сначала снимок, потом договорённость аналитика.
+
+**Элементы:**
+- коммит
+- ветка
+- запрос на слияние
+- контракт
+
+**Подсказка:** Контракт API без примера ошибки — половина договорённости.
+
+**Ответ:** commit → branch → PR → contract
 
 ## Итоги
 

@@ -54,6 +54,7 @@ def _group_to_response(g: Dict, with_members: bool = True) -> GroupResponse:
                 tariff=m["tariff"],
                 role_in_group=m["role_in_group"],
                 joined_at=m["joined_at"],
+                avatar_url=m.get("avatar_url"),
             )
             for m in g["members"]
         ]
@@ -305,6 +306,7 @@ async def create_invite(
                 tariff=m.get("tariff", "free"),
                 role_in_group=m["role_in_group"],
                 joined_at=m["joined_at"],
+                avatar_url=m.get("avatar_url"),
             )
         invite = _invite_to_response(result["invite"]) if result.get("invite") else None
         return InviteActionResponse(

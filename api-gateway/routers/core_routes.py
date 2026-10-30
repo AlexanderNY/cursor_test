@@ -578,6 +578,30 @@ async def upload_forum_avatar(
     return await forward_to_core("/forum/avatar", request)
 
 
+@router.delete("/forum/avatar")
+async def delete_forum_avatar(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    """Снять фото профиля.
+
+    DELETE /core/forum/avatar -> DELETE /forum/avatar на core сервисе
+    """
+    return await forward_to_core("/forum/avatar", request)
+
+
+@router.get("/forum/unread")
+async def forum_unread_count(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    """Счётчик непрочитанных ответов в беседах.
+
+    GET /core/forum/unread -> GET /forum/unread на core сервисе
+    """
+    return await forward_to_core("/forum/unread", request)
+
+
 @router.get("/forum/avatars/{user_id}")
 async def get_forum_avatar(
     user_id: int,
@@ -588,6 +612,18 @@ async def get_forum_avatar(
     GET /core/forum/avatars/{id} -> GET /forum/avatars/{id} на core сервисе
     """
     return await forward_to_core(f"/forum/avatars/{user_id}", request)
+
+
+@router.get("/forum/attachments/{thread_id}")
+async def get_forum_attachment(
+    thread_id: int,
+    request: Request,
+) -> Response:
+    """Скриншот ошибки для img. Без JWT.
+
+    GET /core/forum/attachments/{id} -> GET /forum/attachments/{id} на core сервисе
+    """
+    return await forward_to_core(f"/forum/attachments/{thread_id}", request)
 
 
 @router.get("/forum/threads")
@@ -666,6 +702,19 @@ async def create_forum_post(
     return await forward_to_core(f"/forum/threads/{thread_id}/posts", request)
 
 
+@router.post("/forum/threads/{thread_id}/attachment")
+async def upload_forum_attachment(
+    thread_id: int,
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    """Скриншот к ветке «ошибка».
+
+    POST /core/forum/threads/{id}/attachment -> POST /forum/threads/{id}/attachment
+    """
+    return await forward_to_core(f"/forum/threads/{thread_id}/attachment", request)
+
+
 @router.post("/forum/threads/{thread_id}/vote")
 async def toggle_forum_vote(
     thread_id: int,
@@ -677,6 +726,19 @@ async def toggle_forum_vote(
     POST /core/forum/threads/{id}/vote -> POST /forum/threads/{id}/vote на core сервисе
     """
     return await forward_to_core(f"/forum/threads/{thread_id}/vote", request)
+
+
+@router.patch("/forum/posts/{post_id}")
+async def update_forum_post(
+    post_id: int,
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> Response:
+    """Правка своего ответа.
+
+    PATCH /core/forum/posts/{id} -> PATCH /forum/posts/{id} на core сервисе
+    """
+    return await forward_to_core(f"/forum/posts/{post_id}", request)
 
 
 @router.delete("/forum/posts/{post_id}")

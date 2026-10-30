@@ -10,9 +10,11 @@ from schemas import (
     ForumListResponse,
     ForumPost,
     ForumPostCreate,
+    ForumPostUpdate,
     ForumThreadCreate,
     ForumThreadDetail,
     ForumThreadUpdate,
+    ForumUnreadResponse,
     ForumVoteResponse,
 )
 from services.forum_policy import (
@@ -39,10 +41,39 @@ async def upload_avatar(
     return await forum_service.save_avatar(user_id, content)
 
 
+@router.delete("/avatar", response_model=ForumAvatarResponse)
+async def delete_avatar(
+    x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
+) -> ForumAvatarResponse:
+    """Снимает фото профиля."""
+    user_id = _require_user_id(x_user_id)
+    return await forum_service.delete_avatar(user_id)
+
+
+@router.get("/unread", response_model=ForumUnreadResponse)
+async def unread_count(
+    x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
+) -> ForumUnreadResponse:
+    """Число веток, где после вас ответил кто-то другой."""
+    user_id = _require_user_id(x_user_id)
+    return await forum_service.unread_count(user_id)
+
+
 @router.get("/avatars/{user_id}")
 async def get_avatar(user_id: int) -> Response:
     """Отдаёт фото профиля. Без JWT: тег img не шлёт Authorization."""
     content, content_type = await forum_service.read_avatar(user_id)
+    return Response(
+        content=content,
+        media_type=content_type,
+        headers={"Cache-Control": "no-cache"},
+    )
+
+
+@router.get("/attachments/{thread_id}")
+async def get_attachment(thread_id: int) -> Response:
+    """Скриншот ошибки. Без JWT: его показывает img."""
+    content, content_type = await forum_service.read_attachment(thread_id)
     return Response(
         content=content,
         media_type=content_type,
@@ -67,6 +98,7 @@ def _is_platform_admin(x_user_role: Optional[str]) -> bool:
 async def list_threads(
     scope: str = Query(default="platform"),
     kind: Optional[str] = Query(default=None),
+    q: Optional[str] = Query(default=None),
     x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
     x_user_role: Optional[str] = Header(None, alias="X-User-Role"),
 ) -> ForumListResponse:
@@ -82,6 +114,7 @@ async def list_threads(
         user_id,
         scope=parsed_scope,
         kind=parsed_kind,
+        query=q,
         is_platform_admin=_is_platform_admin(x_user_role),
     )
 
@@ -123,9 +156,9 @@ async def update_thread(
     x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
     x_user_role: Optional[str] = Header(None, alias="X-User-Role"),
 ) -> ForumThreadDetail:
-    """Закрывает или открывает ветку. Автор, владелец Workspace или admin."""
+    """Закрытие, статус идеи или закреп."""
     user_id = _require_user_id(x_user_id)
-    return await forum_service.set_closed(
+    return await forum_service.update_thread(
         user_id,
         thread_id,
         payload,
@@ -165,6 +198,24 @@ async def create_post(
     )
 
 
+@router.post("/threads/{thread_id}/attachment", response_model=ForumThreadDetail)
+async def upload_attachment(
+    thread_id: int,
+    file: UploadFile = File(...),
+    x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
+    x_user_role: Optional[str] = Header(None, alias="X-User-Role"),
+) -> ForumThreadDetail:
+    """Один скриншот у ветки типа «ошибка»."""
+    user_id = _require_user_id(x_user_id)
+    content = await read_upload_limited(file, max_bytes=AVATAR_MAX_BYTES, label="Файл")
+    return await forum_service.save_attachment(
+        user_id,
+        thread_id,
+        content,
+        is_platform_admin=_is_platform_admin(x_user_role),
+    )
+
+
 @router.post("/threads/{thread_id}/vote", response_model=ForumVoteResponse)
 async def toggle_vote(
     thread_id: int,
@@ -173,6 +224,23 @@ async def toggle_vote(
     """Toggle голоса. Только ветки типа «идея»."""
     user_id = _require_user_id(x_user_id)
     return await forum_service.toggle_vote(user_id, thread_id)
+
+
+@router.patch("/posts/{post_id}", response_model=ForumPost)
+async def update_post(
+    post_id: int,
+    payload: ForumPostUpdate,
+    x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
+    x_user_role: Optional[str] = Header(None, alias="X-User-Role"),
+) -> ForumPost:
+    """Правит свой ответ в течение 15 минут."""
+    user_id = _require_user_id(x_user_id)
+    return await forum_service.edit_post(
+        user_id,
+        post_id,
+        payload,
+        is_platform_admin=_is_platform_admin(x_user_role),
+    )
 
 
 @router.delete("/posts/{post_id}")

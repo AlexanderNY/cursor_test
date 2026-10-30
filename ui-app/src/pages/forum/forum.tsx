@@ -14,8 +14,9 @@ import { useAuth } from '@/contexts/auth-context'
 import { useToast } from '@/contexts/toast-context'
 import { getErrorMessage } from '@/services/api-client'
 import { forumService } from '@/services/forum-service'
-import type { ForumKind, ForumListResponse, ForumScope, ForumThreadDetail } from '@/types/core'
-import { FORUM_KIND_LABELS } from '@/types/core'
+import { UserFace } from '@/components/user-face'
+import type { ForumKind, ForumListResponse, ForumScope, ForumStatus, ForumThreadDetail } from '@/types/core'
+import { FORUM_KIND_LABELS, FORUM_STATUS_LABELS } from '@/types/core'
 import { avatarPublicSrc } from '@/utils/avatar'
 import { formatDateTime } from '@/utils/date'
 
@@ -28,33 +29,16 @@ function excerpt(text: string, max = 140): string {
   return `${flat.slice(0, max - 1)}…`
 }
 
-function AuthorFace({
-  name,
-  avatar,
-  className = 'h-7 w-7 text-[10px]',
-}: {
-  name: string
-  avatar?: string | null
-  className?: string
-}) {
-  const src = avatarPublicSrc(avatar)
-  const initial = (name || '?').slice(0, 1).toUpperCase()
-  if (src) {
-    return (
-      <img
-        src={src}
-        alt=""
-        className={`${className} rounded-full object-cover shrink-0 bg-[var(--bg-tertiary)]`}
-      />
-    )
-  }
-  return (
-    <span
-      className={`${className} rounded-full shrink-0 inline-flex items-center justify-center bg-gradient-to-br from-primary-500 to-accent-500 font-semibold text-white`}
-      aria-hidden
-    >
-      {initial}
-    </span>
+function renderText(text: string) {
+  const parts = text.split(/(@[\w.-]{2,32})/g)
+  return parts.map((part, index) =>
+    part.startsWith('@') ? (
+      <span key={index} className="text-primary-400">
+        {part}
+      </span>
+    ) : (
+      <span key={index}>{part}</span>
+    ),
   )
 }
 
@@ -78,8 +62,10 @@ export function ForumPage() {
         ? 'workspace'
         : 'platform'
   const kind = parseKind(searchParams.get('kind'))
+  const queryParam = (searchParams.get('q') ?? '').trim()
   const threadParam = searchParams.get('thread')
   const threadId = threadParam && /^\d+$/.test(threadParam) ? Number(threadParam) : null
+  const [queryDraft, setQueryDraft] = useState(queryParam)
 
   const [list, setList] = useState<ForumListResponse | null>(null)
   const [thread, setThread] = useState<ForumThreadDetail | null>(null)
@@ -92,7 +78,11 @@ export function ForumPage() {
   const [body, setBody] = useState('')
   const [createKind, setCreateKind] = useState<ForumKind>(kind || 'discussion')
   const [isCreating, setIsCreating] = useState(false)
+  const [shot, setShot] = useState<File | null>(null)
   const [reply, setReply] = useState('')
+  const [quote, setQuote] = useState<{ id: number; author: string; body: string } | null>(null)
+  const [editingId, setEditingId] = useState<number | null>(null)
+  const [editBody, setEditBody] = useState('')
   const [isReplying, setIsReplying] = useState(false)
   const [isVoting, setIsVoting] = useState(false)
   const [busyId, setBusyId] = useState<number | null>(null)
@@ -119,6 +109,7 @@ export function ForumPage() {
         const response = await forumService.listThreads({
           scope,
           ...(kind ? { kind } : {}),
+          ...(queryParam ? { q: queryParam } : {}),
         })
         setList(response)
       } catch (err) {
@@ -127,7 +118,7 @@ export function ForumPage() {
         if (!silent) setIsLoadingList(false)
       }
     },
-    [scope, kind],
+    [scope, kind, queryParam],
   )
 
   const loadThread = useCallback(
@@ -145,6 +136,16 @@ export function ForumPage() {
         }
         setThread(detail)
         setThreadError('')
+        setList((prev) =>
+          prev
+            ? {
+                ...prev,
+                threads: prev.threads.map((item) =>
+                  item.id === detail.id ? { ...item, unread: false } : item,
+                ),
+              }
+            : prev,
+        )
       } catch (err) {
         if (!silent) {
           setThread(null)
@@ -173,6 +174,23 @@ export function ForumPage() {
   useEffect(() => {
     setCreateKind(kind || 'discussion')
   }, [kind])
+
+  useEffect(() => {
+    setQueryDraft(queryParam)
+  }, [queryParam])
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      if (queryDraft.trim() === queryParam) return
+      patchParams({ q: queryDraft.trim() || null })
+    }, 300)
+    return () => window.clearTimeout(timer)
+  }, [queryDraft, queryParam, patchParams])
+
+  useEffect(() => {
+    setQuote(null)
+    setEditingId(null)
+  }, [threadId])
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -208,8 +226,16 @@ export function ForumPage() {
         title: trimmedTitle,
         body: trimmedBody,
       })
+      if (createKind === 'bug_report' && shot) {
+        try {
+          await forumService.uploadAttachment(created.id, shot)
+        } catch (err) {
+          addToast(getErrorMessage(err), 'error')
+        }
+      }
       setTitle('')
       setBody('')
+      setShot(null)
       setShowComposer(false)
       patchParams({
         scope,
@@ -234,8 +260,9 @@ export function ForumPage() {
     }
     setIsReplying(true)
     try {
-      await forumService.addPost(threadId, trimmed)
+      await forumService.addPost(threadId, trimmed, quote?.id)
       setReply('')
+      setQuote(null)
       await loadThread(threadId, true)
       await loadList(true)
     } catch (err) {
@@ -299,6 +326,66 @@ export function ForumPage() {
       patchParams({ thread: null })
       await loadList(true)
       addToast('Ветка удалена', 'success')
+    } catch (err) {
+      addToast(getErrorMessage(err), 'error')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  async function handleStatus(next: ForumStatus) {
+    if (thread == null) return
+    setBusyId(thread.id)
+    try {
+      const updated = await forumService.updateThread(thread.id, { status: next })
+      setThread(updated)
+      await loadList(true)
+    } catch (err) {
+      addToast(getErrorMessage(err), 'error')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  async function handlePin() {
+    if (thread == null) return
+    setBusyId(thread.id)
+    try {
+      const updated = await forumService.updateThread(thread.id, { is_pinned: !thread.is_pinned })
+      setThread(updated)
+      await loadList(true)
+    } catch (err) {
+      addToast(getErrorMessage(err), 'error')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  async function handleAttach(file: File | undefined) {
+    if (thread == null || !file) return
+    setBusyId(thread.id)
+    try {
+      const updated = await forumService.uploadAttachment(thread.id, file)
+      setThread(updated)
+      addToast('Скриншот приложен', 'success')
+    } catch (err) {
+      addToast(getErrorMessage(err), 'error')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  async function handleSaveEdit(postId: number) {
+    const trimmed = editBody.trim()
+    if (!trimmed) {
+      addToast('Введите сообщение', 'error')
+      return
+    }
+    setBusyId(postId)
+    try {
+      await forumService.editPost(postId, trimmed)
+      setEditingId(null)
+      if (threadId != null) await loadThread(threadId, true)
     } catch (err) {
       addToast(getErrorMessage(err), 'error')
     } finally {
@@ -379,6 +466,13 @@ export function ForumPage() {
         ))}
       </div>
 
+      <Input
+        label="Поиск"
+        value={queryDraft}
+        onChange={(event) => setQueryDraft(event.target.value)}
+        placeholder="Название или текст"
+      />
+
       {listError && <Alert variant="error">{listError}</Alert>}
 
       <div className="grid gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
@@ -430,6 +524,17 @@ export function ForumPage() {
                   maxLength={8000}
                   className="w-full rounded-lg border border-[var(--border-color)] bg-[var(--bg-secondary)] px-3 py-2 text-sm text-[var(--text-primary)]"
                 />
+                {createKind === 'bug_report' && (
+                  <label className="block text-sm text-[var(--text-secondary)]">
+                    Скриншот
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,image/gif"
+                      className="mt-1 block w-full text-xs"
+                      onChange={(event) => setShot(event.target.files?.[0] ?? null)}
+                    />
+                  </label>
+                )}
                 <Button type="submit" size="sm" isLoading={isCreating}>
                   Открыть
                 </Button>
@@ -452,8 +557,12 @@ export function ForumPage() {
 
             {!isLoadingList && !noWorkspace && threads.length === 0 && (
               <EmptyState
-                title="Пока пусто"
-                description="Откройте первую ветку — её увидят участники этой области."
+                title={queryParam ? 'Ничего не найдено' : 'Пока пусто'}
+                description={
+                  queryParam
+                    ? 'В этой области нет веток с таким текстом.'
+                    : 'Откройте первую ветку — её увидят участники этой области.'
+                }
               />
             )}
 
@@ -473,7 +582,12 @@ export function ForumPage() {
                     >
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-xs text-[var(--text-muted)]">
+                          {item.unread && (
+                            <span className="mr-1 inline-block h-2 w-2 rounded-full bg-amber-500" aria-label="непрочитано" />
+                          )}
+                          {item.is_pinned ? 'Закреплена · ' : ''}
                           {FORUM_KIND_LABELS[item.kind]}
+                          {item.kind === 'suggestion' ? ` · ${FORUM_STATUS_LABELS[item.status]}` : ''}
                           {item.is_closed ? ' · закрыта' : ''}
                         </span>
                         {item.kind === 'suggestion' && (
@@ -485,7 +599,7 @@ export function ForumPage() {
                       </p>
                       <p className="mt-1 text-xs text-[var(--text-muted)] line-clamp-2">{excerpt(item.body)}</p>
                       <p className="mt-1 flex items-center gap-1.5 text-xs text-[var(--text-muted)]">
-                        <AuthorFace name={item.author_name} avatar={item.author_avatar} className="h-4 w-4 text-[8px]" />
+                        <UserFace name={item.author_name} avatar={item.author_avatar} className="h-4 w-4 text-[8px]" />
                         <span>
                           {item.author_name} · {item.reply_count} отв.
                         </span>
@@ -526,10 +640,12 @@ export function ForumPage() {
               <>
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="flex min-w-0 items-start gap-3">
-                    <AuthorFace name={thread.author_name} avatar={thread.author_avatar} className="h-9 w-9 text-sm" />
+                    <UserFace name={thread.author_name} avatar={thread.author_avatar} className="h-9 w-9 text-sm" />
                     <div className="min-w-0">
                       <p className="text-xs text-[var(--text-muted)]">
+                        {thread.is_pinned ? 'Закреплена · ' : ''}
                         {FORUM_KIND_LABELS[thread.kind]}
+                        {thread.kind === 'suggestion' ? ` · ${FORUM_STATUS_LABELS[thread.status]}` : ''}
                         {thread.is_closed ? ' · закрыта' : ''} · {formatDateTime(thread.created_at)}
                       </p>
                       <h2 className="mt-1 text-xl font-semibold text-[var(--text-primary)]">{thread.title}</h2>
@@ -551,6 +667,25 @@ export function ForumPage() {
                     {!thread.can_vote && thread.kind === 'suggestion' && (
                       <span className="text-sm text-[var(--text-muted)] self-center">▲ {thread.vote_count}</span>
                     )}
+                    {thread.can_set_status && (
+                      <select
+                        aria-label="Статус идеи"
+                        value={thread.status}
+                        onChange={(event) => void handleStatus(event.target.value as ForumStatus)}
+                        className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-secondary)] px-2 py-1 text-sm text-[var(--text-primary)]"
+                      >
+                        {(Object.keys(FORUM_STATUS_LABELS) as ForumStatus[]).map((status) => (
+                          <option key={status} value={status}>
+                            {FORUM_STATUS_LABELS[status]}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                    {thread.can_pin && (
+                      <Button type="button" size="sm" variant="secondary" onClick={() => void handlePin()}>
+                        {thread.is_pinned ? 'Открепить' : 'Закрепить'}
+                      </Button>
+                    )}
                     {thread.can_close && (
                       <Button type="button" size="sm" variant="secondary" onClick={() => void handleClose()}>
                         {thread.is_closed ? 'Открыть' : 'Закрыть'}
@@ -565,7 +700,25 @@ export function ForumPage() {
                 </div>
 
                 <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)] px-3 py-3">
-                  <p className="whitespace-pre-wrap text-sm text-[var(--text-primary)]">{thread.body}</p>
+                  <p className="whitespace-pre-wrap text-sm text-[var(--text-primary)]">{renderText(thread.body)}</p>
+                  {thread.attachment_path && (
+                    <img
+                      src={avatarPublicSrc(thread.attachment_path) ?? ''}
+                      alt="Скриншот"
+                      className="mt-3 max-h-64 rounded-lg object-contain"
+                    />
+                  )}
+                  {thread.can_attach && (
+                    <label className="mt-3 block text-xs text-[var(--text-muted)]">
+                      {thread.attachment_path ? 'Заменить скриншот' : 'Приложить скриншот'}
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp,image/gif"
+                        className="mt-1 block w-full"
+                        onChange={(event) => void handleAttach(event.target.files?.[0])}
+                      />
+                    </label>
+                  )}
                 </div>
 
                 <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-1">
@@ -574,25 +727,81 @@ export function ForumPage() {
                       key={post.id}
                       className="flex gap-2 rounded-xl border border-[var(--border-color)] px-3 py-2"
                     >
-                      <AuthorFace name={post.author_name} avatar={post.author_avatar} />
+                      <UserFace name={post.author_name} avatar={post.author_avatar} />
                       <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-2">
                         <p className="text-xs text-[var(--text-muted)]">
                           {post.author_name} · {formatDateTime(post.created_at)}
+                          {post.updated_at ? ' · изменено' : ''}
                         </p>
-                        {post.can_delete && (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => void handleDeletePost(post.id)}
-                            isLoading={busyId === post.id}
-                          >
-                            Удалить
-                          </Button>
-                        )}
+                        <div className="flex gap-1">
+                          {thread.can_reply && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              onClick={() =>
+                                setQuote({ id: post.id, author: post.author_name, body: post.body })
+                              }
+                            >
+                              Цитата
+                            </Button>
+                          )}
+                          {post.can_edit && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => {
+                                setEditingId(post.id)
+                                setEditBody(post.body)
+                              }}
+                            >
+                              Править
+                            </Button>
+                          )}
+                          {post.can_delete && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => void handleDeletePost(post.id)}
+                              isLoading={busyId === post.id}
+                            >
+                              Удалить
+                            </Button>
+                          )}
+                        </div>
                       </div>
-                      <p className="mt-1 whitespace-pre-wrap text-sm text-[var(--text-primary)]">{post.body}</p>
+                      {post.quote_body && (
+                        <blockquote className="mt-1 border-l-2 border-[var(--border-color)] pl-2 text-xs text-[var(--text-muted)]">
+                          {post.quote_author}: {post.quote_body}
+                        </blockquote>
+                      )}
+                      {editingId === post.id ? (
+                        <form
+                          className="mt-2 space-y-2"
+                          onSubmit={(event) => {
+                            event.preventDefault()
+                            void handleSaveEdit(post.id)
+                          }}
+                        >
+                          <textarea
+                            value={editBody}
+                            onChange={(event) => setEditBody(event.target.value)}
+                            rows={3}
+                            maxLength={8000}
+                            className="w-full rounded-lg border border-[var(--border-color)] bg-[var(--bg-secondary)] px-3 py-2 text-sm text-[var(--text-primary)]"
+                          />
+                          <Button type="submit" size="sm" isLoading={busyId === post.id}>
+                            Сохранить
+                          </Button>
+                        </form>
+                      ) : (
+                        <p className="mt-1 whitespace-pre-wrap text-sm text-[var(--text-primary)]">
+                          {renderText(post.body)}
+                        </p>
+                      )}
                       </div>
                     </div>
                   ))}
@@ -603,13 +812,23 @@ export function ForumPage() {
                     <label className="block text-sm font-medium text-[var(--text-secondary)]" htmlFor="forum-reply">
                       Ответ
                     </label>
+                    {quote && (
+                      <div className="flex items-start justify-between gap-2 rounded-lg border border-[var(--border-color)] px-2 py-1 text-xs text-[var(--text-muted)]">
+                        <p className="line-clamp-2">
+                          Цитата {quote.author}: {excerpt(quote.body, 180)}
+                        </p>
+                        <button type="button" className="shrink-0 text-primary-400" onClick={() => setQuote(null)}>
+                          Убрать
+                        </button>
+                      </div>
+                    )}
                     <textarea
                       id="forum-reply"
                       value={reply}
                       onChange={(event) => setReply(event.target.value)}
                       rows={3}
                       maxLength={8000}
-                      placeholder="Напишите ответ. Ctrl+Enter отправит."
+                      placeholder="Ответ. @имя упомянет участника. Ctrl+Enter отправит."
                       onKeyDown={(event) => {
                         if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
                           event.preventDefault()

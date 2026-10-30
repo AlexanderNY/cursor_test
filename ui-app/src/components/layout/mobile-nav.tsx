@@ -5,6 +5,8 @@ import { useTheme } from '@/contexts/theme-context'
 import { Button } from '@/components/ui'
 import { MenuIcon, CloseIcon, SunIcon, MoonIcon, LogOutIcon } from '@/components/icons'
 import { navItems, topNavItems, groupNavItem, adminNavItems } from '@/config/nav'
+import { useForumUnreadCount } from '@/hooks/use-forum-unread'
+import { UserFace } from '@/components/user-face'
 import { canViewTeamAnalytics } from '@/types/smm'
 
 const iconClassName = 'h-5 w-5'
@@ -12,6 +14,7 @@ const iconClassName = 'h-5 w-5'
 export function MobileNav() {
   const [isOpen, setIsOpen] = useState(false)
   const { user, logout } = useAuth()
+  const forumUnread = useForumUnreadCount()
   const { isDarkMode, toggleTheme } = useTheme()
   const location = useLocation()
 
@@ -66,7 +69,10 @@ export function MobileNav() {
             <h1 className="text-lg font-bold text-gradient">Control Panel</h1>
             {user && (
               <>
-                <p className="text-sm text-[var(--text-muted)] truncate">{user.username}</p>
+                <p className="text-sm text-[var(--text-muted)] truncate flex items-center gap-2">
+                  <UserFace name={user.username} avatar={user.avatar_url} className="h-7 w-7 text-[10px]" />
+                  <span className="truncate">{user.username}</span>
+                </p>
                 <p className="text-xs text-[var(--text-muted)] truncate">
                   {user.role ?? '—'} ·{' '}
                   <Link to="/profile?tab=billing" onClick={() => setIsOpen(false)} className="text-primary-400 hover:text-primary-300 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/50 rounded">
@@ -113,7 +119,12 @@ export function MobileNav() {
               className={({ isActive }) => `nav-link ${isActive ? 'nav-link-active' : ''}`}
             >
               <item.Icon className={iconClassName} />
-              <span>{item.label}</span>
+              <span className="flex-1">{item.label}</span>
+              {item.path === '/forum' && forumUnread > 0 && (
+                <span className="ml-auto text-[10px] font-semibold min-w-[1.25rem] h-5 px-1.5 rounded-full bg-amber-500 text-white flex items-center justify-center">
+                  {forumUnread > 99 ? '99+' : forumUnread}
+                </span>
+              )}
             </NavLink>
           ))}
           {(user?.role === 'manager' || user?.role === 'author' || user?.role === 'admin' || user?.role_in_group || user?.group_id) && (

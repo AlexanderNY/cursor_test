@@ -6,7 +6,7 @@ episode: B01
 rubric: architecture
 order: 101
 publishedAt: "2026-08-29T10:00:00Z"
-profiles: [developer, analyst, tester, devops]
+profiles: [developer]
 level: junior
 tags: [architecture, "собеседование", git, python, api, fastapi]
 onKnowledgeMap: true
@@ -454,6 +454,22 @@ Back: Python / venv
 ### Front: Ветка и PR?
 
 Back: [B06](/game/learn/b05-api-check)
+
+## Мнемоника
+
+### loci: Первый стенд
+
+**Задание:** Комнаты пути от пустой папки до health.
+
+**Элементы:**
+- репозиторий
+- venv
+- ручка
+- health
+
+**Подсказка:** Health — проверка процесса, не бизнес-сценарий.
+
+**Ответ:** git → venv → route → health
 
 ## Итоги
 

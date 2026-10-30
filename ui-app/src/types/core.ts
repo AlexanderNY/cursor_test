@@ -179,12 +179,20 @@ export interface RoadmapVoteResponse {
 export type ForumScope = 'workspace' | 'platform'
 
 export type ForumKind = 'discussion' | 'bug_report' | 'suggestion' | 'contact_author'
+export type ForumStatus = 'new' | 'accepted' | 'in_progress' | 'done'
 
 export const FORUM_KIND_LABELS: Record<ForumKind, string> = {
   discussion: 'Обсуждение',
   bug_report: 'Ошибка',
   suggestion: 'Идея',
   contact_author: 'Вопрос автору',
+}
+
+export const FORUM_STATUS_LABELS: Record<ForumStatus, string> = {
+  new: 'Новая',
+  accepted: 'Принята',
+  in_progress: 'В работе',
+  done: 'Сделана',
 }
 
 export interface ForumThread {
@@ -199,6 +207,10 @@ export interface ForumThread {
   author_name: string
   author_avatar?: string | null
   is_closed: boolean
+  status: ForumStatus
+  is_pinned: boolean
+  attachment_path?: string | null
+  unread: boolean
   vote_count: number
   voted: boolean
   reply_count: number
@@ -208,6 +220,9 @@ export interface ForumThread {
   can_vote: boolean
   can_close: boolean
   can_delete: boolean
+  can_set_status: boolean
+  can_pin: boolean
+  can_attach: boolean
 }
 
 export interface ForumPost {
@@ -218,7 +233,11 @@ export interface ForumPost {
   author_name: string
   author_avatar?: string | null
   created_at: string
+  updated_at?: string | null
+  quote_author?: string | null
+  quote_body?: string | null
   can_delete: boolean
+  can_edit: boolean
 }
 
 export interface ForumThreadDetail extends ForumThread {

@@ -30,6 +30,9 @@ async def _save_screenshot_from_base64(screenshot_base64: str, user_id: int) -> 
         return None
     if not data:
         return None
+    if len(data) > 2 * 1024 * 1024:
+        logger.warning("Screenshot exceeds 2 MiB, skipped")
+        return None
     try:
         date_part = datetime.utcnow().strftime("%Y-%m-%d")
         name = f"{uuid.uuid4().hex}.jpg"
@@ -144,7 +147,7 @@ async def save_url_post(item: dict[str, Any]) -> int | None:
     finally:
         await release_db_connection(conn)
 
-    post_text = "" if screenshot_only else raw_post_text
+    post_text = "" if screenshot_only else str(raw_post_text)[:150000]
     try:
         from services.unified_post_ops import create_unified_post
 

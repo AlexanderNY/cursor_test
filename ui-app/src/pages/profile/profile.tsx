@@ -162,6 +162,20 @@ export function ProfilePage() {
     }
   }
 
+  async function handleAvatarRemove() {
+    setIsUploadingAvatar(true)
+    try {
+      await forumService.deleteAvatar()
+      await refreshUserData()
+      setAvatarTick(Date.now())
+      addToast('Фото профиля убрано', 'success')
+    } catch (err) {
+      addToast(getErrorMessage(err), 'error')
+    } finally {
+      setIsUploadingAvatar(false)
+    }
+  }
+
   const avatarSrc = avatarPublicSrc(user?.avatar_url, avatarTick || undefined)
   
   const [verificationCode, setVerificationCode] = useState('')
@@ -349,6 +363,16 @@ export function ProfilePage() {
                 onChange={(event) => void handleAvatarPick(event)}
               />
               <div>
+                {avatarSrc && (
+                  <button
+                    type="button"
+                    className="mb-1 text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                    onClick={() => void handleAvatarRemove()}
+                    disabled={isUploadingAvatar}
+                  >
+                    Убрать фото
+                  </button>
+                )}
                 <span className="block">{user?.username}</span>
                 <span className="text-sm font-normal text-[var(--text-secondary)]">
                   {user?.is_email_verified ? (

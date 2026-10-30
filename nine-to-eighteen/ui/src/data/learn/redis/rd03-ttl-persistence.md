@@ -6,7 +6,7 @@ episode: RD03
 rubric: data
 order: 703
 publishedAt: "2027-05-05T10:00:00+03:00"
-profiles: [developer, analyst]
+profiles: [developer]
 level: middle
 tags: [redis, ttl, rdb, aof, "собеседование", cache-aside, invalidation, stampede, dogpile]
 onKnowledgeMap: true
@@ -295,6 +295,21 @@ Back: DEL user:42 или SET новым значением
 ### Front: SET lock:key 1 NX EX 5 — зачем NX и EX?
 
 Back: NX — только если lock свободен; EX — автоснятие через 5 сек
+
+## Мнемоника
+
+### peg: Жизнь ключа
+
+**Задание:** Три срока, которые не одно и то же.
+
+**Элементы:**
+- TTL ключа
+- снимок RDB
+- журнал AOF
+
+**Подсказка:** TTL не заменяет сохранение на диск.
+
+**Ответ:** 1 TTL · 2 RDB · 3 AOF
 
 ## Итоги
 

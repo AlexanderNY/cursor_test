@@ -20,6 +20,7 @@ from services.wordpress_client import WordPressClient
 from shared.bot_internal import claim_ready_posts, mark_post_published
 from shared.db.bot_queue import claimed_target_as_post
 from shared.db.posts_repo import PostsRepository, PublishResult
+from shared.publish_html import sanitize_publish_html
 
 logger = logging.getLogger(__name__)
 
@@ -151,7 +152,7 @@ class PublishService:
                     site_errors: list[str] = []
                     extras = _parse_json_dict(post.get("extras"))
 
-                    for site_info in sites:
+                    for site_info in sites[:10]:
                         site_url = site_info["site_url"]
                         channel_id = site_info.get("channel_id")
                         channel = site_info.get("channel") or {}
@@ -161,7 +162,7 @@ class PublishService:
                             continue
 
                         title = post.get("title") or "Untitled"
-                        content = post.get("post_text") or ""
+                        content = sanitize_publish_html(post.get("post_text") or "")
                         if not content:
                             site_errors.append("Post content is empty")
                             continue

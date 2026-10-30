@@ -67,9 +67,9 @@ export const sections: Section[] = [
   {
     slug: 'trainers',
     title: 'Тренажёры',
-    subtitle: 'Code · SQL · Git',
+    subtitle: 'Code · SQL · Git · практика',
     description:
-      'Песочницы в браузере: Python (Pyodide), SQL (SQLite) и симулятор Git. У каждого — свободный режим и каталог задач из Learn.',
+      'Песочницы в браузере: Python (Pyodide), SQL (SQLite), симулятор Git и короткие задачи на React, проверку API, историю с приёмкой и STAR.',
     accent: '#2dd4bf',
     emoji: '⌨️',
     appPath: '/game/code',

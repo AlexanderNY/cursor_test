@@ -6,7 +6,7 @@ episode: JS01
 rubric: frontend
 order: 850
 publishedAt: "2027-05-20T10:00:00+03:00"
-profiles: [developer, tester]
+profiles: [developer]
 level: junior
 tags: [javascript, types, "собеседование", functions, async, fetch]
 onKnowledgeMap: true
@@ -416,6 +416,22 @@ Back: call вызывает сразу с this; bind возвращает фун
 ### Front: Что означает свойство response.ok у Fetch API?
 
 Back: true только для статусов 200–299
+
+## Мнемоника
+
+### acronym: Приведение
+
+**Задание:** Четыре сравнения, на которых ловят.
+
+**Элементы:**
+- == приводит
+- === нет
+- null и undefined
+- объект к примитиву
+
+**Подсказка:** == null ловит и null, и undefined. Это исключение, не правило.
+
+**Ответ:** ==, ===, null, ToPrimitive
 
 ## Итоги
 

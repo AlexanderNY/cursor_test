@@ -6,8 +6,6 @@ from pathlib import Path
 from typing import Any, List
 from urllib.parse import urlparse
 
-import httpx
-
 from config import settings
 from database import get_db_connection, release_db_connection
 from storage_helper import get_storage
@@ -48,31 +46,34 @@ async def mirror_collected_images_to_storage(
     if not image_urls:
         return
 
+    from shared.safe_fetch import MAX_DOWNLOAD_BYTES, FetchError, fetch_bounded
+    from shared.url_safety import UnsafeUrlError
+
     new_paths: List[str] = []
-    async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
-        for idx, url in enumerate(image_urls):
-            if not url or not isinstance(url, str):
-                continue
-            u = url.strip()
-            if u.startswith("/uploads/"):
-                new_paths.append(u)
-                continue
-            if not u.lower().startswith(("http://", "https://")):
-                new_paths.append(u)
-                continue
-            try:
-                resp = await client.get(u)
-                resp.raise_for_status()
-                body = resp.content
-                ct = resp.headers.get("content-type")
-                ext = _ext_from_url_or_ct(u, ct)
-                key = f"{S3_KEY_PREFIX}/{user_id}/{post_id}_{idx}{ext}"
-                await storage.put(key, body)
-                rel = f"/uploads/instagram/collected/{user_id}/{post_id}_{idx}{ext}"
-                new_paths.append(rel)
-            except Exception as e:
-                logger.warning("mirror image failed post_id=%s url=%s: %s", post_id, u[:80], e)
-                new_paths.append(u)
+    for idx, url in enumerate(image_urls[:10]):
+        if not url or not isinstance(url, str):
+            continue
+        u = url.strip()
+        if u.startswith("/uploads/"):
+            new_paths.append(u)
+            continue
+        if not u.lower().startswith(("http://", "https://")):
+            new_paths.append(u)
+            continue
+        try:
+            body, content_type = await fetch_bounded(
+                u,
+                max_bytes=MAX_DOWNLOAD_BYTES,
+                timeout=60.0,
+            )
+            ext = _ext_from_url_or_ct(u, content_type)
+            key = f"{S3_KEY_PREFIX}/{user_id}/{post_id}_{idx}{ext}"
+            await storage.put(key, body)
+            rel = f"/uploads/instagram/collected/{user_id}/{post_id}_{idx}{ext}"
+            new_paths.append(rel)
+        except (UnsafeUrlError, FetchError) as e:
+            logger.warning("mirror image failed post_id=%s url=%s: %s", post_id, u[:80], e)
+            new_paths.append(u)
 
     if not new_paths:
         return

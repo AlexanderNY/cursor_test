@@ -6,7 +6,7 @@ episode: QA09
 rubric: architecture
 order: 409
 publishedAt: "2026-12-09T10:00:00+03:00"
-profiles: [tester]
+profiles: [tester, developer]
 level: junior
 tags: [qa, aqa, oop, solid, page-object, "собеседование", selenium, webdriver, waits, grid]
 onKnowledgeMap: true
@@ -340,6 +340,22 @@ Back: DRY — не копировать локаторы/waits; YAGNI — не �
 ### Front: Как выполнить JS в контексте страницы?
 
 Back: driver.execute_script("...", element) — JSExecutor
+
+## Мнемоника
+
+### acronym: Каркас автотеста
+
+**Задание:** Четыре части, которые не смешивают.
+
+**Элементы:**
+- Локатор в странице
+- Сценарий в тесте
+- Ожидание явное
+- Данные снаружи
+
+**Подсказка:** Селектор в тесте — уже поломка каркаса.
+
+**Ответ:** page, test, wait, data
 
 ## Итоги
 

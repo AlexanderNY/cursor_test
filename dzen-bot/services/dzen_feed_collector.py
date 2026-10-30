@@ -106,6 +106,12 @@ def _collect_links_sync(profile: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], 
     studio_url = (profile.get("dzen_studio_url") or "").strip()
     if not studio_url:
         return [], "Пустой dzen_studio_url"
+    try:
+        from shared.url_safety import UnsafeUrlError, validate_public_http_url
+
+        studio_url = validate_public_http_url(studio_url)
+    except UnsafeUrlError as exc:
+        return [], f"dzen_studio_url is not allowed: {exc}"
 
     driver = None
     try:

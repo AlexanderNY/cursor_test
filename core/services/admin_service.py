@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional
 from datetime import datetime, timezone
 
 from config import settings
+from shared.internal_auth import internal_auth_headers
 from database import get_db_connection, release_db_connection
 from services.healthcheck_service import healthcheck_service
 
@@ -164,7 +165,10 @@ class AdminService:
         """Запускает один цикл обработки на processor. Проксирует POST /process/run."""
         try:
             async with httpx.AsyncClient(timeout=60.0) as client:
-                resp = await client.post(f"{settings.PROCESSOR_SERVICE_URL}/process/run")
+                resp = await client.post(
+                    f"{settings.PROCESSOR_SERVICE_URL}/process/run",
+                    headers=internal_auth_headers(),
+                )
                 if resp.status_code == 200:
                     data = resp.json()
                     return {
@@ -188,7 +192,10 @@ class AdminService:
         """Будит processor: входящие посты уже в posts (ETL collect убран)."""
         try:
             async with httpx.AsyncClient(timeout=60.0) as client:
-                resp = await client.post(f"{settings.COLLECTOR_SERVICE_URL}/collect/run")
+                resp = await client.post(
+                    f"{settings.COLLECTOR_SERVICE_URL}/collect/run",
+                    headers=internal_auth_headers(),
+                )
                 if resp.status_code == 200:
                     data = resp.json()
                     result = {
@@ -215,7 +222,10 @@ class AdminService:
         """No-op proxy: distribute ETL убран, публикация из post_targets."""
         try:
             async with httpx.AsyncClient(timeout=60.0) as client:
-                resp = await client.post(f"{settings.COLLECTOR_SERVICE_URL}/distribute/run")
+                resp = await client.post(
+                    f"{settings.COLLECTOR_SERVICE_URL}/distribute/run",
+                    headers=internal_auth_headers(),
+                )
                 if resp.status_code == 200:
                     data = resp.json()
                     return {

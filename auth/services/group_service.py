@@ -198,7 +198,8 @@ async def get_group_by_id(group_id: int, include_members: bool = False) -> Optio
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
-                    SELECT gm.user_id, u.username, u.email, u.tariff, u.role, gm.role_in_group, gm.joined_at
+                    SELECT gm.user_id, u.username, u.email, u.tariff, u.role, gm.role_in_group, gm.joined_at,
+                           NULLIF(u.avatar_url, '')
                     FROM group_members gm
                     JOIN users u ON u.id = gm.user_id
                     WHERE gm.group_id = %s
@@ -216,6 +217,7 @@ async def get_group_by_id(group_id: int, include_members: bool = False) -> Optio
                 "role": r[4],
                 "role_in_group": r[5],
                 "joined_at": r[6],
+                "avatar_url": r[7],
             }
             for r in members_rows
         ]
@@ -424,7 +426,10 @@ async def add_member_by_email(
 
     async with get_db_connection() as conn:
         async with conn.cursor() as cur:
-            await cur.execute("SELECT id, username, email, tariff FROM users WHERE email = %s", (email,))
+            await cur.execute(
+                "SELECT id, username, email, tariff, NULLIF(avatar_url, '') FROM users WHERE email = %s",
+                (email,),
+            )
             user_row = await cur.fetchone()
             if not user_row:
                 raise ValueError("User with this email not found")
@@ -454,6 +459,7 @@ async def add_member_by_email(
         "tariff": user_row[3] or "free",
         "role_in_group": role_in_group,
         "joined_at": joined_row[0] if joined_row else None,
+        "avatar_url": user_row[4],
     }
 
 
@@ -502,7 +508,8 @@ async def get_all_groups_with_members() -> List[Dict]:
                     u.tariff,
                     u.role,
                     gm.role_in_group,
-                    gm.joined_at
+                    gm.joined_at,
+                    NULLIF(u.avatar_url, '')
                 FROM groups g
                 LEFT JOIN group_members gm ON gm.group_id = g.id
                 LEFT JOIN users u ON u.id = gm.user_id
@@ -533,6 +540,7 @@ async def get_all_groups_with_members() -> List[Dict]:
                     "role": row[9],
                     "role_in_group": row[10],
                     "joined_at": row[11],
+                    "avatar_url": row[12],
                 }
             )
 

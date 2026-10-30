@@ -324,6 +324,22 @@ Back: IS DISTINCT FROM / IS NOT DISTINCT FROM вместо = / &lt;&gt;
 
 Back: NOT EXISTS (SELECT 1 FROM orders o WHERE o.customer_id = c.id) или anti-join
 
+## Мнемоника
+
+### acronym: Операторы отбора
+
+**Задание:** Чем сужают строку, кроме равенства.
+
+**Элементы:**
+- AND OR NOT
+- IN
+- BETWEEN
+- LIKE
+
+**Подсказка:** LIKE с ведущим % не использует обычный btree так, как равенство.
+
+**Ответ:** AND/OR/NOT, IN, BETWEEN, LIKE
+
 ## Итоги
 
 - Триггер — реакция СУБД на событие; называйте момент, уровень и NEW/OLD

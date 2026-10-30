@@ -198,8 +198,14 @@ async def _screenshot_tweet(
         "user_id": user_id,
     }
     try:
+        from shared.internal_auth import internal_auth_headers
+
         async with httpx.AsyncClient(timeout=120.0) as client:
-            resp = await client.post(f"{base}/run", json=payload)
+            resp = await client.post(
+                f"{base}/run",
+                json=payload,
+                headers=internal_auth_headers(),
+            )
             data = resp.json()
             if resp.status_code >= 400:
                 logger.warning("url-bot screenshot failed: %s", data)

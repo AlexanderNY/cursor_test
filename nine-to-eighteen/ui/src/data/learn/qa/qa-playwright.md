@@ -6,7 +6,7 @@ episode: QA25
 rubric: tools
 order: 425
 publishedAt: 2026-10-27T18:00:00+03:00
-profiles: [tester]
+profiles: [tester, developer]
 level: middle
 tags: [qa, playwright, e2e, python, собеседование]
 onKnowledgeMap: true
@@ -171,6 +171,22 @@ Back: Нет. Контракт дешевле проверять без брау
 ### Front: Как связать с pytest?
 
 Back: Тест — обычная функция pytest, фикстура поднимает браузер.
+
+## Мнемоника
+
+### link: Стабильный UI-тест
+
+**Задание:** Порядок, которым заменяют sleep.
+
+**Элементы:**
+- локатор роли
+- ожидание состояния
+- одно действие
+- одна проверка
+
+**Подсказка:** Локатор по тексту кнопки живёт дольше, чем xpath из абсолютного пути.
+
+**Ответ:** role → expect → action → assert
 
 ## Итоги
 

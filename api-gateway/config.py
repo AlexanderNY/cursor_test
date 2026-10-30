@@ -52,6 +52,8 @@ class Settings(BaseSettings):
     # Rate Limiting по умолчанию
     DEFAULT_RATE_LIMIT_REQUESTS: int = 100
     DEFAULT_RATE_LIMIT_WINDOW_SECONDS: int = 60
+    # Matches core video upload (50 MiB) plus multipart overhead.
+    MAX_PROXY_BODY_BYTES: int = 64 * 1024 * 1024
     
     class Config:
         env_file = ".env"
@@ -180,6 +182,7 @@ PUBLIC_ENDPOINTS: list[str] = [
 PUBLIC_PATH_PREFIXES: list[str] = [
     "/dzen/rss/",
     "/core/forum/avatars/",
+    "/core/forum/attachments/",
 ]
 
 

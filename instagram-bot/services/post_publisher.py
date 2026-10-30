@@ -8,7 +8,6 @@ import tempfile
 from itertools import groupby
 from typing import Any, Dict, List, Optional
 
-import httpx
 from database import get_db_connection, release_db_connection
 from config import settings
 from storage_helper import get_storage
@@ -85,15 +84,20 @@ def _resolve_path(path_or_url: str, base_dir: str) -> Optional[str]:
 
 
 async def _download_to_temp(url: str, suffix: str = ".jpg") -> Optional[str]:
-    """Скачивает файл по URL во временный файл."""
+    """Скачивает публичный файл по URL во временный файл."""
+    from shared.safe_fetch import MAX_DOWNLOAD_BYTES, FetchError, fetch_bounded
+    from shared.url_safety import UnsafeUrlError
+
     if not url or not url.strip().lower().startswith(("http://", "https://")):
         return None
     try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            resp = await client.get(url)
-            resp.raise_for_status()
-            return await async_fs.write_temp_bytes(resp.content, suffix=suffix)
-    except Exception as e:
+        body, _content_type = await fetch_bounded(
+            url,
+            max_bytes=MAX_DOWNLOAD_BYTES,
+            timeout=60.0,
+        )
+        return await async_fs.write_temp_bytes(body, suffix=suffix)
+    except (UnsafeUrlError, FetchError) as e:
         logger.warning("Download failed %s: %s", url[:80], e)
         return None
 
@@ -199,7 +203,7 @@ class PostPublisher:
         paths = _parse_images_raw(raw_images)
         local_paths: List[str] = []
         temp_paths: List[str] = []
-        for p in paths:
+        for p in paths[:10]:
             local = await self._resolve_image_path(p, post_id)
             if local:
                 local_paths.append(local)

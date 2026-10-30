@@ -314,6 +314,22 @@ Back: reltuples в pg_class или оценка узлов в EXPLAIN; не дл
 
 Back: WHERE только у DELETE; TRUNCATE чистит всё быстрее; отличаются права, identity, триггеры, WAL
 
+## Мнемоника
+
+### acronym: Агрегаты
+
+**Задание:** Четыре функции и ловушка COUNT.
+
+**Элементы:**
+- COUNT
+- SUM
+- AVG
+- GROUP BY
+
+**Подсказка:** COUNT(*) считает строки. COUNT(col) пропускает NULL.
+
+**Ответ:** COUNT SUM AVG GROUP BY
+
 ## Итоги
 
 - Дата/время — стандартные имена плюс диалект (`GETDATE` vs `now`)

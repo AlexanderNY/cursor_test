@@ -40,7 +40,7 @@ export function LearnPostBadges({
       ) : null}
       {profiles.map((id) => (
         <span key={`p-${id}`} className="learn-badge learn-badge-track">
-          Трек: {profileLabel(id)}
+          Специальность: {profileLabel(id)}
         </span>
       ))}
       {level ? (

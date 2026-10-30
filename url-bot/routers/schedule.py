@@ -84,7 +84,7 @@ async def handle_schedule(
     now = datetime.now().astimezone()
     for schedule in url_schedules:
         user_id = schedule.user_id
-        for item in schedule.urls:
+        for item in list(schedule.urls)[:30]:
             if not item.url or not item.xpath:
                 continue
             if not _is_schedule_due(item, now):

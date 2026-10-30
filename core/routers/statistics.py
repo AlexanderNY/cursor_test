@@ -66,7 +66,7 @@ async def get_users_statistics(
     authorization = request.headers.get("Authorization", "")
     headers = {"Authorization": authorization} if authorization else {}
     try:
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=10.0) as client:
             auth_url = f"{settings.API_GATEWAY_URL}/auth/users"
             response = await client.get(auth_url, headers=headers)
             response.raise_for_status()
@@ -88,7 +88,7 @@ async def get_group_statistics(request: Request, current_user: Dict = Depends(ge
     authorization = request.headers.get("Authorization", "")
     headers = {"Authorization": authorization} if authorization else {}
     try:
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=10.0) as client:
             auth_url = f"{settings.AUTH_SERVICE_URL}/groups/my"
             response = await client.get(auth_url, headers=headers)
             if response.status_code == 404:

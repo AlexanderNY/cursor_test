@@ -11,7 +11,6 @@ import os
 import tempfile
 from typing import Any, Dict, List, Optional
 
-import httpx
 from database import get_db_connection, release_db_connection
 from shared import async_fs
 from config import settings
@@ -125,17 +124,28 @@ def _resolve_image_url(path_or_url: str) -> str:
     return f"{base}{s}" if s.startswith("/") else f"{base}/{s}"
 
 
-async def _download_to_temp(url: str, suffix: str = "") -> Optional[str]:
+async def _download_to_temp(
+    url: str,
+    suffix: str = "",
+    *,
+    trusted_bases: tuple[str, ...] = (),
+) -> Optional[str]:
     """Скачивает файл по URL во временный файл. Возвращает путь или None."""
+    from shared.safe_fetch import MAX_DOWNLOAD_BYTES, FetchError, fetch_bounded
+    from shared.url_safety import UnsafeUrlError
+
     if not url or not url.strip().lower().startswith(("http://", "https://")):
         return None
     try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            resp = await client.get(url)
-            resp.raise_for_status()
-            ext = suffix or ".bin"
-            return await async_fs.write_temp_bytes(resp.content, suffix=ext)
-    except Exception as e:
+        body, _content_type = await fetch_bounded(
+            url,
+            max_bytes=MAX_DOWNLOAD_BYTES,
+            timeout=60.0,
+            trusted_bases=trusted_bases,
+        )
+        ext = suffix or ".bin"
+        return await async_fs.write_temp_bytes(body, suffix=ext)
+    except (UnsafeUrlError, FetchError) as e:
         logger.warning("Download failed %s: %s", url[:80], e)
         return None
 
@@ -330,7 +340,9 @@ class PostPublisher:
         # 2) HTTP download via CORE_SERVICE_URL
         url = _resolve_image_url(s)
         if url and url.lower().startswith(("http://", "https://")):
-            result = await _download_to_temp(url, suffix)
+            core_base = (settings.CORE_SERVICE_URL or "").strip()
+            trusted = (core_base,) if core_base else ()
+            result = await _download_to_temp(url, suffix, trusted_bases=trusted)
             if result:
                 logger.info("Post %s: resolved '%s' via HTTP (%s)", post_id, s[:80], url[:120])
                 return result
@@ -375,7 +387,7 @@ class PostPublisher:
                      post_id, len(attachments_list), attachments_list)
         parts: List[str] = []
         temp_paths: List[str] = []
-        for idx, item in enumerate(attachments_list):
+        for idx, item in enumerate(attachments_list[:10]):
             local_path = await self._resolve_file_path(item, post_id)
             if not local_path:
                 logger.warning("Post %s: could not resolve attachment #%d %s — skipping",

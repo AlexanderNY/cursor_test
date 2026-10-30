@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { NavLink, useNavigate, useLocation } from 'react-router-dom'
+import { NavLink, Link, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@/contexts/auth-context'
 import { useTheme } from '@/contexts/theme-context'
 import { useBrand } from '@/contexts/brand-context'
 import { Button } from '@/components/ui'
 import { smmService } from '@/services/smm-service'
+import { UserFace } from '@/components/user-face'
 import { topNavItems } from '@/config/nav'
 
 const INBOX_COMMENT_POLL_MS = 25_000
@@ -58,12 +59,14 @@ export function Header() {
       <div className="w-56 lg:w-64 shrink-0 flex items-center gap-2 min-w-0 pr-2 border-r border-[var(--border-color)]">
         <h1 className="text-base font-bold text-gradient truncate leading-tight">Control Panel</h1>
         {user && (
-          <span
-            className="hidden xl:inline text-xs text-[var(--text-muted)] truncate max-w-[7rem]"
+          <Link
+            to="/profile"
+            className="hidden xl:inline-flex items-center gap-1.5 min-w-0 text-xs text-[var(--text-muted)]"
             title={`${user.username} · ${user.role ?? ''}`}
           >
-            {user.username}
-          </span>
+            <UserFace name={user.username} avatar={user.avatar_url} className="h-6 w-6 text-[10px]" />
+            <span className="truncate max-w-[7rem]">{user.username}</span>
+          </Link>
         )}
       </div>
 

@@ -5,6 +5,7 @@ import { useBrand } from '@/contexts/brand-context'
 import { navItems, platformNavItems, groupNavItem, adminNavItems } from '@/config/nav'
 import { SettingsIcon } from '@/components/icons'
 import { smmService } from '@/services/smm-service'
+import { useForumUnreadCount } from '@/hooks/use-forum-unread'
 import { canViewTeamAnalytics } from '@/types/smm'
 
 const iconClassName = 'h-5 w-5'
@@ -15,6 +16,7 @@ export function Sidebar() {
   const { selectedBrandId } = useBrand()
   const location = useLocation()
   const [newComments, setNewComments] = useState(0)
+  const forumUnread = useForumUnreadCount()
   const [platformsOpen, setPlatformsOpen] = useState(() =>
     platformNavItems.some((item) => location.pathname.startsWith(item.path)),
   )
@@ -115,6 +117,11 @@ export function Sidebar() {
             {item.path === '/inbox' && newComments > 0 && (
               <span className="ml-auto text-[10px] font-semibold min-w-[1.25rem] h-5 px-1.5 rounded-full bg-amber-500 text-white flex items-center justify-center">
                 {newComments > 99 ? '99+' : newComments}
+              </span>
+            )}
+            {item.path === '/forum' && forumUnread > 0 && (
+              <span className="ml-auto text-[10px] font-semibold min-w-[1.25rem] h-5 px-1.5 rounded-full bg-amber-500 text-white flex items-center justify-center">
+                {forumUnread > 99 ? '99+' : forumUnread}
               </span>
             )}
           </NavLink>
