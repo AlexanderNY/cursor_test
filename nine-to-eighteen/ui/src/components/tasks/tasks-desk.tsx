@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   siteCreateUserTask,
   siteDeleteUserTask,
@@ -18,7 +18,8 @@ import { TaskCalendar } from '@/components/tasks/task-calendar'
 import { TaskEditor } from '@/components/tasks/task-editor'
 import { TaskList } from '@/components/tasks/task-list'
 import { TaskQuickAdd } from '@/components/tasks/task-quick-add'
-import { dueReminders, isDueToday, isOverdue } from '@/components/tasks/task-utils'
+import { appendFocusNote } from '@/components/tasks/learn-link'
+import { dueReminders, flattenTasks, isDueToday, isOverdue } from '@/components/tasks/task-utils'
 
 type DeskView = 'list' | 'board' | 'calendar' | 'habits' | 'notes' | 'focus'
 type StatusFilter = 'open' | 'done' | 'all'
@@ -35,9 +36,16 @@ const VIEWS: { id: DeskView; label: string }[] = [
 type TasksDeskProps = {
   focusTaskId?: number | null
   reloadToken?: number
+  startFocusId?: number | null
+  startFocusToken?: number
 }
 
-export function TasksDesk({ focusTaskId = null, reloadToken = 0 }: TasksDeskProps) {
+export function TasksDesk({
+  focusTaskId = null,
+  reloadToken = 0,
+  startFocusId = null,
+  startFocusToken = 0,
+}: TasksDeskProps) {
   const [items, setItems] = useState<SiteUserTask[]>([])
   const [ready, setReady] = useState(false)
   const [error, setError] = useState('')
@@ -50,6 +58,8 @@ export function TasksDesk({ focusTaskId = null, reloadToken = 0 }: TasksDeskProp
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [defaultDueAt, setDefaultDueAt] = useState('')
   const [nowTick, setNowTick] = useState(() => Date.now())
+  const [focusTarget, setFocusTarget] = useState<{ id: number; title: string } | null>(null)
+  const appliedFocusToken = useRef(0)
 
   const refresh = useCallback(async () => {
     try {
@@ -78,6 +88,44 @@ export function TasksDesk({ focusTaskId = null, reloadToken = 0 }: TasksDeskProp
     setTagFilter('')
     setSearch('')
   }, [focusTaskId])
+
+  useEffect(() => {
+    if (!startFocusToken || startFocusToken === appliedFocusToken.current || !ready) {
+      return
+    }
+    const task = flattenTasks(items).find((item) => item.id === startFocusId)
+    if (!task) {
+      return
+    }
+    appliedFocusToken.current = startFocusToken
+    setFocusTarget({ id: task.id, title: task.title })
+    setSelectedId(task.id)
+    setView('focus')
+  }, [startFocusToken, startFocusId, items, ready])
+
+  function beginFocus(task: SiteUserTask) {
+    setFocusTarget({ id: task.id, title: task.title })
+    setSelectedId(task.id)
+    setView('focus')
+  }
+
+  async function recordFocus(minutes: number) {
+    if (!focusTarget) {
+      return
+    }
+    const task = flattenTasks(items).find((item) => item.id === focusTarget.id)
+    if (!task) {
+      return
+    }
+    try {
+      await siteUpdateUserTask(task.id, {
+        notes: appendFocusNote(task.notes, minutes),
+      })
+      await refresh()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Не удалось записать минуты в задачу')
+    }
+  }
 
   useEffect(() => {
     const id = window.setInterval(() => setNowTick(Date.now()), 60_000)
@@ -362,6 +410,7 @@ export function TasksDesk({ focusTaskId = null, reloadToken = 0 }: TasksDeskProp
               items={filtered}
               onToggle={(task) => void toggleDone(task)}
               onOpen={(task) => setSelectedId(task.id)}
+              onFocus={beginFocus}
             />
           ) : null}
           {view === 'board' ? (
@@ -370,6 +419,7 @@ export function TasksDesk({ focusTaskId = null, reloadToken = 0 }: TasksDeskProp
               onToggle={(task) => void toggleDone(task)}
               onOpen={(task) => setSelectedId(task.id)}
               onMove={(task, board) => void moveBoard(task, board)}
+              onFocus={beginFocus}
             />
           ) : null}
           {view === 'calendar' ? (
@@ -385,7 +435,12 @@ export function TasksDesk({ focusTaskId = null, reloadToken = 0 }: TasksDeskProp
           ) : null}
           {view === 'habits' ? <HabitsPanel /> : null}
           {view === 'notes' ? <NotesPanel /> : null}
-          {view === 'focus' ? <FocusTimer /> : null}
+          {view === 'focus' ? (
+            <FocusTimer
+              taskTitle={focusTarget?.title || ''}
+              onSession={(minutes) => void recordFocus(minutes)}
+            />
+          ) : null}
         </div>
         {selected && showTaskViews ? (
           <TaskEditor
@@ -395,6 +450,7 @@ export function TasksDesk({ focusTaskId = null, reloadToken = 0 }: TasksDeskProp
             onSave={saveTask}
             onDelete={removeTask}
             onAddSubtask={addSubtask}
+            onFocus={beginFocus}
           />
         ) : null}
       </div>

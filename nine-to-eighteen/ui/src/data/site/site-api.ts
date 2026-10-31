@@ -432,6 +432,7 @@ export type SiteCertTrack = {
   quizPercent: number
   quizMissing: string[]
   code: string
+  serialNumber?: string
   issuedAt: string
 }
 
@@ -442,6 +443,7 @@ export type SiteCertBoard = {
 
 export type SitePublicCert = {
   code: string
+  serialNumber?: string
   holderName: string
   trackId: string
   trackTitle: string
@@ -622,7 +624,7 @@ export async function siteUploadPhoto(file: File): Promise<{ ok: boolean; hasPho
 }
 
 export type SiteTaskPriority = 'low' | 'normal' | 'high'
-export type SiteTaskBoard = 'backlog' | 'week' | 'today' | 'done'
+export type SiteTaskBoard = 'inbox' | 'backlog' | 'week' | 'today' | 'done'
 export type SiteTaskRepeat = 'none' | 'daily' | 'weekly' | 'monthly'
 
 export type SiteTaskChecklistItem = {

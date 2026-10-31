@@ -4,9 +4,8 @@ import { QueueLearnButton } from '@/components/tasks/queue-learn-button'
 import {
   learnEpisodePath,
   learnTargetFromNotes,
+  learnSlugQueued,
   learnTaskKey,
-  postHasQuiz,
-  type LearnTaskKind,
 } from '@/components/tasks/learn-link'
 import {
   flattenTasks,
@@ -48,8 +47,9 @@ type TodayPanelProps = {
   busySlug: string
   queueError: string
   queueTick: number
-  onQueue: (post: LearnPost, kind: LearnTaskKind) => void
+  onQueue: (post: LearnPost) => void
   onOpenTask: (taskId: number) => void
+  onStartFocus: (taskId: number) => void
   onTasksLoaded: (items: SiteUserTask[]) => void
 }
 
@@ -94,6 +94,7 @@ export function TodayPanel({
   queueTick,
   onQueue,
   onOpenTask,
+  onStartFocus,
   onTasksLoaded,
 }: TodayPanelProps) {
   const { posts, isReady: postsReady } = useLearnPosts()
@@ -246,6 +247,15 @@ export function TodayPanel({
                         {target.kind === 'quiz' ? 'Тест' : 'Статья'}
                       </Link>
                     ) : null}
+                    {!task.completed ? (
+                      <button
+                        type="button"
+                        className="learn-admin-btn"
+                        onClick={() => onStartFocus(task.id)}
+                      >
+                        Фокус
+                      </button>
+                    ) : null}
                     <button
                       type="button"
                       className="learn-admin-btn"
@@ -333,19 +343,11 @@ export function TodayPanel({
             </div>
             <div className="tasks-today-actions">
               <QueueLearnButton
-                label="Статья"
-                queued={queuedSlugs.has(learnTaskKey(nextPost.slug, 'article'))}
+                label="В разобрать"
+                queued={learnSlugQueued(queuedSlugs, nextPost.slug)}
                 busy={busySlug === learnTaskKey(nextPost.slug, 'article')}
-                onQueue={() => onQueue(nextPost, 'article')}
+                onQueue={() => onQueue(nextPost)}
               />
-              {postHasQuiz(nextPost) ? (
-                <QueueLearnButton
-                  label="Тест"
-                  queued={queuedSlugs.has(learnTaskKey(nextPost.slug, 'quiz'))}
-                  busy={busySlug === learnTaskKey(nextPost.slug, 'quiz')}
-                  onQueue={() => onQueue(nextPost, 'quiz')}
-                />
-              ) : null}
               <Link
                 to={learnEpisodePath(nextPost.slug)}
                 className="learn-admin-btn learn-admin-btn-primary"

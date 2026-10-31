@@ -225,6 +225,7 @@ export const smmService = {
       alert_delivery: BrandChannel['alert_delivery']
       alert_rules: BrandChannel['alert_rules']
       url_config: BrandChannel['url_config']
+      rss_feeds: import('@/types/smm').ChannelRssFeed[]
     }>,
   ): Promise<BrandChannel> {
     const { data } = await apiClient.patch(`/smm/brands/${brandId}/channels/${channelId}`, payload)
@@ -233,6 +234,36 @@ export const smmService = {
 
   async getChannel(channelId: number): Promise<BrandChannel> {
     const { data } = await apiClient.get(`/smm/channels/${channelId}`)
+    return data
+  },
+
+  async previewChannelRss(
+    channelId: number,
+    limit = 5,
+  ): Promise<{
+    items: { id: string; text_preview: string; feed_url: string }[]
+    would_create: number
+    status: string
+    errors: { url?: string; error: string }[]
+  }> {
+    const { data } = await apiClient.post(`/smm/channels/${channelId}/rss/preview`, null, {
+      params: { limit },
+    })
+    return data
+  },
+
+  async runChannelRss(
+    channelId: number,
+    limit = 10,
+  ): Promise<{
+    created: number
+    job_ids: number[]
+    status: string
+    errors: { url?: string; error: string }[]
+  }> {
+    const { data } = await apiClient.post(`/smm/channels/${channelId}/rss/run`, null, {
+      params: { limit },
+    })
     return data
   },
 

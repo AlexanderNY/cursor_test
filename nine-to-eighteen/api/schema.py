@@ -105,7 +105,7 @@ CREATE TABLE IF NOT EXISTS site_user_tasks (
     priority VARCHAR(16) NOT NULL DEFAULT 'normal'
         CHECK (priority IN ('low', 'normal', 'high')),
     board VARCHAR(16) NOT NULL DEFAULT 'backlog'
-        CHECK (board IN ('backlog', 'week', 'today', 'done')),
+        CHECK (board IN ('inbox', 'backlog', 'week', 'today', 'done')),
     checklist JSONB NOT NULL DEFAULT '[]'::jsonb,
     repeat_rule VARCHAR(16) NOT NULL DEFAULT 'none'
         CHECK (repeat_rule IN ('none', 'daily', 'weekly', 'monthly')),
@@ -228,6 +228,7 @@ CREATE TABLE IF NOT EXISTS site_certificates (
     episode_count INT NOT NULL,
     quiz_percent INT NOT NULL DEFAULT 0,
     issued_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    serial INT,
     UNIQUE (user_id, track_id)
 );
 CREATE INDEX IF NOT EXISTS idx_site_certificates_user ON site_certificates (user_id);
@@ -462,6 +463,61 @@ $migrate$;
     """
     CREATE INDEX IF NOT EXISTS idx_site_user_tasks_series
     ON site_user_tasks (user_id, series_id) WHERE series_id IS NOT NULL
+    """,
+    """
+    DO $$
+    DECLARE
+      constraint_name text;
+    BEGIN
+      SELECT con.conname INTO constraint_name
+      FROM pg_constraint con
+      JOIN pg_class rel ON rel.oid = con.conrelid
+      JOIN pg_attribute att ON att.attrelid = rel.oid AND att.attnum = ANY (con.conkey)
+      WHERE rel.relname = 'site_user_tasks'
+        AND con.contype = 'c'
+        AND att.attname = 'board'
+      LIMIT 1;
+      IF constraint_name IS NOT NULL THEN
+        EXECUTE format('ALTER TABLE site_user_tasks DROP CONSTRAINT %I', constraint_name);
+      END IF;
+      ALTER TABLE site_user_tasks
+        ADD CONSTRAINT site_user_tasks_board_check
+        CHECK (board IN ('inbox', 'backlog', 'week', 'today', 'done'));
+    END $$;
+    """,
+    """
+    ALTER TABLE site_certificates
+    ADD COLUMN IF NOT EXISTS serial INT
+    """,
+    """
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_site_certificates_serial
+    ON site_certificates (serial)
+    """,
+    """
+    CREATE SEQUENCE IF NOT EXISTS site_certificate_serial_seq START WITH 113
+    """,
+    """
+    DO $cert_serial$
+    DECLARE
+      floor_serial INT;
+    BEGIN
+      SELECT COALESCE(MAX(serial), 112) INTO floor_serial FROM site_certificates;
+      WITH ordered AS (
+        SELECT code, ROW_NUMBER() OVER (ORDER BY issued_at, code) AS n
+        FROM site_certificates
+        WHERE serial IS NULL
+      )
+      UPDATE site_certificates AS cert
+      SET serial = floor_serial + ordered.n
+      FROM ordered
+      WHERE cert.code = ordered.code;
+      PERFORM setval(
+        'site_certificate_serial_seq',
+        GREATEST(112, COALESCE((SELECT MAX(serial) FROM site_certificates), 112)),
+        true
+      );
+    END
+    $cert_serial$;
     """,
 ]
 

@@ -1,8 +1,17 @@
 import { Link } from 'react-router-dom'
 import { safeHref } from '@/data/safe-url'
-import { employmentLabel, workFormatLabel } from '@/data/site/resume-options'
+import {
+  educationLevelLabel,
+  hhListLabel,
+  hhPeriodLabel,
+  hhSalaryLabel,
+  EMPLOYMENT_HH_LABEL,
+  SCHEDULE_HH_LABEL,
+} from '@/data/site/resume-options'
 import type {
   GithubProject,
+  ResumeEducation,
+  ResumeExperience,
   SiteResumePreview,
   SiteResumeSkill,
 } from '@/data/site/resume-api'
@@ -30,6 +39,8 @@ export function HhResumeArticle({
   versionNameOverride,
   badgeLabels,
   projects,
+  experience,
+  education,
 }: {
   preview: SiteResumePreview
   skills: SiteResumeSkill[]
@@ -43,6 +54,8 @@ export function HhResumeArticle({
   versionNameOverride?: string
   badgeLabels?: string[]
   projects?: GithubProject[]
+  experience?: ResumeExperience[]
+  education?: ResumeEducation[]
 }) {
   const about = aboutOverride ?? preview.resume.about
   const specialization =
@@ -53,6 +66,11 @@ export function HhResumeArticle({
   const employment = employmentOverride ?? preview.resume.employmentTypes
   const workFormats = workFormatsOverride ?? preview.resume.workFormats
   const versionName = versionNameOverride ?? preview.resume.versionName
+  const jobs = experience ?? preview.resume.experience ?? []
+  const schools = education ?? preview.resume.education ?? []
+  const salaryText = hhSalaryLabel(salaryAmount)
+  const employmentText = hhListLabel(employment, EMPLOYMENT_HH_LABEL)
+  const scheduleText = hhListLabel(workFormats, SCHEDULE_HH_LABEL)
 
   return (
     <article className="hh-resume-preview" id="hh-resume-print">
@@ -82,26 +100,49 @@ export function HhResumeArticle({
       </div>
 
       <section className="hh-resume-block">
-        <h3>Желаемая должность</h3>
+        <h3>Желаемая должность и зарплата</h3>
         <p>
           {specialization || title || preview.suggestedSpecialization || '—'}
         </p>
-        <p>
-          Оклад:{' '}
-          {salaryAmount != null
-            ? `${salaryAmount} ${preview.resume.salaryCurrency}`
-            : 'не указан'}
-        </p>
-        <p>Занятость: {employmentLabel(employment) || '—'}</p>
-        <p>Формат работы: {workFormatLabel(workFormats) || '—'}</p>
+        {salaryText ? <p>{salaryText}</p> : null}
+        {employmentText ? <p>Занятость: {employmentText}</p> : null}
+        {scheduleText ? <p>График работы: {scheduleText}</p> : null}
       </section>
 
-      {(about || preview.branchHints.length > 0) && (
+      {jobs.length > 0 ? (
         <section className="hh-resume-block">
-          <h3>О себе</h3>
-          <p>{about || preview.branchHints.join('. ')}</p>
+          <h3>Опыт работы</h3>
+          {jobs.map((job) => (
+            <div key={`${job.company}-${job.start}-${job.position}`} className="hh-resume-job">
+              <p className="hh-resume-meta">{hhPeriodLabel(job.start, job.end)}</p>
+              <p>
+                <strong>{job.company}</strong>
+                {job.city ? ` · ${job.city}` : ''}
+              </p>
+              <p>{job.position}</p>
+              {job.description ? <p>{job.description}</p> : null}
+            </div>
+          ))}
         </section>
-      )}
+      ) : null}
+
+      {schools.length > 0 ? (
+        <section className="hh-resume-block">
+          <h3>Образование</h3>
+          {schools.map((school) => (
+            <div key={`${school.institution}-${school.year ?? ''}`} className="hh-resume-job">
+              {school.level ? <p>{educationLevelLabel(school.level)}</p> : null}
+              <p>
+                <strong>{school.institution}</strong>
+                {school.year ? ` · ${school.year}` : ''}
+              </p>
+              {[school.faculty, school.specialty].filter(Boolean).length > 0 ? (
+                <p>{[school.faculty, school.specialty].filter(Boolean).join(', ')}</p>
+              ) : null}
+            </div>
+          ))}
+        </section>
+      ) : null}
 
       <section className="hh-resume-block">
         <h3>Ключевые навыки</h3>
@@ -115,6 +156,13 @@ export function HhResumeArticle({
           </ul>
         )}
       </section>
+
+      {(about || preview.branchHints.length > 0) && (
+        <section className="hh-resume-block">
+          <h3>Обо мне</h3>
+          <p>{about || preview.branchHints.join('. ')}</p>
+        </section>
+      )}
 
       {badgeLabels && badgeLabels.length > 0 ? (
         <section className="hh-resume-block">

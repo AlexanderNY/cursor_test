@@ -37,6 +37,7 @@ type TaskEditorProps = {
   ) => Promise<void>
   onDelete: (task: SiteUserTask) => Promise<void>
   onAddSubtask: (parentId: number, title: string) => Promise<void>
+  onFocus?: (task: SiteUserTask) => void
 }
 
 export function TaskEditor({
@@ -46,6 +47,7 @@ export function TaskEditor({
   onSave,
   onDelete,
   onAddSubtask,
+  onFocus,
 }: TaskEditorProps) {
   const learnTarget = learnTargetFromNotes(task.notes)
   const [title, setTitle] = useState(task.title)
@@ -84,6 +86,8 @@ export function TaskEditor({
     if (!nextTitle || busy) {
       return
     }
+    const hasSteps = checklist.some((item) => item.id.startsWith('step-'))
+    const stepsDone = checklist.length > 0 && checklist.every((item) => item.done)
     await onSave(task.id, {
       title: nextTitle,
       notes: learnTarget
@@ -97,6 +101,7 @@ export function TaskEditor({
       board,
       checklist,
       repeat_rule: task.parentId ? 'none' : repeatRule,
+      ...(hasSteps ? { completed: stepsDone } : {}),
     })
     onClose()
   }
@@ -117,9 +122,16 @@ export function TaskEditor({
     <aside className="tasks-editor" aria-labelledby="tasks-editor-title">
       <header className="tasks-editor-head">
         <h2 id="tasks-editor-title">Карточка</h2>
-        <button type="button" className="learn-admin-btn" onClick={onClose}>
-          Закрыть
-        </button>
+        <div className="tasks-today-actions">
+          {onFocus ? (
+            <button type="button" className="learn-admin-btn" onClick={() => onFocus(task)}>
+              Фокус
+            </button>
+          ) : null}
+          <button type="button" className="learn-admin-btn" onClick={onClose}>
+            Закрыть
+          </button>
+        </div>
       </header>
       {learnTarget ? (
         <p className="tasks-learn-links">
@@ -192,6 +204,7 @@ export function TaskEditor({
               value={board}
               onChange={(event) => setBoard(event.target.value as SiteTaskBoard)}
             >
+              <option value="inbox">Разобрать</option>
               <option value="backlog">Бэклог</option>
               <option value="week">На эту неделю</option>
               <option value="today">Сегодня</option>

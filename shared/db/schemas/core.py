@@ -696,6 +696,12 @@ CREATE INDEX IF NOT EXISTS idx_smm_channel_metric_channel
     ON smm_channel_metric_snapshots(channel_id, captured_at);
 """
 
+SMM_CHANNEL_RSS_MIGRATION = """
+DO $$ BEGIN
+  ALTER TABLE smm_brand_channels ADD COLUMN rss_feeds JSONB NOT NULL DEFAULT '[]'::jsonb;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+"""
+
 SMM_CHANNEL_AUTH_MIGRATION = """
 DO $$ BEGIN
   ALTER TABLE smm_brand_channels ADD COLUMN auth_status VARCHAR(20) DEFAULT 'unknown';
@@ -922,6 +928,7 @@ ALL_TABLES: list[str] = [
     SMM_AI_USAGE_TABLE,
     SMM_ANALYTICS_MIGRATION,
     SMM_CHANNEL_AUTH_MIGRATION,
+    SMM_CHANNEL_RSS_MIGRATION,
     SMM_BRANDS_AI_MIGRATION,
     SMM_BRANDS_DEMO_MIGRATION,
     SMM_TEMPLATES_TABLE,

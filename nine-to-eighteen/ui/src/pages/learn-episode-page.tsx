@@ -12,6 +12,7 @@ import { LearnPostBadges } from '@/components/learn-post-badges'
 import { LearnStudyPath } from '@/components/learn-study-path'
 import { PageShell } from '@/components/page-shell'
 import { StructuredPostView } from '@/components/structured-post-view'
+import { syncLearnTasks } from '@/components/tasks/learn-sync'
 import { levelLabel, profileLabel } from '@/data/learn/labels'
 import { safeHref, safeImageSrc } from '@/data/safe-url'
 import {
@@ -183,6 +184,11 @@ export function LearnEpisodePage() {
     setProgressBusy(true)
     try {
       await setCompleted(episode!.slug, !isDone)
+      if (!isDone) {
+        void syncLearnTasks({
+          completedSlugs: new Set([episode!.slug.toLowerCase()]),
+        }).catch(() => undefined)
+      }
     } finally {
       setProgressBusy(false)
     }

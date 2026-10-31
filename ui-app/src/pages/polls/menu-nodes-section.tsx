@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input'
 import { EmptyState } from '@/components/ui/empty-state'
 import { TableSkeleton } from '@/components/ui/skeleton'
 import { gameService } from '@/services/game-service'
-import type { GameMenuNode } from '@/types/game'
+import type { GameMenuNode, GameMode } from '@/types/game'
 import { MediaLibrarySection } from './media-library-section'
 import { MenuCsvImportSection } from './menu-csv-import-section'
 import {
@@ -16,23 +16,21 @@ import {
 } from '@/utils/menu-price'
 
 interface MenuNodesSectionProps {
+  modes: GameMode[]
   modeId: number | null
-  modeTitle?: string
-  modeCode?: string
-}
-
-function parentLabel(node: GameMenuNode, nodes: GameMenuNode[]): string {
-  if (!node.parent_id) return '— корень —'
-  const parent = nodes.find((n) => n.id === node.parent_id)
-  return parent ? parent.title : `#${node.parent_id}`
+  onSelectMode: (modeId: number) => void
 }
 
 function nodeHasChildren(nodeId: number, allNodes: GameMenuNode[]): boolean {
   return allNodes.some((node) => node.parent_id === nodeId)
 }
 
-export function MenuNodesSection({ modeId, modeTitle, modeCode }: MenuNodesSectionProps) {
+export function MenuNodesSection({ modes, modeId, onSelectMode }: MenuNodesSectionProps) {
+  const selectedMode = modes.find((mode) => mode.id === modeId) ?? null
+  const modeTitle = selectedMode?.title
+  const modeCode = selectedMode?.code
   const [nodes, setNodes] = useState<GameMenuNode[]>([])
+  const [rootCounts, setRootCounts] = useState<Record<number, number>>({})
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
@@ -49,6 +47,7 @@ export function MenuNodesSection({ modeId, modeTitle, modeCode }: MenuNodesSecti
   const [isSaving, setIsSaving] = useState(false)
   const [deletingNodeId, setDeletingNodeId] = useState<number | null>(null)
   const [togglingNodeId, setTogglingNodeId] = useState<number | null>(null)
+  const [tabPath, setTabPath] = useState<number[]>([])
 
   const loadNodes = useCallback(async (id: number) => {
     setError('')
@@ -56,6 +55,10 @@ export function MenuNodesSection({ modeId, modeTitle, modeCode }: MenuNodesSecti
     try {
       const data = await gameService.listMenuNodes(id)
       setNodes(data)
+      setRootCounts((prev) => ({
+        ...prev,
+        [id]: data.filter((node) => node.parent_id == null).length,
+      }))
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Не удалось загрузить пункты меню')
       setNodes([])
@@ -65,12 +68,46 @@ export function MenuNodesSection({ modeId, modeTitle, modeCode }: MenuNodesSecti
   }, [])
 
   useEffect(() => {
+    setTabPath([])
+    resetForm()
     if (modeId) {
       loadNodes(modeId)
     } else {
       setNodes([])
     }
   }, [modeId, loadNodes])
+
+  useEffect(() => {
+    let cancelled = false
+    async function loadRootCounts() {
+      const pairs = await Promise.all(
+        modes.map(async (mode) => {
+          try {
+            const data = await gameService.listMenuNodes(mode.id)
+            return [mode.id, data.filter((node) => node.parent_id == null).length] as const
+          } catch {
+            return [mode.id, 0] as const
+          }
+        }),
+      )
+      if (!cancelled) setRootCounts(Object.fromEntries(pairs))
+    }
+    void loadRootCounts()
+    return () => {
+      cancelled = true
+    }
+  }, [modes])
+
+  useEffect(() => {
+    setTabPath((prev) => {
+      const next: number[] = []
+      for (const nodeId of prev) {
+        if (!nodes.some((node) => node.id === nodeId)) break
+        next.push(nodeId)
+      }
+      return next.length === prev.length ? prev : next
+    })
+  }, [nodes])
 
   function resetForm() {
     setEditingNodeId(null)
@@ -84,11 +121,50 @@ export function MenuNodesSection({ modeId, modeTitle, modeCode }: MenuNodesSecti
     setSortOrder('0')
   }
 
+  const currentParentId = tabPath.length > 0 ? tabPath[tabPath.length - 1] : null
+  const levelNodes = nodes
+    .filter((node) => (node.parent_id ?? null) === currentParentId)
+    .sort((a, b) => a.sort_order - b.sort_order || a.id - b.id)
+  const tabs = [
+    { id: null as number | null, label: 'Корень' },
+    ...tabPath.map((nodeId) => ({
+      id: nodeId,
+      label: nodes.find((node) => node.id === nodeId)?.title ?? `#${nodeId}`,
+    })),
+  ]
+
+  function childCount(nodeId: number): number {
+    return nodes.filter((node) => node.parent_id === nodeId).length
+  }
+
+  function selectMode(nextModeId: number) {
+    if (nextModeId === modeId) return
+    resetForm()
+    onSelectMode(nextModeId)
+  }
+
+  function selectTab(index: number) {
+    setTabPath((prev) => prev.slice(0, index))
+    resetForm()
+  }
+
+  function openChildTab(nodeId: number) {
+    setTabPath((prev) => [...prev, nodeId])
+    resetForm()
+  }
+
   function openCreateForm() {
     setError('')
     setSuccess('')
-    resetForm()
+    setEditingNodeId(null)
     setShowForm(true)
+    setTitle('')
+    setBodyText('')
+    setParentId(currentParentId ? String(currentParentId) : '')
+    setImageUrl('')
+    setPrice('')
+    setPriceError('')
+    setSortOrder('0')
   }
 
   function openEditForm(node: GameMenuNode) {
@@ -207,11 +283,11 @@ export function MenuNodesSection({ modeId, modeTitle, modeCode }: MenuNodesSecti
     }
   }
 
-  if (!modeId) {
+  if (!modeId || modes.length === 0) {
     return (
       <Card>
         <CardContent className="pt-6">
-          <EmptyState title="Выберите режим" description="Слева выберите режим типа «Меню»." />
+          <EmptyState title="Нет опросов" description="Создайте режим выше — у каждого будут свои категории." />
         </CardContent>
       </Card>
     )
@@ -222,12 +298,10 @@ export function MenuNodesSection({ modeId, modeTitle, modeCode }: MenuNodesSecti
       <CardHeader>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <CardTitle className="text-lg">
-              Пункты меню{modeTitle ? `: ${modeTitle}` : ''}
-            </CardTitle>
+            <CardTitle className="text-lg">Категории опросов</CardTitle>
             <CardDescription>
-              Разделы с подпунктами показывают в боте описание и картинку; позиции без дочерних
-              элементов — описание, цену и картинку при выборе.
+              У каждого режима своя вкладка. Внутри неё корень и вложенные разделы открываются
+              отдельными вкладками. В боте дерево показывается у режимов типа «Меню».
             </CardDescription>
           </div>
           <Button type="button" onClick={openCreateForm} disabled={showForm}>
@@ -338,12 +412,67 @@ export function MenuNodesSection({ modeId, modeTitle, modeCode }: MenuNodesSecti
           </form>
         )}
 
+        <div className="flex overflow-x-auto border-b border-[var(--border-color)]">
+          {modes.map((mode) => {
+            const isActive = mode.id === modeId
+            const count = rootCounts[mode.id]
+            return (
+              <button
+                key={mode.id}
+                type="button"
+                onClick={() => selectMode(mode.id)}
+                className={`relative shrink-0 whitespace-nowrap px-4 py-2.5 text-sm font-medium ${
+                  isActive
+                    ? 'text-primary-400'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                }`}
+              >
+                {mode.title}
+                {count ? ` · ${count}` : ''}
+                {isActive && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-500" />}
+              </button>
+            )
+          })}
+        </div>
+
+        {selectedMode && selectedMode.mode_type === 'quiz' && (rootCounts[selectedMode.id] ?? 0) === 0 && (
+          <p className="text-xs text-[var(--text-secondary)]">
+            У опроса «{selectedMode.title}» пока нет категорий. Добавьте корневой пункт на этой вкладке.
+          </p>
+        )}
+
+        <div className="flex overflow-x-auto border-b border-[var(--border-color)]">
+          {tabs.map((tab, index) => {
+            const isActive = index === tabs.length - 1
+            return (
+              <button
+                key={tab.id ?? 'root'}
+                type="button"
+                onClick={() => selectTab(index)}
+                className={`relative shrink-0 whitespace-nowrap px-4 py-2.5 text-sm font-medium ${
+                  isActive
+                    ? 'text-primary-400'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                }`}
+              >
+                {tab.label}
+                {isActive && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-500" />}
+              </button>
+            )
+          })}
+        </div>
+
         {isLoading ? (
           <TableSkeleton rows={5} />
         ) : nodes.length === 0 ? (
           <EmptyState
             title="Нет пунктов"
-            description="Добавьте корневые пункты меню — пользователь сможет проваливаться на уровни ниже."
+            description="Добавьте корневые пункты меню — вложенные разделы откроются отдельными вкладками."
+          />
+        ) : levelNodes.length === 0 ? (
+          <EmptyState
+            title="В этом разделе пусто"
+            description="Добавьте пункт: он появится на этой вкладке."
           />
         ) : (
           <div className="overflow-x-auto">
@@ -353,13 +482,14 @@ export function MenuNodesSection({ modeId, modeTitle, modeCode }: MenuNodesSecti
                   <th className="pb-2 pr-3 font-medium">ID</th>
                   <th className="pb-2 pr-3 font-medium">Заголовок</th>
                   <th className="pb-2 pr-3 font-medium">Цена</th>
-                  <th className="pb-2 pr-3 font-medium">Родитель</th>
                   <th className="pb-2 pr-3 font-medium">Статус</th>
                   <th className="pb-2 font-medium">Действия</th>
                 </tr>
               </thead>
               <tbody>
-                {nodes.map((node) => (
+                {levelNodes.map((node) => {
+                  const nestedCount = childCount(node.id)
+                  return (
                   <tr key={node.id} className="border-b border-[var(--border-color)]/60">
                     <td className="py-3 pr-3 text-[var(--text-secondary)]">{node.id}</td>
                     <td className="py-3 pr-3 max-w-md">
@@ -372,9 +502,6 @@ export function MenuNodesSection({ modeId, modeTitle, modeCode }: MenuNodesSecti
                     </td>
                     <td className="py-3 pr-3 text-[var(--text-secondary)] whitespace-nowrap">
                       {formatMenuPrice(node.price)}
-                    </td>
-                    <td className="py-3 pr-3 text-[var(--text-secondary)]">
-                      {parentLabel(node, nodes)}
                     </td>
                     <td className="py-3 pr-3">
                       <span
@@ -389,6 +516,14 @@ export function MenuNodesSection({ modeId, modeTitle, modeCode }: MenuNodesSecti
                     </td>
                     <td className="py-3">
                       <div className="flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => openChildTab(node.id)}
+                        >
+                          {nestedCount > 0 ? `Вложенные · ${nestedCount}` : 'Вложенные'}
+                        </Button>
                         <Button
                           type="button"
                           size="sm"
@@ -418,7 +553,8 @@ export function MenuNodesSection({ modeId, modeTitle, modeCode }: MenuNodesSecti
                       </div>
                     </td>
                   </tr>
-                ))}
+                  )
+                })}
               </tbody>
             </table>
           </div>

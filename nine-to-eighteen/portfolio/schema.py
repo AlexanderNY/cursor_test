@@ -1,4 +1,4 @@
-"""Схема portfolio-api: одна публичная страница и до 6 кейсов на пользователя."""
+"""Схема portfolio-api: публичная страница, материалы и обложки."""
 
 SITE_PORTFOLIOS_TABLE = """
 CREATE TABLE IF NOT EXISTS site_portfolios (
@@ -8,6 +8,9 @@ CREATE TABLE IF NOT EXISTS site_portfolios (
     summary TEXT NOT NULL DEFAULT '',
     is_published BOOLEAN NOT NULL DEFAULT FALSE,
     pinned_resume_id UUID,
+    contact_phone VARCHAR(64) NOT NULL DEFAULT '',
+    contact_email VARCHAR(255) NOT NULL DEFAULT '',
+    contact_url VARCHAR(500) NOT NULL DEFAULT '',
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -29,6 +32,7 @@ CREATE TABLE IF NOT EXISTS site_portfolio_cases (
     demo_url VARCHAR(500) NOT NULL DEFAULT '',
     learn_slugs JSONB NOT NULL DEFAULT '[]'::jsonb,
     cert_track_id VARCHAR(32) NOT NULL DEFAULT '',
+    blurb VARCHAR(400) NOT NULL DEFAULT '',
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -36,8 +40,27 @@ CREATE INDEX IF NOT EXISTS idx_site_portfolio_cases_user
     ON site_portfolio_cases (user_id, sort_order ASC, created_at ASC);
 """
 
+SITE_PORTFOLIO_COVERS_TABLE = """
+CREATE TABLE IF NOT EXISTS site_portfolio_covers (
+    case_id UUID PRIMARY KEY REFERENCES site_portfolio_cases(id) ON DELETE CASCADE,
+    mime VARCHAR(32) NOT NULL,
+    content BYTEA NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
+# Existing databases keep the original CREATE TABLE; these add the new columns.
+PORTFOLIO_PATCHES: list[str] = [
+    "ALTER TABLE site_portfolios ADD COLUMN IF NOT EXISTS contact_phone VARCHAR(64) NOT NULL DEFAULT ''",
+    "ALTER TABLE site_portfolios ADD COLUMN IF NOT EXISTS contact_email VARCHAR(255) NOT NULL DEFAULT ''",
+    "ALTER TABLE site_portfolios ADD COLUMN IF NOT EXISTS contact_url VARCHAR(500) NOT NULL DEFAULT ''",
+    "ALTER TABLE site_portfolio_cases ADD COLUMN IF NOT EXISTS blurb VARCHAR(400) NOT NULL DEFAULT ''",
+]
+
 PORTFOLIO_TABLES: list[str] = [
     "CREATE EXTENSION IF NOT EXISTS pgcrypto",
     SITE_PORTFOLIOS_TABLE,
     SITE_PORTFOLIO_CASES_TABLE,
+    *PORTFOLIO_PATCHES,
+    SITE_PORTFOLIO_COVERS_TABLE,
 ]

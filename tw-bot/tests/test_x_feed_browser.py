@@ -4,8 +4,14 @@ from services.x_feed_browser import (
     canonical_status_url,
     dumps_cookies,
     extract_status_id,
+    following_tab_label_matches,
     loads_cookies,
     parse_tweet_card_fields,
+)
+from services.x_selenium_verify import (
+    is_extra_identity_prompt,
+    is_x_home_url,
+    is_x_login_url,
 )
 
 
@@ -82,3 +88,39 @@ def test_loads_cookies_empty_or_invalid():
     assert loads_cookies("") == []
     assert loads_cookies("not-json") == []
     assert loads_cookies("{}") == []
+
+
+def test_following_tab_label_matches_chronological_names_only():
+    assert following_tab_label_matches("Following")
+    assert following_tab_label_matches("  Following\n")
+    assert following_tab_label_matches("Подписки")
+    assert following_tab_label_matches("Читаю")
+    assert not following_tab_label_matches("For you")
+    assert not following_tab_label_matches("Для вас")
+    assert not following_tab_label_matches("Подписчики")
+    assert not following_tab_label_matches("")
+
+
+def test_home_url_is_path_not_login_query():
+    assert is_x_home_url("https://x.com/home")
+    assert is_x_home_url("https://x.com/home/")
+    assert is_x_home_url("https://x.com/home?lang=en")
+    assert is_x_home_url("https://twitter.com/home")
+    assert is_x_home_url("https://www.x.com/home")
+    login = "https://x.com/i/flow/login?redirect_after_login=%2Fhome"
+    assert not is_x_home_url(login)
+    assert is_x_login_url(login)
+    assert is_x_login_url("https://x.com/i/flow/login")
+    assert is_x_login_url("https://x.com/account/access")
+    assert not is_x_login_url("https://x.com/home")
+    assert not is_x_home_url("https://evil-x.com/home")
+    assert not is_x_home_url("https://x.com/elonmusk")
+
+
+def test_extra_identity_prompt_is_not_the_sign_in_heading():
+    assert is_extra_identity_prompt("Enter your phone number or email address")
+    assert is_extra_identity_prompt("Введите номер телефона или адрес электронной почты")
+    assert not is_extra_identity_prompt("Sign in to X")
+    assert not is_extra_identity_prompt("Enter your password")
+    assert not is_extra_identity_prompt("Phone, email, or username")
+    assert not is_extra_identity_prompt("")

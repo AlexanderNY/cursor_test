@@ -102,6 +102,14 @@ export interface ChannelAlertRule {
   stop_on_match?: boolean
 }
 
+export interface ChannelRssFeed {
+  url: string
+  enabled?: boolean
+  interval_min?: number
+  suffix?: string
+  last_run_at?: string | null
+}
+
 export interface UrlChannelConfig {
   id?: string
   url?: string
@@ -154,6 +162,8 @@ export interface BrandChannel {
   alert_rules?: ChannelAlertRule[]
   /** Present when network === 'url' — scrape settings from curl_settings */
   url_config?: UrlChannelConfig | null
+  /** RSS feeds published into this own channel. */
+  rss_feeds?: ChannelRssFeed[]
   brand_name?: string
   brand_color?: string
   auth_status?: 'connected' | 'missing' | 'pending' | 'invalid' | 'unknown' | 'not_required'

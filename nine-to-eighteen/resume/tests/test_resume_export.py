@@ -4,6 +4,7 @@ from __future__ import annotations
 import importlib.util
 import sys
 import types
+from io import BytesIO
 from pathlib import Path
 
 API_DIR = Path(__file__).resolve().parents[1]
@@ -33,6 +34,8 @@ sys.modules["resume_export"] = _mod
 _SPEC.loader.exec_module(_mod)
 
 build_docx_bytes = _mod.build_docx_bytes
+normalize_education = _mod.normalize_education
+normalize_experience = _mod.normalize_experience
 render_resume_html = _mod.render_resume_html
 
 
@@ -57,6 +60,25 @@ RESUME = {
     "employmentTypes": ["full"],
     "workFormats": ["remote"],
     "about": "Учусь на 9to18.",
+    "experience": [
+        {
+            "company": "ООО Ромашка",
+            "position": "Разработчик",
+            "city": "Москва",
+            "start": "2020-01",
+            "end": "",
+            "description": "Писал API",
+        }
+    ],
+    "education": [
+        {
+            "level": "higher",
+            "institution": "МГУ",
+            "faculty": "ВМК",
+            "specialty": "Прикладная математика",
+            "year": 2018,
+        }
+    ],
 }
 
 SKILLS = [{"key": "python", "name": "Python", "display": "Python — junior"}]
@@ -68,7 +90,13 @@ def test_render_html_contains_specialization():
     )
     assert "Backend-разработчик" in html_doc
     assert "Иванов" in html_doc
-    assert "Python — junior" in html_doc
+    assert "Python" in html_doc
+    assert "Желаемая должность и зарплата" in html_doc
+    assert "Опыт работы" in html_doc
+    assert "Январь 2020 — настоящее время" in html_doc
+    assert "Образование" in html_doc
+    assert "Обо мне" in html_doc
+    assert "<script>" not in html_doc
 
 
 def test_render_html_escapes_script_in_about():
@@ -84,6 +112,13 @@ def test_render_html_escapes_script_in_about():
     assert "Опыт Python" in html_doc
 
 
+def _docx_text(data: bytes) -> str:
+    from docx import Document
+
+    document = Document(BytesIO(data))
+    return "\n".join(paragraph.text for paragraph in document.paragraphs)
+
+
 def test_docx_bytes_non_empty():
     data = build_docx_bytes(
         profile=PROFILE, resume=RESUME, skills=SKILLS, username="ivan"
@@ -91,3 +126,58 @@ def test_docx_bytes_non_empty():
     assert isinstance(data, (bytes, bytearray))
     assert len(data) > 1000
     assert data[:2] == b"PK"
+
+
+def test_docx_uses_hh_section_headings():
+    data = build_docx_bytes(
+        profile=PROFILE, resume=RESUME, skills=SKILLS, username="ivan"
+    )
+    text = _docx_text(data)
+    assert "Телефон: +7000" in text
+    assert "Дата рождения: 1 января 1990" in text
+    assert "Желаемая должность и зарплата" in text
+    assert "150 000 руб." in text
+    assert "Занятость: полная занятость" in text
+    assert "График работы: удаленная работа" in text
+    assert "Опыт работы" in text
+    assert "Январь 2020 — настоящее время" in text
+    assert "ООО Ромашка" in text
+    assert "Образование" in text
+    assert "Высшее" in text
+    assert "МГУ" in text
+    assert "Ключевые навыки" in text
+    assert "Python" in text
+    assert "Обо мне" in text
+    assert "Учусь на 9to18." in text
+
+
+def test_normalize_experience_drops_incomplete_and_orders_dates():
+    items = normalize_experience(
+        [
+            {"company": "", "position": "Dev", "start": "2020-01"},
+            {
+                "company": "Studio",
+                "position": "QA",
+                "start": "2022-05",
+                "end": "2021-03",
+                "description": "  тесты  ",
+            },
+        ]
+    )
+    assert len(items) == 1
+    assert items[0]["start"] == "2021-03"
+    assert items[0]["end"] == "2022-05"
+    assert items[0]["description"] == "тесты"
+
+
+def test_normalize_education_keeps_known_level():
+    items = normalize_education(
+        [
+            {"institution": "", "level": "higher"},
+            {"institution": "Колледж", "level": "nope", "year": 2010},
+        ]
+    )
+    assert len(items) == 1
+    assert items[0]["institution"] == "Колледж"
+    assert items[0]["level"] == ""
+    assert items[0]["year"] == 2010

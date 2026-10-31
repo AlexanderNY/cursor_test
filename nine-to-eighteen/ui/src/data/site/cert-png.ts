@@ -23,6 +23,7 @@ export type CertRenderInput = {
   resultLabel?: string
   resultValue?: string
   topics?: CertTopicRender[]
+  serialNumber?: string
 }
 
 /** @deprecated Prefer CertRenderInput — kept for call sites that still say PNG. */
@@ -124,7 +125,7 @@ function renderCertCanvas(input: CertRenderInput): HTMLCanvasElement | null {
   ctx.textAlign = 'left'
   ctx.fillText('СЕРТИФИКАТ', margin, y)
   ctx.textAlign = 'right'
-  ctx.fillText('9TO18 · LEARN', PAGE_W - margin, y)
+  ctx.fillText(input.serialNumber || '9TO18 · LEARN', PAGE_W - margin, y)
 
   y += 26
   const bar = ctx.createLinearGradient(margin, 0, PAGE_W - margin, 0)
@@ -174,7 +175,8 @@ function renderCertCanvas(input: CertRenderInput): HTMLCanvasElement | null {
   const facts = [
     input.durationLabel ? `Примерное время курса: ${input.durationLabel}` : '',
     input.resultValue ? `${input.resultLabel || 'Темы'}: ${input.resultValue}` : '',
-    input.code ? `Бланк ${input.code}` : '',
+    input.serialNumber ? `Номер ${input.serialNumber}` : '',
+    input.code ? `Код проверки ${input.code}` : '',
   ].filter(Boolean)
   ctx.font = '600 26px "Segoe UI", sans-serif'
   ctx.fillStyle = '#5c4a32'

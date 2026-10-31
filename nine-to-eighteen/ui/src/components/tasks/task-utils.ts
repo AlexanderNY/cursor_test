@@ -7,6 +7,7 @@ import type {
 export const TAG_PRESETS = ['работа', 'дом', 'обучение'] as const
 
 export const BOARD_COLUMNS: { id: SiteTaskBoard; label: string }[] = [
+  { id: 'inbox', label: 'Разобрать' },
   { id: 'backlog', label: 'Бэклог' },
   { id: 'week', label: 'На эту неделю' },
   { id: 'today', label: 'Сегодня' },

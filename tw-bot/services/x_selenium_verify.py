@@ -8,11 +8,13 @@ import re
 import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import ParseResult, urlparse
 
 from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.remote.webdriver import WebDriver
+from selenium.webdriver.remote.webelement import WebElement
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
@@ -25,7 +27,23 @@ from .selenium_errors import format_selenium_exception
 
 logger = logging.getLogger(__name__)
 
+X_HOME_URL = "https://x.com/home"
+X_LOGIN_URL = "https://x.com/i/flow/login?redirect_after_login=%2Fhome"
+
 _HANDLE_RE = re.compile(r"^[A-Za-z0-9_]{1,30}$")
+_X_HOSTS = frozenset({"x.com", "twitter.com", "mobile.x.com", "mobile.twitter.com"})
+_LOGIN_PATH_PREFIXES = (
+    "/i/flow/login",
+    "/i/flow/two-factor",
+    "/i/flow/verification",
+    "/account/access",
+    "/account/login_challenge",
+)
+_LOGGED_IN_SELECTORS = (
+    '[data-testid="SideNav_AccountSwitcher_Button"]',
+    '[data-testid="AppTabBar_Home_Link"]',
+    'a[data-testid="AppTabBar_Profile_Link"]',
+)
 _login_backoff = AuthAttemptBackoff()
 
 
@@ -96,61 +114,317 @@ def _normalize_handle(raw: Optional[str]) -> str:
     return s.split("/")[0].split("?")[0]
 
 
-def _login_x(driver: WebDriver, username: str, password: str) -> Optional[str]:
-    """Вход через x.com/i/flow/login. Возвращает текст ошибки или None при успехе."""
-    driver.get("https://x.com/i/flow/login")
-    time.sleep(2.0)
+def _parsed_x_url(url: str) -> Optional[ParseResult]:
+    raw = (url or "").strip()
+    if not raw:
+        return None
+    try:
+        parsed = urlparse(raw)
+    except ValueError:
+        return None
+    host = (parsed.hostname or "").lower()
+    if host.startswith("www."):
+        host = host[4:]
+    if host not in _X_HOSTS:
+        return None
+    return parsed
 
-    username_el = None
-    for sel in ('input[autocomplete="username"]', 'input[name="text"]'):
+
+def is_x_host_url(url: str) -> bool:
+    """Страница на x.com / twitter.com, любой путь."""
+    return _parsed_x_url(url) is not None
+
+
+def is_x_home_url(url: str) -> bool:
+    """True только для пути /home на x.com или twitter.com. Query не учитывается."""
+    parsed = _parsed_x_url(url)
+    if parsed is None:
+        return False
+    path = (parsed.path or "").rstrip("/") or "/"
+    return path.lower() == "/home"
+
+
+def is_x_login_url(url: str) -> bool:
+    """Страница входа, 2FA или account/access.
+
+    redirect_after_login=%2Fhome в query не делает адрес главной:
+    «home» в строке URL ещё не значит, что лента открыта.
+    """
+    parsed = _parsed_x_url(url)
+    if parsed is None:
+        return False
+    path = (parsed.path or "").lower()
+    if path == "/login" or path.startswith("/login/"):
+        return True
+    return any(path.startswith(prefix) for prefix in _LOGIN_PATH_PREFIXES)
+
+
+def has_logged_in_chrome(driver: WebDriver) -> bool:
+    """Боковая навигация, которую X рисует только у вошедшей сессии."""
+    for sel in _LOGGED_IN_SELECTORS:
         try:
-            username_el = WebDriverWait(driver, 20).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, sel))
-            )
-            break
-        except TimeoutException:
+            if driver.find_elements(By.CSS_SELECTOR, sel):
+                return True
+        except Exception:
             continue
-    if username_el is None:
+    return False
+
+
+def is_extra_identity_prompt(heading: str) -> bool:
+    """Шаг «телефон или email» после логина. Заголовок Sign in сюда не входит."""
+    text = " ".join((heading or "").lower().split())
+    if not text:
+        return False
+    markers = (
+        "enter your phone",
+        "phone number or email",
+        "confirm your identity",
+        "verify your identity",
+        "введите номер телефона",
+        "номер телефона или адрес",
+        "подтвердите свою личность",
+        "подтвердите, что это вы",
+    )
+    return any(marker in text for marker in markers)
+
+
+def _session_already_open(driver: WebDriver) -> bool:
+    """Сессия есть, только если виден chrome или вкладки ленты.
+
+    Самого пути /home мало: страница входа с redirect_after_login=%2Fhome
+    и пустая оболочка /home ещё не авторизованы.
+    """
+    cur = driver.current_url or ""
+    if is_x_login_url(cur):
+        return False
+    if has_logged_in_chrome(driver):
+        return True
+    if not is_x_home_url(cur):
+        return False
+    try:
+        tabs = driver.find_elements(
+            By.CSS_SELECTOR,
+            '[data-testid="ScrollSnap-List"] [role="tab"], '
+            '[data-testid="primaryColumn"] [role="tab"]',
+        )
+    except Exception:
+        return False
+    return bool(tabs)
+
+
+def _first_visible(driver: WebDriver, selectors: Tuple[str, ...]) -> Optional[WebElement]:
+    for sel in selectors:
+        try:
+            elements = driver.find_elements(By.CSS_SELECTOR, sel)
+        except Exception:
+            continue
+        for el in elements:
+            try:
+                if el.is_displayed() and el.is_enabled():
+                    return el
+            except Exception:
+                continue
+    return None
+
+
+def _type_into(el: WebElement, value: str) -> None:
+    el.click()
+    el.send_keys(Keys.CONTROL, "a")
+    el.send_keys(Keys.BACKSPACE)
+    el.send_keys(value)
+
+
+def _safe_click(driver: WebDriver, el: WebElement) -> bool:
+    try:
+        if not el.is_displayed():
+            return False
+        driver.execute_script("arguments[0].click();", el)
+        return True
+    except Exception:
+        return False
+
+
+def _click_control(driver: WebDriver, test_ids: Tuple[str, ...], labels: Tuple[str, ...]) -> bool:
+    for test_id in test_ids:
+        try:
+            elements = driver.find_elements(By.CSS_SELECTOR, f'[data-testid="{test_id}"]')
+        except Exception:
+            elements = []
+        for el in elements:
+            if _safe_click(driver, el):
+                return True
+    for label in labels:
+        xpath = (
+            f"//*[@role='button'][normalize-space()='{label}' "
+            f"or .//span[normalize-space()='{label}']]"
+        )
+        try:
+            elements = driver.find_elements(By.XPATH, xpath)
+        except Exception:
+            elements = []
+        for el in elements:
+            if _safe_click(driver, el):
+                return True
+    return False
+
+
+def _visible_headings(driver: WebDriver) -> str:
+    chunks: List[str] = []
+    try:
+        nodes = driver.find_elements(By.CSS_SELECTOR, 'h1, [role="heading"]')
+    except Exception:
+        return ""
+    for node in nodes:
+        try:
+            if not node.is_displayed():
+                continue
+            text = (node.text or "").strip()
+        except Exception:
+            continue
+        if text:
+            chunks.append(text)
+    return "\n".join(chunks)
+
+
+def _wait_username_or_session(driver: WebDriver, timeout: float) -> Any:
+    """WebElement поля логина, строка 'session', либо None."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if _session_already_open(driver):
+            return "session"
+        field = _first_visible(driver, ('input[autocomplete="username"]', 'input[name="text"]'))
+        if field is not None:
+            return field
+        time.sleep(0.4)
+    return None
+
+
+def _wait_password_step(driver: WebDriver, timeout: float) -> str:
+    """password | identity | session | timeout."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if _first_visible(driver, ('input[name="password"]', 'input[autocomplete="current-password"]')):
+            return "password"
+        if is_extra_identity_prompt(_visible_headings(driver)):
+            return "identity"
+        if _session_already_open(driver):
+            return "session"
+        low = (driver.current_url or "").lower()
+        if "account/access" in low or "/challenge" in low:
+            return "challenge"
+        time.sleep(0.4)
+    return "timeout"
+
+
+def _login_outcome(driver: WebDriver) -> Optional[str]:
+    """None — ещё ждём; 'ok' — сессия есть; иначе текст ошибки."""
+    cur = driver.current_url or ""
+    parsed = _parsed_x_url(cur)
+    path = (parsed.path or "").lower() if parsed is not None else ""
+    if "account/access" in path or "challenge" in path:
+        return (
+            "Требуется дополнительная проверка (2FA / challenge) — "
+            "используйте OAuth или войдите вручную"
+        )
+    if _session_already_open(driver):
+        return "ok"
+    if is_extra_identity_prompt(_visible_headings(driver)) and _first_visible(
+        driver, ('input[name="password"]',)
+    ) is None:
+        return (
+            "Требуется подтверждение телефона/email — "
+            "выполните вход вручную или используйте OAuth"
+        )
+    return None
+
+
+def _challenge_message() -> str:
+    return (
+        "Требуется дополнительная проверка (2FA / challenge) — "
+        "используйте OAuth или войдите вручную"
+    )
+
+
+def _identity_message() -> str:
+    return (
+        "Требуется подтверждение телефона/email — "
+        "выполните вход вручную или используйте OAuth"
+    )
+
+
+def _login_x(
+    driver: WebDriver,
+    username: str,
+    password: str,
+    *,
+    open_flow: bool = True,
+) -> Optional[str]:
+    """Логин и пароль на форме X. None — сессия открыта, обычно с возвратом на /home.
+
+    open_flow=False оставляет текущий URL, если /home уже перенаправил на login
+    (там сохранён redirect_after_login=/home).
+    """
+    cur = driver.current_url or ""
+    if is_x_home_url(cur) and has_logged_in_chrome(driver):
+        return None
+    if open_flow or not is_x_login_url(cur):
+        logger.info("X login: open %s", X_LOGIN_URL)
+        driver.get(X_LOGIN_URL)
+    else:
+        logger.info("X login: continue on the login page opened from /home")
+
+    found = _wait_username_or_session(driver, 20)
+    if found == "session":
+        return None
+    if found is None:
+        if _session_already_open(driver):
+            return None
         return "Не найдено поле логина (изменилась страница входа X)"
 
-    username_el.clear()
-    username_el.send_keys(username)
-    username_el.send_keys(Keys.ENTER)
-    time.sleep(2.5)
-
-    src = (driver.page_source or "").lower()
-    if "phone" in src and "email" in driver.page_source.lower() and "confirm" in src:
-        return "Требуется подтверждение телефона/email — выполните вход вручную или используйте OAuth"
-
     try:
-        password_el = WebDriverWait(driver, 25).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, 'input[name="password"]'))
-        )
-    except TimeoutException:
-        cur = (driver.current_url or "").lower()
-        if "challenge" in cur or "account/access" in cur:
-            return "Требуется дополнительная проверка (2FA / challenge) — используйте OAuth или войдите вручную"
+        _type_into(found, username)
+    except Exception:
+        return "Не удалось ввести логин на странице входа X"
+    if not _click_control(driver, ("ocfEnterTextNextButton",), ("Next", "Далее")):
+        found.send_keys(Keys.ENTER)
+
+    step = _wait_password_step(driver, 25)
+    if step == "session":
+        return None
+    if step == "identity":
+        return _identity_message()
+    if step == "challenge":
+        return _challenge_message()
+    if step != "password":
+        if _session_already_open(driver):
+            return None
         return "Не найдено поле пароля (возможна капча или другой шаг входа)"
 
-    password_el.clear()
-    password_el.send_keys(password)
-    password_el.send_keys(Keys.ENTER)
+    password_el = _first_visible(
+        driver,
+        ('input[name="password"]', 'input[autocomplete="current-password"]'),
+    )
+    if password_el is None:
+        return "Не найдено поле пароля (возможна капча или другой шаг входа)"
+    try:
+        _type_into(password_el, password)
+    except Exception:
+        return "Не удалось ввести пароль на странице входа X"
+    if not _click_control(driver, ("LoginForm_Login_Button",), ("Log in", "Войти")):
+        password_el.send_keys(Keys.ENTER)
 
     deadline = time.time() + 50.0
     while time.time() < deadline:
-        cur = (driver.current_url or "").lower()
-        if "challenge" in cur or "account/access" in cur:
-            return "Требуется дополнительная проверка (2FA / challenge) — используйте OAuth"
-        if "login" not in cur and "flow" not in cur:
+        outcome = _login_outcome(driver)
+        if outcome == "ok":
             return None
-        if "home" in cur or "/compose" in cur or cur.rstrip("/").endswith("x.com/home"):
-            return None
+        if outcome:
+            return outcome
         time.sleep(0.6)
 
-    cur = (driver.current_url or "").lower()
-    if "login" in cur or "flow/login" in cur:
-        return "Вход не подтверждён (неверный пароль, блокировка или антибот)"
-    return None
+    if _session_already_open(driver):
+        return None
+    return "Вход не подтверждён (неверный пароль, блокировка или антибот)"
 
 
 def _collect_following_users(driver: WebDriver, max_items: int = 150) -> List[Dict[str, Optional[str]]]:

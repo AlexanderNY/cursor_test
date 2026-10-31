@@ -1,25 +1,39 @@
 import { FormEvent, useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { PageShell } from '@/components/page-shell'
+import { PortfolioTileGrid, type PortfolioTileModel } from '@/components/portfolio-tiles'
 import {
   portfolioCreateCase,
   portfolioDeleteCase,
+  portfolioDeleteCover,
+  portfolioFetchCover,
   portfolioGetMine,
   portfolioReorder,
   portfolioSaveMine,
   portfolioSources,
   portfolioUpdateCase,
+  portfolioUploadCover,
   type PortfolioCase,
   type PortfolioCaseInput,
-  type PortfolioCertTrack,
-  type PortfolioLearnRef,
+  type PortfolioContacts,
+  type PortfolioGithubProject,
   type PortfolioProfile,
   type PortfolioResumeOption,
-  type PortfolioGithubProject,
 } from '@/data/site/portfolio-api'
 import { useSiteAuthSession } from '@/data/site/site-auth'
 
 const MAX_CASES = 6
+const MAX_COVER_BYTES = 1_500_000
+
+type MaterialDraft = {
+  id: string | null
+  title: string
+  blurb: string
+  link: string
+  repoUrl: string
+  hasCover: boolean
+  source: PortfolioCase | null
+}
 
 function suggestHandle(username: string): string {
   const raw = username
@@ -32,15 +46,21 @@ function suggestHandle(username: string): string {
   return raw.slice(0, 32)
 }
 
-function stackText(stack: string[]): string {
-  return stack.join(', ')
-}
-
-function parseStack(raw: string): string[] {
-  return raw
-    .split(',')
-    .map((item) => item.trim())
-    .filter(Boolean)
+function caseInput(draft: MaterialDraft, blurb: string, link: string): PortfolioCaseInput {
+  const source = draft.source
+  return {
+    title: draft.title,
+    role: source?.role || '',
+    problem: source?.problem || '',
+    work: source?.work || '',
+    outcome: source?.outcome || '',
+    stack: source?.stack || [],
+    repo_url: source?.repoUrl || draft.repoUrl,
+    demo_url: link,
+    learn_slugs: source?.learnSlugs || [],
+    cert_track_id: source?.certTrackId || '',
+    blurb,
+  }
 }
 
 export function PortfolioEditPage() {
@@ -56,11 +76,13 @@ export function PortfolioEditPage() {
   const [summary, setSummary] = useState('')
   const [isPublished, setIsPublished] = useState(false)
   const [pinnedResumeId, setPinnedResumeId] = useState('')
+  const [phone, setPhone] = useState('')
+  const [email, setEmail] = useState('')
+  const [contactUrl, setContactUrl] = useState('')
   const [githubProjects, setGithubProjects] = useState<PortfolioGithubProject[]>([])
-  const [learn, setLearn] = useState<PortfolioLearnRef[]>([])
   const [resumes, setResumes] = useState<PortfolioResumeOption[]>([])
-  const [certTracks, setCertTracks] = useState<PortfolioCertTrack[]>([])
-  const [pending, setPending] = useState<PortfolioCase | null>(null)
+  const [draft, setDraft] = useState<MaterialDraft | null>(null)
+  const [coverUrls, setCoverUrls] = useState<Record<string, string>>({})
 
   const accessToken = session?.accessToken ?? ''
 
@@ -73,6 +95,9 @@ export function PortfolioEditPage() {
       setSummary(nextProfile?.summary || '')
       setIsPublished(Boolean(nextProfile?.isPublished))
       setPinnedResumeId(nextProfile?.pinnedResumeId || '')
+      setPhone(nextProfile?.contactPhone || '')
+      setEmail(nextProfile?.contactEmail || '')
+      setContactUrl(nextProfile?.contactUrl || '')
     },
     [],
   )
@@ -91,9 +116,7 @@ export function PortfolioEditPage() {
         if (cancelled) return
         applyMine(mine.portfolio, mine.cases, session?.username || '')
         setGithubProjects(sources.githubProjects)
-        setLearn(sources.learn)
         setResumes(sources.resumes)
-        setCertTracks(sources.certTracks)
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : 'Не удалось загрузить портфолио')
@@ -106,6 +129,42 @@ export function PortfolioEditPage() {
       cancelled = true
     }
   }, [accessToken, applyMine, session?.username])
+
+  useEffect(() => {
+    return () => {
+      for (const url of Object.values(coverUrls)) URL.revokeObjectURL(url)
+    }
+  }, [coverUrls])
+
+  useEffect(() => {
+    if (!accessToken) return
+    let cancelled = false
+    void (async () => {
+      const next: Record<string, string> = {}
+      for (const item of cases) {
+        if (!item.hasCover || cancelled) continue
+        try {
+          const url = await portfolioFetchCover(item.id)
+          if (!url) continue
+          if (cancelled) {
+            URL.revokeObjectURL(url)
+            continue
+          }
+          next[item.id] = url
+        } catch {
+          /* плитка останется с заглушкой */
+        }
+      }
+      if (cancelled) {
+        for (const url of Object.values(next)) URL.revokeObjectURL(url)
+        return
+      }
+      setCoverUrls(next)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [accessToken, cases])
 
   async function reloadCases() {
     const mine = await portfolioGetMine()
@@ -126,8 +185,14 @@ export function PortfolioEditPage() {
         summary,
         is_published: isPublished,
         pinned_resume_id: pinnedResumeId || null,
+        contact_phone: phone,
+        contact_email: email,
+        contact_url: contactUrl,
       })
       setProfile(saved.portfolio)
+      setPhone(saved.portfolio?.contactPhone || '')
+      setEmail(saved.portfolio?.contactEmail || '')
+      setContactUrl(saved.portfolio?.contactUrl || '')
       setOk(saved.portfolio?.isPublished ? 'Страница опубликована' : 'Черновик сохранён')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Не удалось сохранить')
@@ -136,69 +201,88 @@ export function PortfolioEditPage() {
     }
   }
 
-  function startPending(partial: Partial<PortfolioCase>) {
+  function startDraft(partial: Partial<MaterialDraft> = {}) {
     if (!profile) {
       setError('Сначала сохраните адрес страницы')
       return
     }
     if (cases.length >= MAX_CASES) {
-      setError(`Не больше ${MAX_CASES} кейсов`)
+      setError(`Не больше ${MAX_CASES} материалов`)
       return
     }
     setError('')
     setOk('')
-    setPending({
-      id: 'pending',
-      sortOrder: cases.length,
-      title: partial.title || `Кейс ${cases.length + 1}`,
-      role: partial.role || '',
-      problem: partial.problem || '',
-      work: partial.work || '',
-      outcome: partial.outcome || '',
-      stack: partial.stack || [],
+    setDraft({
+      id: null,
+      title: partial.title || '',
+      blurb: partial.blurb || '',
+      link: partial.link || '',
       repoUrl: partial.repoUrl || '',
-      demoUrl: partial.demoUrl || '',
-      learnSlugs: partial.learnSlugs || [],
-      learn: [],
-      certTrackId: partial.certTrackId || '',
-      certTrackTitle: '',
-      updatedAt: null,
+      hasCover: false,
+      source: null,
     })
   }
 
-  async function onCreatePending(input: PortfolioCaseInput) {
-    setBusy(true)
+  function editDraft(item: PortfolioCase) {
     setError('')
     setOk('')
-    try {
-      await portfolioCreateCase(input)
-      setPending(null)
-      await reloadCases()
-      setOk('Кейс добавлен')
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Не удалось добавить кейс')
-    } finally {
-      setBusy(false)
-    }
+    setDraft({
+      id: item.id,
+      title: item.title,
+      blurb: item.blurb || item.problem,
+      link: item.demoUrl || item.repoUrl,
+      repoUrl: item.repoUrl,
+      hasCover: item.hasCover,
+      source: item,
+    })
   }
 
-  async function onSaveCase(item: PortfolioCase, input: PortfolioCaseInput) {
+  async function onSaveMaterial(input: {
+    title: string
+    blurb: string
+    link: string
+    file: File | null
+    removeCover: boolean
+  }) {
+    if (!draft) return
     setBusy(true)
     setError('')
     setOk('')
+    const body = caseInput({ ...draft, title: input.title }, input.blurb, input.link)
+    body.title = input.title
     try {
-      await portfolioUpdateCase(item.id, input)
+      const saved = draft.id
+        ? await portfolioUpdateCase(draft.id, body)
+        : await portfolioCreateCase(body)
+      if (input.file) {
+        try {
+          await portfolioUploadCover(saved.id, input.file)
+        } catch (err) {
+          setDraft(null)
+          await reloadCases()
+          setError(
+            err instanceof Error
+              ? `Материал сохранён, картинку загрузить не удалось: ${err.message}`
+              : 'Материал сохранён, картинку загрузить не удалось',
+          )
+          return
+        }
+      } else if (input.removeCover && draft.hasCover) {
+        await portfolioDeleteCover(saved.id)
+      }
+      setDraft(null)
       await reloadCases()
-      setOk(`Кейс «${input.title}» сохранён`)
+      setOk(draft.id ? 'Материал сохранён' : 'Материал добавлен')
+      document.getElementById('portfolio-board')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Не удалось сохранить кейс')
+      setError(err instanceof Error ? err.message : 'Не удалось сохранить материал')
     } finally {
       setBusy(false)
     }
   }
 
   async function onDeleteCase(item: PortfolioCase) {
-    if (!window.confirm(`Удалить кейс «${item.title}»?`)) {
+    if (!window.confirm(`Удалить материал «${item.title}»?`)) {
       return
     }
     setBusy(true)
@@ -206,10 +290,11 @@ export function PortfolioEditPage() {
     setOk('')
     try {
       await portfolioDeleteCase(item.id)
+      if (draft?.id === item.id) setDraft(null)
       await reloadCases()
-      setOk('Кейс удалён')
+      setOk('Материал удалён')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Не удалось удалить кейс')
+      setError(err instanceof Error ? err.message : 'Не удалось удалить материал')
     } finally {
       setBusy(false)
     }
@@ -217,9 +302,7 @@ export function PortfolioEditPage() {
 
   async function onMove(index: number, direction: -1 | 1) {
     const next = index + direction
-    if (next < 0 || next >= cases.length) {
-      return
-    }
+    if (next < 0 || next >= cases.length) return
     const ids = cases.map((item) => item.id)
     const swap = ids[index]
     ids[index] = ids[next]
@@ -244,9 +327,10 @@ export function PortfolioEditPage() {
         </Link>
         <header className="learn-header">
           <p className="learn-eyebrow">Сервис · Портфолио</p>
-          <h1 className="learn-title">Портфолио кейсов</h1>
+          <h1 className="learn-title">Портфолио</h1>
           <p className="learn-lead">
-            Публичная страница: задача, что сделано, результат, стек и доказательства из Learn.
+            Загрузите материалы с картинкой и описанием — после сохранения откроется страница
+            с плитками, ссылкой и контактами.
           </p>
           <p className="learn-section-note">
             <Link to="/login">Войти</Link>
@@ -259,7 +343,46 @@ export function PortfolioEditPage() {
   }
 
   const publicUrl = profile?.handle ? `${window.location.origin}/p/${profile.handle}` : ''
-  const earnedTracks = certTracks.filter((track) => track.earned)
+  const contacts: PortfolioContacts = { phone, email, url: contactUrl }
+  const tiles: PortfolioTileModel[] = cases.map((item, index) => ({
+    id: item.id,
+    title: item.title,
+    blurb: item.blurb || item.problem,
+    link: item.demoUrl || item.repoUrl,
+    imageUrl: coverUrls[item.id] || '',
+    tags: item.stack,
+    actions: (
+      <div className="portfolio-actions">
+        <button type="button" className="learn-admin-btn" disabled={busy} onClick={() => editDraft(item)}>
+          Изменить
+        </button>
+        <button
+          type="button"
+          className="learn-admin-btn"
+          disabled={busy || index === 0}
+          onClick={() => void onMove(index, -1)}
+        >
+          Выше
+        </button>
+        <button
+          type="button"
+          className="learn-admin-btn"
+          disabled={busy || index === cases.length - 1}
+          onClick={() => void onMove(index, 1)}
+        >
+          Ниже
+        </button>
+        <button
+          type="button"
+          className="learn-admin-btn"
+          disabled={busy}
+          onClick={() => void onDeleteCase(item)}
+        >
+          Удалить
+        </button>
+      </div>
+    ),
+  }))
 
   return (
     <PageShell>
@@ -268,10 +391,10 @@ export function PortfolioEditPage() {
       </Link>
       <header className="learn-header">
         <p className="learn-eyebrow">Сервис · Портфолио</p>
-        <h1 className="learn-title">Страница кейсов</h1>
+        <h1 className="learn-title">Материалы портфолио</h1>
         <p className="learn-lead">
-          До 6 кейсов. На опубликованной странице видны имя из анкеты, город, закреплённое резюме
-          без контактов и только заполненные истории. Телефон и почта остаются в кабинете.
+          У каждого материала — картинка, краткое описание и ссылка. После сохранения они
+          собираются в плитки, на каждой видны ваши контакты.
         </p>
         {error ? <p className="learn-admin-error">{error}</p> : null}
         {ok ? <p className="learn-admin-ok">{ok}</p> : null}
@@ -306,7 +429,7 @@ export function PortfolioEditPage() {
               <input
                 value={headline}
                 onChange={(event) => setHeadline(event.target.value)}
-                placeholder="Backend на Python, учусь на 9to18"
+                placeholder="Дизайн и вёрстка интерфейсов"
                 maxLength={160}
               />
             </label>
@@ -320,6 +443,39 @@ export function PortfolioEditPage() {
                 maxLength={2000}
               />
             </label>
+            <label className="learn-admin-field">
+              <span>Телефон</span>
+              <input
+                value={phone}
+                onChange={(event) => setPhone(event.target.value)}
+                placeholder="+7 900 000-00-00"
+                autoComplete="tel"
+                maxLength={64}
+              />
+            </label>
+            <label className="learn-admin-field">
+              <span>Email</span>
+              <input
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                placeholder="you@example.com"
+                autoComplete="email"
+                maxLength={255}
+              />
+            </label>
+            <label className="learn-admin-field">
+              <span>Ссылка для связи</span>
+              <input
+                value={contactUrl}
+                onChange={(event) => setContactUrl(event.target.value)}
+                placeholder="https://t.me/username"
+                maxLength={500}
+              />
+            </label>
+            <p className="learn-section-note">
+              Телефон, почта и ссылка для связи показываются на каждой плитке опубликованной
+              страницы.
+            </p>
             <label className="learn-admin-field">
               <span>Закрепить резюме</span>
               <select
@@ -355,34 +511,27 @@ export function PortfolioEditPage() {
               <Link to="/account" className="learn-admin-btn">
                 Анкета
               </Link>
-              <Link to="/game/hh-resume" className="learn-admin-btn">
-                Резюме
-              </Link>
             </div>
           </form>
 
           <section className="info-section">
-            <h2 className="section-block-title">Откуда взять кейс</h2>
+            <h2 className="section-block-title">Новый материал</h2>
             <p className="learn-section-note">
-              Репозитории подтягиваются из резюме. Черновик можно сохранить без текста, публикация
-              потребует задачу, что сделано и результат.
+              Картинка JPEG, PNG, WebP или GIF до 1.5 МБ, краткое описание и ссылка на работу.
+              До {MAX_CASES} материалов.
             </p>
-            {githubProjects.length === 0 ? (
-              <p className="learn-section-note">
-                В резюме пока нет репозиториев GitHub. Кейс можно создать вручную.
-              </p>
-            ) : (
+            {githubProjects.length > 0 ? (
               <ul className="portfolio-source-list">
                 {githubProjects.map((project) => (
                   <li key={project.url}>
                     <button
                       type="button"
                       className="learn-admin-btn"
-                      disabled={busy || cases.length >= MAX_CASES || !profile || pending !== null}
+                      disabled={busy || cases.length >= MAX_CASES || !profile || draft !== null}
                       onClick={() =>
-                        startPending({
+                        startDraft({
                           title: project.name,
-                          stack: project.language ? [project.language] : [],
+                          link: project.url,
                           repoUrl: project.url,
                         })
                       }
@@ -393,252 +542,182 @@ export function PortfolioEditPage() {
                   </li>
                 ))}
               </ul>
-            )}
-            {!profile ? (
-              <p className="learn-section-note">Сначала сохраните адрес страницы.</p>
             ) : null}
+            {!profile ? <p className="learn-section-note">Сначала сохраните адрес страницы.</p> : null}
+            {draft ? (
+              <MaterialForm
+                key={draft.id || 'new'}
+                draft={draft}
+                existingCover={draft.id ? coverUrls[draft.id] || '' : ''}
+                busy={busy}
+                onCancel={() => setDraft(null)}
+                onSubmit={(input) => void onSaveMaterial(input)}
+              />
+            ) : (
+              <div className="account-actions">
+                <button
+                  type="button"
+                  className="learn-admin-btn learn-admin-btn-primary"
+                  disabled={busy || cases.length >= MAX_CASES || !profile}
+                  onClick={() => startDraft()}
+                >
+                  Добавить материал ({cases.length}/{MAX_CASES})
+                </button>
+              </div>
+            )}
           </section>
 
-          <div className="account-actions">
-            <button
-              type="button"
-              className="learn-admin-btn learn-admin-btn-primary"
-              disabled={busy || cases.length >= MAX_CASES || !profile || pending !== null}
-              onClick={() => startPending({})}
-            >
-              Добавить кейс ({cases.length}/{MAX_CASES})
-            </button>
-          </div>
-
-          <div className="portfolio-grid">
-            {pending ? (
-              <CaseEditor
-                key="pending"
-                item={pending}
-                index={cases.length}
-                total={cases.length + 1}
-                busy={busy}
-                learn={learn}
-                earnedTracks={earnedTracks}
-                onSave={(input) => onCreatePending(input)}
-                onDelete={() => setPending(null)}
-                onMove={() => undefined}
-                reorder={false}
-                deleteLabel="Отмена"
-              />
-            ) : null}
-            {cases.map((item, index) => (
-              <CaseEditor
-                key={item.id}
-                item={item}
-                index={index}
-                total={cases.length}
-                busy={busy}
-                learn={learn}
-                earnedTracks={earnedTracks}
-                onSave={(input) => onSaveCase(item, input)}
-                onDelete={() => onDeleteCase(item)}
-                onMove={(direction) => onMove(index, direction)}
-              />
-            ))}
-          </div>
+          <section id="portfolio-board" className="info-section">
+            <h2 className="section-block-title">Страница с плитками</h2>
+            {cases.length === 0 ? (
+              <p className="learn-section-note">
+                Сохраните материал — здесь появятся плитки: картинка, краткое описание, ссылка и
+                контактная информация.
+              </p>
+            ) : (
+              <>
+                <p className="learn-section-note">
+                  Так страница выглядит после сохранения.
+                  {profile?.isPublished && profile.handle ? (
+                    <>
+                      {' '}
+                      <Link to={`/p/${profile.handle}`}>Открыть публичную</Link>
+                    </>
+                  ) : (
+                    ' Опубликуйте её, чтобы ссылку можно было отправить.'
+                  )}
+                </p>
+                <PortfolioTileGrid tiles={tiles} contacts={contacts} />
+              </>
+            )}
+          </section>
         </>
       )}
     </PageShell>
   )
 }
 
-function CaseEditor({
-  item,
-  index,
-  total,
+function MaterialForm({
+  draft,
+  existingCover,
   busy,
-  learn,
-  earnedTracks,
-  onSave,
-  onDelete,
-  onMove,
-  reorder = true,
-  deleteLabel = 'Удалить',
+  onCancel,
+  onSubmit,
 }: {
-  item: PortfolioCase
-  index: number
-  total: number
+  draft: MaterialDraft
+  existingCover: string
   busy: boolean
-  learn: PortfolioLearnRef[]
-  earnedTracks: PortfolioCertTrack[]
-  onSave: (input: PortfolioCaseInput) => void
-  onDelete: () => void
-  onMove: (direction: -1 | 1) => void
-  reorder?: boolean
-  deleteLabel?: string
+  onCancel: () => void
+  onSubmit: (input: {
+    title: string
+    blurb: string
+    link: string
+    file: File | null
+    removeCover: boolean
+  }) => void
 }) {
-  const [title, setTitle] = useState(item.title)
-  const [role, setRole] = useState(item.role)
-  const [problem, setProblem] = useState(item.problem)
-  const [work, setWork] = useState(item.work)
-  const [outcome, setOutcome] = useState(item.outcome)
-  const [stack, setStack] = useState(stackText(item.stack))
-  const [repoUrl, setRepoUrl] = useState(item.repoUrl)
-  const [demoUrl, setDemoUrl] = useState(item.demoUrl)
-  const [learnSlugs, setLearnSlugs] = useState<string[]>(item.learnSlugs)
-  const [certTrackId, setCertTrackId] = useState(item.certTrackId)
+  const [title, setTitle] = useState(draft.title)
+  const [blurb, setBlurb] = useState(draft.blurb)
+  const [link, setLink] = useState(draft.link)
+  const [file, setFile] = useState<File | null>(null)
+  const [preview, setPreview] = useState('')
+  const [removeCover, setRemoveCover] = useState(false)
+  const [localError, setLocalError] = useState('')
 
   useEffect(() => {
-    setTitle(item.title)
-    setRole(item.role)
-    setProblem(item.problem)
-    setWork(item.work)
-    setOutcome(item.outcome)
-    setStack(stackText(item.stack))
-    setRepoUrl(item.repoUrl)
-    setDemoUrl(item.demoUrl)
-    setLearnSlugs(item.learnSlugs)
-    setCertTrackId(item.certTrackId)
-  }, [item])
+    return () => {
+      if (preview) URL.revokeObjectURL(preview)
+    }
+  }, [preview])
 
-  function toggleSlug(slug: string) {
-    setLearnSlugs((prev) => {
-      if (prev.some((itemSlug) => itemSlug.toLowerCase() === slug.toLowerCase())) {
-        return prev.filter((itemSlug) => itemSlug.toLowerCase() !== slug.toLowerCase())
-      }
-      if (prev.length >= 8) {
-        return prev
-      }
-      return [...prev, slug]
-    })
+  function onPickFile(next: File | null) {
+    if (preview) URL.revokeObjectURL(preview)
+    setPreview('')
+    setFile(null)
+    setRemoveCover(false)
+    if (!next) return
+    const allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
+    const byName = /\.(jpe?g|png|webp|gif)$/i.test(next.name)
+    if (next.type && !allowed.includes(next.type) && !byName) {
+      setLocalError('Нужна картинка JPEG, PNG, WebP или GIF')
+      return
+    }
+    if (next.size > MAX_COVER_BYTES) {
+      setLocalError('Картинка больше 1.5 МБ')
+      return
+    }
+    setLocalError('')
+    setFile(next)
+    setPreview(URL.createObjectURL(next))
   }
 
   function submit(event: FormEvent) {
     event.preventDefault()
-    void onSave({
-      title,
-      role,
-      problem,
-      work,
-      outcome,
-      stack: parseStack(stack),
-      repo_url: repoUrl,
-      demo_url: demoUrl,
-      learn_slugs: learnSlugs,
-      cert_track_id: certTrackId,
-    })
+    if (!title.trim() || !blurb.trim()) {
+      setLocalError('Нужны название и краткое описание')
+      return
+    }
+    setLocalError('')
+    onSubmit({ title: title.trim(), blurb: blurb.trim(), link: link.trim(), file, removeCover })
   }
 
+  const shownCover = preview || (!removeCover ? existingCover : '')
+
   return (
-    <form className="portfolio-case" onSubmit={submit}>
-      <div className="portfolio-case-toolbar">
-        <h2 className="learn-section-title">
-          {index + 1}. {title || 'Кейс'}
-        </h2>
-        {reorder ? (
-          <div className="portfolio-actions">
-            <button
-              type="button"
-              className="learn-admin-btn"
-              disabled={busy || index === 0}
-              onClick={() => onMove(-1)}
-            >
-              Выше
-            </button>
-            <button
-              type="button"
-              className="learn-admin-btn"
-              disabled={busy || index === total - 1}
-              onClick={() => onMove(1)}
-            >
-              Ниже
-            </button>
-          </div>
-        ) : null}
-      </div>
+    <form id="portfolio-material-form" className="portfolio-material" onSubmit={submit}>
+      {localError ? <p className="learn-admin-error">{localError}</p> : null}
+      <label className="learn-admin-field">
+        <span>Картинка</span>
+        <input
+          type="file"
+          accept="image/jpeg,image/png,image/webp,image/gif"
+          onChange={(event) => {
+            onPickFile(event.target.files?.[0] || null)
+            event.target.value = ''
+          }}
+        />
+      </label>
+      {shownCover ? <img src={shownCover} alt="" className="portfolio-form-preview" /> : null}
+      {draft.hasCover && !file ? (
+        <label className="hh-resume-check">
+          <input
+            type="checkbox"
+            checked={removeCover}
+            onChange={(event) => setRemoveCover(event.target.checked)}
+          />
+          Убрать картинку
+        </label>
+      ) : null}
       <label className="learn-admin-field">
         <span>Название</span>
         <input value={title} onChange={(event) => setTitle(event.target.value)} required maxLength={160} />
       </label>
       <label className="learn-admin-field">
-        <span>Роль</span>
-        <input
-          value={role}
-          onChange={(event) => setRole(event.target.value)}
-          placeholder="Разработчик, QA, аналитик…"
-          maxLength={120}
+        <span>Краткое описание</span>
+        <textarea
+          className="learn-admin-textarea"
+          value={blurb}
+          onChange={(event) => setBlurb(event.target.value)}
+          rows={3}
+          maxLength={400}
+          required
         />
       </label>
       <label className="learn-admin-field">
-        <span>Задача</span>
-        <textarea className="learn-admin-textarea" value={problem} onChange={(event) => setProblem(event.target.value)} rows={3} />
-      </label>
-      <label className="learn-admin-field">
-        <span>Что сделано</span>
-        <textarea className="learn-admin-textarea" value={work} onChange={(event) => setWork(event.target.value)} rows={3} />
-      </label>
-      <label className="learn-admin-field">
-        <span>Результат</span>
-        <textarea className="learn-admin-textarea" value={outcome} onChange={(event) => setOutcome(event.target.value)} rows={3} />
-      </label>
-      <label className="learn-admin-field">
-        <span>Стек через запятую</span>
-        <input value={stack} onChange={(event) => setStack(event.target.value)} />
-      </label>
-      <label className="learn-admin-field">
-        <span>Репозиторий</span>
+        <span>Ссылка</span>
         <input
-          value={repoUrl}
-          onChange={(event) => setRepoUrl(event.target.value)}
+          value={link}
+          onChange={(event) => setLink(event.target.value)}
           placeholder="https://"
+          maxLength={500}
         />
       </label>
-      <label className="learn-admin-field">
-        <span>Демо</span>
-        <input
-          value={demoUrl}
-          onChange={(event) => setDemoUrl(event.target.value)}
-          placeholder="https://"
-        />
-      </label>
-      <label className="learn-admin-field">
-        <span>Сертификат сезона</span>
-        <select value={certTrackId} onChange={(event) => setCertTrackId(event.target.value)}>
-          <option value="">Не прикреплять</option>
-          {earnedTracks.map((track) => (
-            <option key={track.id} value={track.id}>
-              {track.title}
-            </option>
-          ))}
-          {certTrackId && !earnedTracks.some((track) => track.id === certTrackId) ? (
-            <option value={certTrackId}>{item.certTrackTitle || certTrackId}</option>
-          ) : null}
-        </select>
-      </label>
-      {learn.length > 0 ? (
-        <fieldset className="hh-resume-fieldset">
-          <legend>Пройденные выпуски Learn (до 8)</legend>
-          <div className="portfolio-learn-box">
-            {learn.map((episode) => (
-              <label key={episode.slug} className="hh-resume-check">
-                <input
-                  type="checkbox"
-                  checked={learnSlugs.some(
-                    (itemSlug) => itemSlug.toLowerCase() === episode.slug.toLowerCase(),
-                  )}
-                  onChange={() => toggleSlug(episode.slug)}
-                />
-                {episode.episode ? `${episode.episode} · ` : ''}
-                {episode.title}
-              </label>
-            ))}
-          </div>
-        </fieldset>
-      ) : (
-        <p className="learn-section-note">Отметьте выпуски в Tasks, чтобы привязать их к кейсу.</p>
-      )}
       <div className="portfolio-actions">
         <button type="submit" className="learn-admin-btn learn-admin-btn-primary" disabled={busy}>
-          Сохранить кейс
+          Сохранить материал
         </button>
-        <button type="button" className="learn-admin-btn" disabled={busy} onClick={() => void onDelete()}>
-          {deleteLabel}
+        <button type="button" className="learn-admin-btn" disabled={busy} onClick={onCancel}>
+          Отмена
         </button>
       </div>
     </form>

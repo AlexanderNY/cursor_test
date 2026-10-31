@@ -51,12 +51,12 @@ const TRAINER_BY_PROFILE: Record<string, PracticeLink> = {
     label: 'QA: сломанный ответ API',
   },
   analyst: {
-    href: '/game/practice?task=user-story',
-    label: 'История и критерии приёмки',
+    href: '/game/practice?task=brief-sort',
+    label: 'Аналитик: разложи бриф',
   },
   product_owner: {
-    href: '/game/practice?task=user-story',
-    label: 'История и критерии приёмки',
+    href: '/game/practice?task=keep-criteria',
+    label: 'Что оставить в приёмке',
   },
   devops: {
     href: '/game/git?task=init-commit',

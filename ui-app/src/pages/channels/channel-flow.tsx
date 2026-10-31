@@ -19,6 +19,7 @@ import type {
 import { publishAllowed, authStatusLabel, collectAllowed, alertAllowed } from '@/hooks/use-platform-readiness'
 import { getErrorMessage } from '@/services/api-client'
 import { networkLabel, networkSetupUrl } from '@/lib/smm-networks'
+import { ChannelRssCard } from '@/pages/channels/channel-rss-card'
 import type { PlatformNetworkStatus } from '@/types/smm'
 import { Switch } from '@/components/ui/switch'
 
@@ -876,6 +877,10 @@ export function ChannelFlowPage() {
             </CardFooter>
           </form>
         </Card>
+      )}
+
+      {tab === 'collect' && !isUrl && channel.role === 'own' && (
+        <ChannelRssCard channel={channel} onUpdated={setChannel} />
       )}
 
       {tab === 'processing' && isUrl && (

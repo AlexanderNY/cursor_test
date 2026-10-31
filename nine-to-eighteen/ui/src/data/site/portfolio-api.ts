@@ -15,6 +15,9 @@ export type PortfolioProfile = {
   pinnedResumeId: string | null
   publicPath: string
   updatedAt: string | null
+  contactPhone: string
+  contactEmail: string
+  contactUrl: string
 }
 
 export type PortfolioLearnRef = {
@@ -39,6 +42,8 @@ export type PortfolioCase = {
   certTrackId: string
   certTrackTitle: string
   updatedAt: string | null
+  blurb: string
+  hasCover: boolean
 }
 
 export type PortfolioCaseInput = {
@@ -52,6 +57,7 @@ export type PortfolioCaseInput = {
   demo_url: string
   learn_slugs: string[]
   cert_track_id: string
+  blurb: string
 }
 
 export type PortfolioGithubProject = {
@@ -98,6 +104,14 @@ export type PublicPortfolioCase = {
   learn: PortfolioLearnRef[]
   certTrackTitle: string
   certCode: string
+  blurb: string
+  hasCover: boolean
+}
+
+export type PortfolioContacts = {
+  phone: string
+  email: string
+  url: string
 }
 
 export type PublicPortfolio = {
@@ -106,6 +120,7 @@ export type PublicPortfolio = {
   headline: string
   summary: string
   city: string
+  contacts: PortfolioContacts
   pinnedResume: {
     versionName: string
     title: string
@@ -157,6 +172,9 @@ export async function portfolioSaveMine(body: {
   summary: string
   is_published: boolean
   pinned_resume_id: string | null
+  contact_phone: string
+  contact_email: string
+  contact_url: string
 }): Promise<{ portfolio: PortfolioProfile | null }> {
   return request('/portfolio/me', {
     method: 'PUT',
@@ -198,4 +216,63 @@ export async function portfolioReorder(ids: string[]): Promise<void> {
 
 export async function portfolioGetPublic(handle: string): Promise<PublicPortfolio> {
   return request(`/portfolio/p/${encodeURIComponent(handle)}`)
+}
+
+export function portfolioPublicCoverUrl(handle: string, caseId: string): string {
+  return `${API_BASE}/portfolio/p/${encodeURIComponent(handle)}/covers/${encodeURIComponent(caseId)}`
+}
+
+async function readError(response: Response): Promise<string> {
+  let detail = response.statusText
+  try {
+    const data = (await response.json()) as { detail?: unknown }
+    if (typeof data.detail === 'string') {
+      detail = data.detail
+    }
+  } catch {
+    /* ignore */
+  }
+  clearSiteAuthSessionOnAuthFailure(response.status, detail)
+  return detail || `HTTP ${response.status}`
+}
+
+export async function portfolioUploadCover(caseId: string, file: File): Promise<void> {
+  const token = getSiteAccessToken()
+  const form = new FormData()
+  form.append('cover', file)
+  const headers = new Headers()
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`)
+  }
+  const response = await fetch(
+    `${API_BASE}/portfolio/cases/${encodeURIComponent(caseId)}/cover`,
+    { method: 'POST', headers, body: form },
+  )
+  if (!response.ok) {
+    throw new SiteApiError(await readError(response), response.status)
+  }
+}
+
+export async function portfolioDeleteCover(caseId: string): Promise<void> {
+  await request(`/portfolio/cases/${encodeURIComponent(caseId)}/cover`, { method: 'DELETE' })
+}
+
+export async function portfolioFetchCover(caseId: string): Promise<string | null> {
+  const token = getSiteAccessToken()
+  const headers = new Headers()
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`)
+  }
+  const response = await fetch(
+    `${API_BASE}/portfolio/cases/${encodeURIComponent(caseId)}/cover`,
+    { headers },
+  )
+  if (response.status === 404) {
+    return null
+  }
+  if (!response.ok) {
+    throw new SiteApiError(await readError(response), response.status)
+  }
+  const blob = await response.blob()
+  return URL.createObjectURL(blob)
 }

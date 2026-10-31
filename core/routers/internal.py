@@ -75,6 +75,12 @@ async def run_smm_jobs(limit: int = Query(50, ge=1, le=200)):
     return await smm_service.run_due_jobs(limit)
 
 
+@router.post("/smm/channels/rss/run")
+async def run_due_channel_rss(limit: int = Query(10, ge=1, le=50)):
+    """Scheduler pulls due RSS feeds on own channels into publish jobs."""
+    return await smm_service.run_due_channel_rss(limit)
+
+
 @router.post("/smm/inbox/ingest")
 async def ingest_inbox(body: InboxIngestBody) -> dict[str, Any]:
     """TG/VK collectors push collected messages into unified inbox."""

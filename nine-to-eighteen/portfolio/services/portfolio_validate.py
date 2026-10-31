@@ -15,12 +15,17 @@ MAX_ROLE = 120
 MAX_BODY = 2000
 MAX_STACK_ITEM = 40
 MAX_URL = 500
+MAX_BLURB = 400
+MAX_PHONE = 64
+MAX_EMAIL = 255
+MAX_COVER_BYTES = 1_500_000
 ABOUT_EXCERPT = 600
 CERT_QUIZ_PERCENT = 70
 
 HANDLE_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{1,30}[a-z0-9])$")
 SLUG_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,126}[a-z0-9])?$")
 URL_RE = re.compile(r"^https?://\S+$", re.IGNORECASE)
+EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 _TAG_RE = re.compile(r"<[^>]*>")
 _CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
 
@@ -80,6 +85,32 @@ def parse_optional_uuid(raw: object) -> Optional[str]:
         return str(UUID(text))
     except ValueError as exc:
         raise ValueError("Некорректный id резюме") from exc
+
+
+def normalize_email(raw: object) -> str:
+    email = clean_text(raw, max_len=MAX_EMAIL, allow_newlines=False)
+    if not email:
+        return ""
+    if not EMAIL_RE.match(email):
+        raise ValueError("Некорректный email")
+    return email
+
+
+def image_mime(data: bytes) -> str:
+    if not isinstance(data, (bytes, bytearray)) or len(data) < 12:
+        raise ValueError("Файл не похож на картинку")
+    if len(data) > MAX_COVER_BYTES:
+        raise ValueError("Картинка больше 1.5 МБ")
+    blob = bytes(data)
+    if blob.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if blob.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if blob.startswith(b"GIF87a") or blob.startswith(b"GIF89a"):
+        return "image/gif"
+    if blob.startswith(b"RIFF") and blob[8:12] == b"WEBP":
+        return "image/webp"
+    raise ValueError("Нужна картинка JPEG, PNG, WebP или GIF")
 
 
 def _http_url(raw: object) -> str:
@@ -158,6 +189,9 @@ def normalize_profile(body: dict[str, Any]) -> dict[str, Any]:
         "summary": clean_text(body.get("summary"), max_len=MAX_SUMMARY, allow_newlines=True),
         "is_published": bool(body.get("is_published")),
         "pinned_resume_id": parse_optional_uuid(body.get("pinned_resume_id")),
+        "contact_phone": clean_text(body.get("contact_phone"), max_len=MAX_PHONE, allow_newlines=False),
+        "contact_email": normalize_email(body.get("contact_email")),
+        "contact_url": _http_url(body.get("contact_url")),
     }
 
 
@@ -181,13 +215,17 @@ def normalize_case(
         "demo_url": _http_url(body.get("demo_url")),
         "learn_slugs": normalize_learn_slugs(body.get("learn_slugs") or [], allowed=allowed_slugs),
         "cert_track_id": normalize_cert_track(body.get("cert_track_id"), earned_ids=earned_ids),
+        "blurb": clean_text(body.get("blurb"), max_len=MAX_BLURB, allow_newlines=False),
     }
 
 
 def case_is_complete(case: dict[str, Any]) -> bool:
+    if not str(case.get("title") or "").strip():
+        return False
+    if str(case.get("blurb") or "").strip():
+        return True
     return bool(
-        str(case.get("title") or "").strip()
-        and str(case.get("problem") or "").strip()
+        str(case.get("problem") or "").strip()
         and str(case.get("work") or "").strip()
         and str(case.get("outcome") or "").strip()
     )
@@ -200,9 +238,7 @@ def assert_publishable(*, headline: str, cases: list[dict[str, Any]]) -> None:
         raise ValueError("Для публикации нужен хотя бы один кейс")
     missing = [str(case.get("title") or "кейс") for case in cases if not case_is_complete(case)]
     if missing:
-        raise ValueError(
-            "Заполните задачу, что сделано и результат: " + ", ".join(missing)
-        )
+        raise ValueError("Добавьте краткое описание: " + ", ".join(missing))
 
 
 def track_id_for_episode(episode: str) -> Optional[str]:
@@ -344,9 +380,11 @@ def build_public_page(
     city: str,
     pinned: Optional[dict[str, Any]],
     cases: list[dict[str, Any]],
+    contacts: Optional[dict[str, Any]] = None,
 ) -> Optional[dict[str, Any]]:
     if not is_published:
         return None
+    source = contacts or {}
     return {
         "handle": handle,
         "displayName": display,
@@ -354,5 +392,10 @@ def build_public_page(
         "summary": summary,
         "city": city,
         "pinnedResume": pinned,
+        "contacts": {
+            "phone": str(source.get("phone") or ""),
+            "email": str(source.get("email") or ""),
+            "url": str(source.get("url") or ""),
+        },
         "cases": cases,
     }

@@ -214,6 +214,47 @@
 .tasks-pick-title {
   min-width: 0;
   font-weight: 600;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.tasks-pick-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  font-weight: 500;
+}
+
+.tasks-plan {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem;
+  margin: 0 0 0.9rem;
+}
+
+.tasks-plan-field {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--color-fg-muted);
+  font-size: 0.92rem;
+}
+
+.tasks-plan-field input {
+  width: 5rem;
+  padding: 0.45rem 0.55rem;
+  border-radius: 0.55rem;
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-input);
+  color: var(--color-fg);
+  font: inherit;
+}
+
+.tasks-focus-launch {
+  align-self: center;
+  flex: 0 0 auto;
 }
 
 .tasks-chip-group {
@@ -409,7 +450,7 @@
 
 .tasks-board {
   display: grid;
-  grid-template-columns: repeat(4, minmax(14rem, 1fr));
+  grid-template-columns: repeat(5, minmax(12.5rem, 1fr));
   gap: 0.85rem;
   overflow-x: auto;
   padding-bottom: 0.35rem;

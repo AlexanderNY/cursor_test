@@ -68,6 +68,9 @@ def test_board_and_due_hints():
     assert planner.due_hint_for_board("today", today=monday) == monday
     assert planner.due_hint_for_board("week", today=monday) == date(2026, 4, 12)
     assert planner.due_hint_for_board("backlog", today=monday) is None
+    assert planner.due_hint_for_board("inbox", today=monday) is None
+    assert planner.board_for_completion(False, "inbox") == "inbox"
+    assert "inbox" in planner.VALID_BOARDS
 
 
 def test_checklist_normalize_and_reset():

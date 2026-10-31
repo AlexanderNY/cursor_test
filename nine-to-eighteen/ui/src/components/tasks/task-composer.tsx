@@ -1,19 +1,19 @@
 import { FormEvent, useMemo, useState } from 'react'
 import {
+  learnSlugQueued,
   learnTaskKey,
+  postHasLab,
   postHasQuiz,
-  type LearnTaskKind,
 } from '@/components/tasks/learn-link'
 import type { LearnPost } from '@/data/learn/learn-store'
 
 const RESULT_LIMIT = 12
 
-type ComposerMode = 'wording' | 'article' | 'quiz'
+type ComposerMode = 'wording' | 'episode'
 
 const MODES: { id: ComposerMode; label: string }[] = [
   { id: 'wording', label: 'Своя формулировка' },
-  { id: 'article', label: 'Статья' },
-  { id: 'quiz', label: 'Тест' },
+  { id: 'episode', label: 'Выпуск' },
 ]
 
 type TaskComposerProps = {
@@ -22,8 +22,10 @@ type TaskComposerProps = {
   queuedKeys: ReadonlySet<string>
   busyKey: string
   error: string
+  planNote: string
   onAddWording: (title: string) => Promise<void>
-  onAddLearn: (post: LearnPost, kind: LearnTaskKind) => Promise<void>
+  onAddEpisode: (post: LearnPost) => Promise<void>
+  onPlan: (minutes: number) => Promise<void>
 }
 
 export function TaskComposer({
@@ -32,30 +34,31 @@ export function TaskComposer({
   queuedKeys,
   busyKey,
   error,
+  planNote,
   onAddWording,
-  onAddLearn,
+  onAddEpisode,
+  onPlan,
 }: TaskComposerProps) {
   const [mode, setMode] = useState<ComposerMode>('wording')
   const [title, setTitle] = useState('')
   const [query, setQuery] = useState('')
+  const [minutes, setMinutes] = useState(40)
 
   const catalog = useMemo(() => {
     const needle = query.trim().toLowerCase()
-    const source =
-      mode === 'quiz' ? posts.filter((post) => postHasQuiz(post)) : posts
     const matched = needle
-      ? source.filter((post) => {
+      ? posts.filter((post) => {
           const hay = [post.episode, post.title, post.shortTitle, ...(post.tags || [])]
             .join(' ')
             .toLowerCase()
           return hay.includes(needle)
         })
-      : source
+      : posts
     return {
       total: matched.length,
       rows: matched.slice(0, RESULT_LIMIT),
     }
-  }, [mode, posts, query])
+  }, [posts, query])
 
   async function handleWording(event: FormEvent) {
     event.preventDefault()
@@ -67,6 +70,14 @@ export function TaskComposer({
     setTitle('')
   }
 
+  async function handlePlan(event: FormEvent) {
+    event.preventDefault()
+    if (busyKey || minutes < 5) {
+      return
+    }
+    await onPlan(minutes)
+  }
+
   return (
     <section className="tasks-composer" aria-labelledby="tasks-composer-title">
       <div className="tasks-composer-head">
@@ -74,9 +85,35 @@ export function TaskComposer({
           Добавить в список
         </h2>
         <p className="learn-section-note">
-          Своя формулировка, любая статья или любой тест. Новая задача попадает на сегодня.
+          Своя формулировка и выпуск попадают в «Разобрать». У выпуска шаги: прочитать,
+          лаба и тест. План по минутам сразу кладёт выпуски на сегодня.
         </p>
       </div>
+      <form className="tasks-plan" onSubmit={(event) => void handlePlan(event)}>
+        <label className="tasks-plan-field">
+          <span>Есть</span>
+          <input
+            type="number"
+            min={5}
+            max={480}
+            step={5}
+            value={minutes}
+            disabled={Boolean(busyKey)}
+            onChange={(event) => setMinutes(Number(event.target.value) || 0)}
+            aria-label="Минут на учёбу"
+          />
+          <span>минут</span>
+        </label>
+        <button
+          type="submit"
+          className="learn-admin-btn learn-admin-btn-primary"
+          disabled={Boolean(busyKey) || minutes < 5}
+        >
+          {busyKey === 'plan' ? 'Собираю…' : 'Собрать на сегодня'}
+        </button>
+      </form>
+      {planNote ? <p className="learn-section-note">{planNote}</p> : null}
+
       <div className="tasks-composer-modes" role="tablist" aria-label="Что добавить">
         {MODES.map((item) => (
           <button
@@ -114,7 +151,7 @@ export function TaskComposer({
             className="learn-admin-btn learn-admin-btn-primary"
             disabled={Boolean(busyKey) || !title.trim()}
           >
-            {busyKey === 'wording' ? 'Добавляю…' : 'В список'}
+            {busyKey === 'wording' ? 'Добавляю…' : 'В разобрать'}
           </button>
         </form>
       ) : (
@@ -124,31 +161,32 @@ export function TaskComposer({
             type="search"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder={
-              mode === 'quiz'
-                ? 'Найти тест: название или код выпуска'
-                : 'Найти статью: название или код выпуска'
-            }
-            aria-label={mode === 'quiz' ? 'Поиск теста' : 'Поиск статьи'}
+            placeholder="Найти выпуск: название или код"
+            aria-label="Поиск выпуска"
           />
           {!postsReady ? (
             <p className="learn-section-note">Загрузка каталога…</p>
           ) : catalog.total === 0 ? (
-            <p className="learn-section-note">
-              {mode === 'quiz' ? 'Тестов по этому запросу нет.' : 'Статей по этому запросу нет.'}
-            </p>
+            <p className="learn-section-note">Выпусков по этому запросу нет.</p>
           ) : (
             <>
               <ul className="tasks-pick-list">
                 {catalog.rows.map((post) => {
-                  const kind: LearnTaskKind = mode === 'quiz' ? 'quiz' : 'article'
-                  const key = learnTaskKey(post.slug, kind)
-                  const queued = queuedKeys.has(key)
+                  const key = learnTaskKey(post.slug, 'article')
+                  const queued = learnSlugQueued(queuedKeys, post.slug)
                   const busy = busyKey === key
                   return (
                     <li key={key} className="tasks-pick-row">
                       <span className="tasks-pick-title">
                         {post.episode} · {post.shortTitle || post.title}
+                        <span className="tasks-pick-steps">
+                          <span className="learn-badge">Прочитать</span>
+                          {postHasLab(post) ? <span className="learn-badge">Лаба</span> : null}
+                          {postHasQuiz(post) ? <span className="learn-badge">Тест</span> : null}
+                          {post.durationMin > 0 ? (
+                            <span className="learn-badge">{post.durationMin} мин</span>
+                          ) : null}
+                        </span>
                       </span>
                       {queued ? (
                         <span className="learn-badge">В списке</span>
@@ -157,9 +195,9 @@ export function TaskComposer({
                           type="button"
                           className="learn-admin-btn learn-admin-btn-primary"
                           disabled={Boolean(busyKey)}
-                          onClick={() => void onAddLearn(post, kind)}
+                          onClick={() => void onAddEpisode(post)}
                         >
-                          {busy ? 'Добавляю…' : 'В список'}
+                          {busy ? 'Добавляю…' : 'В разобрать'}
                         </button>
                       )}
                     </li>

@@ -80,6 +80,40 @@ def test_case_rejects_unfinished_learn_and_bad_url():
     assert case["repo_url"].startswith("https://")
 
 
+def test_blurb_and_contacts_and_image_mime():
+    case = v.normalize_case(
+        {"title": "Макет", "blurb": "<i>лендинг</i> студии", "demo_url": "https://example.com"},
+        allowed_slugs=set(),
+        earned_ids=set(),
+    )
+    assert case["blurb"] == "лендинг студии"
+    v.assert_publishable(headline="Портфолио", cases=[case])
+    profile = v.normalize_profile(
+        {
+            "handle": "ivan-dev",
+            "contact_phone": " +7 900 000-00-00 ",
+            "contact_email": "a@b.co",
+            "contact_url": "https://t.me/ivan",
+        }
+    )
+    assert profile["contact_email"] == "a@b.co"
+    assert profile["contact_url"].startswith("https://")
+    try:
+        v.normalize_profile({"handle": "ivan-dev", "contact_email": "not-an-email"})
+    except ValueError as exc:
+        assert "email" in str(exc).lower()
+    else:
+        raise AssertionError("bad email must fail")
+    png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 16
+    assert v.image_mime(png) == "image/png"
+    try:
+        v.image_mime(b"<html>not-an-image</html>")
+    except ValueError as exc:
+        assert "картин" in str(exc)
+    else:
+        raise AssertionError("html must not pass as an image")
+
+
 def test_publish_requires_complete_cases():
     try:
         v.assert_publishable(

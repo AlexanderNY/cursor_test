@@ -1,12 +1,71 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { PageShell } from '@/components/page-shell'
+import { PortfolioTileGrid, type PortfolioTileModel } from '@/components/portfolio-tiles'
 import {
   portfolioGetPublic,
+  portfolioPublicCoverUrl,
   type PublicPortfolio,
+  type PublicPortfolioCase,
 } from '@/data/site/portfolio-api'
 import { SiteApiError } from '@/data/site/site-api'
 import { safeHref } from '@/data/safe-url'
+
+function tileFromCase(handle: string, item: PublicPortfolioCase): PortfolioTileModel {
+  const showProblem = Boolean(item.problem) && item.problem !== item.blurb
+  const hasStory = showProblem || Boolean(item.work) || Boolean(item.outcome)
+  const hasProof = Boolean(item.certTrackTitle) || item.learn.length > 0
+  const repo = safeHref(item.repoUrl)
+  const demo = safeHref(item.demoUrl)
+  return {
+    id: item.id,
+    title: item.title,
+    blurb: item.blurb || item.problem,
+    link: item.demoUrl || item.repoUrl,
+    imageUrl: item.hasCover ? portfolioPublicCoverUrl(handle, item.id) : '',
+    tags: item.stack,
+    extra:
+      hasStory || hasProof || (repo && demo) ? (
+        <details className="portfolio-tile-more">
+          <summary>Подробнее</summary>
+          {item.role ? <p className="learn-section-note">{item.role}</p> : null}
+          {showProblem ? <p className="portfolio-text">{item.problem}</p> : null}
+          {item.work ? <p className="portfolio-text">{item.work}</p> : null}
+          {item.outcome ? <p className="portfolio-text">{item.outcome}</p> : null}
+          {item.certTrackTitle ? (
+            item.certCode ? (
+              <p>
+                <Link to={`/game/cert/${item.certCode}`} className="portfolio-chip">
+                  Диплом: {item.certTrackTitle}
+                </Link>
+              </p>
+            ) : (
+              <p className="portfolio-chip">{item.certTrackTitle}</p>
+            )
+          ) : null}
+          {item.learn.length > 0 ? (
+            <ul className="contacts-list">
+              {item.learn.map((episode) => (
+                <li key={episode.slug}>
+                  <Link to={`/game/learn/${episode.slug}`}>
+                    {episode.episode ? `${episode.episode} · ` : ''}
+                    {episode.title}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          {repo && demo ? (
+            <p>
+              <a href={repo} target="_blank" rel="noopener noreferrer">
+                Репозиторий
+              </a>
+            </p>
+          ) : null}
+        </details>
+      ) : null,
+  }
+}
 
 export function PortfolioPublicPage() {
   const { handle = '' } = useParams<{ handle: string }>()
@@ -86,64 +145,10 @@ export function PortfolioPublicPage() {
               ) : null}
             </section>
           ) : null}
-          <div className="portfolio-grid">
-            {page.cases.map((item) => (
-              <article key={item.id} className="portfolio-case">
-                <h2 className="learn-section-title">{item.title}</h2>
-                {item.role ? <p className="learn-section-note">{item.role}</p> : null}
-                {item.stack.length > 0 ? (
-                  <p className="portfolio-case-meta">
-                    {item.stack.map((tag) => (
-                      <span key={tag} className="portfolio-chip">
-                        {tag}
-                      </span>
-                    ))}
-                  </p>
-                ) : null}
-                <h3 className="portfolio-label">Задача</h3>
-                <p className="portfolio-text">{item.problem}</p>
-                <h3 className="portfolio-label">Что сделано</h3>
-                <p className="portfolio-text">{item.work}</p>
-                <h3 className="portfolio-label">Результат</h3>
-                <p className="portfolio-text">{item.outcome}</p>
-                {item.certTrackTitle ? (
-                  item.certCode ? (
-                    <p>
-                      <Link to={`/game/cert/${item.certCode}`} className="portfolio-chip">
-                        Диплом: {item.certTrackTitle}
-                      </Link>
-                    </p>
-                  ) : (
-                    <p className="portfolio-chip">{item.certTrackTitle}</p>
-                  )
-                ) : null}
-                {item.learn.length > 0 ? (
-                  <ul className="contacts-list">
-                    {item.learn.map((episode) => (
-                      <li key={episode.slug}>
-                        <Link to={`/game/learn/${episode.slug}`}>
-                          {episode.episode ? `${episode.episode} · ` : ''}
-                          {episode.title}
-                        </Link>
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
-                <p className="portfolio-actions">
-                  {safeHref(item.repoUrl) ? (
-                    <a href={safeHref(item.repoUrl) || undefined} target="_blank" rel="noopener noreferrer">
-                      Репозиторий
-                    </a>
-                  ) : null}
-                  {safeHref(item.demoUrl) ? (
-                    <a href={safeHref(item.demoUrl) || undefined} target="_blank" rel="noopener noreferrer">
-                      Демо
-                    </a>
-                  ) : null}
-                </p>
-              </article>
-            ))}
-          </div>
+          <PortfolioTileGrid
+            tiles={page.cases.map((item) => tileFromCase(page.handle, item))}
+            contacts={page.contacts ?? { phone: '', email: '', url: '' }}
+          />
         </>
       ) : null}
     </PageShell>

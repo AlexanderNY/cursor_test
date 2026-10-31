@@ -473,15 +473,15 @@ export function PollsContentSection() {
         </Alert>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(280px,360px)_1fr]">
+      <div className="space-y-6">
         <Card>
           <CardHeader>
             <CardTitle className="text-lg">Режимы игры</CardTitle>
             <CardDescription>Например demo — вопросов за партию задаётся здесь.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <form onSubmit={handleCreateMode} className="space-y-3 rounded-xl border border-[var(--border-color)] p-4">
-              <h3 className="text-sm font-semibold text-[var(--text-primary)]">Новый режим</h3>
+            <form onSubmit={handleCreateMode} className="grid gap-3 rounded-xl border border-[var(--border-color)] p-4 sm:grid-cols-2 xl:grid-cols-4">
+              <h3 className="text-sm font-semibold text-[var(--text-primary)] sm:col-span-2 xl:col-span-4">Новый режим</h3>
               <Input
                 placeholder="Код (латиница, demo)"
                 value={newModeCode}
@@ -515,6 +515,7 @@ export function PollsContentSection() {
               )}
               <Button
                 type="submit"
+                className="xl:self-end"
                 disabled={!selectedBotId || !newModeCode.trim() || !newModeTitle.trim() || isCreatingMode}
                 isLoading={isCreatingMode}
               >
@@ -527,7 +528,7 @@ export function PollsContentSection() {
             ) : modes.length === 0 ? (
               <EmptyState title="Нет режимов" description="Создайте первый режим игры." />
             ) : (
-              <ul className="space-y-2">
+              <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 {modes.map((mode) => {
                   const isSelected = mode.id === selectedModeId
                   return (
@@ -598,13 +599,13 @@ export function PollsContentSection() {
           </CardContent>
         </Card>
 
-        {isMenuMode ? (
-          <MenuNodesSection
-            modeId={selectedModeId}
-            modeTitle={selectedMode?.title}
-            modeCode={selectedMode?.code}
-          />
-        ) : isCountryMode && selectedMode ? (
+        <MenuNodesSection
+          modes={modes}
+          modeId={selectedModeId}
+          onSelectMode={setSelectedModeId}
+        />
+
+        {isMenuMode ? null : isCountryMode && selectedMode ? (
           <CountryCatalogSection
             key={selectedMode.id}
             mode={selectedMode}
@@ -659,7 +660,7 @@ export function PollsContentSection() {
             />
 
             {!selectedModeId ? (
-              <EmptyState title="Выберите режим" description="Слева выберите или создайте режим игры." />
+              <EmptyState title="Выберите режим" description="Выше выберите или создайте режим игры." />
             ) : (
               <>
                 {showQuestionForm && !editingQuestionId && (

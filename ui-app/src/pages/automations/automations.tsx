@@ -179,7 +179,7 @@ export function AutomationsPage() {
     <PageContainer>
       <PageHeader
         title="Automations"
-        description="TG repost и RSS → очередь jobs (pending_approval на Standard+). Превью перед запуском."
+        description="TG repost и RSS → очередь jobs (pending_approval на Standard+). RSS одного своего канала — в карточке канала, вкладка «Сбор»."
       />
       <QuotaBanner metrics={usage?.metrics} focusKey="max_automations" className="mb-4" />
       {error && (

@@ -12,6 +12,9 @@ INTERVIEW_CERT_PERCENT = 100
 # Минимум вопросов в попытке, чтобы 5/5 не открывало диплом.
 INTERVIEW_MIN_TOTAL = 10
 CODE_RE = re.compile(r"^9T18-[A-Z0-9]{1,12}-[0-9A-F]{6}$")
+# Первый выданный бланк — 000113, дальше общий порядковый номер.
+CERT_SERIAL_START = 113
+CERT_NUMBER_RE = re.compile(r"^([A-Z0-9]{1,16})-(\d{6})$")
 
 TRACKS: tuple[tuple[str, str], ...] = (
     ("b", "Сезон B · Первое приложение"),
@@ -62,6 +65,19 @@ def blank_code(user_id: int, track_id: str) -> str:
 
 def is_cert_code(raw: str) -> bool:
     return bool(CODE_RE.match((raw or "").strip().upper()))
+
+
+def certificate_number(track_id: str, serial: int) -> str:
+    """Номер бланка: id курса и порядковый номер из 6 цифр, например PY-000113."""
+    course = re.sub(r"[^A-Z0-9]", "", (track_id or "").strip().upper()) or "COURSE"
+    return f"{course}-{int(serial):06d}"
+
+
+def parse_certificate_number(raw: str) -> tuple[str, int] | None:
+    match = CERT_NUMBER_RE.match((raw or "").strip().upper())
+    if not match:
+        return None
+    return match.group(1), int(match.group(2))
 
 
 def certificate_holder_name(

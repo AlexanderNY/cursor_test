@@ -103,6 +103,13 @@ class BrandUpdate(BaseModel):
     prompt_snippets: Optional[List[dict[str, Any]]] = None
 
 
+class ChannelRssFeedUpdate(BaseModel):
+    url: str = Field(..., min_length=1, max_length=2048)
+    enabled: bool = True
+    interval_min: int = Field(default=60, ge=15, le=1440)
+    suffix: str = Field(default="", max_length=300)
+
+
 class ChannelCreate(BaseModel):
     network: SmmNetwork
     external_id: Optional[str] = Field(None, max_length=128)
@@ -134,6 +141,7 @@ class ChannelUpdate(BaseModel):
     alert_rules: Optional[List[dict[str, Any]]] = None
     # Per-URL scrape/processing settings synced into curl_settings.urls[]
     url_config: Optional[dict[str, Any]] = None
+    rss_feeds: Optional[List[ChannelRssFeedUpdate]] = None
 
 
 class DigestJobUpdate(BaseModel):
@@ -631,6 +639,42 @@ async def get_channel(channel_id: int, x_user_id: Optional[str] = Header(None)):
     return ch
 
 
+@router.post("/channels/{channel_id}/rss/preview")
+async def preview_channel_rss(
+    channel_id: int,
+    limit: int = Query(5, ge=1, le=20),
+    x_user_id: Optional[str] = Header(None),
+):
+    """Новые записи RSS, которые попадут в очередь этого канала."""
+    user_id = get_user_id(x_user_id)
+    try:
+        return await smm_service.preview_channel_rss(user_id, channel_id, limit=limit)
+    except QuotaExceededError as exc:
+        raise _http_quota(exc)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+
+@router.post("/channels/{channel_id}/rss/run")
+async def run_channel_rss(
+    channel_id: int,
+    limit: int = Query(10, ge=1, le=30),
+    x_user_id: Optional[str] = Header(None),
+):
+    """Забрать новые записи RSS в очередь публикаций канала."""
+    user_id = get_user_id(x_user_id)
+    try:
+        return await smm_service.run_channel_rss(user_id, channel_id, limit=limit)
+    except QuotaExceededError as exc:
+        raise _http_quota(exc)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+
 @router.patch("/brands/{brand_id}/channels/{channel_id}")
 async def update_channel(
     brand_id: int,
@@ -662,6 +706,11 @@ async def update_channel(
             alert_delivery=body.alert_delivery,
             alert_rules=body.alert_rules,
             url_config=body.url_config,
+            rss_feeds=(
+                [item.model_dump() for item in body.rss_feeds]
+                if body.rss_feeds is not None
+                else None
+            ),
         )
     except QuotaExceededError as exc:
         raise _http_quota(exc)

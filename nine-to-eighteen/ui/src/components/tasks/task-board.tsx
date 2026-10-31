@@ -8,9 +8,10 @@ type TaskBoardProps = {
   onToggle: (task: SiteUserTask) => void
   onOpen: (task: SiteUserTask) => void
   onMove: (task: SiteUserTask, board: SiteTaskBoard) => void
+  onFocus?: (task: SiteUserTask) => void
 }
 
-export function TaskBoard({ items, onToggle, onOpen, onMove }: TaskBoardProps) {
+export function TaskBoard({ items, onToggle, onOpen, onMove, onFocus }: TaskBoardProps) {
   const [draggingId, setDraggingId] = useState<number | null>(null)
 
   function tasksFor(board: SiteTaskBoard): SiteUserTask[] {
@@ -56,6 +57,7 @@ export function TaskBoard({ items, onToggle, onOpen, onMove }: TaskBoardProps) {
                     onToggle={onToggle}
                     onOpen={onOpen}
                     onDragStart={(item) => setDraggingId(item.id)}
+                    onFocus={onFocus}
                   />
                 ))
               )}

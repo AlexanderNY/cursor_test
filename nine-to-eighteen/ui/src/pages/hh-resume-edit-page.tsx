@@ -1,6 +1,11 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useLocation, useParams } from 'react-router-dom'
 import { HhResumeArticle, HhResumeStrengthBar } from '@/components/hh-resume-article'
+import {
+  HhResumeHistoryFields,
+  type EducationDraft,
+  type ExperienceDraft,
+} from '@/components/hh-resume-history-fields'
 import { PageShell } from '@/components/page-shell'
 import {
   resumeCoverLetter,
@@ -27,6 +32,7 @@ import {
 import { computeStrengthLive } from '@/data/site/resume-strength'
 import {
   EMPLOYMENT_OPTIONS,
+  HH_UPLOAD_HINT,
   WORK_FORMAT_OPTIONS,
   toggleInList,
 } from '@/data/site/resume-options'
@@ -66,6 +72,8 @@ export function HhResumeEditPage() {
   const [employment, setEmployment] = useState<string[]>([])
   const [workFormats, setWorkFormats] = useState<string[]>([])
   const [about, setAbout] = useState('')
+  const [experience, setExperience] = useState<ExperienceDraft[]>([])
+  const [education, setEducation] = useState<EducationDraft[]>([])
   const [gapResult, setGapResult] = useState<SkillGapResult | null>(null)
   const [gapRole, setGapRole] = useState('')
   const [vacancyText, setVacancyText] = useState('')
@@ -105,6 +113,25 @@ export function HhResumeEditPage() {
       setEmployment(data.resume.employmentTypes)
       setWorkFormats(data.resume.workFormats)
       setAbout(data.resume.about)
+      setExperience(
+        (data.resume.experience || []).map((job) => ({
+          company: job.company || '',
+          position: job.position || '',
+          city: job.city || '',
+          start: job.start || '',
+          end: job.end || '',
+          description: job.description || '',
+        })),
+      )
+      setEducation(
+        (data.resume.education || []).map((school) => ({
+          level: school.level || 'higher',
+          institution: school.institution || '',
+          faculty: school.faculty || '',
+          specialty: school.specialty || '',
+          year: school.year != null ? String(school.year) : '',
+        })),
+      )
       setSelectedBadgeIds(data.resume.selectedBadgeIds || [])
       setGithubUsername(data.resume.githubUsername || '')
       setGithubProjects(data.resume.githubProjects || [])
@@ -176,6 +203,65 @@ export function HhResumeEditPage() {
     [githubProjects],
   )
 
+  function draftPayload() {
+    const salaryNum = salary.trim() ? Number(salary.replace(/\s/g, '')) : null
+    if (salary.trim() && (salaryNum == null || Number.isNaN(salaryNum))) {
+      throw new Error('Оклад должен быть числом')
+    }
+    const jobs = experience.filter((job) =>
+      [job.company, job.position, job.city, job.start, job.end, job.description].some((value) =>
+        value.trim(),
+      ),
+    )
+    for (const job of jobs) {
+      if (!job.company.trim() || !job.position.trim() || !job.start) {
+        throw new Error('В опыте работы укажите компанию, должность и месяц начала')
+      }
+    }
+    const schools = education.filter((school) =>
+      [school.institution, school.faculty, school.specialty, school.year].some((value) =>
+        value.trim(),
+      ),
+    )
+    for (const school of schools) {
+      if (!school.institution.trim()) {
+        throw new Error('В образовании укажите учебное заведение')
+      }
+      if (school.year.trim() && Number.isNaN(Number(school.year))) {
+        throw new Error('Год окончания должен быть числом')
+      }
+    }
+    return {
+      version_name: versionName.trim() || 'Основное',
+      title: title.trim(),
+      specialization: specialization.trim(),
+      salary_amount: salaryNum,
+      salary_currency: 'RUB' as const,
+      employment_types: employment,
+      work_formats: workFormats,
+      about: about.trim(),
+      selected_skill_keys: selectedKeys,
+      selected_badge_ids: selectedBadgeIds,
+      github_username: githubUsername.trim(),
+      github_projects: githubProjects,
+      experience: jobs.map((job) => ({
+        company: job.company.trim(),
+        position: job.position.trim(),
+        city: job.city.trim(),
+        start: job.start,
+        end: job.end,
+        description: job.description.trim(),
+      })),
+      education: schools.map((school) => ({
+        level: school.level,
+        institution: school.institution.trim(),
+        faculty: school.faculty.trim(),
+        specialty: school.specialty.trim(),
+        year: school.year.trim() ? Number(school.year) : null,
+      })),
+    }
+  }
+
   async function onSave(event: FormEvent) {
     event.preventDefault()
     if (!resumeId) return
@@ -183,24 +269,7 @@ export function HhResumeEditPage() {
     setError('')
     setOk('')
     try {
-      const salaryNum = salary.trim() ? Number(salary.replace(/\s/g, '')) : null
-      if (salary.trim() && (salaryNum == null || Number.isNaN(salaryNum))) {
-        throw new Error('Оклад должен быть числом')
-      }
-      await resumePut(resumeId, {
-        version_name: versionName.trim() || 'Основное',
-        title: title.trim(),
-        specialization: specialization.trim(),
-        salary_amount: salaryNum,
-        salary_currency: 'RUB',
-        employment_types: employment,
-        work_formats: workFormats,
-        about: about.trim(),
-        selected_skill_keys: selectedKeys,
-        selected_badge_ids: selectedBadgeIds,
-        github_username: githubUsername.trim(),
-        github_projects: githubProjects,
-      })
+      await resumePut(resumeId, draftPayload())
       setOk('Изменения сохранены')
       await load()
     } catch (err) {
@@ -216,17 +285,7 @@ export function HhResumeEditPage() {
     setError('')
     setOk('')
     try {
-      const salaryNum = salary.trim() ? Number(salary.replace(/\s/g, '')) : null
-      await resumePut(resumeId, {
-        version_name: versionName.trim() || 'Основное',
-        title: title.trim(),
-        specialization: specialization.trim() || undefined,
-        salary_amount: salary.trim() && !Number.isNaN(salaryNum as number) ? salaryNum : null,
-        employment_types: employment,
-        work_formats: workFormats,
-        about: about.trim(),
-        selected_skill_keys: selectedKeys,
-      })
+      await resumePut(resumeId, draftPayload())
       const result = await resumeGenerate(resumeId, { persist: true })
       setSkills(result.skills)
       setSelectedKeys(result.skills.map((s) => s.key))
@@ -254,6 +313,7 @@ export function HhResumeEditPage() {
     setError('')
     setOk('')
     try {
+      await resumePut(resumeId, draftPayload())
       const result = await resumeExport(resumeId, format)
       const { objectUrl } = await resumeDownloadExport(result.downloadUrl)
       const a = document.createElement('a')
@@ -261,7 +321,11 @@ export function HhResumeEditPage() {
       a.download = result.fileName
       a.click()
       URL.revokeObjectURL(objectUrl)
-      setOk(format === 'pdf' ? 'PDF скачан' : 'DOCX скачан')
+      setOk(
+        format === 'pdf'
+          ? 'PDF скачан. Для загрузки на hh.ru лучше DOCX.'
+          : 'DOCX скачан — его можно загрузить на hh.ru.',
+      )
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Ошибка экспорта')
     } finally {
@@ -278,13 +342,7 @@ export function HhResumeEditPage() {
     setError('')
     setOk('')
     try {
-      await resumePut(resumeId, {
-        version_name: versionName.trim() || 'Основное',
-        title: title.trim(),
-        specialization: specialization.trim() || undefined,
-        about: about.trim(),
-        selected_skill_keys: selectedKeys,
-      })
+      await resumePut(resumeId, draftPayload())
       const result = await resumeImproveAbout(resumeId, {
         text: about.trim(),
         persist: true,
@@ -501,24 +559,25 @@ export function HhResumeEditPage() {
         </button>
         <button
           type="button"
+          className="learn-admin-btn learn-admin-btn-primary"
+          disabled={saving || enriching}
+          onClick={() => void onExport('docx')}
+        >
+          Скачать DOCX для hh.ru
+        </button>
+        <button
+          type="button"
           className="learn-admin-btn"
           disabled={saving || enriching}
           onClick={() => void onExport('pdf')}
         >
           PDF
         </button>
-        <button
-          type="button"
-          className="learn-admin-btn"
-          disabled={saving || enriching}
-          onClick={() => void onExport('docx')}
-        >
-          DOCX
-        </button>
         <Link to={`/game/hh-resume/${resumeId}`} className="learn-admin-btn">
           Полный экран
         </Link>
       </div>
+      <p className="learn-section-note">{HH_UPLOAD_HINT}</p>
 
       {loading || !preview ? (
         <p className="learn-section-note">Загрузка…</p>
@@ -589,6 +648,13 @@ export function HhResumeEditPage() {
                   ))}
                 </div>
               </fieldset>
+
+              <HhResumeHistoryFields
+                experience={experience.length > 0 ? experience : []}
+                education={education}
+                onExperience={setExperience}
+                onEducation={setEducation}
+              />
 
               <label className="learn-admin-field">
                 <span>О себе</span>
@@ -927,6 +993,27 @@ export function HhResumeEditPage() {
               versionNameOverride={versionName}
               badgeLabels={badgeLabels}
               projects={selectedProjects}
+              experience={experience
+                .filter((job) => job.company.trim() && job.position.trim() && job.start)
+                .map((job) => ({
+                  company: job.company.trim(),
+                  position: job.position.trim(),
+                  city: job.city.trim(),
+                  start: job.start,
+                  end: job.end,
+                  description: job.description.trim(),
+                }))}
+              education={education
+                .filter((school) => school.institution.trim())
+                .map((school) => ({
+                  level: school.level,
+                  institution: school.institution.trim(),
+                  faculty: school.faculty.trim(),
+                  specialty: school.specialty.trim(),
+                  year: school.year.trim() && !Number.isNaN(Number(school.year))
+                    ? Number(school.year)
+                    : null,
+                }))}
             />
           </aside>
         </div>

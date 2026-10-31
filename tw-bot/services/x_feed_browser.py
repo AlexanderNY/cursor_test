@@ -1,4 +1,8 @@
-"""Чтение ленты X через Selenium: Following (home) и таймлайн пользователя (@handle)."""
+"""Чтение ленты X через Selenium.
+
+Following: https://x.com/home → авторизация → вкладка Following → карточки.
+Таймлайн канала: та же авторизация с /home, затем страница @handle.
+"""
 
 from __future__ import annotations
 
@@ -25,9 +29,14 @@ from config import settings
 from .selenium_driver import create_chrome_driver, get_selenium_semaphore
 from .selenium_errors import format_selenium_exception
 from .x_selenium_verify import (
+    X_HOME_URL,
     _capture_driver_png,
     _login_x,
     _normalize_handle,
+    has_logged_in_chrome,
+    is_x_home_url,
+    is_x_host_url,
+    is_x_login_url,
     note_x_login_failure,
     note_x_login_success,
     x_login_block_message,
@@ -79,6 +88,21 @@ def extract_status_id(href_or_url: str) -> Optional[str]:
     if not match:
         return None
     return match.group(1)
+
+
+_FOLLOWING_TAB_LABELS = ("following", "подписки", "читаю")
+_HOME_TAB_SELECTORS = (
+    '[data-testid="primaryColumn"] [data-testid="ScrollSnap-List"] [role="tab"]',
+    '[data-testid="ScrollSnap-List"] [role="tab"]',
+    '[data-testid="primaryColumn"] [role="tablist"] [role="tab"]',
+)
+
+
+def following_tab_label_matches(label: str) -> bool:
+    """Хронологическая вкладка: Following / Подписки / Читаю. «For you» не подходит."""
+    cleaned = (label or "").replace("\xa0", " ").replace("\u200b", "")
+    words = cleaned.lower().split()
+    return any(token in words for token in _FOLLOWING_TAB_LABELS)
 
 
 def canonical_status_url(status_id: str) -> str:
@@ -170,16 +194,13 @@ def compress_png_to_jpeg(png_bytes: bytes, max_side: int = 1920, quality: int = 
         return png_bytes
 
 
-def _is_login_url(url: str) -> bool:
-    cur = (url or "").lower()
-    return "login" in cur or "flow/login" in cur or "challenge" in cur or "account/access" in cur
-
-
 def _apply_cookies(driver: WebDriver, cookies: List[Dict[str, Any]]) -> None:
+    """Кладёт cookies на уже открытый x.com. Навигацию не делает."""
     if not cookies:
         return
-    driver.get("https://x.com")
-    time.sleep(1.0)
+    if not is_x_host_url(driver.current_url or ""):
+        driver.get(X_HOME_URL)
+        time.sleep(0.8)
     for cookie in cookies:
         try:
             payload = dict(cookie)
@@ -205,35 +226,141 @@ def _dump_driver_cookies(driver: WebDriver) -> str:
         return "[]"
 
 
-def _click_following_tab(driver: WebDriver) -> None:
-    """Переключает Home на вкладку Following (хронология подписок)."""
-    selectors = (
-        'a[role="tab"][href="/home"]',
-        'div[role="tablist"] a[role="tab"]',
-        'nav[aria-label="Home timeline"] a[role="tab"]',
-    )
-    for sel in selectors:
-        try:
-            tabs = driver.find_elements(By.CSS_SELECTOR, sel)
-        except Exception:
-            tabs = []
-        for tab in tabs:
-            try:
-                label = (tab.text or tab.get_attribute("aria-label") or "").strip().lower()
-                if "following" in label or "подписки" in label:
-                    tab.click()
-                    time.sleep(1.5)
-                    return
-            except Exception:
-                continue
-    # Fallback: второй tab в списке (For you / Following)
+def _tab_label(tab: WebElement) -> str:
     try:
-        tabs = driver.find_elements(By.CSS_SELECTOR, 'a[role="tab"]')
-        if len(tabs) >= 2:
-            tabs[1].click()
-            time.sleep(1.5)
+        text = (tab.text or "").strip()
+        if text:
+            return text
+        aria = (tab.get_attribute("aria-label") or "").strip()
+        if aria:
+            return aria
+        return (tab.get_attribute("textContent") or "").strip()
     except Exception:
-        pass
+        return ""
+
+
+def _iter_home_tabs(driver: WebDriver) -> List[WebElement]:
+    for sel in _HOME_TAB_SELECTORS:
+        try:
+            found = driver.find_elements(By.CSS_SELECTOR, sel)
+        except Exception:
+            found = []
+        if found:
+            return found
+    return []
+
+
+def _find_following_tab(driver: WebDriver) -> Optional[WebElement]:
+    tabs = _iter_home_tabs(driver)
+    for tab in tabs:
+        if following_tab_label_matches(_tab_label(tab)):
+            return tab
+    menu_tabs: List[WebElement] = []
+    for tab in tabs:
+        popup = (tab.get_attribute("aria-haspopup") or "").lower()
+        if popup == "menu":
+            menu_tabs.append(tab)
+    if len(menu_tabs) == 1:
+        return menu_tabs[0]
+    return None
+
+
+def _following_tab_selected(driver: WebDriver) -> bool:
+    tab = _find_following_tab(driver)
+    if tab is None:
+        return False
+    try:
+        return (tab.get_attribute("aria-selected") or "").lower() == "true"
+    except Exception:
+        return False
+
+
+def _home_timeline_ready(driver: WebDriver) -> bool:
+    """Главная открыта и сессия уже рисует ленту, а не стену входа."""
+    if not is_x_home_url(driver.current_url or ""):
+        return False
+    if has_logged_in_chrome(driver):
+        return True
+    return bool(_iter_home_tabs(driver))
+
+
+def _wait_for_home_session(driver: WebDriver, timeout: float = 25) -> bool:
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        cur = driver.current_url or ""
+        if is_x_login_url(cur):
+            return False
+        if _home_timeline_ready(driver):
+            return True
+        time.sleep(0.4)
+    return _home_timeline_ready(driver)
+
+
+def _js_click(driver: WebDriver, el: WebElement) -> bool:
+    try:
+        driver.execute_script("arguments[0].scrollIntoView({block:'center'});", el)
+        driver.execute_script("arguments[0].click();", el)
+        return True
+    except Exception:
+        try:
+            el.click()
+            return True
+        except Exception:
+            return False
+
+
+def _click_following_tab(driver: WebDriver) -> Optional[str]:
+    """Включает вкладку Following на https://x.com/home. None — вкладка активна."""
+    deadline = time.time() + 20
+    tab = _find_following_tab(driver)
+    while tab is None and time.time() < deadline:
+        time.sleep(0.4)
+        tab = _find_following_tab(driver)
+    if tab is None:
+        return "На https://x.com/home не найдена вкладка Following"
+
+    if (tab.get_attribute("aria-selected") or "").lower() == "true":
+        logger.info("X feed: Following tab already active")
+        return None
+
+    previous: Optional[WebElement] = None
+    try:
+        articles = driver.find_elements(By.CSS_SELECTOR, 'article[data-testid="tweet"]')
+        if articles:
+            previous = articles[0]
+    except Exception:
+        previous = None
+
+    if not _js_click(driver, tab):
+        return "Не удалось нажать вкладку Following"
+
+    selected_deadline = time.time() + 15
+    while time.time() < selected_deadline:
+        if _following_tab_selected(driver):
+            break
+        time.sleep(0.4)
+    else:
+        return "Вкладка Following не стала активной"
+
+    if previous is not None:
+        try:
+            WebDriverWait(driver, 12).until(EC.staleness_of(previous))
+        except TimeoutException:
+            logger.info("X feed: Following selected; timeline nodes were reused")
+    time.sleep(1.0)
+    logger.info("X feed: Following tab is active")
+    return None
+
+
+def _open_following_tab(driver: WebDriver) -> Optional[str]:
+    """После входа остаётся на /home и читает только вкладку Following."""
+    if not is_x_home_url(driver.current_url or ""):
+        driver.get(X_HOME_URL)
+    if not _wait_for_home_session(driver, timeout=20):
+        if is_x_login_url(driver.current_url or ""):
+            return "Сессия сброшена перед чтением вкладки Following"
+        return "Главная https://x.com/home не открылась после входа"
+    return _click_following_tab(driver)
 
 
 def _article_status_hrefs(article: WebElement) -> List[str]:
@@ -336,36 +463,40 @@ def _ensure_logged_in(
     cookies: List[Dict[str, Any]],
     user_id: Optional[int] = None,
 ) -> Optional[str]:
-    """Returns error message or None on success."""
-    logged_in = False
+    """https://x.com/home, затем cookies или логин/пароль. None — главная авторизована."""
+    logger.info("X feed: opening %s", X_HOME_URL)
+    driver.get(X_HOME_URL)
     if cookies:
         _apply_cookies(driver, cookies)
-        driver.get("https://x.com/home")
-        time.sleep(2.5)
-        if not _is_login_url(driver.current_url or ""):
-            logged_in = True
+        driver.get(X_HOME_URL)
 
-    if not logged_in:
-        if user_id is not None:
-            blocked = x_login_block_message(user_id)
-            if blocked:
-                return blocked
-        err = _login_x(driver, login, password)
-        if err:
-            if user_id is None:
-                return err
-            return note_x_login_failure(user_id, err)
-        if user_id is not None:
-            note_x_login_success(user_id)
-        driver.get("https://x.com/home")
-        time.sleep(2.0)
-        if _is_login_url(driver.current_url or ""):
-            if user_id is None:
-                return "Сессия не установлена после входа (логин/challenge)"
-            return note_x_login_failure(
-                user_id,
-                "Сессия не установлена после входа (логин/challenge)",
-            )
+    if _wait_for_home_session(driver):
+        logger.info("X feed: home session is active")
+        return None
+
+    if user_id is not None:
+        blocked = x_login_block_message(user_id)
+        if blocked:
+            return blocked
+
+    logger.info("X feed: home requires authorization")
+    already_on_login = is_x_login_url(driver.current_url or "")
+    err = _login_x(driver, login, password, open_flow=not already_on_login)
+    if err:
+        if user_id is None:
+            return err
+        return note_x_login_failure(user_id, err)
+
+    if not is_x_home_url(driver.current_url or ""):
+        driver.get(X_HOME_URL)
+    if not _wait_for_home_session(driver):
+        msg = "Сессия не установлена после входа (логин/challenge)"
+        if user_id is None:
+            return msg
+        return note_x_login_failure(user_id, msg)
+    if user_id is not None:
+        note_x_login_success(user_id)
+    logger.info("X feed: authorization finished on %s", X_HOME_URL)
     return None
 
 
@@ -384,8 +515,8 @@ def _browser_collect_sync(
     user_id: Optional[int] = None,
 ) -> FeedCollectResult:
     """
-    Shared Selenium session: login → after_login(driver) → scroll tweet cards.
-    after_login navigates to the target feed and returns Optional[str] error.
+    Shared Selenium session: https://x.com/home → auth → after_login(driver) → cards.
+    after_login opens the target feed and returns Optional[str] error.
     """
     login = (login or "").strip()
     if login.startswith("@"):
@@ -478,14 +609,13 @@ def collect_following_feed_sync(
     user_id: Optional[int] = None,
 ) -> FeedCollectResult:
     """
-    Вход (cookies или логин/пароль) → Home / Following → карточки article.
+    https://x.com/home → авторизация → вкладка Following → карточки article.
     known_status_ids — уже сохранённые status id; скролл останавливается, когда
     все видимые посты уже известны.
     """
 
     def _after(driver: WebDriver) -> Optional[str]:
-        _click_following_tab(driver)
-        return None
+        return _open_following_tab(driver)
 
     return _browser_collect_sync(
         login=login,
@@ -527,7 +657,7 @@ def collect_user_timeline_sync(
     def _after(driver: WebDriver) -> Optional[str]:
         driver.get(f"https://x.com/{target}")
         time.sleep(2.5)
-        if _is_login_url(driver.current_url or ""):
+        if is_x_login_url(driver.current_url or ""):
             return "Сессия сброшена при открытии профиля"
         cur = (driver.current_url or "").lower()
         if "/i/flow/" in cur or "account/access" in cur:

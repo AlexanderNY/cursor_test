@@ -495,7 +495,7 @@ async def cleanup_resume(page: Page, base_url: str, created: Created) -> str:
 async def seed_portfolio(page: Page, created: Created, marker: str) -> str:
     handle = page.get_by_label("Адрес страницы")
     await handle.wait_for(timeout=15_000)
-    add_case = page.get_by_role("button", name=re.compile(r"^Добавить кейс"))
+    add_case = page.get_by_role("button", name=re.compile(r"^Добавить материал"))
     await add_case.wait_for(timeout=15_000)
     if await add_case.is_disabled():
         if not created.registered and os.getenv("E2E_ALLOW_NEW_HANDLE") != "1":
@@ -516,7 +516,7 @@ async def seed_portfolio(page: Page, created: Created, marker: str) -> str:
             raise RuntimeError(error)
         created.portfolio_handle_created = True
     created.portfolio_handle = (await handle.input_value()).strip()
-    add_case = page.get_by_role("button", name=re.compile(r"^Добавить кейс"))
+    add_case = page.get_by_role("button", name=re.compile(r"^Добавить материал"))
     enabled = False
     for _ in range(20):
         if not await add_case.is_disabled():
@@ -524,26 +524,25 @@ async def seed_portfolio(page: Page, created: Created, marker: str) -> str:
             break
         await page.wait_for_timeout(250)
     if not enabled:
-        raise RuntimeError("кнопка «Добавить кейс» недоступна после сохранения адреса")
+        raise RuntimeError("кнопка «Добавить материал» недоступна после сохранения адреса")
     await add_case.click()
-    editor = page.locator("form.portfolio-case").filter(has=page.get_by_role("button", name="Отмена"))
+    editor = page.locator("form.portfolio-material").filter(has=page.get_by_role("button", name="Отмена"))
     created.portfolio_case = f"E2E кейс {marker}"
     await editor.get_by_label("Название", exact=True).fill(created.portfolio_case)
-    await editor.get_by_label("Задача", exact=True).fill("Проверка клиентского пути")
-    await editor.get_by_label("Что сделано", exact=True).fill("Playwright добавил кейс и удалит его вторым проходом")
-    await editor.get_by_label("Результат", exact=True).fill("Черновик, без публикации страницы")
-    await editor.get_by_role("button", name="Сохранить кейс").click()
-    await page.get_by_text("Кейс добавлен").wait_for(timeout=15_000)
+    await editor.get_by_label("Краткое описание", exact=True).fill("Проверка клиентского пути")
+    await editor.get_by_label("Ссылка", exact=True).fill("https://example.com/e2e")
+    await editor.get_by_role("button", name="Сохранить материал").click()
+    await page.get_by_text("Материал добавлен").wait_for(timeout=15_000)
     return created.portfolio_case
 
 
 async def cleanup_portfolio(page: Page, created: Created) -> str:
     if not created.portfolio_case:
         return "кейс не создавали"
-    editor = page.locator("form.portfolio-case").filter(has_text=created.portfolio_case)
+    editor = page.locator("article.portfolio-tile").filter(has_text=created.portfolio_case)
     await editor.first.wait_for(timeout=15_000)
     await editor.get_by_role("button", name="Удалить", exact=True).click()
-    await page.get_by_text("Кейс удалён").wait_for(timeout=15_000)
+    await page.get_by_text("Материал удалён").wait_for(timeout=15_000)
     name = created.portfolio_case
     created.portfolio_case = ""
     return f"удалён {name}"

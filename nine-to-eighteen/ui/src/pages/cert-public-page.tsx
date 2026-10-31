@@ -92,6 +92,7 @@ export function CertPublicPage() {
         resultLabel,
         resultValue,
         topics,
+        serialNumber: cert.serialNumber || '',
         tone: toneOf(cert.trackId),
       })
     } catch {
@@ -108,7 +109,7 @@ export function CertPublicPage() {
       </Link>
       <header className="learn-header no-print">
         <p className="learn-eyebrow">Проверка бланка</p>
-        <h1 className="learn-title">{cert ? cert.code : 'Сертификат'}</h1>
+        <h1 className="learn-title">{cert ? cert.serialNumber || cert.code : 'Сертификат'}</h1>
       </header>
       {error ? <p className="learn-admin-error">{error}</p> : null}
       {missing ? (
@@ -130,6 +131,7 @@ export function CertPublicPage() {
           resultValue={resultValue}
           quizLabel={quiz}
           code={cert.code}
+          serialNumber={cert.serialNumber || ''}
           topics={topics}
           actions={
             <>
@@ -168,6 +170,7 @@ export function CertPublicPage() {
                     resultLabel,
                     resultValue,
                     topics,
+                    serialNumber: cert.serialNumber || '',
                     tone: toneOf(cert.trackId),
                   })
                 }

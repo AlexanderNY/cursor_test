@@ -1011,7 +1011,7 @@ class GameRepository:
                 if not include_inactive:
                     conditions.append("is_active = TRUE")
                 if bot_id is not None:
-                    conditions.append("bot_id = %s")
+                    conditions.append("(bot_id = %s OR bot_id IS NULL)")
                     vals.append(bot_id)
                 where_sql = f"WHERE {' AND '.join(conditions)}" if conditions else ""
                 await cur.execute(

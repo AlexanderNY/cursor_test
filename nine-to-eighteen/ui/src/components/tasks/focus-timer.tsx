@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   siteCreateFocusLog,
   siteListFocusLogs,
@@ -52,7 +52,15 @@ function formatClock(sec: number): string {
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
 }
 
-export function FocusTimer() {
+type FocusTimerProps = {
+  taskTitle?: string
+  onSession?: (minutes: number) => void
+}
+
+export function FocusTimer({ taskTitle = '', onSession }: FocusTimerProps) {
+  const onSessionRef = useRef(onSession)
+  onSessionRef.current = onSession
+  const sessionLabel = taskTitle.trim() || 'Pomodoro'
   const [state, setState] = useState<StoredTimer>(() => loadStored())
   const [logs, setLogs] = useState<SiteFocusLog[]>([])
   const [immersive, setImmersive] = useState(false)
@@ -104,13 +112,14 @@ export function FocusTimer() {
       remainingSec: 0,
     }))
     if (finishedMode === 'focus') {
-      void siteCreateFocusLog({ minutes, label: 'Pomodoro' })
+      void siteCreateFocusLog({ minutes, label: sessionLabel })
         .then((log) => setLogs((prev) => [log, ...prev].slice(0, 50)))
         .catch((err) =>
           setError(err instanceof Error ? err.message : 'Не удалось записать фокус'),
         )
+      onSessionRef.current?.(minutes)
     }
-  }, [state.mode, state.remainingSec, state.running, state.totalSec])
+  }, [sessionLabel, state.mode, state.remainingSec, state.running, state.totalSec])
 
   const progress = useMemo(() => {
     if (state.totalSec <= 0) {
@@ -174,7 +183,9 @@ export function FocusTimer() {
           Фокус
         </h2>
         <p className="learn-section-note">
-          Таймер Pomodoro и журнал завершённых сессий.
+          {taskTitle.trim()
+            ? `Сессия для «${taskTitle.trim()}». Минуты запишутся в карточку.`
+            : 'Таймер Pomodoro и журнал завершённых сессий.'}
         </p>
       </header>
 

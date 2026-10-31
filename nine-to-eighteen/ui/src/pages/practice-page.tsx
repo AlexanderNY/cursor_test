@@ -3,16 +3,30 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { PageShell } from '@/components/page-shell'
 import { TrainerTabs } from '@/components/trainer-tabs'
 
-type TaskId = 'list-keys' | 'extra-render' | 'single-state' | 'broken-api' | 'user-story' | 'star'
+type TaskId =
+  | 'list-keys'
+  | 'extra-render'
+  | 'single-state'
+  | 'broken-api'
+  | 'brief-sort'
+  | 'keep-criteria'
+  | 'rest-or-queue'
+  | 'star'
 
 const TASKS: Array<{ id: TaskId; label: string; specialty: string }> = [
   { id: 'list-keys', label: 'Ключ списка', specialty: 'Разработчик' },
   { id: 'extra-render', label: 'Лишний рендер', specialty: 'Разработчик' },
   { id: 'single-state', label: 'Один источник', specialty: 'Разработчик' },
   { id: 'broken-api', label: 'Сломанный API', specialty: 'Тестировщик' },
-  { id: 'user-story', label: 'История и приёмка', specialty: 'Аналитик и владелец продукта' },
+  { id: 'brief-sort', label: 'Разложи бриф', specialty: 'Аналитик' },
+  { id: 'keep-criteria', label: 'Оставь критерий', specialty: 'Аналитик и владелец продукта' },
+  { id: 'rest-or-queue', label: 'REST или очередь', specialty: 'Аналитик' },
   { id: 'star', label: 'STAR 90 секунд', specialty: 'Все' },
 ]
+
+const TASK_ALIASES: Record<string, TaskId> = {
+  'user-story': 'brief-sort',
+}
 
 function isTaskId(value: string | null): value is TaskId {
   return TASKS.some((task) => task.id === value)
@@ -25,7 +39,17 @@ function words(value: string): number {
 export function PracticePage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const requested = searchParams.get('task')
-  const taskId: TaskId = isTaskId(requested) ? requested : 'list-keys'
+  const aliased = requested ? TASK_ALIASES[requested] : undefined
+  const taskId: TaskId = aliased || (isTaskId(requested) ? requested : 'list-keys')
+
+  useEffect(() => {
+    if (!aliased) {
+      return
+    }
+    const params = new URLSearchParams(searchParams)
+    params.set('task', aliased)
+    setSearchParams(params, { replace: true })
+  }, [aliased, searchParams, setSearchParams])
 
   function choose(next: TaskId) {
     const params = new URLSearchParams(searchParams)
@@ -65,7 +89,9 @@ export function PracticePage() {
       {taskId === 'extra-render' ? <ExtraRenderTask /> : null}
       {taskId === 'single-state' ? <SingleStateTask /> : null}
       {taskId === 'broken-api' ? <BrokenApiTask /> : null}
-      {taskId === 'user-story' ? <UserStoryTask /> : null}
+      {taskId === 'brief-sort' ? <BriefSortTask /> : null}
+      {taskId === 'keep-criteria' ? <KeepCriteriaTask /> : null}
+      {taskId === 'rest-or-queue' ? <RestOrQueueTask /> : null}
       {taskId === 'star' ? <StarTask /> : null}
     </PageShell>
   )
@@ -371,61 +397,280 @@ function BrokenApiTask() {
   )
 }
 
-function UserStoryTask() {
-  const [role, setRole] = useState('')
-  const [want, setWant] = useState('')
-  const [why, setWhy] = useState('')
-  const [criteria, setCriteria] = useState(['', '', ''])
-  const [negative, setNegative] = useState('')
+type BriefBucket = 'fr' | 'nfr' | 'transitional' | 'wish'
+
+const BRIEF_BUCKETS: Array<{ id: BriefBucket; label: string }> = [
+  { id: 'fr', label: 'FR' },
+  { id: 'nfr', label: 'NFR' },
+  { id: 'transitional', label: 'Переходное' },
+  { id: 'wish', label: 'Пожелание' },
+]
+
+const BRIEF_LINES: Array<{ id: string; text: string; bucket: BriefBucket }> = [
+  { id: 'pay', text: 'Покупатель оплачивает заказ с телефона', bucket: 'fr' },
+  { id: 'latency', text: 'Экран ответа банка появляется быстрее 300 мс', bucket: 'nfr' },
+  {
+    id: 'dual',
+    text: 'Неделю старая и новая касса работают параллельно, суммы сверяют',
+    bucket: 'transitional',
+  },
+  { id: 'nice', text: 'Чтобы было удобно', bucket: 'wish' },
+  {
+    id: 'decline',
+    text: 'Если банк отказал, заказ не оплачен и деньги не списаны',
+    bucket: 'fr',
+  },
+  { id: 'sla', text: 'Оплата доступна 99.9% времени за месяц', bucket: 'nfr' },
+  {
+    id: 'migrate',
+    text: 'Один раз перенести сохранённые карты из старого биллинга',
+    bucket: 'transitional',
+  },
+  { id: 'fast', text: 'Система должна быть быстрой', bucket: 'wish' },
+]
+
+function BriefSortTask() {
+  const [picked, setPicked] = useState<Partial<Record<string, BriefBucket>>>({})
   const [verdict, setVerdict] = useState<{ passed: boolean; text: string } | null>(null)
 
+  function choose(lineId: string, bucket: BriefBucket) {
+    setPicked((prev) => ({ ...prev, [lineId]: bucket }))
+    setVerdict(null)
+  }
+
   function check() {
-    const filled = [role, want, why, negative, ...criteria].every((value) => words(value) >= 2)
-    const negativeMarksFailure = /не|ошиб|отказ|пуст/i.test(negative)
+    const missing = BRIEF_LINES.some((line) => !picked[line.id])
+    if (missing) {
+      setVerdict({
+        passed: false,
+        text: 'Разложите все восемь фраз. Пустая корзина не считается ответом.',
+      })
+      return
+    }
+    const wrong = BRIEF_LINES.some((line) => picked[line.id] !== line.bucket)
+    if (wrong) {
+      setVerdict({
+        passed: false,
+        text: 'FR — что система делает. NFR — порог качества. Переходное нужно только на запуск и потом закрывается. «Удобно» и «быстро» без числа — пожелание.',
+      })
+      return
+    }
     setVerdict({
-      passed: filled && negativeMarksFailure,
-      text:
-        filled && negativeMarksFailure
-          ? 'История называет роль, действие и пользу. Три критерия наблюдаемы, негативный случай говорит, что будет при отказе.'
-          : 'Нужны роль, действие, польза, три критерия и негативный случай. В негативном напишите, что увидит человек, если оплата или проверка не прошла.',
+      passed: true,
+      text: 'Функция, порог, разовый перенос и голое пожелание разложены по разным корзинам.',
     })
   }
 
   return (
     <section className="quiz-question">
-      <h2 className="quiz-setup-title">История и критерии приёмки</h2>
+      <h2 className="quiz-setup-title">Разложи бриф</h2>
       <p className="learn-lead">
-        Заказчик сказал: «хочу оплачивать заказ с телефона и понимать, если банк отказал». Соберите
-        историю и приёмку. Разработчик этот текст не пишет вместо вас — он читает ваш выпуск про
-        требования как справочник.
+        Заказчик сказал: «хочу оплачивать заказ с телефона и понимать, если банк отказал». Каждую
+        фразу положите в одну корзину.
       </p>
-      <label className="learn-filter-field">
-        <span>Роль</span>
-        <input value={role} onChange={(event) => setRole(event.target.value)} />
-      </label>
-      <label className="learn-filter-field">
-        <span>Хочу</span>
-        <input value={want} onChange={(event) => setWant(event.target.value)} />
-      </label>
-      <label className="learn-filter-field">
-        <span>Чтобы</span>
-        <input value={why} onChange={(event) => setWhy(event.target.value)} />
-      </label>
-      {criteria.map((value, index) => (
-        <label key={index} className="learn-filter-field">
-          <span>Критерий {index + 1}</span>
-          <input
-            value={value}
-            onChange={(event) =>
-              setCriteria((prev) => prev.map((item, itemIndex) => (itemIndex === index ? event.target.value : item)))
-            }
-          />
-        </label>
-      ))}
-      <label className="learn-filter-field">
-        <span>Негативный случай</span>
-        <input value={negative} onChange={(event) => setNegative(event.target.value)} />
-      </label>
+      <div className="practice-lines">
+        {BRIEF_LINES.map((line) => (
+          <div key={line.id}>
+            <p className="practice-line-text">{line.text}</p>
+            <div className="practice-buckets" role="group" aria-label={line.text}>
+              {BRIEF_BUCKETS.map((bucket) => (
+                <button
+                  key={bucket.id}
+                  type="button"
+                  className={`quiz-choice practice-bucket${picked[line.id] === bucket.id ? ' is-active' : ''}`}
+                  aria-pressed={picked[line.id] === bucket.id}
+                  onClick={() => choose(line.id, bucket.id)}
+                >
+                  {bucket.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+      <button type="button" className="learn-admin-btn learn-admin-btn-primary" onClick={check}>
+        Проверить
+      </button>
+      <Verdict passed={verdict?.passed ?? null} text={verdict?.text || ''} />
+    </section>
+  )
+}
+
+const CRITERIA: Array<{ id: string; text: string; keep: boolean }> = [
+  {
+    id: 'paid',
+    text: 'После успеха статус заказа «оплачен», сумма заказа равна сумме списания',
+    keep: true,
+  },
+  { id: 'fast', text: 'Оплата должна быть удобной и быстрой', keep: false },
+  { id: 'address', text: 'Покупатель видит сохранённые адреса доставки', keep: false },
+  {
+    id: 'decline',
+    text: 'Если банк отказал, заказ не оплачен и на экране есть причина',
+    keep: true,
+  },
+  { id: 'zero', text: 'Кнопка «Оплатить» недоступна, пока сумма заказа 0', keep: true },
+  { id: 'blue', text: 'Кнопка фирменного синего цвета', keep: false },
+  { id: 'retry', text: 'Повторное нажатие не создаёт второе списание', keep: true },
+  { id: 'credit', text: 'Приложение само предлагает кредит на покупку', keep: false },
+]
+
+function KeepCriteriaTask() {
+  const [selected, setSelected] = useState<string[]>([])
+  const [verdict, setVerdict] = useState<{ passed: boolean; text: string } | null>(null)
+
+  function toggle(id: string) {
+    setSelected((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]))
+    setVerdict(null)
+  }
+
+  function check() {
+    const keepIds = CRITERIA.filter((item) => item.keep).map((item) => item.id)
+    const same = selected.length === keepIds.length && keepIds.every((id) => selected.includes(id))
+    if (!same) {
+      setVerdict({
+        passed: false,
+        text: 'В приёмке остаются наблюдаемые исходы и негативный путь. «Удобно», чужой сценарий и цвет кнопки туда не входят.',
+      })
+      return
+    }
+    setVerdict({
+      passed: true,
+      text: 'Четыре критерия можно проверить на экране. Пожелание, чужой scope и оформление отсечены.',
+    })
+  }
+
+  return (
+    <section className="quiz-question">
+      <h2 className="quiz-setup-title">Оставь критерий</h2>
+      <p className="learn-lead">
+        История уже есть: «Как покупатель, я хочу оплатить заказ с телефона, чтобы не вводить карту
+        на кассе». Отметьте, что остаётся в приёмке.
+      </p>
+      <div className="practice-lines" role="group" aria-label="Кандидаты в приёмку">
+        {CRITERIA.map((item) => {
+          const isOn = selected.includes(item.id)
+          return (
+            <button
+              key={item.id}
+              type="button"
+              className={`quiz-choice${isOn ? ' is-active' : ''}`}
+              aria-pressed={isOn}
+              onClick={() => toggle(item.id)}
+            >
+              <span className="quiz-choice-label">{item.text}</span>
+              <span className="quiz-choice-meta">{isOn ? 'В приёмке' : 'Не брать'}</span>
+            </button>
+          )
+        })}
+      </div>
+      <button type="button" className="learn-admin-btn learn-admin-btn-primary" onClick={check}>
+        Проверить
+      </button>
+      <Verdict passed={verdict?.passed ?? null} text={verdict?.text || ''} />
+    </section>
+  )
+}
+
+const PAY_CHANNELS = [
+  {
+    id: 'rest',
+    label: 'Синхронный REST и Idempotency-Key',
+    meta: 'Ответ нужен на телефоне сразу',
+  },
+  {
+    id: 'queue',
+    label: 'Очередь, ответ придёт позже',
+    meta: 'Дедупликация съест повтор',
+  },
+  {
+    id: 'repost',
+    label: 'Повторить тот же POST без ключа',
+    meta: 'Клиент нажал ещё раз после таймаута',
+  },
+] as const
+
+const DECLINE_SCREENS = [
+  { id: 'reason', label: 'Заказ не оплачен, деньги не списаны, на экране причина отказа' },
+  { id: 'ok', label: 'Показать успех: с банком разберёмся потом' },
+  { id: 'empty', label: 'Пустая страница и код 500' },
+  { id: 'charged', label: 'Деньги списаны, заказ отменён' },
+] as const
+
+function RestOrQueueTask() {
+  const [channel, setChannel] = useState('')
+  const [screen, setScreen] = useState('')
+  const [verdict, setVerdict] = useState<{ passed: boolean; text: string } | null>(null)
+
+  function check() {
+    if (!channel || !screen) {
+      setVerdict({
+        passed: false,
+        text: 'Выберите и канал списания, и то, что человек видит при отказе банка.',
+      })
+      return
+    }
+    if (channel !== 'rest' || screen !== 'reason') {
+      setVerdict({
+        passed: false,
+        text: 'Покупатель ждёт ответ сейчас, цепочка короткая. Повтор POST без ключа списывает второй раз. Очередь сглаживает долгую работу, а не экран оплаты. При отказе заказ не оплачен, деньги на месте, причина на экране.',
+      })
+      return
+    }
+    setVerdict({
+      passed: true,
+      text: 'Ответ нужен сразу, повтор с тем же ключом не создаёт второе списание, отказ банка виден человеку.',
+    })
+  }
+
+  return (
+    <section className="quiz-question">
+      <h2 className="quiz-setup-title">REST или очередь</h2>
+      <p className="learn-lead">
+        Покупатель ждёт на телефоне. После таймаута он нажимает «Оплатить» ещё раз. Второго
+        списания быть не должно. Если банк отказал, человек должен это понять.
+      </p>
+      <div className="practice-groups">
+        <div>
+          <p className="practice-line-text">Как списывать</p>
+          <div className="practice-lines" role="group" aria-label="Как списывать">
+            {PAY_CHANNELS.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                className={`quiz-choice${channel === item.id ? ' is-active' : ''}`}
+                aria-pressed={channel === item.id}
+                onClick={() => {
+                  setChannel(item.id)
+                  setVerdict(null)
+                }}
+              >
+                <span className="quiz-choice-label">{item.label}</span>
+                <span className="quiz-choice-meta">{item.meta}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+        <div>
+          <p className="practice-line-text">Что видит человек при отказе банка</p>
+          <div className="practice-lines" role="group" aria-label="Экран при отказе банка">
+            {DECLINE_SCREENS.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                className={`quiz-choice${screen === item.id ? ' is-active' : ''}`}
+                aria-pressed={screen === item.id}
+                onClick={() => {
+                  setScreen(item.id)
+                  setVerdict(null)
+                }}
+              >
+                <span className="quiz-choice-label">{item.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
       <button type="button" className="learn-admin-btn learn-admin-btn-primary" onClick={check}>
         Проверить
       </button>

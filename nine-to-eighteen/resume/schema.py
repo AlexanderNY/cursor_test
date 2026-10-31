@@ -20,6 +20,8 @@ CREATE TABLE IF NOT EXISTS site_resumes (
     selected_badge_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
     github_username VARCHAR(39) NOT NULL DEFAULT '',
     github_projects JSONB NOT NULL DEFAULT '[]'::jsonb,
+    experience JSONB NOT NULL DEFAULT '[]'::jsonb,
+    education JSONB NOT NULL DEFAULT '[]'::jsonb,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -146,6 +148,14 @@ RESUME_SCHEMA_PATCHES: list[str] = [
     """
     ALTER TABLE site_resumes
     ADD COLUMN IF NOT EXISTS github_projects JSONB NOT NULL DEFAULT '[]'::jsonb
+    """,
+    """
+    ALTER TABLE site_resumes
+    ADD COLUMN IF NOT EXISTS experience JSONB NOT NULL DEFAULT '[]'::jsonb
+    """,
+    """
+    ALTER TABLE site_resumes
+    ADD COLUMN IF NOT EXISTS education JSONB NOT NULL DEFAULT '[]'::jsonb
     """,
     """
     CREATE INDEX IF NOT EXISTS idx_site_resumes_user_updated

@@ -870,7 +870,8 @@ export function ChannelsPage() {
             <CardHeader>
               <CardTitle>Add channel</CardTitle>
               <CardDescription>
-                Любая сеть пайплайна: TG / VK / IG / Threads / TW / Дзен / WP / URL
+                Любая сеть пайплайна: TG / VK / IG / Threads / TW / Дзен / WP / URL. RSS-ленты
+                своего канала — в карточке, вкладка «Сбор».
               </CardDescription>
             </CardHeader>
             <CardContent>

@@ -2,52 +2,74 @@
 <html lang="ru">
 <head>
   <meta charset="utf-8" />
-  <title>{{ name }}</title>
+  <title>{{ name }} — резюме</title>
   <style>
     body {
-      font-family: "Segoe UI", Arial, sans-serif;
-      color: #0f172a;
+      font-family: Calibri, "Segoe UI", Arial, sans-serif;
+      color: #111;
       margin: 0;
       padding: 28px 32px;
       font-size: 12.5px;
       line-height: 1.45;
     }
-    h1 { margin: 0 0 6px; font-size: 26px; color: #d6001c; }
+    h1 { margin: 0 0 8px; font-size: 22px; font-weight: 700; }
     h2 {
       margin: 18px 0 6px;
       font-size: 14px;
-      color: #d6001c;
-      border-bottom: 1px solid #e2e8f0;
-      padding-bottom: 4px;
+      border-bottom: 1px solid #ccc;
+      padding-bottom: 3px;
     }
-    .meta { margin: 2px 0; color: #64748b; }
-    ul { margin: 6px 0 0; padding-left: 18px; }
-    li { margin: 3px 0; }
-    .footer { margin-top: 22px; color: #94a3b8; font-size: 11px; }
+    p { margin: 2px 0; }
+    .period, .strong { font-weight: 700; }
+    .job { margin: 0 0 10px; }
   </style>
 </head>
 <body>
   <h1>{{ name }}</h1>
-  <p class="meta">{{ city }}{% if birth %} · {{ birth }}{% endif %}</p>
-  <p class="meta">{{ phone }} · {{ email }}</p>
-  <p class="meta">Гражданство: {{ citizenship }} · Командировки: {{ trips }}</p>
-  {% if version %}<p class="meta">Версия: {{ version }}</p>{% endif %}
+  {% for line in contacts %}
+  <p>{{ line }}</p>
+  {% endfor %}
 
-  <h2>Желаемая должность</h2>
-  <p>{{ specialization }}</p>
-  <p>Оклад: {{ salary }}</p>
+  <h2>Желаемая должность и зарплата</h2>
+  <p>{{ position or "—" }}</p>
+  {% if salary %}<p>{{ salary }}</p>{% endif %}
+  {% if employment %}<p>Занятость: {{ employment }}</p>{% endif %}
+  {% if schedule %}<p>График работы: {{ schedule }}</p>{% endif %}
 
-  <h2>О себе</h2>
-  <p>{{ about|safe }}</p>
+  {% if experience %}
+  <h2>Опыт работы</h2>
+  {% for job in experience %}
+  <div class="job">
+    {% if job.period %}<p class="period">{{ job.period }}</p>{% endif %}
+    <p class="strong">{{ job.company }}</p>
+    {% if job.city %}<p>{{ job.city }}</p>{% endif %}
+    <p>{{ job.position }}</p>
+    {% if job.description_html %}<p>{{ job.description_html|safe }}</p>{% endif %}
+  </div>
+  {% endfor %}
+  {% endif %}
 
+  {% if education %}
+  <h2>Образование</h2>
+  {% for item in education %}
+  <div class="job">
+    {% if item.level %}<p class="strong">{{ item.level }}</p>{% endif %}
+    {% if item.year %}<p>{{ item.year }}</p>{% endif %}
+    <p class="strong">{{ item.institution }}</p>
+    {% if item.detail %}<p>{{ item.detail }}</p>{% endif %}
+  </div>
+  {% endfor %}
+  {% endif %}
+
+  {% if skills_line %}
   <h2>Ключевые навыки</h2>
-  <ul>
-    {% for skill in skills %}
-    <li>{{ skill }}</li>
-    {% else %}
-    <li>—</li>
-    {% endfor %}
-  </ul>
+  <p>{{ skills_line }}</p>
+  {% endif %}
+
+  {% if about_html %}
+  <h2>Обо мне</h2>
+  <p>{{ about_html|safe }}</p>
+  {% endif %}
 
   {% if badges %}
   <h2>Достижения</h2>
@@ -67,12 +89,10 @@
       {% if project.language %} · {{ project.language }}{% endif %}
       {% if project.stars %} · ★{{ project.stars }}{% endif %}
       {% if project.description %}<br/>{{ project.description }}{% endif %}
-      {% if project.url %}<br/><a href="{{ project.url }}">{{ project.url }}</a>{% endif %}
+      {% if project.url %}<br/>{{ project.url }}{% endif %}
     </li>
     {% endfor %}
   </ul>
   {% endif %}
-
-  <p class="footer">9to18.ru · резюме</p>
 </body>
 </html>

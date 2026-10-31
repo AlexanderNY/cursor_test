@@ -48,6 +48,7 @@ type PreviewItem = {
   percent: number
   quizLabel: string
   code: string
+  serialNumber: string
   topics: CertTopicLine[]
   fileStem: string
 }
@@ -221,6 +222,7 @@ export function CertPage() {
       topics: certTopicLines(item.track.episodes, completedSlugs),
       quizLabel: quizLabel(item.api, item.quizThreshold),
       code: item.api?.code || '',
+      serialNumber: item.api?.serialNumber || '',
     }
   }
 
@@ -257,6 +259,7 @@ export function CertPage() {
         resultLabel: preview.resultLabel,
         resultValue: preview.resultValue,
         topics: preview.topics,
+        serialNumber: preview.serialNumber,
         tone: toneOf(preview.trackId),
         fileStem: preview.fileStem,
       })
@@ -329,6 +332,7 @@ export function CertPage() {
                   resultValue={blank.resultValue}
                   quizLabel={blank.quizLabel}
                   code={blank.code}
+                  serialNumber={blank.serialNumber}
                   topics={blank.topics}
                   actions={
                     <>
@@ -368,6 +372,7 @@ export function CertPage() {
                                 resultLabel: blank.resultLabel,
                                 resultValue: blank.resultValue,
                                 topics: blank.topics,
+                                serialNumber: blank.serialNumber,
                                 tone: toneOf(item.track.id),
                               })
                             }
@@ -448,6 +453,7 @@ export function CertPage() {
               resultValue={preview.resultValue}
               quizLabel={preview.quizLabel}
               code={preview.code}
+              serialNumber={preview.serialNumber}
               topics={preview.topics}
             />
           </div>

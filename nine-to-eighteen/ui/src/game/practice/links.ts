@@ -38,12 +38,20 @@ export const PRACTICE_BY_SLUG: Record<string, PracticeLink> = {
     label: 'SQL: сверить заказ и клиента',
   },
   'sa-requirements-basics': {
-    href: '/game/practice?task=user-story',
-    label: 'История и критерии приёмки',
+    href: '/game/practice?task=brief-sort',
+    label: 'Аналитик: FR, NFR и пожелание',
   },
   'pm-acceptance': {
-    href: '/game/practice?task=user-story',
-    label: 'История и критерии приёмки',
+    href: '/game/practice?task=keep-criteria',
+    label: 'Что оставить в приёмке',
+  },
+  'sa-rest-basics': {
+    href: '/game/practice?task=rest-or-queue',
+    label: 'Аналитик: REST или очередь',
+  },
+  'sa-sync-async-queues': {
+    href: '/game/practice?task=rest-or-queue',
+    label: 'Аналитик: REST или очередь',
   },
   'beh-star': {
     href: '/game/practice?task=star',

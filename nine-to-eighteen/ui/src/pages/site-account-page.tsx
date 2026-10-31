@@ -60,7 +60,7 @@ type AccountNavMeta = {
 const ACCOUNT_EXTRA_SECTIONS: AccountNavMeta[] = [
   { id: 'learning-map', label: 'Карта обучения', hint: 'Mind map · собеседование' },
   { id: 'hh-resume', label: 'Резюме', hint: 'Плашка сервиса на главной' },
-  { id: 'portfolio', label: 'Портфолио', hint: 'Публичная страница кейсов' },
+  { id: 'portfolio', label: 'Портфолио', hint: 'Плитки с работами и контактами' },
   { id: 'password', label: 'Смена пароля', hint: 'Безопасность аккаунта' },
 ]
 
@@ -744,7 +744,7 @@ export function SiteAccountPage() {
           {activeId === 'portfolio' ? (
             <div className="account-panel-body">
               <p className="learn-section-note">
-                Публичная страница кейсов: задача, что сделано, результат. Ссылка вида{' '}
+                Публичная страница материалов: картинка, краткое описание, ссылка и контакты. Ссылка вида{' '}
                 <code>/p/адрес</code> открывается без входа.
               </p>
               <div className="account-actions">

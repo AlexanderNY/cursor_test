@@ -13,6 +13,8 @@ import {
   siteReviewAnkiCard,
   siteSubmitQuizAttempt,
 } from '@/data/site/site-api'
+import { QUIZ_PASS_PERCENT } from '@/components/tasks/learn-link'
+import { syncLearnTasks } from '@/components/tasks/learn-sync'
 import { getSiteAuthSession } from '@/data/site/site-auth'
 import { markMnemonicDone } from '@/data/mnemonics/collect'
 
@@ -100,6 +102,14 @@ export function StructuredPostView({
         })),
       })
       setQuizMessage('Результат сохранён в личном кабинете.')
+      if (isLearn && quizItems.length > 0) {
+        const percent = Math.round((nextScore / quizItems.length) * 100)
+        if (percent >= QUIZ_PASS_PERCENT) {
+          void syncLearnTasks({
+            passedQuizSlugs: new Set([postSlug.toLowerCase()]),
+          }).catch(() => undefined)
+        }
+      }
     } catch (err) {
       setQuizMessage(err instanceof Error ? err.message : 'Не удалось сохранить результат')
     }

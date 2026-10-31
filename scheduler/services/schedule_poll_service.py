@@ -303,6 +303,7 @@ async def run_poll_cycle() -> bool:
                 logger.warning("Notify platform %s failed: %s", platform, result)
 
     await _run_smm_jobs()
+    await _run_channel_rss()
     await _sync_competitor_snapshots()
     await _recheck_stale_channel_auth()
 
@@ -374,6 +375,31 @@ async def _run_smm_jobs() -> None:
             logger.info("SMM jobs processed: %s", data.get("processed"))
     except Exception as e:
         logger.warning("SMM jobs run error: %s", e)
+
+
+async def _run_channel_rss() -> None:
+    """Own-channel RSS feeds → publish jobs, when the feed interval is due."""
+    base = (settings.CORE_SERVICE_URL or "").rstrip("/")
+    if not base:
+        return
+    url = f"{base}/internal/smm/channels/rss/run"
+    try:
+        async with httpx.AsyncClient(timeout=180.0) as client:
+            resp = await client.post(
+                url, params={"limit": 10}, headers=internal_auth_headers()
+            )
+        if resp.status_code >= 400:
+            logger.warning("Channel RSS run failed: %s %s", resp.status_code, resp.text)
+        else:
+            data = resp.json()
+            if data.get("created"):
+                logger.info(
+                    "Channel RSS jobs: %s from %s channels",
+                    data.get("created"),
+                    data.get("channels"),
+                )
+    except Exception as e:
+        logger.warning("Channel RSS run error: %s", e)
 
 
 async def _sync_competitor_snapshots() -> None:

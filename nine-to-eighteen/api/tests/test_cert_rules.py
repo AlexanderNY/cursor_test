@@ -39,6 +39,15 @@ def test_certificate_holder_name_uses_last_and_first():
     assert rules.certificate_holder_name("", "", "", "  ") == "Участник"
 
 
+def test_certificate_number_starts_at_000113():
+    assert rules.CERT_SERIAL_START == 113
+    assert rules.certificate_number("py", 113) == "PY-000113"
+    assert rules.certificate_number("s01", 114) == "S01-000114"
+    assert rules.certificate_number("interview", 1000) == "INTERVIEW-001000"
+    assert rules.parse_certificate_number("py-000113") == ("PY", 113)
+    assert rules.parse_certificate_number("9T18-PY-ABCDEF") is None
+
+
 def test_blank_code_is_stable_and_shaped():
     code = rules.blank_code(7, "py")
     assert code == rules.blank_code(7, "py")

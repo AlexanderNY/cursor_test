@@ -5,11 +5,11 @@ from datetime import date, timedelta
 from typing import Iterable, Literal
 
 RepeatRule = Literal["none", "daily", "weekly", "monthly"]
-BoardColumn = Literal["backlog", "week", "today", "done"]
+BoardColumn = Literal["inbox", "backlog", "week", "today", "done"]
 Priority = Literal["low", "normal", "high"]
 
 VALID_REPEAT_RULES = frozenset({"none", "daily", "weekly", "monthly"})
-VALID_BOARDS = frozenset({"backlog", "week", "today", "done"})
+VALID_BOARDS = frozenset({"inbox", "backlog", "week", "today", "done"})
 VALID_PRIORITIES = frozenset({"low", "normal", "high"})
 
 MAX_CATCH_UP = 14

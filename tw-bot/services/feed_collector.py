@@ -5,7 +5,9 @@
 1) Brand channels (network=tw, collect_enabled) — таймлайн @handle
    - браузер x.com/{handle} (основной путь; Free API часто недоступен)
    - fallback: OAuth API users/by/username + users/:id/tweets
-2) Legacy: tw_profiles.collect_enabled → API home/own + Selenium Following
+2) Legacy: tw_profiles.collect_enabled
+   - OAuth API: reverse chronological / свои твиты
+   - браузер: https://x.com/home → авторизация → вкладка Following
 """
 
 from __future__ import annotations

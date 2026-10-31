@@ -105,7 +105,8 @@ export function HhResumePage() {
           <p className="learn-eyebrow">Сервис · Резюме</p>
           <h1 className="learn-title">Резюме</h1>
           <p className="learn-lead">
-            Нужен аккаунт 9to18: несколько версий резюме, опросник и навыки из Learn.
+            Нужен аккаунт 9to18: несколько версий резюме, опросник и навыки из Learn. Готовый
+            DOCX можно загрузить на hh.ru.
           </p>
           <p className="learn-section-note">
             <Link to="/login">Войти</Link>
@@ -127,8 +128,9 @@ export function HhResumePage() {
         <p className="learn-eyebrow">Сервис · Резюме</p>
         <h1 className="learn-title">Мои резюме</h1>
         <p className="learn-lead">
-          Несколько версий под разные роли. Путь: загрузка резюме → специальность → лекции и навыки →
-          интервью. Анкета и фото — в <Link to="/account">кабинете</Link>.
+          Несколько версий под разные роли. В редакторе заполните опыт и образование, затем скачайте
+          DOCX и загрузите его на hh.ru: Создать резюме → Загрузить файл. Анкета и фото — в{' '}
+          <Link to="/account">кабинете</Link>.
         </p>
         {error ? <p className="learn-admin-error">{error}</p> : null}
         {ok ? <p className="learn-admin-ok">{ok}</p> : null}

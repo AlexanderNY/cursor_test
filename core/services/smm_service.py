@@ -435,6 +435,7 @@ def _row_channel(r: tuple) -> dict[str, Any]:
         "publish_targets": [],
         "alert_delivery": {},
         "alert_rules": [],
+        "rss_feeds": [],
     }
     if len(r) > 9:
         out["publish_enabled"] = bool(r[9]) if r[9] is not None else True
@@ -482,6 +483,10 @@ def _row_channel(r: tuple) -> dict[str, Any]:
     if len(r) > 24:
         caps = _parse_json_field(r[24], {})
         out["auth_capabilities"] = caps if isinstance(caps, dict) else {}
+    if len(r) > 25:
+        from services.channel_rss import parse_stored_rss_feeds
+
+        out["rss_feeds"] = parse_stored_rss_feeds(r[25])
     return out
 
 
@@ -518,11 +523,12 @@ color_override, created_at, publish_enabled, collect_enabled,
 discussion_external_id, discussion_title, comments_collect_enabled,
 alert_enabled, save_conditions, processing, alert_delivery, alert_rules,
 conditions_mode, publish_targets,
-auth_status, auth_checked_at, auth_error, auth_capabilities
+auth_status, auth_checked_at, auth_error, auth_capabilities,
+rss_feeds
 """
 
 CHANNEL_RETURNING = CHANNEL_SELECT
-CHANNEL_FIELD_COUNT = 25
+CHANNEL_FIELD_COUNT = 26
 
 INBOX_SELECT = """
 id, user_id, brand_id, network, channel_id, thread_id,
@@ -1059,6 +1065,7 @@ class SmmService:
                            c.alert_enabled, c.save_conditions, c.processing, c.alert_delivery, c.alert_rules,
                            c.conditions_mode, c.publish_targets,
                            c.auth_status, c.auth_checked_at, c.auth_error, c.auth_capabilities,
+                           c.rss_feeds,
                            b.name AS brand_name, b.color AS brand_color, b.user_id AS brand_user_id
                     FROM smm_brand_channels c
                     JOIN smm_brands b ON b.id = c.brand_id
@@ -1136,6 +1143,17 @@ class SmmService:
 
         await platform_auth_service.validate_channel_update(owner_id, existing, fields)
 
+        if fields.get("rss_feeds") is not None:
+            from services.channel_rss import merge_rss_feeds
+
+            merged_feeds = merge_rss_feeds(existing.get("rss_feeds") or [], fields["rss_feeds"])
+            next_role = fields.get("role") or existing.get("role")
+            if merged_feeds and (existing.get("network") == "url" or next_role != "own"):
+                raise ValueError("RSS-ленты можно добавить только на свой канал (own)")
+            if merged_feeds:
+                await ensure_smm_feature(owner_id, "automations")
+            fields["rss_feeds"] = merged_feeds
+
         allowed = {
             "title",
             "kind",
@@ -1154,6 +1172,7 @@ class SmmService:
             "publish_targets",
             "alert_delivery",
             "alert_rules",
+            "rss_feeds",
         }
         json_fields = {
             "save_conditions",
@@ -1161,6 +1180,7 @@ class SmmService:
             "publish_targets",
             "alert_delivery",
             "alert_rules",
+            "rss_feeds",
         }
         updates = []
         params: list[Any] = []
@@ -1283,6 +1303,7 @@ class SmmService:
                            c.alert_enabled, c.save_conditions, c.processing, c.alert_delivery, c.alert_rules,
                            c.conditions_mode, c.publish_targets,
                            c.auth_status, c.auth_checked_at, c.auth_error, c.auth_capabilities,
+                           c.rss_feeds,
                            b.name AS brand_name, b.color AS brand_color, b.user_id AS brand_user_id
                     FROM smm_brand_channels c
                     JOIN smm_brands b ON b.id = c.brand_id
@@ -1373,6 +1394,7 @@ class SmmService:
         id_to_channel: dict[int, dict[str, Any]],
     ) -> dict[str, Any]:
         """Portable channel payload: settings + target refs (network/external_id), no DB ids."""
+        from services.channel_rss import public_rss_feeds
 
         def _refs(ids: Any) -> list[dict[str, str]]:
             out: list[dict[str, str]] = []
@@ -1437,6 +1459,7 @@ class SmmService:
             "processing": ch.get("processing") or {},
             "publish_target_refs": _refs(ch.get("publish_targets")),
             "alert_rules": ch.get("alert_rules") or [],
+            "rss_feeds": public_rss_feeds(ch.get("rss_feeds")),
             "alert_delivery": {
                 "alert_text": (delivery or {}).get("alert_text"),
                 "include_ai_summary": bool((delivery or {}).get("include_ai_summary")),
@@ -1657,6 +1680,8 @@ class SmmService:
                     if isinstance(raw.get("alert_rules"), list)
                     else [],
                 }
+                if isinstance(raw.get("rss_feeds"), list):
+                    settings["rss_feeds"] = raw.get("rss_feeds")
                 # Flags may fail auth — try soft
                 for flag in ("collect_enabled", "alert_enabled", "publish_enabled"):
                     if flag in raw:
@@ -7848,7 +7873,272 @@ class SmmService:
             "type": auto_type,
         }
 
-    async def _fetch_rss_items(self, url: str, limit: int = 20) -> list[dict]:
+    def _channel_rss_job_status(self, channel: dict, tariff: str) -> str:
+        status = self._automation_job_status(0, {}, tariff)
+        if status == "pending_approval" and (
+            channel.get("auth_status") != "connected" or channel.get("publish_enabled") is False
+        ):
+            return "draft"
+        return status
+
+    async def _require_own_rss_channel(self, user_id: int, channel_id: int) -> dict:
+        channel = await self.get_channel(user_id, channel_id)
+        if not channel:
+            raise ValueError("Channel not found")
+        if channel.get("network") == "url" or channel.get("role") != "own":
+            raise ValueError("RSS-ленты доступны только на своём канале публикации")
+        if not str(channel.get("external_id") or "").strip():
+            raise ValueError("У канала нет ID — привяжите канал перед сбором RSS")
+        return channel
+
+    async def _rss_candidates_for_feed(
+        self,
+        feed: dict,
+        *,
+        limit: int,
+        seen: set[str],
+    ) -> tuple[list[dict], str | None]:
+        from services.channel_rss import rss_item_id, rss_item_text
+
+        url = str(feed.get("url") or "")
+        try:
+            raw_items = await self._fetch_rss_items(
+                url,
+                limit=max(limit * 3, 20),
+                raise_on_error=True,
+            )
+        except ValueError as exc:
+            return [], str(exc)
+        suffix = str(feed.get("suffix") or "")
+        found: list[dict] = []
+        for item in raw_items:
+            if len(found) >= limit:
+                break
+            item_id = rss_item_id(item)
+            if not item_id or item_id in seen:
+                continue
+            text = rss_item_text(item, suffix)
+            if not text:
+                continue
+            found.append({"id": item_id, "text": text, "feed_url": url})
+        return found, None
+
+    async def preview_channel_rss(
+        self, user_id: int, channel_id: int, limit: int = 5
+    ) -> dict:
+        """Показать новые записи RSS, которые попадут в очередь этого канала."""
+        from services.channel_rss import parse_stored_rss_feeds
+
+        channel = await self._require_own_rss_channel(user_id, channel_id)
+        owner_id = int(channel.get("brand_user_id") or user_id)
+        await ensure_smm_feature(owner_id, "automations")
+        feeds = [
+            feed
+            for feed in parse_stored_rss_feeds(channel.get("rss_feeds"))
+            if feed.get("enabled", True)
+        ]
+        if not feeds:
+            raise ValueError("Добавьте хотя бы одну включённую RSS-ленту")
+        tariff = await get_user_tariff(owner_id)
+        status = self._channel_rss_job_status(channel, tariff)
+        items_out: list[dict] = []
+        errors: list[dict] = []
+        for feed in feeds:
+            if len(items_out) >= limit:
+                break
+            found, error = await self._rss_candidates_for_feed(
+                feed,
+                limit=limit - len(items_out),
+                seen=set(str(x) for x in (feed.get("seen_ids") or [])),
+            )
+            if error:
+                errors.append({"url": feed.get("url"), "error": error})
+                continue
+            for item in found:
+                preview = item["text"]
+                if len(preview) > 400:
+                    preview = preview[:397] + "..."
+                items_out.append(
+                    {
+                        "id": item["id"],
+                        "text_preview": preview,
+                        "feed_url": item["feed_url"],
+                    }
+                )
+        return {
+            "items": items_out,
+            "would_create": len(items_out),
+            "status": status,
+            "errors": errors,
+            "targets": [
+                {"network": channel["network"], "external_id": channel["external_id"]}
+            ],
+        }
+
+    async def run_channel_rss(
+        self,
+        user_id: int,
+        channel_id: int,
+        limit: int = 10,
+        *,
+        only_due: bool = False,
+    ) -> dict:
+        """Забрать новые записи RSS в publish jobs этого канала."""
+        from services.channel_rss import feed_is_due, mark_feed_ran, parse_stored_rss_feeds
+
+        channel = await self._require_own_rss_channel(user_id, channel_id)
+        owner_id = int(channel.get("brand_user_id") or user_id)
+        feeds = parse_stored_rss_feeds(channel.get("rss_feeds"))
+        now = datetime.now(timezone.utc)
+        active = [
+            feed
+            for feed in feeds
+            if feed.get("enabled", True)
+            and (feed_is_due(feed, now) if only_due else True)
+        ]
+        if not active:
+            if only_due:
+                return {
+                    "idle": True,
+                    "created": 0,
+                    "job_ids": [],
+                    "skipped": 0,
+                    "status": "",
+                    "errors": [],
+                }
+            raise ValueError("Добавьте хотя бы одну включённую RSS-ленту")
+        await ensure_smm_feature(owner_id, "automations")
+        tariff = await get_user_tariff(owner_id)
+        status = self._channel_rss_job_status(channel, tariff)
+        if status == "pending_approval":
+            await ensure_smm_feature(owner_id, "approval_workflow")
+        created: list[int] = []
+        skipped = 0
+        errors: list[dict] = []
+        targets = [{"network": channel["network"], "external_id": channel["external_id"]}]
+        stop = False
+        try:
+            for feed in active:
+                if stop or len(created) >= limit:
+                    break
+                seen = set(str(x) for x in (feed.get("seen_ids") or []))
+                found, error = await self._rss_candidates_for_feed(
+                    feed,
+                    limit=limit - len(created),
+                    seen=seen,
+                )
+                if error:
+                    mark_feed_ran(feed, now)
+                    errors.append({"url": feed.get("url"), "error": error})
+                    continue
+                for item in found:
+                    if len(created) >= limit:
+                        break
+                    if item["id"] in seen:
+                        skipped += 1
+                        continue
+                    try:
+                        job = await self.create_job(
+                            user_id=user_id,
+                            brand_id=channel.get("brand_id"),
+                            text=item["text"],
+                            media=[],
+                            targets=targets,
+                            adapt=True,
+                            status=status,
+                        )
+                    except QuotaExceededError:
+                        mark_feed_ran(feed, now)
+                        raise
+                    except PermissionError:
+                        raise
+                    except ValueError as exc:
+                        errors.append({"url": feed.get("url"), "error": str(exc)})
+                        stop = True
+                        break
+                    created.append(int(job["id"]))
+                    mark_feed_ran(feed, now, str(item["id"]))
+                    seen.add(str(item["id"]))
+                mark_feed_ran(feed, now)
+        finally:
+            await self._save_channel_rss_feeds(int(channel["id"]), feeds)
+        return {
+            "idle": False,
+            "created": len(created),
+            "job_ids": created,
+            "skipped": skipped,
+            "status": status,
+            "errors": errors,
+        }
+
+    async def run_due_channel_rss(self, limit: int = 20) -> dict:
+        """Планировщик: каналы, у которых подошёл интервал RSS."""
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT c.id, b.user_id
+                    FROM smm_brand_channels c
+                    JOIN smm_brands b ON b.id = c.brand_id
+                    WHERE c.role = 'own'
+                      AND c.network <> 'url'
+                      AND c.rss_feeds IS NOT NULL
+                      AND jsonb_typeof(c.rss_feeds) = 'array'
+                      AND jsonb_array_length(c.rss_feeds) > 0
+                    ORDER BY c.id
+                    LIMIT 200
+                    """
+                )
+                rows = await cur.fetchall()
+        finally:
+            await release_db_connection(conn)
+
+        processed = 0
+        created = 0
+        errors = 0
+        for channel_id, owner_id in rows:
+            if processed >= limit:
+                break
+            try:
+                result = await self.run_channel_rss(
+                    int(owner_id),
+                    int(channel_id),
+                    limit=5,
+                    only_due=True,
+                )
+            except QuotaExceededError:
+                continue
+            except Exception:
+                logger.exception("Channel RSS run failed for channel %s", channel_id)
+                errors += 1
+                continue
+            if result.get("idle"):
+                continue
+            processed += 1
+            created += int(result.get("created") or 0)
+        if created:
+            logger.info("Channel RSS: %s jobs from %s channels", created, processed)
+        return {"channels": processed, "created": created, "errors": errors}
+
+    async def _save_channel_rss_feeds(self, channel_id: int, feeds: list[dict]) -> None:
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    UPDATE smm_brand_channels
+                    SET rss_feeds = %s::jsonb
+                    WHERE id = %s
+                    """,
+                    (json.dumps(feeds, ensure_ascii=False), channel_id),
+                )
+        finally:
+            await release_db_connection(conn)
+
+    async def _fetch_rss_items(
+        self, url: str, limit: int = 20, *, raise_on_error: bool = False
+    ) -> list[dict]:
         import xml.etree.ElementTree as ET
 
         from services.public_http import fetch_public_http_text
@@ -7863,6 +8153,8 @@ class SmmService:
             root = ET.fromstring(raw)
         except (UnsafeUrlError, FetchError, ValueError, ET.ParseError) as exc:
             logger.warning("RSS fetch rejected for %s: %s", url[:80], exc)
+            if raise_on_error:
+                raise ValueError("Не удалось прочитать RSS-ленту") from exc
             return []
 
         def _local(tag: str) -> str:

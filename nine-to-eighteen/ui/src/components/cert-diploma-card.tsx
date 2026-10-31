@@ -11,6 +11,7 @@ type CertDiplomaCardProps = {
   resultLabel: string
   resultValue: string
   code: string
+  serialNumber?: string
   topics: CertTopicLine[]
   quizLabel?: string
   actions?: ReactNode
@@ -45,6 +46,7 @@ export function CertDiplomaCard({
   resultLabel,
   resultValue,
   code,
+  serialNumber = '',
   topics,
   quizLabel = '',
   actions,
@@ -68,7 +70,7 @@ export function CertDiplomaCard({
 
         <header className="cert-a4-head">
           <p className="cert-kicker">Сертификат</p>
-          <p className="cert-org">9to18 · Learn</p>
+          <p className="cert-org">{serialNumber || '9to18 · Learn'}</p>
         </header>
         <div className="cert-rule" aria-hidden />
 
@@ -89,9 +91,15 @@ export function CertDiplomaCard({
             <dt>{resultLabel}</dt>
             <dd>{resultValue}</dd>
           </div>
+          {serialNumber ? (
+            <div>
+              <dt>Номер</dt>
+              <dd>{serialNumber}</dd>
+            </div>
+          ) : null}
           {code ? (
             <div>
-              <dt>Номер бланка</dt>
+              <dt>Код проверки</dt>
               <dd>{code}</dd>
             </div>
           ) : null}

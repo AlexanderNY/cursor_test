@@ -36,6 +36,8 @@ export type SiteResume = {
   selectedBadgeIds?: string[]
   githubUsername?: string
   githubProjects?: GithubProject[]
+  experience?: ResumeExperience[]
+  education?: ResumeEducation[]
   createdAt?: string | null
   updatedAt: string | null
 }
@@ -47,6 +49,23 @@ export type GithubProject = {
   language: string
   stars: number
   selected: boolean
+}
+
+export type ResumeExperience = {
+  company: string
+  position: string
+  city: string
+  start: string
+  end: string
+  description: string
+}
+
+export type ResumeEducation = {
+  level: string
+  institution: string
+  faculty: string
+  specialty: string
+  year: number | null
 }
 
 export type ResumeBadge = {
@@ -208,6 +227,14 @@ export async function resumePut(
     selected_badge_ids?: string[]
     github_username?: string
     github_projects?: GithubProject[]
+    experience?: ResumeExperience[]
+    education?: Array<{
+      level: string
+      institution: string
+      faculty: string
+      specialty: string
+      year: number | null
+    }>
   },
 ): Promise<SiteResume> {
   return request(`/resume/${encodeURIComponent(resumeId)}`, {

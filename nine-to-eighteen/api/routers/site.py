@@ -37,7 +37,9 @@ from services.cert_rules import (
     best_quiz_percents,
     blank_code,
     certificate_holder_name,
+    certificate_number,
     is_cert_code,
+    parse_certificate_number,
 )
 from services.photo_process import process_profile_photo
 from storage_client import get_storage
@@ -2556,7 +2558,12 @@ def _iso_stamp(value: Any) -> str:
     return str(value)
 
 
-def _cert_track_payload(track: dict[str, Any], code: str, issued_at: str) -> dict[str, Any]:
+def _cert_track_payload(
+    track: dict[str, Any],
+    code: str,
+    issued_at: str,
+    serial_number: str = "",
+) -> dict[str, Any]:
     return {
         "id": track["id"],
         "title": track["title"],
@@ -2568,6 +2575,7 @@ def _cert_track_payload(track: dict[str, Any], code: str, issued_at: str) -> dic
         "quizPercent": track["quiz_percent"],
         "quizMissing": track["quiz_missing"],
         "code": code,
+        "serialNumber": serial_number,
         "issuedAt": issued_at,
     }
 
@@ -2652,7 +2660,7 @@ async def _sync_certificates(cur: Any, user_id: int, holder_name: str) -> list[d
     else:
         await cur.execute("DELETE FROM site_certificates WHERE user_id = %s", (user_id,))
 
-    stored: dict[str, tuple[str, str]] = {}
+    stored: dict[str, tuple[str, str, str]] = {}
     holder = await _resolve_certificate_holder(cur, user_id, holder_name)
     for track in board:
         if not track["earned"]:
@@ -2682,16 +2690,45 @@ async def _sync_certificates(cur: Any, user_id: int, holder_name: str) -> list[d
             ),
         )
         saved = await cur.fetchone()
-        stored[track["id"]] = (str(saved[0]), _iso_stamp(saved[1]))
+        serial_number = await _ensure_certificate_serial(cur, user_id, track["id"])
+        stored[track["id"]] = (str(saved[0]), _iso_stamp(saved[1]), serial_number)
 
     return [
         _cert_track_payload(
             track,
-            stored.get(track["id"], ("", ""))[0],
-            stored.get(track["id"], ("", ""))[1],
+            stored.get(track["id"], ("", "", ""))[0],
+            stored.get(track["id"], ("", "", ""))[1],
+            stored.get(track["id"], ("", "", ""))[2],
         )
         for track in board
     ]
+
+
+async def _ensure_certificate_serial(cur: Any, user_id: int, track_id: str) -> str:
+    """Выдать порядковый номер один раз. Повторное открытие бланка номер не меняет."""
+    await cur.execute(
+        """
+        UPDATE site_certificates
+        SET serial = nextval('site_certificate_serial_seq')
+        WHERE user_id = %s AND track_id = %s AND serial IS NULL
+        RETURNING serial
+        """,
+        (user_id, track_id),
+    )
+    row = await cur.fetchone()
+    if not row:
+        await cur.execute(
+            """
+            SELECT serial
+            FROM site_certificates
+            WHERE user_id = %s AND track_id = %s
+            """,
+            (user_id, track_id),
+        )
+        row = await cur.fetchone()
+    if not row or row[0] is None:
+        return ""
+    return certificate_number(track_id, int(row[0]))
 
 
 @router.get("/learn/certificates")
@@ -2712,32 +2749,47 @@ async def public_certificate(code: str, request: Request) -> dict[str, Any]:
     """Публичная проверка бланка. Без сессии. Просроченный прогресс снимает бланк."""
     enforce_rate_limit(request, "public")
     normalized = (code or "").strip().upper()
-    if not is_cert_code(normalized):
+    parsed_number = parse_certificate_number(normalized)
+    if parsed_number is None and not is_cert_code(normalized):
         raise HTTPException(status_code=404, detail="Сертификат не найден")
     conn = await get_site_db_connection()
     try:
         async with conn.cursor() as cur:
-            await cur.execute(
-                """
-                SELECT user_id, track_id, holder_name, issued_at
-                FROM site_certificates
-                WHERE code = %s
-                """,
-                (normalized,),
-            )
+            if parsed_number is not None:
+                course_id, serial = parsed_number
+                await cur.execute(
+                    """
+                    SELECT user_id, track_id, holder_name, issued_at, code, serial
+                    FROM site_certificates
+                    WHERE serial = %s AND upper(track_id) = %s
+                    """,
+                    (serial, course_id),
+                )
+            else:
+                await cur.execute(
+                    """
+                    SELECT user_id, track_id, holder_name, issued_at, code, serial
+                    FROM site_certificates
+                    WHERE code = %s
+                    """,
+                    (normalized,),
+                )
             found = await cur.fetchone()
             if not found:
                 raise HTTPException(status_code=404, detail="Сертификат не найден")
             user_id = int(found[0])
             track_id = str(found[1])
+            blank_code_value = str(found[4] or "")
+            serial_value = int(found[5]) if found[5] is not None else 0
             holder = await _resolve_certificate_holder(cur, user_id, str(found[2] or ""))
             board = await _load_certificate_board(cur, user_id)
             track = next((item for item in board if item["id"] == track_id and item["earned"]), None)
             if track is None:
-                await cur.execute("DELETE FROM site_certificates WHERE code = %s", (normalized,))
+                await cur.execute("DELETE FROM site_certificates WHERE code = %s", (blank_code_value,))
                 raise HTTPException(status_code=404, detail="Сертификат не найден")
             payload = {
-                "code": normalized,
+                "code": blank_code_value,
+                "serialNumber": certificate_number(track_id, serial_value) if serial_value else "",
                 "holderName": holder,
                 "trackId": track["id"],
                 "trackTitle": track["title"],

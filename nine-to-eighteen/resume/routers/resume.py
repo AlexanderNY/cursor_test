@@ -18,7 +18,13 @@ from pydantic import BaseModel, Field
 from auth import require_site_admin, require_user
 from database import get_db_connection, release_db_connection
 from rate_limit import enforce_rate_limit
-from services.resume_export import build_docx_bytes, build_pdf_bytes, render_resume_html
+from services.resume_export import (
+    build_docx_bytes,
+    build_pdf_bytes,
+    normalize_education,
+    normalize_experience,
+    render_resume_html,
+)
 from services.resume_questionnaire import (
     apply_questionnaire_to_template,
     get_questionnaire,
@@ -74,7 +80,7 @@ RESUME_SELECT = """
     id, user_id, version_name, title, specialization, salary_amount, salary_currency,
     employment_types, work_formats, about, selected_skill_keys, generated_skills,
     questionnaire_answers, source_text, selected_badge_ids, github_username,
-    github_projects, created_at, updated_at
+    github_projects, created_at, updated_at, experience, education
 """
 
 
@@ -96,6 +102,8 @@ class ResumeUpdateIn(BaseModel):
     selected_badge_ids: Optional[list[str]] = None
     github_username: Optional[str] = Field(default=None, max_length=39)
     github_projects: Optional[list[dict[str, Any]]] = None
+    experience: Optional[list[dict[str, Any]]] = None
+    education: Optional[list[dict[str, Any]]] = None
 
 
 class ResumeGenerateIn(BaseModel):
@@ -263,6 +271,8 @@ def _row_resume(row: tuple) -> dict[str, Any]:
         "githubProjects": _json_list(row[16]),
         "createdAt": row[17].isoformat() if hasattr(row[17], "isoformat") else str(row[17] or ""),
         "updatedAt": row[18].isoformat() if hasattr(row[18], "isoformat") else str(row[18] or ""),
+        "experience": normalize_experience(_json_list(row[19]) if len(row) > 19 else []),
+        "education": normalize_education(_json_list(row[20]) if len(row) > 20 else []),
     }
 
 
@@ -295,6 +305,8 @@ def _empty_resume(*, version_name: str = "Основное") -> dict[str, Any]:
         "selectedBadgeIds": [],
         "githubUsername": "",
         "githubProjects": [],
+        "experience": [],
+        "education": [],
         "createdAt": None,
         "updatedAt": None,
     }
@@ -451,13 +463,15 @@ async def create_resume(
                         user_id, version_name, title, specialization, salary_amount,
                         salary_currency, employment_types, work_formats, about,
                         selected_skill_keys, generated_skills, questionnaire_answers,
-                        source_text, selected_badge_ids, github_username, github_projects
+                        source_text, selected_badge_ids, github_username, github_projects,
+                        experience, education
                     )
                     VALUES (
                         %s, %s, %s, %s, %s,
                         %s, %s::jsonb, %s::jsonb, %s,
                         %s::jsonb, %s::jsonb, %s::jsonb,
-                        %s, %s::jsonb, %s, %s::jsonb
+                        %s, %s::jsonb, %s, %s::jsonb,
+                        %s::jsonb, %s::jsonb
                     )
                     RETURNING {RESUME_SELECT}
                     """,
@@ -478,6 +492,8 @@ async def create_resume(
                         json.dumps(source.get("selectedBadgeIds") or [], ensure_ascii=False),
                         source.get("githubUsername") or "",
                         json.dumps(source.get("githubProjects") or [], ensure_ascii=False),
+                        json.dumps(source.get("experience") or [], ensure_ascii=False),
+                        json.dumps(source.get("education") or [], ensure_ascii=False),
                     ),
                 )
             else:
@@ -689,6 +705,17 @@ async def put_resume(
     else:
         github_projects = cur.get("githubProjects") or []
 
+    experience = (
+        normalize_experience(body.experience)
+        if body.experience is not None
+        else cur.get("experience") or []
+    )
+    education = (
+        normalize_education(body.education)
+        if body.education is not None
+        else cur.get("education") or []
+    )
+
     conn = await get_db_connection()
     try:
         async with conn.cursor() as cur_db:
@@ -707,6 +734,8 @@ async def put_resume(
                     selected_badge_ids = %s::jsonb,
                     github_username = %s,
                     github_projects = %s::jsonb,
+                    experience = %s::jsonb,
+                    education = %s::jsonb,
                     updated_at = CURRENT_TIMESTAMP
                 WHERE id = %s AND user_id = %s
                 RETURNING {RESUME_SELECT}
@@ -724,6 +753,8 @@ async def put_resume(
                     json.dumps(selected_badge_ids, ensure_ascii=False),
                     github_username[:39],
                     json.dumps(github_projects, ensure_ascii=False),
+                    json.dumps(experience, ensure_ascii=False),
+                    json.dumps(education, ensure_ascii=False),
                     str(rid),
                     user_id,
                 ),
@@ -1579,7 +1610,7 @@ async def export_resume(
         )
         ext = "docx"
 
-    base_name = resume.get("versionName") or resume.get("specialization") or "resume"
+    base_name = resume.get("specialization") or resume.get("versionName") or "resume"
     file_name = safe_filename(str(base_name), ext)
     object_key = f"{user_id}/{rid}/{uuid.uuid4().hex}.{ext}"
     storage = get_resume_storage()

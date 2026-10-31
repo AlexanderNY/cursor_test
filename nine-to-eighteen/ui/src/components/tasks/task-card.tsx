@@ -15,6 +15,7 @@ type TaskCardProps = {
   onToggle: (task: SiteUserTask) => void
   onOpen: (task: SiteUserTask) => void
   onDragStart?: (task: SiteUserTask) => void
+  onFocus?: (task: SiteUserTask) => void
 }
 
 export function TaskCard({
@@ -24,6 +25,7 @@ export function TaskCard({
   onToggle,
   onOpen,
   onDragStart,
+  onFocus,
 }: TaskCardProps) {
   const overdue = isOverdue(task)
   const progress = checklistProgress(task)
@@ -93,6 +95,15 @@ export function TaskCard({
             ) : null}
           </span>
         </button>
+        {onFocus && !task.completed ? (
+          <button
+            type="button"
+            className="learn-admin-btn tasks-focus-launch"
+            onClick={() => onFocus(task)}
+          >
+            Фокус
+          </button>
+        ) : null}
       </div>
     </article>
   )

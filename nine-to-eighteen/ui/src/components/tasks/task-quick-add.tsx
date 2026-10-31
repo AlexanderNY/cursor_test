@@ -178,6 +178,7 @@ export function TaskQuickAdd({ busy, defaultDueAt, onCreate }: TaskQuickAddProps
                 }))
               }
             >
+              <option value="inbox">Разобрать</option>
               <option value="backlog">Бэклог</option>
               <option value="week">На эту неделю</option>
               <option value="today">Сегодня</option>

@@ -14,6 +14,7 @@ import {
   type SiteResumePreview,
   type SkillGapResult,
 } from '@/data/site/resume-api'
+import { HH_UPLOAD_HINT } from '@/data/site/resume-options'
 import { useSiteAuthSession } from '@/data/site/site-auth'
 
 async function triggerDownload(resumeId: string, format: 'pdf' | 'docx') {
@@ -121,7 +122,11 @@ export function HhResumePreviewPage() {
     setOk('')
     try {
       await triggerDownload(resumeId, format)
-      setOk(format === 'pdf' ? 'PDF скачан' : 'DOCX скачан')
+      setOk(
+        format === 'pdf'
+          ? 'PDF скачан. Для загрузки на hh.ru лучше DOCX.'
+          : 'DOCX скачан — его можно загрузить на hh.ru.',
+      )
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Ошибка экспорта')
     } finally {
@@ -234,24 +239,25 @@ export function HhResumePreviewPage() {
             </button>
             <button
               type="button"
+              className="learn-admin-btn learn-admin-btn-primary"
+              disabled={busy}
+              onClick={() => void onExport('docx')}
+            >
+              Скачать DOCX для hh.ru
+            </button>
+            <button
+              type="button"
               className="learn-admin-btn"
               disabled={busy}
               onClick={() => void onExport('pdf')}
             >
               Скачать PDF
             </button>
-            <button
-              type="button"
-              className="learn-admin-btn"
-              disabled={busy}
-              onClick={() => void onExport('docx')}
-            >
-              Скачать DOCX
-            </button>
             <button type="button" className="learn-admin-btn" onClick={() => window.print()}>
               Печать
             </button>
           </div>
+          <p className="learn-section-note no-print">{HH_UPLOAD_HINT}</p>
 
           {gapResult ? (
             <section className="hh-resume-ai-block no-print" aria-label="Разрыв навыков">

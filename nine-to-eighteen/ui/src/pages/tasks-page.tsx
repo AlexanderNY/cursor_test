@@ -6,13 +6,16 @@ import { QueueLearnButton } from '@/components/tasks/queue-learn-button'
 import { TaskComposer } from '@/components/tasks/task-composer'
 import { TodayPanel } from '@/components/tasks/today-panel'
 import {
-  learnTaskDraft,
+  episodeTaskDraft,
+  learnSlugQueued,
   learnTaskKey,
   openLearnKeys,
+  planEpisodes,
+  postHasLab,
   postHasQuiz,
   wordingTaskDraft,
-  type LearnTaskKind,
 } from '@/components/tasks/learn-link'
+import { passedQuizSlugSet, syncLearnTasks } from '@/components/tasks/learn-sync'
 import { isoDate } from '@/components/tasks/task-utils'
 import { LEARN_LEVELS, LEARN_PROFILES } from '@/data/learn'
 import type { LearnLevelId, LearnProfileId } from '@/data/learn/labels'
@@ -40,10 +43,6 @@ import {
 type SortMode = 'course' | 'completed_at'
 type OpenFilter = 'all' | 'open' | 'done'
 type TasksTab = 'today' | 'personal' | 'learn'
-
-function episodeHasLab(post: LearnPost): boolean {
-  return Boolean((post.lab || '').trim() || (post.structured?.lab || '').trim())
-}
 
 function quizBestBySlug(
   best: SiteQuizAttemptSummary[] | undefined,
@@ -109,6 +108,10 @@ export function TasksPage() {
   const [busyKey, setBusyKey] = useState('')
   const [queueError, setQueueError] = useState('')
   const [queueTick, setQueueTick] = useState(0)
+  const [planNote, setPlanNote] = useState('')
+  const [focusRequest, setFocusRequest] = useState<{ id: number; token: number } | null>(
+    null,
+  )
   const [seasonFilter, setSeasonFilter] = useState('')
   const [profileFilter, setProfileFilter] = useState<LearnProfileId | ''>('')
   const [levelFilter, setLevelFilter] = useState<LearnLevelId | ''>('')
@@ -154,15 +157,15 @@ export function TasksPage() {
     }
   }, [accessToken, queueTick, rememberQueued])
 
-  async function queueLearn(post: LearnPost, kind: LearnTaskKind) {
-    const key = learnTaskKey(post.slug, kind)
-    if (!key || queuedKeys.has(key) || busyKey) {
+  async function queueEpisode(post: LearnPost) {
+    const key = learnTaskKey(post.slug, 'article')
+    if (!key || learnSlugQueued(queuedKeys, post.slug) || busyKey) {
       return
     }
     setBusyKey(key)
     setQueueError('')
     try {
-      await siteCreateUserTask(learnTaskDraft(post, isoDate(new Date()), kind))
+      await siteCreateUserTask(episodeTaskDraft(post, { board: 'inbox', dueAt: null }))
       setQueuedKeys((prev) => {
         const next = new Set(prev)
         next.add(key)
@@ -171,6 +174,51 @@ export function TasksPage() {
       setQueueTick((value) => value + 1)
     } catch (err) {
       setQueueError(err instanceof Error ? err.message : 'Не удалось добавить задачу')
+    } finally {
+      setBusyKey('')
+    }
+  }
+
+  async function planToday(minutes: number) {
+    if (busyKey) {
+      return
+    }
+    setBusyKey('plan')
+    setQueueError('')
+    setPlanNote('')
+    try {
+      const openSlugs = new Set(
+        [...queuedKeys].map((key) => key.split('#')[0]).filter(Boolean),
+      )
+      const pool = published.filter((post) => !completedSlugs.has(post.slug))
+      const picked = planEpisodes(pool, openSlugs, minutes)
+      if (picked.length === 0) {
+        setPlanNote('Незакрытых выпусков для плана нет.')
+        return
+      }
+      for (const post of picked) {
+        await siteCreateUserTask(
+          episodeTaskDraft(post, { board: 'today', dueAt: isoDate(new Date()) }),
+        )
+      }
+      const spent = picked.reduce(
+        (sum, post) => sum + (post.durationMin > 0 ? post.durationMin : 15),
+        0,
+      )
+      setPlanNote(`На сегодня: ${picked.map((post) => post.episode).join(', ')} · ${spent} мин`)
+      setQueuedKeys((prev) => {
+        const next = new Set(prev)
+        for (const post of picked) {
+          const key = learnTaskKey(post.slug, 'article')
+          if (key) {
+            next.add(key)
+          }
+        }
+        return next
+      })
+      setQueueTick((value) => value + 1)
+    } catch (err) {
+      setQueueError(err instanceof Error ? err.message : 'Не удалось собрать план')
     } finally {
       setBusyKey('')
     }
@@ -193,16 +241,16 @@ export function TasksPage() {
     }
   }
 
+  const completedKey = useMemo(
+    () => progressItems.map((item) => item.slug).sort().join('\n'),
+    [progressItems],
+  )
+
   useEffect(() => {
-    if (!isAuthed || activeTab !== 'learn') {
-      if (activeTab !== 'learn') {
-        setEvidenceReady(true)
-      }
-      if (!isAuthed) {
-        setDueBySlug(new Map())
-        setQuizBest(new Map())
-        setEvidenceReady(true)
-      }
+    if (!isAuthed) {
+      setDueBySlug(new Map())
+      setQuizBest(new Map())
+      setEvidenceReady(true)
       return
     }
     let cancelled = false
@@ -229,7 +277,35 @@ export function TasksPage() {
     return () => {
       cancelled = true
     }
-  }, [isAuthed, activeTab])
+  }, [isAuthed])
+
+  useEffect(() => {
+    if (!accessToken || !progressReady || !evidenceReady) {
+      return
+    }
+    let cancelled = false
+    const passed = passedQuizSlugSet([...quizBest.values()])
+    const done = new Set(
+      completedKey
+        ? completedKey
+            .split('\n')
+            .map((slug) => slug.toLowerCase())
+            .filter(Boolean)
+        : [],
+    )
+    void syncLearnTasks({ completedSlugs: done, passedQuizSlugs: passed })
+      .then((count) => {
+        if (!cancelled && count > 0) {
+          setQueueTick((value) => value + 1)
+        }
+      })
+      .catch(() => {
+        /* The list still works if a step sync fails. */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [accessToken, progressReady, evidenceReady, completedKey, quizBest])
 
   const searchQuery = search.trim().toLowerCase()
 
@@ -313,8 +389,8 @@ export function TasksPage() {
         <p className="learn-eyebrow">Tasks</p>
         <h1 className="learn-title">Задачи</h1>
         <p className="learn-lead">
-          Список дел: своя формулировка, любая статья или тест. Сегодня собирает
-          сроки, привычки и карточки. Списки и календарь — во вкладке «Мои задачи».
+          Новые дела попадают в «Разобрать». Выпуск — одна задача со шагами.
+          План по минутам собирает сегодня. Списки и календарь — в «Мои задачи».
         </p>
       </header>
 
@@ -324,8 +400,10 @@ export function TasksPage() {
         queuedKeys={queuedKeys}
         busyKey={busyKey}
         error={queueError}
+        planNote={planNote}
         onAddWording={addWording}
-        onAddLearn={queueLearn}
+        onAddEpisode={queueEpisode}
+        onPlan={planToday}
       />
 
       <div className="tasks-tabs" role="tablist" aria-label="Разделы задач">
@@ -366,17 +444,26 @@ export function TasksPage() {
           busySlug={busyKey}
           queueError=""
           queueTick={queueTick}
-          onQueue={(post, kind) => void queueLearn(post, kind)}
+          onQueue={(post) => void queueEpisode(post)}
           onTasksLoaded={rememberQueued}
           onOpenTask={(taskId) => {
             setFocusTaskId(taskId)
+            setActiveTab('personal')
+          }}
+          onStartFocus={(taskId) => {
+            setFocusRequest({ id: taskId, token: Date.now() })
             setActiveTab('personal')
           }}
         />
       ) : null}
 
       {activeTab === 'personal' ? (
-        <PersonalTasksPanel focusTaskId={focusTaskId} reloadToken={queueTick} />
+        <PersonalTasksPanel
+          focusTaskId={focusTaskId}
+          reloadToken={queueTick}
+          startFocusId={focusRequest?.id ?? null}
+          startFocusToken={focusRequest?.token ?? 0}
+        />
       ) : null}
 
       {activeTab === 'learn' && listReady ? (
@@ -545,7 +632,7 @@ export function TasksPage() {
                   <ul className="learn-admin-list">
                     {track.episodes.map((ep) => {
                       const done = completedSlugs.has(ep.slug)
-                      const hasLab = episodeHasLab(ep)
+                      const hasLab = postHasLab(ep)
                       const hasQuiz = postHasQuiz(ep)
                       const dueCount = dueBySlug.get(ep.slug) || 0
                       const quiz = quizBest.get(ep.slug)
@@ -600,19 +687,11 @@ export function TasksPage() {
                           </div>
                           <div className="learn-admin-row-actions">
                             <QueueLearnButton
-                              label="Статья"
-                              queued={queuedKeys.has(learnTaskKey(ep.slug, 'article'))}
+                              label="В разобрать"
+                              queued={learnSlugQueued(queuedKeys, ep.slug)}
                               busy={busyKey === learnTaskKey(ep.slug, 'article')}
-                              onQueue={() => void queueLearn(ep, 'article')}
+                              onQueue={() => void queueEpisode(ep)}
                             />
-                            {hasQuiz ? (
-                              <QueueLearnButton
-                                label="Тест"
-                                queued={queuedKeys.has(learnTaskKey(ep.slug, 'quiz'))}
-                                busy={busyKey === learnTaskKey(ep.slug, 'quiz')}
-                                onQueue={() => void queueLearn(ep, 'quiz')}
-                              />
-                            ) : null}
                             <Link
                               to={`/game/learn/${ep.slug}`}
                               className="learn-admin-link"
