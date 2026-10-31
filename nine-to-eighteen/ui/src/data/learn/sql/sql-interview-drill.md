@@ -12,7 +12,7 @@ tags: [sql, drill, Q1-Q30, PostgreSQL, "собеседование", capstone, c
 onKnowledgeMap: true
 durationMin: 75
 excerpt: "Скоростной drill по Q1–Q30: короткие модельные ответы своими словами для устного собеседования SQL."
-prerequisites: [sql-cte-window]
+prerequisites: [sql-cte-window, sql-normalization]
 author: ""
 authorUrl: ""
 coverUrl: ""

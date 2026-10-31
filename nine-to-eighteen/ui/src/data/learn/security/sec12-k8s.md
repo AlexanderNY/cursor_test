@@ -12,7 +12,7 @@ tags: [security, kubernetes, rbac, appsec, собеседование]
 onKnowledgeMap: true
 durationMin: 40
 excerpt: Под, который может всё в кластере и хранит ключ в образе, — это уже инцидент, даже если приложение пока не взломано.
-prerequisites: [sec-authn-authz]
+prerequisites: [sec-authn-authz, ops-linux-process]
 seoTitle: Kubernetes RBAC и секреты приложения
 seoDescription: Учётка пода, секрет не в образе и зачем резать сеть.
 seoKeywords: [kubernetes, rbac, secrets, appsec]

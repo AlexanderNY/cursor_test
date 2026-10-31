@@ -12,7 +12,7 @@ tags: [frontend, microfrontend, nextjs, module-federation, собеседова�
 onKnowledgeMap: true
 durationMin: 45
 excerpt: Отдельная выкладка команд и отдельный рендер на сервере решают разные задачи. Оба не нужны первому экрану заметок.
-prerequisites: [fe-state-libraries]
+prerequisites: [fe-state-libraries, fe-render-perf]
 seoTitle: Микрофронтенды и Next.js
 seoDescription: Module Federation, границы команды и когда брать SSR.
 seoKeywords: [microfrontend, next.js, module federation]

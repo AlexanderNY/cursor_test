@@ -12,7 +12,7 @@ tags: [java, jms, messaging, "собеседование", esb, soap, xml]
 onKnowledgeMap: true
 durationMin: 86
 excerpt: "Jakarta Messaging: queue vs topic, acknowledgement и dead-letter."
-prerequisites: [jv-orm-concepts]
+prerequisites: [jv-shell-process, sa-sync-async-queues]
 author: ""
 authorUrl: ""
 coverUrl: ""

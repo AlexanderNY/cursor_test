@@ -2150,6 +2150,27 @@ class SmmService:
             "updated_at": raw.get("updated_at"),
         }
 
+    async def _count_digest_hold(self, source_ids: list[int]) -> int:
+        if not source_ids:
+            return 0
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT COUNT(*)
+                    FROM posts
+                    WHERE status = 'digest_hold'
+                      AND channel_id = ANY(%s)
+                      AND btrim(coalesce(post_text, '')) <> ''
+                    """,
+                    (source_ids,),
+                )
+                row = await cur.fetchone()
+                return int(row[0] or 0) if row else 0
+        finally:
+            await release_db_connection(conn)
+
     async def get_digest_job(self, user_id: int, brand_id: int) -> Optional[dict]:
         brand = await self.get_brand(user_id, brand_id)
         if not brand:
@@ -2190,13 +2211,16 @@ class SmmService:
                         "last_cover_miss_theme": None,
                         "last_cover_miss_at": None,
                         "last_run_at": None,
+                        "held_count": 0,
                         "created_at": None,
                         "updated_at": None,
                     }
                 cols = [d[0] for d in cur.description]
-                return self._row_digest_job(row, cols)
+                job = self._row_digest_job(row, cols)
         finally:
             await release_db_connection(conn)
+        job["held_count"] = await self._count_digest_hold(job["source_channel_ids"])
+        return job
 
     async def upsert_digest_job(
         self,
@@ -2288,9 +2312,11 @@ class SmmService:
                 )
                 row = await cur.fetchone()
                 cols = [d[0] for d in cur.description]
-                return self._row_digest_job(row, cols)
+                job = self._row_digest_job(row, cols)
         finally:
             await release_db_connection(conn)
+        job["held_count"] = await self._count_digest_hold(job["source_channel_ids"])
+        return job
 
     async def list_digest_previews(
         self, user_id: int, brand_id: int, *, limit: int = 5

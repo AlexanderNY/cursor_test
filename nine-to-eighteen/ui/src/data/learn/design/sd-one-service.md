@@ -12,7 +12,7 @@ tags: [system-design, "собеседование", cache, database, failure]
 onKnowledgeMap: true
 durationMin: 90
 excerpt: "С чего начать рисунок: клиент, API, база, что не делаем."
-prerequisites: []
+prerequisites: [s01e01-sloi, net-dns-http]
 author: ""
 authorUrl: ""
 coverUrl: ""

@@ -852,6 +852,20 @@ export function ChannelsPage() {
             </Link>
           </div>
 
+          <div>
+            {(selectedBrandId != null
+              ? brands.filter((brand) => brand.id === selectedBrandId)
+              : brands
+            ).map((brand) => (
+              <BrandDigestCard
+                key={brand.id}
+                brandId={brand.id}
+                brandName={brand.name}
+                channels={channels}
+              />
+            ))}
+          </div>
+
           <Card className="mb-4">
             <CardHeader>
               <CardTitle>Add channel</CardTitle>
@@ -1166,12 +1180,6 @@ export function ChannelsPage() {
             Зелёная строка = канал готов: Publish (own+auth), либо Collect с целями/Review, либо
             Alert с доставкой. Жёлтый значок = флаг включён, но настройка неполная.
           </p>
-
-          {selectedBrandId != null && (
-            <div className="mt-4">
-              <BrandDigestCard brandId={selectedBrandId} channels={channels} />
-            </div>
-          )}
         </>
       )}
     </PageContainer>

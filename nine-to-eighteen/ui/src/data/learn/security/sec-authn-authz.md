@@ -12,7 +12,7 @@ tags: [security, auth, "собеседование", jwt, injection, secrets]
 onKnowledgeMap: true
 durationMin: 90
 excerpt: "Сначала узнать человека, потом решить, можно ли ему это действие."
-prerequisites: []
+prerequisites: [net-dns-http]
 author: ""
 authorUrl: ""
 coverUrl: ""

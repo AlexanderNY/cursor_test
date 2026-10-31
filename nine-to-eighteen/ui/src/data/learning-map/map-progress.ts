@@ -102,33 +102,24 @@ export function buildProgressIndex(
   const index = new Map<string, StudyRollup>()
 
   const walk = (node: MindNode): StudyRollup => {
-    if (node.children.length === 0) {
-      const slug = slugOf(node)
-      const state = leafState(slug, completed, due)
-      const rollup: StudyRollup = {
-        done: slug && completed.has(slug) ? 1 : 0,
-        total: slug ? 1 : 0,
-        due: state === 'due' ? 1 : 0,
-        state,
-      }
-      index.set(node.id, rollup)
-      return rollup
-    }
+    const slug = node.id === 'root' ? '' : slugOf(node)
+    const own = leafState(slug, completed, due)
+    let done = slug && completed.has(slug) ? 1 : 0
+    let total = slug ? 1 : 0
+    let dueCount = own === 'due' ? 1 : 0
 
-    let done = 0
-    let total = 0
-    let dueCount = 0
     for (const child of node.children) {
       const childRollup = walk(child)
       done += childRollup.done
       total += childRollup.total
       dueCount += childRollup.due
     }
+    const state = total <= 1 && slug ? own : combineBranch(done, total, dueCount)
     const rollup: StudyRollup = {
       done,
       total,
       due: dueCount,
-      state: combineBranch(done, total, dueCount),
+      state,
     }
     index.set(node.id, rollup)
     return rollup
@@ -162,12 +153,12 @@ export function studyCaption(rollup: StudyRollup | undefined): string {
   return `Пройдено ${rollup.done} из ${rollup.total}`
 }
 
-function isUnfinishedLeaf(
+function isUnfinishedArticle(
   node: MindNode,
   completed: ReadonlySet<string>,
   due: ReadonlySet<string>,
 ): boolean {
-  if (node.children.length > 0 || node.id === 'root') {
+  if (node.id === 'root') {
     return false
   }
   const slug = slugOf(node)
@@ -186,8 +177,8 @@ export function filterUnfinished(
   const children = node.children
     .map((child) => filterUnfinished(child, completed, due))
     .filter((child): child is MindNode => child !== null)
-  if (isUnfinishedLeaf(node, completed, due)) {
-    return { ...node, children: [] }
+  if (isUnfinishedArticle(node, completed, due)) {
+    return { ...node, children }
   }
   if (children.length === 0) {
     return null
@@ -201,8 +192,11 @@ export function findNextUnfinished(
   completed: ReadonlySet<string>,
   due: ReadonlySet<string>,
 ): MindNode | null {
+  if (isUnfinishedArticle(node, completed, due)) {
+    return node
+  }
   if (node.children.length === 0) {
-    return isUnfinishedLeaf(node, completed, due) ? node : null
+    return null
   }
   for (const child of node.children) {
     const found = findNextUnfinished(child, completed, due)
@@ -252,17 +246,18 @@ export function buildGapIndex(
   const index = new Map<string, GapKind[]>()
 
   const walk = (node: MindNode): void => {
-    if (node.children.length > 0) {
-      for (const child of node.children) {
-        walk(child)
-      }
-      return
+    for (const child of node.children) {
+      walk(child)
     }
     if (node.id === 'root') {
       return
     }
     const slug = slugOf(node)
-    const post = slug ? postsBySlug.get(slug) : undefined
+    if (!slug) {
+      return
+    }
+    const isLeaf = node.children.length === 0
+    const post = postsBySlug.get(slug)
     const gaps: GapKind[] = []
     const articleKnown = !slug || postsReady
     const articleOk = Boolean(slug) && (!postsReady || Boolean(post))
@@ -272,7 +267,7 @@ export function buildGapIndex(
     if (!hasAnkiContent(node, notes[node.id], post, deckSlugs)) {
       gaps.push('anki')
     }
-    if (!hasWrittenNote(node, notes[node.id])) {
+    if (isLeaf && !hasWrittenNote(node, notes[node.id])) {
       gaps.push('note')
     }
     if (gaps.length > 0) {

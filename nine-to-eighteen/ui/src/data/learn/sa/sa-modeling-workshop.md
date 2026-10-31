@@ -12,7 +12,7 @@ tags: [sa, BPMN, UML, Sequence, ER, "моделирование", "воркшо�
 onKnowledgeMap: true
 durationMin: 75
 excerpt: "Практика T2+T3: один сквозной кейс заказа и оплаты — BPMN, sequence-диаграмма и ER-модель."
-prerequisites: [sa-http-security-basics]
+prerequisites: [sa-gost-srs-artifacts, sa-db-basics, sa-soap-xml]
 author: ""
 authorUrl: ""
 coverUrl: ""

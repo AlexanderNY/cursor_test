@@ -12,7 +12,7 @@ tags: [product, acceptance, user-story, собеседование]
 onKnowledgeMap: true
 durationMin: 40
 excerpt: Критерий называется так, чтобы тест мог сказать «да» или «нет». Пожелание «удобно» таким критерием не является.
-prerequisites: [pm-cjm]
+prerequisites: [pm-cjm, sa-requirements-basics]
 seoTitle: Критерии приёмки для PO
 seoDescription: Given When Then, границы истории и связь с проверкой.
 seoKeywords: [acceptance criteria, user story, product owner]

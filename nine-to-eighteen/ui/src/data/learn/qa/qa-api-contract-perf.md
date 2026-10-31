@@ -12,7 +12,7 @@ tags: [qa, api, contract, mock, performance, load, "собеседование",
 onKnowledgeMap: true
 durationMin: 85
 excerpt: "Моки и стабы, инструменты API, contract testing, load/stress и стратегия нагрузки для middle QA."
-prerequisites: [qa-middle-process]
+prerequisites: [qa-pytest-ci-git]
 author: ""
 authorUrl: ""
 coverUrl: ""

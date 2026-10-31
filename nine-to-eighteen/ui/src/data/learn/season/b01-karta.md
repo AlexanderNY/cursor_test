@@ -12,7 +12,7 @@ tags: [architecture, "собеседование", git, python, api, fastapi]
 onKnowledgeMap: true
 durationMin: 40
 excerpt: ""
-prerequisites: []
+prerequisites: [s01e01-sloi]
 author: ""
 authorUrl: ""
 coverUrl: ""

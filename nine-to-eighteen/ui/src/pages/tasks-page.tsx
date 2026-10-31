@@ -3,8 +3,16 @@ import { Link } from 'react-router-dom'
 import { PageShell } from '@/components/page-shell'
 import { PersonalTasksPanel } from '@/components/personal-tasks-panel'
 import { QueueLearnButton } from '@/components/tasks/queue-learn-button'
+import { TaskComposer } from '@/components/tasks/task-composer'
 import { TodayPanel } from '@/components/tasks/today-panel'
-import { learnTaskDraft, openLearnSlugs } from '@/components/tasks/learn-link'
+import {
+  learnTaskDraft,
+  learnTaskKey,
+  openLearnKeys,
+  postHasQuiz,
+  wordingTaskDraft,
+  type LearnTaskKind,
+} from '@/components/tasks/learn-link'
 import { isoDate } from '@/components/tasks/task-utils'
 import { LEARN_LEVELS, LEARN_PROFILES } from '@/data/learn'
 import type { LearnLevelId, LearnProfileId } from '@/data/learn/labels'
@@ -35,14 +43,6 @@ type TasksTab = 'today' | 'personal' | 'learn'
 
 function episodeHasLab(post: LearnPost): boolean {
   return Boolean((post.lab || '').trim() || (post.structured?.lab || '').trim())
-}
-
-function episodeHasQuiz(post: LearnPost): boolean {
-  const quiz = post.structured?.quiz
-  if (!Array.isArray(quiz)) {
-    return false
-  }
-  return quiz.some((row) => row.question?.trim() && row.answer?.trim())
 }
 
 function quizBestBySlug(
@@ -105,8 +105,8 @@ export function TasksPage() {
 
   const [activeTab, setActiveTab] = useState<TasksTab>('today')
   const [focusTaskId, setFocusTaskId] = useState<number | null>(null)
-  const [queuedSlugs, setQueuedSlugs] = useState<Set<string>>(() => new Set())
-  const [busySlug, setBusySlug] = useState('')
+  const [queuedKeys, setQueuedKeys] = useState<Set<string>>(() => new Set())
+  const [busyKey, setBusyKey] = useState('')
   const [queueError, setQueueError] = useState('')
   const [queueTick, setQueueTick] = useState(0)
   const [seasonFilter, setSeasonFilter] = useState('')
@@ -122,7 +122,7 @@ export function TasksPage() {
   const [evidenceReady, setEvidenceReady] = useState(false)
 
   const rememberQueued = useCallback((items: SiteUserTask[]) => {
-    setQueuedSlugs(openLearnSlugs(items))
+    setQueuedKeys(openLearnKeys(items))
   }, [])
 
   const completedAtBySlug = useMemo(() => {
@@ -146,7 +146,7 @@ export function TasksPage() {
       })
       .catch(() => {
         if (!cancelled) {
-          setQueuedSlugs(new Set())
+          setQueuedKeys(new Set())
         }
       })
     return () => {
@@ -154,25 +154,42 @@ export function TasksPage() {
     }
   }, [accessToken, queueTick, rememberQueued])
 
-  async function queueEpisode(post: LearnPost) {
-    const slug = post.slug.toLowerCase()
-    if (!slug || queuedSlugs.has(slug) || busySlug) {
+  async function queueLearn(post: LearnPost, kind: LearnTaskKind) {
+    const key = learnTaskKey(post.slug, kind)
+    if (!key || queuedKeys.has(key) || busyKey) {
       return
     }
-    setBusySlug(slug)
+    setBusyKey(key)
     setQueueError('')
     try {
-      await siteCreateUserTask(learnTaskDraft(post, isoDate(new Date())))
-      setQueuedSlugs((prev) => {
+      await siteCreateUserTask(learnTaskDraft(post, isoDate(new Date()), kind))
+      setQueuedKeys((prev) => {
         const next = new Set(prev)
-        next.add(slug)
+        next.add(key)
         return next
       })
       setQueueTick((value) => value + 1)
     } catch (err) {
       setQueueError(err instanceof Error ? err.message : 'Не удалось добавить задачу')
     } finally {
-      setBusySlug('')
+      setBusyKey('')
+    }
+  }
+
+  async function addWording(title: string) {
+    const next = title.trim()
+    if (!next || busyKey) {
+      return
+    }
+    setBusyKey('wording')
+    setQueueError('')
+    try {
+      await siteCreateUserTask(wordingTaskDraft(next, isoDate(new Date())))
+      setQueueTick((value) => value + 1)
+    } catch (err) {
+      setQueueError(err instanceof Error ? err.message : 'Не удалось добавить задачу')
+    } finally {
+      setBusyKey('')
     }
   }
 
@@ -296,10 +313,20 @@ export function TasksPage() {
         <p className="learn-eyebrow">Tasks</p>
         <h1 className="learn-title">Задачи</h1>
         <p className="learn-lead">
-          Сегодня собирает сроки, привычки, карточки Anki и следующий выпуск.
-          Списки и календарь — в «Мои задачи», оглавление курса — в Learn.
+          Список дел: своя формулировка, любая статья или тест. Сегодня собирает
+          сроки, привычки и карточки. Списки и календарь — во вкладке «Мои задачи».
         </p>
       </header>
+
+      <TaskComposer
+        posts={published}
+        postsReady={isReady}
+        queuedKeys={queuedKeys}
+        busyKey={busyKey}
+        error={queueError}
+        onAddWording={addWording}
+        onAddLearn={queueLearn}
+      />
 
       <div className="tasks-tabs" role="tablist" aria-label="Разделы задач">
         <button
@@ -335,11 +362,11 @@ export function TasksPage() {
 
       {activeTab === 'today' ? (
         <TodayPanel
-          queuedSlugs={queuedSlugs}
-          busySlug={busySlug}
-          queueError={queueError}
+          queuedSlugs={queuedKeys}
+          busySlug={busyKey}
+          queueError=""
           queueTick={queueTick}
-          onQueue={(post) => void queueEpisode(post)}
+          onQueue={(post, kind) => void queueLearn(post, kind)}
           onTasksLoaded={rememberQueued}
           onOpenTask={(taskId) => {
             setFocusTaskId(taskId)
@@ -349,7 +376,7 @@ export function TasksPage() {
       ) : null}
 
       {activeTab === 'personal' ? (
-        <PersonalTasksPanel focusTaskId={focusTaskId} />
+        <PersonalTasksPanel focusTaskId={focusTaskId} reloadToken={queueTick} />
       ) : null}
 
       {activeTab === 'learn' && listReady ? (
@@ -381,7 +408,6 @@ export function TasksPage() {
 
       {activeTab === 'learn' && listReady ? (
         <>
-          {queueError ? <p className="tasks-personal-error">{queueError}</p> : null}
           <div className="learn-filters" aria-label="Фильтры чек-листа">
             <label className="learn-filter-field">
               <span>Сезон</span>
@@ -520,7 +546,7 @@ export function TasksPage() {
                     {track.episodes.map((ep) => {
                       const done = completedSlugs.has(ep.slug)
                       const hasLab = episodeHasLab(ep)
-                      const hasQuiz = episodeHasQuiz(ep)
+                      const hasQuiz = postHasQuiz(ep)
                       const dueCount = dueBySlug.get(ep.slug) || 0
                       const quiz = quizBest.get(ep.slug)
                       const completedLabel = formatCompletedAt(
@@ -574,10 +600,19 @@ export function TasksPage() {
                           </div>
                           <div className="learn-admin-row-actions">
                             <QueueLearnButton
-                              queued={queuedSlugs.has(ep.slug.toLowerCase())}
-                              busy={busySlug === ep.slug.toLowerCase()}
-                              onQueue={() => void queueEpisode(ep)}
+                              label="Статья"
+                              queued={queuedKeys.has(learnTaskKey(ep.slug, 'article'))}
+                              busy={busyKey === learnTaskKey(ep.slug, 'article')}
+                              onQueue={() => void queueLearn(ep, 'article')}
                             />
+                            {hasQuiz ? (
+                              <QueueLearnButton
+                                label="Тест"
+                                queued={queuedKeys.has(learnTaskKey(ep.slug, 'quiz'))}
+                                busy={busyKey === learnTaskKey(ep.slug, 'quiz')}
+                                onQueue={() => void queueLearn(ep, 'quiz')}
+                              />
+                            ) : null}
                             <Link
                               to={`/game/learn/${ep.slug}`}
                               className="learn-admin-link"

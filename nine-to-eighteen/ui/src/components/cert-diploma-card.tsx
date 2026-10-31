@@ -1,26 +1,18 @@
 import type { CSSProperties, ReactNode } from 'react'
-import { toneOf } from '@/data/site/cert-shared'
-
-type CertEpisodePill = {
-  key: string
-  label: string
-  title: string
-  done: boolean
-}
+import { toneOf, type CertTopicLine } from '@/data/site/cert-shared'
 
 type CertDiplomaCardProps = {
   trackId: string
-  series: string
-  headline: string
-  subline: string
-  copy: string
+  holderName: string
+  courseTitle: string
   earned: boolean
-  done: number
-  total: number
-  percent: number
-  quizLabel: string
+  issuedLabel: string
+  durationLabel: string
+  resultLabel: string
+  resultValue: string
   code: string
-  episodes: CertEpisodePill[]
+  topics: CertTopicLine[]
+  quizLabel?: string
   actions?: ReactNode
 }
 
@@ -33,21 +25,35 @@ function toneStyle(trackId: string): CSSProperties {
   } as CSSProperties
 }
 
+function topicClass(count: number): string {
+  if (count > 40) {
+    return 'cert-topics is-packed'
+  }
+  if (count > 12) {
+    return 'cert-topics is-dense'
+  }
+  return 'cert-topics'
+}
+
 export function CertDiplomaCard({
   trackId,
-  series,
-  headline,
-  subline,
-  copy,
+  holderName,
+  courseTitle,
   earned,
-  done,
-  total,
-  percent,
-  quizLabel,
+  issuedLabel,
+  durationLabel,
+  resultLabel,
+  resultValue,
   code,
-  episodes,
+  topics,
+  quizLabel = '',
   actions,
 }: CertDiplomaCardProps) {
+  const dateLine =
+    earned && issuedLabel
+      ? `Дата прохождения: ${issuedLabel}`
+      : 'Дата выдачи появится после завершения курса'
+
   return (
     <article
       className={`cert-diploma${earned ? ' is-earned' : ''}`}
@@ -60,63 +66,75 @@ export function CertDiplomaCard({
         <span className="cert-corner cert-corner-bl" aria-hidden />
         <span className="cert-corner cert-corner-br" aria-hidden />
 
-        <div className="cert-banner">
-          <span>9to18 · Learn</span>
-          <span>{percent}%</span>
-        </div>
+        <header className="cert-a4-head">
+          <p className="cert-kicker">Сертификат</p>
+          <p className="cert-org">9to18 · Learn</p>
+        </header>
+        <div className="cert-rule" aria-hidden />
 
-        <div className="cert-diploma-body">
-          <p className="cert-series">{series}</p>
-          <h2 className="cert-name">{headline}</h2>
-          <p className={earned ? 'cert-track-name' : 'cert-statement'}>{subline}</p>
-          <p className="cert-copy">{copy}</p>
+        <p className="cert-lead">{earned ? 'Настоящим подтверждается, что' : 'Бланк курса для'}</p>
+        <h2 className="cert-holder">{holderName}</h2>
+        <p className="cert-verb">{earned ? 'прошёл(а) курс' : 'проходит курс'}</p>
+        <p className="cert-course">{courseTitle}</p>
+        <p className="cert-issued">{dateLine}</p>
 
-          <div
-            className="cert-bar"
-            role="progressbar"
-            aria-valuenow={done}
-            aria-valuemin={0}
-            aria-valuemax={Math.max(total, 1)}
-            aria-label={`${headline}: ${done} из ${total}`}
-          >
-            <span style={{ width: `${percent}%` }} />
+        <dl className="cert-facts">
+          {durationLabel ? (
+            <div>
+              <dt>Примерное время курса</dt>
+              <dd>{durationLabel}</dd>
+            </div>
+          ) : null}
+          <div>
+            <dt>{resultLabel}</dt>
+            <dd>{resultValue}</dd>
           </div>
-          <p className="cert-progress-label">
-            {done}/{total} выпусков · {percent}%
-            {quizLabel ? ` · ${quizLabel}` : ''}
-            {code ? ` · бланк ${code}` : ''}
-          </p>
+          {code ? (
+            <div>
+              <dt>Номер бланка</dt>
+              <dd>{code}</dd>
+            </div>
+          ) : null}
+        </dl>
 
-          {episodes.length > 0 ? (
-            <ul className="cert-pills">
-              {episodes.map((episode) => (
-                <li
-                  key={episode.key}
-                  className={`cert-pill${episode.done ? ' is-done' : ''}`}
-                  title={episode.title}
-                >
-                  {episode.label}
+        <section className="cert-topics-block">
+          <h3>Пройденные темы</h3>
+          {topics.length > 0 ? (
+            <ol className={topicClass(topics.length)}>
+              {topics.map((topic) => (
+                <li key={topic.key} className="cert-topic">
+                  <span className="cert-topic-code">{topic.code}</span>
+                  <span className="cert-topic-title">{topic.title}</span>
                 </li>
               ))}
-            </ul>
-          ) : null}
-        </div>
+            </ol>
+          ) : (
+            <p className="cert-topics-empty">{quizLabel || 'Пройденных тем пока нет.'}</p>
+          )}
+          {quizLabel && topics.length > 0 ? <p className="cert-quiz-note">{quizLabel}</p> : null}
+        </section>
 
-        <div className="cert-seal" aria-hidden>
-          <div className="cert-seal-ring">
-            <strong>9–18</strong>
-            <span>{earned ? 'сдан' : 'путь'}</span>
+        <footer className="cert-a4-foot">
+          <div className="cert-a4-sign">
+            {earned ? (
+              <p className="cert-passed-stamp" aria-hidden>
+                ПРОЙДЕНО
+              </p>
+            ) : (
+              <p className="cert-sign-note">Бланк откроется после прохождения курса</p>
+            )}
+            <p className="cert-sign">9to18.ru</p>
           </div>
-        </div>
-
-        {earned ? (
-          <div className="cert-passed-stamp" aria-hidden>
-            ПРОЙДЕНО
+          <div className="cert-seal" aria-hidden>
+            <div className="cert-seal-ring">
+              <strong>9–18</strong>
+              <span>{earned ? 'сдан' : 'путь'}</span>
+            </div>
           </div>
-        ) : null}
-
-        {actions ? <div className="cert-actions no-print">{actions}</div> : null}
+        </footer>
       </div>
+
+      {actions ? <div className="cert-actions no-print">{actions}</div> : null}
     </article>
   )
 }

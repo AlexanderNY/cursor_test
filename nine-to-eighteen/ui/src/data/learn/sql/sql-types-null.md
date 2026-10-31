@@ -12,7 +12,7 @@ tags: [sql, char, varchar, "null", "типы-данных", "собеседов�
 onKnowledgeMap: true
 durationMin: 54
 excerpt: "Разница CHAR и VARCHAR, почему NULL не равен 0 и пробелу, трёхзначная логика и IS NULL в PostgreSQL."
-prerequisites: [sql-delete-truncate-drop]
+prerequisites: [sql-ddl-dml-dcl]
 author: ""
 authorUrl: ""
 coverUrl: ""

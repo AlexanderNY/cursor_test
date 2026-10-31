@@ -46,6 +46,19 @@ function formatLineTitle(node: MindNode): string {
       text += ` #${safe}`
     }
   }
+  const meta: string[] = []
+  if (node.learnSlug) {
+    meta.push(`learn:${node.learnSlug}`)
+  }
+  if (node.prerequisites?.length) {
+    meta.push(`prereq:${node.prerequisites.join(',')}`)
+  }
+  if (node.profiles?.length) {
+    meta.push(`profiles:${node.profiles.join(',')}`)
+  }
+  if (meta.length > 0) {
+    text += ` {${meta.join(' ')}}`
+  }
   return text
 }
 
@@ -62,24 +75,18 @@ function serializeTree(root: MindNode): string {
       return
     }
 
-    if (depth === 1) {
-      lines.push(`## ${formatLineTitle(node)}`)
+    if (depth >= 1 && depth <= 5) {
+      lines.push(`${'#'.repeat(depth + 1)} ${formatLineTitle(node)}`)
       for (const child of node.children) {
-        walk(child, 2)
+        walk(child, depth + 1)
       }
-      lines.push('')
-      return
-    }
-
-    if (depth === 2) {
-      lines.push(`### ${formatLineTitle(node)}`)
-      for (const child of node.children) {
-        walk(child, 3)
+      if (depth === 1) {
+        lines.push('')
       }
       return
     }
 
-    const indent = '  '.repeat(depth - 3)
+    const indent = '  '.repeat(Math.max(0, depth - 6))
     lines.push(`${indent}- ${formatLineTitle(node)}`)
     for (const child of node.children) {
       walk(child, depth + 1)

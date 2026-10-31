@@ -38,6 +38,88 @@ export function formatCertDate(iso: string): string {
   return date.toLocaleDateString('ru-RU')
 }
 
+const CERT_MONTHS = [
+  'января',
+  'февраля',
+  'марта',
+  'апреля',
+  'мая',
+  'июня',
+  'июля',
+  'августа',
+  'сентября',
+  'октября',
+  'ноября',
+  'декабря',
+]
+
+export function formatCertDateLong(iso: string): string {
+  const date = new Date(iso)
+  if (!iso || Number.isNaN(date.getTime())) {
+    return ''
+  }
+  return `${date.getDate()} ${CERT_MONTHS[date.getMonth()]} ${date.getFullYear()} г.`
+}
+
+/** Фамилия Имя Отчество. Логин — если в профиле нет имени. */
+export function certHolderName(
+  firstName: string,
+  lastName: string,
+  patronymic = '',
+  fallback = '',
+): string {
+  const last = lastName.trim()
+  const first = firstName.trim()
+  const middle = patronymic.trim()
+  if (last && first) {
+    return [last, first, middle].filter(Boolean).join(' ')
+  }
+  const partial = [last, first, middle].filter(Boolean).join(' ')
+  if (partial) {
+    return partial
+  }
+  return fallback.trim() || 'Участник'
+}
+
+export function sumDurationMinutes(episodes: { durationMin?: number }[]): number {
+  return episodes.reduce((sum, episode) => sum + Math.max(0, Number(episode.durationMin) || 0), 0)
+}
+
+export function formatCourseDuration(totalMin: number): string {
+  const minutes = Math.max(0, Math.round(totalMin))
+  if (minutes <= 0) {
+    return ''
+  }
+  const hours = Math.floor(minutes / 60)
+  const rest = minutes % 60
+  if (hours === 0) {
+    return `около ${rest} мин`
+  }
+  if (rest === 0) {
+    return `около ${hours} ч`
+  }
+  return `около ${hours} ч ${rest} мин`
+}
+
+export type CertTopicLine = {
+  key: string
+  code: string
+  title: string
+}
+
+export function certTopicLines(
+  episodes: { slug: string; episode: string; title: string }[],
+  completed: ReadonlySet<string> | null,
+): CertTopicLine[] {
+  return episodes
+    .filter((episode) => completed == null || completed.has(episode.slug))
+    .map((episode) => ({
+      key: episode.slug,
+      code: episode.episode,
+      title: episode.title,
+    }))
+}
+
 export function printCertificate(trackId: string) {
   const cards = document.querySelectorAll<HTMLElement>('.cert-diploma')
   cards.forEach((card) => {

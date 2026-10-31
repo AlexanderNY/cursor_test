@@ -12,7 +12,7 @@ tags: [api, fastapi, "собеседование"]
 onKnowledgeMap: true
 durationMin: 40
 excerpt: ""
-prerequisites: []
+prerequisites: [b01-karta]
 author: ""
 authorUrl: ""
 coverUrl: ""

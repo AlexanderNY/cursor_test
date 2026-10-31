@@ -12,7 +12,7 @@ tags: [git, "собеседование", sa, "требования"]
 onKnowledgeMap: true
 durationMin: 40
 excerpt: ""
-prerequisites: []
+prerequisites: [s01e01-sloi]
 author: ""
 authorUrl: ""
 coverUrl: ""

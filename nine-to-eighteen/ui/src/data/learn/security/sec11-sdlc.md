@@ -12,7 +12,7 @@ tags: [security, sdlc, devsecops, appsec, собеседование]
 onKnowledgeMap: true
 durationMin: 40
 excerpt: Требование безопасности появляется вместе с историей. Сканер в ночь перед релизом уже не успевает стать процессом.
-prerequisites: [sec-threat-model]
+prerequisites: [sec-threat-model, sec-sast-dast-sca]
 seoTitle: Secure SDLC и shift-left
 seoDescription: Где в поставке стоят модель угроз, ревью и сканеры.
 seoKeywords: [secure sdlc, devsecops, appsec]

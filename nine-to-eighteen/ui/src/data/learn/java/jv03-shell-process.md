@@ -12,7 +12,7 @@ tags: [java, shell, linux, "собеседование", jdbc, sql, transactions
 onKnowledgeMap: true
 durationMin: 85
 excerpt: "env, PID, запуск jar и сигналы; мост к инфраструктуре QA17."
-prerequisites: [jv-se-jvm]
+prerequisites: [jv-se-jvm, sql-ddl-dml-dcl]
 author: ""
 authorUrl: ""
 coverUrl: ""

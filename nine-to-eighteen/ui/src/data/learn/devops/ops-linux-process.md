@@ -12,7 +12,7 @@ tags: [linux, process, "собеседование", kubernetes, ci, pipeline]
 onKnowledgeMap: true
 durationMin: 75
 excerpt: "Кто владеет процессом, чем файл прав отличается от «у меня открылось»."
-prerequisites: []
+prerequisites: [b10-docker]
 author: ""
 authorUrl: ""
 coverUrl: ""

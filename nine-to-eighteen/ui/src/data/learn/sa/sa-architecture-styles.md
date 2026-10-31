@@ -12,7 +12,7 @@ tags: [sa, "архитектура", SOA, "микросервисы", "моно�
 onKnowledgeMap: true
 durationMin: 65
 excerpt: "Клиент-сервер, виды архитектур, SOA vs микросервисы, декомпозиция, независимость сервисов, монолит vs микросервисы."
-prerequisites: [sa-soap-xml]
+prerequisites: [sa-soap-xml, sa-db-advanced]
 author: ""
 authorUrl: ""
 coverUrl: ""

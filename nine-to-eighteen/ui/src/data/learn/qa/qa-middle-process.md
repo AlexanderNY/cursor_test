@@ -12,7 +12,7 @@ tags: [qa, process, coverage, defect-cost, leakage, "собеседование"
 onKnowledgeMap: true
 durationMin: 85
 excerpt: "Обязанности QA, entry/exit, цена дефекта, pos/neg, пререлиз, bug leakage и когда не писать кейсы."
-prerequisites: [qa-pytest-ci-git]
+prerequisites: [qa-docs-plan-cases]
 author: ""
 authorUrl: ""
 coverUrl: ""

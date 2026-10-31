@@ -3,7 +3,10 @@ import { Link } from 'react-router-dom'
 import { QueueLearnButton } from '@/components/tasks/queue-learn-button'
 import {
   learnEpisodePath,
-  learnSlugFromNotes,
+  learnTargetFromNotes,
+  learnTaskKey,
+  postHasQuiz,
+  type LearnTaskKind,
 } from '@/components/tasks/learn-link'
 import {
   flattenTasks,
@@ -45,7 +48,7 @@ type TodayPanelProps = {
   busySlug: string
   queueError: string
   queueTick: number
-  onQueue: (post: LearnPost) => void
+  onQueue: (post: LearnPost, kind: LearnTaskKind) => void
   onOpenTask: (taskId: number) => void
   onTasksLoaded: (items: SiteUserTask[]) => void
 }
@@ -206,7 +209,7 @@ export function TodayPanel({
           <ul className="tasks-today-list">
             {visibleTasks.map((task) => {
               const overdue = isOverdue(task)
-              const slug = learnSlugFromNotes(task.notes)
+              const target = learnTargetFromNotes(task.notes)
               const dueLabel = formatDue(task.dueAt, task.dueTime)
               return (
                 <li
@@ -232,9 +235,15 @@ export function TodayPanel({
                     </span>
                   </div>
                   <div className="tasks-today-actions">
-                    {slug ? (
-                      <Link to={learnEpisodePath(slug)} className="learn-admin-link">
-                        Выпуск
+                    {target ? (
+                      <Link
+                        to={learnEpisodePath(
+                          target.slug,
+                          target.kind === 'quiz' ? 'quiz' : undefined,
+                        )}
+                        className="learn-admin-link"
+                      >
+                        {target.kind === 'quiz' ? 'Тест' : 'Статья'}
                       </Link>
                     ) : null}
                     <button
@@ -324,10 +333,19 @@ export function TodayPanel({
             </div>
             <div className="tasks-today-actions">
               <QueueLearnButton
-                queued={queuedSlugs.has(nextPost.slug.toLowerCase())}
-                busy={busySlug === nextPost.slug.toLowerCase()}
-                onQueue={() => onQueue(nextPost)}
+                label="Статья"
+                queued={queuedSlugs.has(learnTaskKey(nextPost.slug, 'article'))}
+                busy={busySlug === learnTaskKey(nextPost.slug, 'article')}
+                onQueue={() => onQueue(nextPost, 'article')}
               />
+              {postHasQuiz(nextPost) ? (
+                <QueueLearnButton
+                  label="Тест"
+                  queued={queuedSlugs.has(learnTaskKey(nextPost.slug, 'quiz'))}
+                  busy={busySlug === learnTaskKey(nextPost.slug, 'quiz')}
+                  onQueue={() => onQueue(nextPost, 'quiz')}
+                />
+              ) : null}
               <Link
                 to={learnEpisodePath(nextPost.slug)}
                 className="learn-admin-btn learn-admin-btn-primary"

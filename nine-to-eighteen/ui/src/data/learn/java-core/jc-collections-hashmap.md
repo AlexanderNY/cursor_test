@@ -12,7 +12,7 @@ tags: [java, collections, "собеседование", concurrency, gc, spring]
 onKnowledgeMap: true
 durationMin: 90
 excerpt: "Почему ломают equals без hashCode и что лежит в корзине."
-prerequisites: []
+prerequisites: [jv-se-jvm]
 author: ""
 authorUrl: ""
 coverUrl: ""

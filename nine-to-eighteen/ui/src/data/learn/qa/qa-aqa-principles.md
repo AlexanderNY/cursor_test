@@ -12,7 +12,7 @@ tags: [qa, aqa, oop, solid, page-object, "собеседование", selenium,
 onKnowledgeMap: true
 durationMin: 85
 excerpt: "OOP, SOLID, DRY/KISS/YAGNI, Page Object и краткий Java-блок для junior AQA-собеседования."
-prerequisites: [qa-sql-db-basics]
+prerequisites: [qa-docs-plan-cases, py-oop-basics]
 author: ""
 authorUrl: ""
 coverUrl: ""

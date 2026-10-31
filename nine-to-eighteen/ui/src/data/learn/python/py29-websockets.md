@@ -12,7 +12,7 @@ tags: [python, fastapi, websocket, собеседование]
 onKnowledgeMap: true
 durationMin: 40
 excerpt: Постоянный канал оправдан, если сервер сам говорит клиенту. Иначе хватает обычного запроса.
-prerequisites: [py-oop-advanced-mro]
+prerequisites: [py-oop-advanced-mro, s01e05-fastapi]
 seoTitle: WebSocket FastAPI — middle
 seoDescription: Рукопожатие, авторизация и срок жизни соединения.
 seoKeywords: [websocket, fastapi, python]

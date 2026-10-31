@@ -12,7 +12,7 @@ tags: [git, commit, stage, "собеседование", remote, fetch, pull, st
 onKnowledgeMap: true
 durationMin: 90
 excerpt: "Из чего состоит commit, чем init отличается от clone, что такое stage/index."
-prerequisites: [b01-karta]
+prerequisites: [s01e03-git]
 author: ""
 authorUrl: ""
 coverUrl: ""

@@ -12,7 +12,7 @@ tags: [java, adr, esb, "собеседование", drill, capstone]
 onKnowledgeMap: true
 durationMin: 90
 excerpt: "Короткий ADR выбора ESB или message broker для Java-команды."
-prerequisites: [jv-js-glue]
+prerequisites: [jv-js-glue, jv-orm-concepts, jc-collections-hashmap]
 author: ""
 authorUrl: ""
 coverUrl: ""

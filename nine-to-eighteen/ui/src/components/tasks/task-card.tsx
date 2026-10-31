@@ -1,5 +1,5 @@
 import type { SiteUserTask } from '@/data/site/site-api'
-import { displayNotes, learnSlugFromNotes } from '@/components/tasks/learn-link'
+import { displayNotes, learnTargetFromNotes } from '@/components/tasks/learn-link'
 import {
   checklistProgress,
   formatDue,
@@ -30,7 +30,7 @@ export function TaskCard({
   const dueLabel = formatDue(task.dueAt, task.dueTime)
   const subCount = task.subtasks?.length || 0
   const notes = displayNotes(task.notes)
-  const learnSlug = learnSlugFromNotes(task.notes)
+  const learnTarget = learnTargetFromNotes(task.notes)
 
   return (
     <article
@@ -61,7 +61,11 @@ export function TaskCard({
             <span className="tasks-card-notes">{notes}</span>
           ) : null}
           <span className="tasks-card-meta">
-            {learnSlug ? <span className="tasks-mini-badge">Learn</span> : null}
+            {learnTarget ? (
+              <span className="tasks-mini-badge">
+                {learnTarget.kind === 'quiz' ? 'Тест' : 'Статья'}
+              </span>
+            ) : null}
             {task.tag.trim() ? (
               <span className="tasks-mini-badge">{task.tag.trim()}</span>
             ) : null}

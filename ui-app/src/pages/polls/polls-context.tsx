@@ -18,9 +18,17 @@ export interface PollsContextValue {
 }
 
 const PollsContext = createContext<PollsContextValue | null>(null)
+const SELECTED_BOT_STORAGE_KEY = 'polls-selected-bot-id'
+
+function readStoredBotId(): number | null {
+  const raw = sessionStorage.getItem(SELECTED_BOT_STORAGE_KEY)
+  if (!raw) return null
+  const parsed = Number.parseInt(raw, 10)
+  return Number.isFinite(parsed) ? parsed : null
+}
 
 export function PollsProvider({ children }: { children: ReactNode }) {
-  const [selectedBotId, setSelectedBotId] = useState<number | null>(null)
+  const [selectedBotId, setSelectedBotIdState] = useState<number | null>(readStoredBotId)
   const [modes, setModes] = useState<GameMode[]>([])
   const [selectedModeId, setSelectedModeId] = useState<number | null>(null)
   const [isLoadingModes, setIsLoadingModes] = useState(true)
@@ -56,10 +64,26 @@ export function PollsProvider({ children }: { children: ReactNode }) {
     }
   }, [selectedBotId])
 
+  function setSelectedBotId(botId: number | null) {
+    setSelectedBotIdState(botId)
+    if (botId == null) {
+      sessionStorage.removeItem(SELECTED_BOT_STORAGE_KEY)
+      return
+    }
+    sessionStorage.setItem(SELECTED_BOT_STORAGE_KEY, String(botId))
+  }
+
   function handleBotsLoaded(bots: GameBot[]) {
-    setSelectedBotId((prev) =>
-      prev && bots.some((bot) => bot.id === prev) ? prev : bots[0]?.id ?? null,
-    )
+    setSelectedBotIdState((prev) => {
+      const preferred = prev ?? readStoredBotId()
+      const next = preferred && bots.some((bot) => bot.id === preferred) ? preferred : bots[0]?.id ?? null
+      if (next == null) {
+        sessionStorage.removeItem(SELECTED_BOT_STORAGE_KEY)
+      } else {
+        sessionStorage.setItem(SELECTED_BOT_STORAGE_KEY, String(next))
+      }
+      return next
+    })
   }
 
   useEffect(() => {

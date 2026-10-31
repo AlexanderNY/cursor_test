@@ -45,10 +45,16 @@ function nextDigestRunLabel(job: DigestJob): string {
 }
 
 function lastDigestRunDetail(job: DigestJob, previews: DigestPreviewItem[]): string {
-  if (!job.last_run_at) return 'Цикл ещё ни разу не обрабатывал эту сводку.'
+  const waiting = job.held_count ?? 0
+  const queue = `Сейчас в очереди ${waiting} сообщ.`
+  if (!job.last_run_at) {
+    return waiting > 0
+      ? `${queue} Цикл ещё не запускался — сводка появится в ближайшую минуту.`
+      : `${queue} Цикл ещё ни разу не обрабатывал эту сводку.`
+  }
   const preview = closestDigestPreview(job.last_run_at, previews)
   if (!preview) {
-    return 'Сводка не создана: к моменту запуска не было накопленных сообщений.'
+    return `${queue} Последний цикл сводку не создал: накопленных сообщений не было.`
   }
   const missAt = job.last_cover_miss_at ? new Date(job.last_cover_miss_at).getTime() : NaN
   const runAt = new Date(job.last_run_at).getTime()
@@ -57,15 +63,16 @@ function lastDigestRunDetail(job: DigestJob, previews: DigestPreviewItem[]): str
   const coverNote = missedCover
     ? ` Картинка не подобрана${job.last_cover_miss_theme ? `: ${job.last_cover_miss_theme}` : ''}.`
     : ''
-  return `Опубликована сводка из ${preview.message_count} сообщ.${coverNote}`
+  return `Опубликована сводка из ${preview.message_count} сообщ.${coverNote} ${queue}`
 }
 
 interface BrandDigestCardProps {
   brandId: number
   channels: BrandChannel[]
+  brandName?: string
 }
 
-export function BrandDigestCard({ brandId, channels }: BrandDigestCardProps) {
+export function BrandDigestCard({ brandId, channels, brandName }: BrandDigestCardProps) {
   const [job, setJob] = useState<DigestJob | null>(null)
   const [previews, setPreviews] = useState<DigestPreviewItem[]>([])
   const [enabled, setEnabled] = useState(false)
@@ -104,9 +111,12 @@ export function BrandDigestCard({ brandId, channels }: BrandDigestCardProps) {
 
   useEffect(() => {
     let cancelled = false
-    void (async () => {
-      setLoading(true)
-      setError('')
+
+    async function loadDigest(silent: boolean) {
+      if (!silent) {
+        setLoading(true)
+        setError('')
+      }
       try {
         const [digest, items] = await Promise.all([
           smmService.getDigestJob(brandId),
@@ -114,22 +124,28 @@ export function BrandDigestCard({ brandId, channels }: BrandDigestCardProps) {
         ])
         if (cancelled) return
         setJob(digest)
-        setEnabled(Boolean(digest.enabled))
-        setSourceIds(digest.source_channel_ids || [])
-        setPublishId(digest.publish_channel_id ?? null)
-        setIntervalMin(digest.interval_min || 60)
-        setProcessPrompt(digest.process_prompt || '')
-        setSummaryPrompt(digest.summary_prompt || '')
-        setAttachCover(digest.attach_cover_image !== false)
         setPreviews(items)
+        if (!silent) {
+          setEnabled(Boolean(digest.enabled))
+          setSourceIds(digest.source_channel_ids || [])
+          setPublishId(digest.publish_channel_id ?? null)
+          setIntervalMin(digest.interval_min || 60)
+          setProcessPrompt(digest.process_prompt || '')
+          setSummaryPrompt(digest.summary_prompt || '')
+          setAttachCover(digest.attach_cover_image !== false)
+        }
       } catch (err) {
-        if (!cancelled) setError(getErrorMessage(err))
+        if (!cancelled && !silent) setError(getErrorMessage(err))
       } finally {
-        if (!cancelled) setLoading(false)
+        if (!cancelled && !silent) setLoading(false)
       }
-    })()
+    }
+
+    void loadDigest(false)
+    const timer = window.setInterval(() => void loadDigest(true), 30_000)
     return () => {
       cancelled = true
+      window.clearInterval(timer)
     }
   }, [brandId])
 
@@ -166,7 +182,9 @@ export function BrandDigestCard({ brandId, channels }: BrandDigestCardProps) {
   return (
     <Card className="mb-4">
       <CardHeader>
-        <CardTitle>Часовая сводка</CardTitle>
+        <CardTitle>
+          Часовая сводка{brandName ? ` · ${brandName}` : ''}
+        </CardTitle>
         <CardDescription>
           Сообщения с выбранных каналов вычитываются и копятся. Раз в интервал публикуется
           одна сводка в own-канал. Отдельные сообщения не уходят в публикацию.
@@ -188,6 +206,17 @@ export function BrandDigestCard({ brandId, channels }: BrandDigestCardProps) {
                   </p>
                   <p className="text-[var(--text-secondary)]">{lastDigestRunDetail(job, previews)}</p>
                   <p className="text-[var(--text-muted)]">Следующий: {nextDigestRunLabel(job)}</p>
+                  {sourceCandidates
+                    .filter((channel) => sourceIds.includes(channel.id))
+                    .map((channel) => (
+                      <p key={channel.id} className="text-[var(--text-muted)]">
+                        {channel.title || channel.external_id}
+                        {': '}
+                        {channel.save_conditions && channel.save_conditions.length > 0
+                          ? `в очередь попадут только сообщения с фразами «${channel.save_conditions.join('», «')}»`
+                          : 'в очередь попадают все новые сообщения'}
+                      </p>
+                    ))}
                 </div>
               )}
 
@@ -323,7 +352,7 @@ export function BrandDigestCard({ brandId, channels }: BrandDigestCardProps) {
                       <p className="text-[var(--text-muted)]">
                         {formatDateTime(d.created_at)} · {d.message_count} сообщ.
                       </p>
-                      <p className="text-[var(--text-primary)] line-clamp-4 whitespace-pre-wrap">
+                      <p className="text-[var(--text-primary)] max-h-48 overflow-y-auto whitespace-pre-wrap">
                         {d.digest_text}
                       </p>
                     </div>

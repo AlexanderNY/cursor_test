@@ -12,7 +12,7 @@ tags: [security, sca, npm, pip, supply-chain, собеседование]
 onKnowledgeMap: true
 durationMin: 40
 excerpt: Пакет npm и пакет pip попадают в прод наравне с вашим модулем. Замок версии и проверка в CI — часть поставки.
-prerequisites: [sec-authn-authz]
+prerequisites: [sec-sast-dast-sca]
 seoTitle: Supply chain для Python и React
 seoDescription: Lockfile, пин версии и что делать с новой зависимостью.
 seoKeywords: [supply chain, npm, pip, sca]

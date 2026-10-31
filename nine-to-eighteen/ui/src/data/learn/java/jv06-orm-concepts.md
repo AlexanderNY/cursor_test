@@ -12,7 +12,7 @@ tags: [java, orm, "собеседование", jpa, "n+1"]
 onKnowledgeMap: true
 durationMin: 65
 excerpt: "Зачем ORM и чем отличается от raw JDBC: persistence context, identity, dirty checking."
-prerequisites: [jv-shell-process]
+prerequisites: [jv-shell-process, sql-delete-truncate-drop]
 author: ""
 authorUrl: ""
 coverUrl: ""

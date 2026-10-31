@@ -8,6 +8,7 @@ import { formatDateTime } from '@/utils/date'
 
 interface RatingSectionProps {
   modeId: number | null
+  botId?: number | null
   modeTitle?: string
   showModeFilter?: boolean
   quizModes?: GameMode[]
@@ -32,6 +33,7 @@ function formatDate(iso?: string | null): string {
 
 export function RatingSection({
   modeId,
+  botId = null,
   modeTitle,
   showModeFilter = false,
   quizModes = [],
@@ -49,8 +51,8 @@ export function RatingSection({
     setError('')
     try {
       const [ratingRows, sessionRows] = await Promise.all([
-        gameService.listLeaderboard(50),
-        gameService.listSessions(modeId ?? undefined, 100),
+        gameService.listLeaderboard(50, botId ?? undefined),
+        gameService.listSessions(modeId ?? undefined, 100, botId ?? undefined),
       ])
       setLeaderboard(ratingRows)
       setSessions(sessionRows)
@@ -61,7 +63,7 @@ export function RatingSection({
     } finally {
       setIsLoading(false)
     }
-  }, [modeId])
+  }, [botId, modeId])
 
   useEffect(() => {
     loadStats()

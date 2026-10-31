@@ -379,10 +379,12 @@ export const gameService = {
     }
   },
 
-  async listLeaderboard(limit = 50): Promise<GameLeaderboardEntry[]> {
+  async listLeaderboard(limit = 50, botId?: number): Promise<GameLeaderboardEntry[]> {
     try {
+      const params = new URLSearchParams({ limit: String(limit) })
+      if (botId) params.set('bot_id', String(botId))
       const response = await apiClient.get<GameLeaderboardEntry[]>(
-        `/tg/game/admin/rating?limit=${limit}`,
+        `/tg/game/admin/rating?${params.toString()}`,
       )
       return response.data
     } catch (error) {
@@ -390,11 +392,13 @@ export const gameService = {
     }
   },
 
-  async listSessions(modeId?: number, limit = 100): Promise<GameSessionStats[]> {
+  async listSessions(modeId?: number, limit = 100, botId?: number): Promise<GameSessionStats[]> {
     try {
-      const modeParam = modeId ? `&mode_id=${modeId}` : ''
+      const params = new URLSearchParams({ limit: String(limit) })
+      if (modeId) params.set('mode_id', String(modeId))
+      if (botId) params.set('bot_id', String(botId))
       const response = await apiClient.get<GameSessionStats[]>(
-        `/tg/game/admin/sessions?limit=${limit}${modeParam}`,
+        `/tg/game/admin/sessions?${params.toString()}`,
       )
       return response.data
     } catch (error) {

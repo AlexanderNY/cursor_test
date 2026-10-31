@@ -177,8 +177,11 @@ async def delete_mode(mode_id: int) -> dict[str, str]:
     response_model=list[LeaderboardEntryOut],
     dependencies=[Depends(verify_game_admin_token)],
 )
-async def admin_leaderboard(limit: int = Query(default=50, ge=1, le=200)) -> list[LeaderboardEntryOut]:
-    rows = await get_leaderboard(limit=limit)
+async def admin_leaderboard(
+    limit: int = Query(default=50, ge=1, le=200),
+    bot_id: Optional[int] = None,
+) -> list[LeaderboardEntryOut]:
+    rows = await get_leaderboard(limit=limit, bot_id=bot_id)
     return [LeaderboardEntryOut(**r) for r in rows]
 
 
@@ -190,8 +193,13 @@ async def admin_leaderboard(limit: int = Query(default=50, ge=1, le=200)) -> lis
 async def admin_completed_sessions(
     limit: int = Query(default=100, ge=1, le=500),
     mode_id: Optional[int] = None,
+    bot_id: Optional[int] = None,
 ) -> list[GameSessionStatsOut]:
-    rows = await game_repository.fetch_completed_sessions(limit=limit, mode_id=mode_id)
+    rows = await game_repository.fetch_completed_sessions(
+        limit=limit,
+        mode_id=mode_id,
+        bot_id=bot_id,
+    )
     return [GameSessionStatsOut(**r) for r in rows]
 
 
@@ -214,8 +222,11 @@ async def delete_question(question_id: int) -> dict[str, str]:
     response_model=list[LeaderboardEntryOut],
     dependencies=[Depends(verify_game_admin_token)],
 )
-async def admin_leaderboard(limit: int = Query(default=50, ge=1, le=200)) -> list[LeaderboardEntryOut]:
-    rows = await get_leaderboard(limit=limit)
+async def admin_leaderboard(
+    limit: int = Query(default=50, ge=1, le=200),
+    bot_id: Optional[int] = None,
+) -> list[LeaderboardEntryOut]:
+    rows = await get_leaderboard(limit=limit, bot_id=bot_id)
     return [LeaderboardEntryOut(**r) for r in rows]
 
 
@@ -227,8 +238,13 @@ async def admin_leaderboard(limit: int = Query(default=50, ge=1, le=200)) -> lis
 async def admin_completed_sessions(
     limit: int = Query(default=100, ge=1, le=500),
     mode_id: Optional[int] = None,
+    bot_id: Optional[int] = None,
 ) -> list[GameSessionStatsOut]:
-    rows = await game_repository.fetch_completed_sessions(limit=limit, mode_id=mode_id)
+    rows = await game_repository.fetch_completed_sessions(
+        limit=limit,
+        mode_id=mode_id,
+        bot_id=bot_id,
+    )
     return [GameSessionStatsOut(**r) for r in rows]
 
 
@@ -237,8 +253,11 @@ async def admin_completed_sessions(
     response_model=list[LeaderboardEntryOut],
     dependencies=[Depends(verify_game_admin_token)],
 )
-async def admin_leaderboard(limit: int = Query(default=50, ge=1, le=200)) -> list[LeaderboardEntryOut]:
-    rows = await get_leaderboard(limit=limit)
+async def admin_leaderboard(
+    limit: int = Query(default=50, ge=1, le=200),
+    bot_id: Optional[int] = None,
+) -> list[LeaderboardEntryOut]:
+    rows = await get_leaderboard(limit=limit, bot_id=bot_id)
     return [LeaderboardEntryOut(**r) for r in rows]
 
 
@@ -250,8 +269,13 @@ async def admin_leaderboard(limit: int = Query(default=50, ge=1, le=200)) -> lis
 async def admin_completed_sessions(
     limit: int = Query(default=100, ge=1, le=500),
     mode_id: Optional[int] = None,
+    bot_id: Optional[int] = None,
 ) -> list[GameSessionStatsOut]:
-    rows = await game_repository.fetch_completed_sessions(limit=limit, mode_id=mode_id)
+    rows = await game_repository.fetch_completed_sessions(
+        limit=limit,
+        mode_id=mode_id,
+        bot_id=bot_id,
+    )
     return [GameSessionStatsOut(**r) for r in rows]
 
 
@@ -408,8 +432,11 @@ async def delete_question(question_id: int) -> dict[str, str]:
     response_model=list[LeaderboardEntryOut],
     dependencies=[Depends(verify_game_admin_token)],
 )
-async def admin_leaderboard(limit: int = Query(default=50, ge=1, le=200)) -> list[LeaderboardEntryOut]:
-    rows = await get_leaderboard(limit=limit)
+async def admin_leaderboard(
+    limit: int = Query(default=50, ge=1, le=200),
+    bot_id: Optional[int] = None,
+) -> list[LeaderboardEntryOut]:
+    rows = await get_leaderboard(limit=limit, bot_id=bot_id)
     return [LeaderboardEntryOut(**r) for r in rows]
 
 
@@ -421,6 +448,11 @@ async def admin_leaderboard(limit: int = Query(default=50, ge=1, le=200)) -> lis
 async def admin_completed_sessions(
     limit: int = Query(default=100, ge=1, le=500),
     mode_id: Optional[int] = None,
+    bot_id: Optional[int] = None,
 ) -> list[GameSessionStatsOut]:
-    rows = await game_repository.fetch_completed_sessions(limit=limit, mode_id=mode_id)
+    rows = await game_repository.fetch_completed_sessions(
+        limit=limit,
+        mode_id=mode_id,
+        bot_id=bot_id,
+    )
     return [GameSessionStatsOut(**r) for r in rows]

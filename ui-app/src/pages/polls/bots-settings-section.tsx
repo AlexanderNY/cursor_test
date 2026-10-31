@@ -144,7 +144,7 @@ export function BotsSettingsSection({
       <div>
         <h3 className="text-sm font-semibold text-[var(--text-primary)]">Настройки Telegram-ботов</h3>
         <p className="mt-1 text-xs text-[var(--text-secondary)]">
-          Каждый бот — отдельный опрос/игра. Режимы привязываются к выбранному боту.
+          Несколько ботов могут быть включены сразу: каждый опрашивается своим токеном. Нажмите на бота, чтобы править его режимы, вопросы и заказы.
         </p>
       </div>
 
@@ -191,7 +191,14 @@ export function BotsSettingsSection({
                     className="text-left"
                     onClick={() => onSelectBot(bot.id)}
                   >
-                    <p className="font-medium text-[var(--text-primary)]">{bot.name}</p>
+                    <p className="font-medium text-[var(--text-primary)]">
+                      {bot.name}
+                      {isSelected && (
+                        <span className="ml-2 rounded-full bg-primary-500/15 px-2 py-0.5 text-xs font-normal text-primary-400">
+                          выбран
+                        </span>
+                      )}
+                    </p>
                     <p className="text-xs text-[var(--text-secondary)]">
                       {bot.username ? `@${bot.username}` : 'username не задан'}
                       {bot.is_polling ? ' · polling активен' : ' · polling выкл'}

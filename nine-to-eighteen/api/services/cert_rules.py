@@ -64,6 +64,28 @@ def is_cert_code(raw: str) -> bool:
     return bool(CODE_RE.match((raw or "").strip().upper()))
 
 
+def certificate_holder_name(
+    last_name: str,
+    first_name: str,
+    patronymic: str = "",
+    username: str = "",
+) -> str:
+    """Фамилия Имя Отчество для бланка. Логин — только если имени нет."""
+    last = (last_name or "").strip()
+    first = (first_name or "").strip()
+    middle = (patronymic or "").strip()
+    if last and first:
+        parts = [last, first]
+        if middle:
+            parts.append(middle)
+        return " ".join(parts)[:120]
+    partial = " ".join(part for part in (last, first, middle) if part)
+    if partial:
+        return partial[:120]
+    login = (username or "").strip()
+    return (login or "Участник")[:120]
+
+
 def best_quiz_percents(attempts: list[dict[str, Any]]) -> dict[str, int]:
     best: dict[str, int] = {}
     for item in attempts:

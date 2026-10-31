@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { EmptyState } from '@/components/ui/empty-state'
 import { RatingSection } from './rating-section'
 import { usePollsContext } from './polls-context'
@@ -7,6 +7,10 @@ export function PollsRatingPage() {
   const { selectedBotId, modes, hasQuizModes } = usePollsContext()
   const quizModes = modes.filter((mode) => mode.mode_type === 'quiz')
   const [filterModeId, setFilterModeId] = useState<number | null>(null)
+
+  useEffect(() => {
+    setFilterModeId(null)
+  }, [selectedBotId])
 
   if (!selectedBotId) {
     return (
@@ -33,6 +37,7 @@ export function PollsRatingPage() {
   return (
     <RatingSection
       modeId={filterModeId}
+      botId={selectedBotId}
       modeTitle={filteredMode?.title}
       showModeFilter
       quizModes={quizModes}

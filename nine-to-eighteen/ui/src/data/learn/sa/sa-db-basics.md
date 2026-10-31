@@ -12,7 +12,7 @@ tags: [sa, "БД", "СУБД", "нормализация", NoSQL, PK, "собе�
 onKnowledgeMap: true
 durationMin: 62
 excerpt: "БД и СУБД, типы БД, зачем реляционные, задачи NoSQL, нормализация 1–3NF, денормализация, типы связей, M:N и первичный ключ."
-prerequisites: [sa-gost-srs-artifacts]
+prerequisites: []
 author: ""
 authorUrl: ""
 coverUrl: ""

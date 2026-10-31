@@ -12,7 +12,7 @@ tags: [docker, "собеседование", architecture]
 onKnowledgeMap: true
 durationMin: 40
 excerpt: ""
-prerequisites: []
+prerequisites: [b05-api-check]
 author: ""
 authorUrl: ""
 coverUrl: ""

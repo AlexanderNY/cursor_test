@@ -12,7 +12,7 @@ tags: [product, drill, "собеседование", capstone]
 onKnowledgeMap: true
 durationMin: 60
 excerpt: "Вытяжные ответы CPO/PM."
-prerequisites: [pm-pnl-unit-econ]
+prerequisites: [pm-pnl-unit-econ, pm-discovery, pm-acceptance]
 author: ""
 authorUrl: ""
 coverUrl: ""

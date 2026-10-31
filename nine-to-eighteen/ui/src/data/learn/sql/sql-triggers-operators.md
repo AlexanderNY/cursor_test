@@ -12,7 +12,7 @@ tags: [sql, "триггеры", "операторы", PostgreSQL, "собесе�
 onKnowledgeMap: true
 durationMin: 60
 excerpt: "Q24–Q25: что такое триггер, когда его применять; арифметические, логические и сравнения в SQL — с фокусом на PostgreSQL."
-prerequisites: [sql-normalization]
+prerequisites: [sql-delete-truncate-drop, sql-types-null]
 author: ""
 authorUrl: ""
 coverUrl: ""

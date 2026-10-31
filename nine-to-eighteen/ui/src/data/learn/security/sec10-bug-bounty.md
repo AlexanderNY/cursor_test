@@ -12,7 +12,7 @@ tags: [security, bug-bounty, appsec, собеседование]
 onKnowledgeMap: true
 durationMin: 40
 excerpt: Программа платит за сценарий в оговорённых границах. Внутри это тот же разбор: дубль, вред, срок исправления.
-prerequisites: [sec-sast-dast-sca]
+prerequisites: [sec-sast-dast-sca, sec-threat-model]
 seoTitle: Bug bounty для AppSec
 seoDescription: Границы программы, дубли и как довести отчёт до исправления.
 seoKeywords: [bug bounty, appsec, уязвимость]

@@ -12,7 +12,7 @@ tags: [analyst, jira, confluence, собеседование]
 onKnowledgeMap: true
 durationMin: 40
 excerpt: Задача несёт работу и критерии. Страница несёт решение, которое переживёт спринт. Одно другим не заменяют.
-prerequisites: [sa-rest-basics]
+prerequisites: [sa-gost-srs-artifacts]
 seoTitle: Jira и Confluence системного аналитика
 seoDescription: Что писать в задаче, а что на странице решения.
 seoKeywords: [jira, confluence, системный аналитик]

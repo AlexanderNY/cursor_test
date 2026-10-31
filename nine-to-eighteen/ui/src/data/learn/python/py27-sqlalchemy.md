@@ -12,7 +12,7 @@ tags: [python, sqlalchemy, postgresql, orm, собеседование]
 onKnowledgeMap: true
 durationMin: 45
 excerpt: ORM не отменяет SQL. На собесе показывают сессию, границу транзакции и запрос, который раздулся в цикл.
-prerequisites: [py-oop-advanced-mro]
+prerequisites: [py-oop-basics, sql-normalization]
 seoTitle: SQLAlchemy на собесе — middle
 seoDescription: Session, commit, relationship и как поймать N+1.
 seoKeywords: [sqlalchemy, orm, python, postgres]

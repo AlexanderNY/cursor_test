@@ -12,7 +12,7 @@ tags: [sql, "нормализация", 1NF, 2NF, 3NF, "денормализац
 onKnowledgeMap: true
 durationMin: 70
 excerpt: "Сущности и связи, выгоды нормализации, формы 1NF–3NF и когда осознанно денормализуют схему."
-prerequisites: [sql-types-null]
+prerequisites: [sql-delete-truncate-drop, sql-types-null]
 author: ""
 authorUrl: ""
 coverUrl: ""

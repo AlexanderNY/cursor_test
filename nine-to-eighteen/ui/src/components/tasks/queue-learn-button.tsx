@@ -1,12 +1,20 @@
 type QueueLearnButtonProps = {
   queued: boolean
   busy: boolean
+  label?: string
+  queuedLabel?: string
   onQueue: () => void
 }
 
-export function QueueLearnButton({ queued, busy, onQueue }: QueueLearnButtonProps) {
+export function QueueLearnButton({
+  queued,
+  busy,
+  label = 'В задачи',
+  queuedLabel = 'В списке',
+  onQueue,
+}: QueueLearnButtonProps) {
   if (queued) {
-    return <span className="learn-badge">В задачах</span>
+    return <span className="learn-badge">{queuedLabel}</span>
   }
   return (
     <button
@@ -15,7 +23,7 @@ export function QueueLearnButton({ queued, busy, onQueue }: QueueLearnButtonProp
       disabled={busy}
       onClick={onQueue}
     >
-      {busy ? 'Добавляю…' : 'В задачи'}
+      {busy ? 'Добавляю…' : label}
     </button>
   )
 }

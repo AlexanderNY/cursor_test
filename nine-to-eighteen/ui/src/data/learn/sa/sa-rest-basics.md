@@ -12,7 +12,7 @@ tags: [sa, REST, API, HTTP, idempotent, "кэш", "собеседование", 
 onKnowledgeMap: true
 durationMin: 66
 excerpt: "API и REST, RESTful и Stateless, кэширование, методы, параметры, URL, заголовки, 200/201, GET/POST, PUT/PATCH, идемпотентность."
-prerequisites: [sa-db-basics]
+prerequisites: [sa-requirements-basics, net-dns-http]
 author: ""
 authorUrl: ""
 coverUrl: ""

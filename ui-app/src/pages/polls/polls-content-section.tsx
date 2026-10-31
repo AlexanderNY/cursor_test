@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -6,7 +6,14 @@ import { Alert } from '@/components/ui/alert'
 import { EmptyState } from '@/components/ui/empty-state'
 import { TableSkeleton } from '@/components/ui/skeleton'
 import { gameService } from '@/services/game-service'
-import type { GameMode, GameModeType, GameOptionInput, GameQuestion } from '@/types/game'
+import type {
+  GameMode,
+  GameModeType,
+  GameOption,
+  GameOptionInput,
+  GameQuestion,
+  GameQuestionDetail,
+} from '@/types/game'
 import { isCountryModeType } from '@/types/game'
 import { CountryCatalogSection, QuestionsPerGameEditor } from './country-catalog-section'
 import { CsvImportSection } from './csv-import-section'
@@ -30,6 +37,152 @@ function validateOptions(options: GameOptionInput[]): string | null {
   return null
 }
 
+function questionsCountLabel(count: number): string {
+  const mod10 = count % 10
+  const mod100 = count % 100
+  if (mod10 === 1 && mod100 !== 11) return `${count} вопрос`
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return `${count} вопроса`
+  return `${count} вопросов`
+}
+
+function optionsForEditor(detail: GameQuestionDetail): GameOptionInput[] {
+  const byIndex = new Map(detail.options.map((option) => [option.option_index, option]))
+  const hasCorrect = detail.options.some((option) => option.is_correct)
+  return emptyOptions().map((slot) => {
+    const existing = byIndex.get(slot.option_index)
+    return {
+      option_index: slot.option_index,
+      option_text: existing?.option_text ?? '',
+      is_correct: existing ? existing.is_correct : !hasCorrect && slot.option_index === 1,
+    }
+  })
+}
+
+function isCompleteQuestion(question: GameQuestionDetail): boolean {
+  return question.options.length === 6 && question.options.filter((option) => option.is_correct).length === 1
+}
+
+function QuestionOptionsView({ options }: { options: GameOption[] }) {
+  const sorted = [...options].sort((a, b) => a.option_index - b.option_index)
+  if (sorted.length === 0) {
+    return <p className="text-sm text-amber-400">Вариантов нет — вопрос не попадёт в игру.</p>
+  }
+
+  return (
+    <ol className="space-y-1.5">
+      {sorted.map((option) => (
+        <li
+          key={option.id}
+          className={`rounded-lg px-3 py-1.5 text-sm ${
+            option.is_correct
+              ? 'bg-emerald-500/15 text-emerald-300'
+              : 'bg-[var(--bg-tertiary)] text-[var(--text-primary)]'
+          }`}
+        >
+          <span className="mr-2 tabular-nums text-[var(--text-secondary)]">{option.option_index}.</span>
+          {option.option_text}
+          {option.is_correct && (
+            <span className="ml-2 text-xs font-medium uppercase tracking-wide text-emerald-400">
+              правильный
+            </span>
+          )}
+        </li>
+      ))}
+    </ol>
+  )
+}
+
+interface QuestionDraftFormProps {
+  title: string
+  promptText: string
+  imageUrl: string
+  options: GameOptionInput[]
+  isSaving: boolean
+  submitLabel: string
+  onPromptTextChange: (value: string) => void
+  onImageUrlChange: (value: string) => void
+  onOptionTextChange: (index: number, text: string) => void
+  onCorrectOptionChange: (index: number) => void
+  onSubmit: (event: FormEvent) => void
+  onCancel: () => void
+}
+
+function QuestionDraftForm({
+  title,
+  promptText,
+  imageUrl,
+  options,
+  isSaving,
+  submitLabel,
+  onPromptTextChange,
+  onImageUrlChange,
+  onOptionTextChange,
+  onCorrectOptionChange,
+  onSubmit,
+  onCancel,
+}: QuestionDraftFormProps) {
+  const sorted = [...options].sort((a, b) => a.option_index - b.option_index)
+
+  return (
+    <form onSubmit={onSubmit} className="space-y-4">
+      <h3 className="text-sm font-semibold text-[var(--text-primary)]">{title}</h3>
+      <textarea
+        className="w-full min-h-[100px] rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-sm text-[var(--text-primary)]"
+        placeholder="Текст вопроса"
+        value={promptText}
+        onChange={(event) => onPromptTextChange(event.target.value)}
+      />
+      <Input
+        placeholder="URL изображения (необязательно, можно из медиатеки)"
+        value={imageUrl}
+        onChange={(event) => onImageUrlChange(event.target.value)}
+      />
+      {imageUrl && (
+        <img
+          src={imageUrl}
+          alt="Превью"
+          className="max-h-32 rounded-lg border border-[var(--border-color)] object-contain"
+          onError={(event) => {
+            ;(event.target as HTMLImageElement).style.display = 'none'
+          }}
+        />
+      )}
+      <div className="space-y-2">
+        <p className="text-sm font-medium text-[var(--text-primary)]">Варианты ответа</p>
+        {sorted.map((option) => (
+          <div key={option.option_index} className="flex items-center gap-2">
+            <input
+              type="radio"
+              name="correct-option"
+              checked={option.is_correct}
+              onChange={() => onCorrectOptionChange(option.option_index)}
+              title="Правильный ответ"
+            />
+            <span className="w-6 text-sm text-[var(--text-secondary)]">{option.option_index}.</span>
+            <Input
+              className="flex-1"
+              placeholder={`Вариант ${option.option_index}`}
+              value={option.option_text}
+              onChange={(event) => onOptionTextChange(option.option_index, event.target.value)}
+            />
+          </div>
+        ))}
+        <p className="text-xs text-[var(--text-secondary)]">
+          Отметьте радиокнопкой один правильный ответ.
+        </p>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <Button type="submit" isLoading={isSaving}>
+          {submitLabel}
+        </Button>
+        <Button type="button" variant="secondary" onClick={onCancel}>
+          Отмена
+        </Button>
+      </div>
+    </form>
+  )
+}
+
 export function PollsContentSection() {
   const {
     selectedBotId,
@@ -44,7 +197,8 @@ export function PollsContentSection() {
 
   const isCountryMode = selectedMode ? isCountryModeType(selectedMode.mode_type) : false
 
-  const [questions, setQuestions] = useState<GameQuestion[]>([])
+  const [questions, setQuestions] = useState<GameQuestionDetail[]>([])
+  const [questionQuery, setQuestionQuery] = useState('')
   const [isLoadingQuestions, setIsLoadingQuestions] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
@@ -63,7 +217,6 @@ export function PollsContentSection() {
   const [imageUrl, setImageUrl] = useState('')
   const [options, setOptions] = useState<GameOptionInput[]>(emptyOptions())
   const [isSavingQuestion, setIsSavingQuestion] = useState(false)
-  const [loadingQuestionId, setLoadingQuestionId] = useState<number | null>(null)
   const [togglingQuestionId, setTogglingQuestionId] = useState<number | null>(null)
   const [deletingQuestionId, setDeletingQuestionId] = useState<number | null>(null)
 
@@ -71,7 +224,7 @@ export function PollsContentSection() {
     setError('')
     setIsLoadingQuestions(true)
     try {
-      const data = await gameService.listQuestions(modeId)
+      const data = await gameService.listQuestionsWithOptions(modeId)
       setQuestions(data)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Не удалось загрузить вопросы')
@@ -82,10 +235,29 @@ export function PollsContentSection() {
   }, [])
 
   useEffect(() => {
+    setQuestionQuery('')
     if (selectedModeId && !isMenuMode && !isCountryMode) {
       loadQuestions(selectedModeId)
+    } else {
+      setQuestions([])
     }
   }, [selectedModeId, isMenuMode, isCountryMode, loadQuestions])
+
+  const visibleQuestions = useMemo(() => {
+    const query = questionQuery.trim().toLowerCase()
+    const matched = !query
+      ? questions
+      : questions.filter((question) => {
+          if (String(question.id).includes(query)) return true
+          if (question.prompt_text.toLowerCase().includes(query)) return true
+          return question.options.some((option) => option.option_text.toLowerCase().includes(query))
+        })
+    if (!editingQuestionId || matched.some((question) => question.id === editingQuestionId)) {
+      return matched
+    }
+    const editing = questions.find((question) => question.id === editingQuestionId)
+    return editing ? [editing, ...matched] : matched
+  }, [editingQuestionId, questionQuery, questions])
 
   function resetQuestionForm() {
     setEditingQuestionId(null)
@@ -105,30 +277,17 @@ export function PollsContentSection() {
     setShowQuestionForm(true)
   }
 
-  async function openEditQuestionForm(questionId: number) {
+  function openEditQuestionForm(question: GameQuestionDetail) {
     setError('')
     setSuccess('')
-    setLoadingQuestionId(questionId)
-    try {
-      const detail = await gameService.getQuestion(questionId)
-      setEditingQuestionId(questionId)
-      setPromptText(detail.prompt_text)
-      setImageUrl(detail.image_url ?? '')
-      setOptions(
-        detail.options
-          .sort((a, b) => a.option_index - b.option_index)
-          .map((o) => ({
-            option_index: o.option_index,
-            option_text: o.option_text,
-            is_correct: o.is_correct,
-          })),
-      )
-      setShowQuestionForm(true)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Не удалось загрузить вопрос')
-    } finally {
-      setLoadingQuestionId(null)
-    }
+    setEditingQuestionId(question.id)
+    setPromptText(question.prompt_text)
+    setImageUrl(question.image_url ?? '')
+    setOptions(optionsForEditor(question))
+    setShowQuestionForm(true)
+    requestAnimationFrame(() => {
+      document.getElementById(`question-${question.id}`)?.scrollIntoView({ block: 'nearest' })
+    })
   }
 
   async function handleCreateMode(e: FormEvent) {
@@ -460,8 +619,8 @@ export function PollsContentSection() {
                   Вопросы{selectedMode ? `: ${selectedMode.title}` : ''}
                 </CardTitle>
                 <CardDescription>
-                  Каждый вопрос — 6 вариантов, один правильный. Без полного набора вопрос не попадёт в игру.
-                  За партию берётся не больше числа ниже, из активных вопросов.
+                  Состав каждого вопроса виден сразу: текст и шесть вариантов, правильный отмечен.
+                  Правка открывается в той же карточке. Без полного набора вопрос не попадёт в игру.
                 </CardDescription>
               </div>
               {selectedModeId && (
@@ -503,72 +662,23 @@ export function PollsContentSection() {
               <EmptyState title="Выберите режим" description="Слева выберите или создайте режим игры." />
             ) : (
               <>
-                {showQuestionForm && (
-                  <form
-                    onSubmit={handleSaveQuestion}
-                    className="space-y-4 rounded-xl border border-[var(--border-color)] p-4"
-                  >
-                    <h3 className="text-sm font-semibold text-[var(--text-primary)]">
-                      {editingQuestionId ? 'Редактирование вопроса' : 'Новый вопрос'}
-                    </h3>
-                    <textarea
-                      className="w-full min-h-[100px] rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-sm text-[var(--text-primary)]"
-                      placeholder="Текст вопроса"
-                      value={promptText}
-                      onChange={(e) => setPromptText(e.target.value)}
+                {showQuestionForm && !editingQuestionId && (
+                  <div className="rounded-xl border border-[var(--border-color)] p-4">
+                    <QuestionDraftForm
+                      title="Новый вопрос"
+                      promptText={promptText}
+                      imageUrl={imageUrl}
+                      options={options}
+                      isSaving={isSavingQuestion}
+                      submitLabel="Создать вопрос"
+                      onPromptTextChange={setPromptText}
+                      onImageUrlChange={setImageUrl}
+                      onOptionTextChange={handleOptionTextChange}
+                      onCorrectOptionChange={handleCorrectOptionChange}
+                      onSubmit={handleSaveQuestion}
+                      onCancel={resetQuestionForm}
                     />
-                    <Input
-                      placeholder="URL изображения (необязательно, можно из медиатеки)"
-                      value={imageUrl}
-                      onChange={(e) => setImageUrl(e.target.value)}
-                    />
-                    {imageUrl && (
-                      <img
-                        src={imageUrl}
-                        alt="Превью"
-                        className="max-h-32 rounded-lg border border-[var(--border-color)] object-contain"
-                        onError={(e) => {
-                          ;(e.target as HTMLImageElement).style.display = 'none'
-                        }}
-                      />
-                    )}
-                    <div className="space-y-2">
-                      <p className="text-sm font-medium text-[var(--text-primary)]">Варианты ответа</p>
-                      {options
-                        .sort((a, b) => a.option_index - b.option_index)
-                        .map((option) => (
-                          <div key={option.option_index} className="flex items-center gap-2">
-                            <input
-                              type="radio"
-                              name="correct-option"
-                              checked={option.is_correct}
-                              onChange={() => handleCorrectOptionChange(option.option_index)}
-                              title="Правильный ответ"
-                            />
-                            <span className="w-6 text-sm text-[var(--text-secondary)]">{option.option_index}.</span>
-                            <Input
-                              className="flex-1"
-                              placeholder={`Вариант ${option.option_index}`}
-                              value={option.option_text}
-                              onChange={(e) =>
-                                handleOptionTextChange(option.option_index, e.target.value)
-                              }
-                            />
-                          </div>
-                        ))}
-                      <p className="text-xs text-[var(--text-secondary)]">
-                        Отметьте радиокнопкой один правильный ответ.
-                      </p>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      <Button type="submit" isLoading={isSavingQuestion}>
-                        {editingQuestionId ? 'Сохранить' : 'Создать вопрос'}
-                      </Button>
-                      <Button type="button" variant="secondary" onClick={resetQuestionForm}>
-                        Отмена
-                      </Button>
-                    </div>
-                  </form>
+                  </div>
                 )}
 
                 {isLoadingQuestions ? (
@@ -579,74 +689,127 @@ export function PollsContentSection() {
                     description="Добавьте вопросы с шестью вариантами ответа для выбранного режима."
                   />
                 ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b border-[var(--border-color)] text-left text-[var(--text-secondary)]">
-                          <th className="pb-2 pr-3 font-medium">ID</th>
-                          <th className="pb-2 pr-3 font-medium">Вопрос</th>
-                          <th className="pb-2 pr-3 font-medium">Статус</th>
-                          <th className="pb-2 font-medium">Действия</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {questions.map((q) => (
-                          <tr key={q.id} className="border-b border-[var(--border-color)]/60">
-                            <td className="py-3 pr-3 text-[var(--text-secondary)]">{q.id}</td>
-                            <td className="py-3 pr-3 max-w-md">
-                              <p className="line-clamp-2 text-[var(--text-primary)]">{q.prompt_text}</p>
-                              {q.image_url && (
-                                <p className="mt-1 truncate text-xs text-[var(--text-secondary)]">
-                                  {q.image_url}
-                                </p>
-                              )}
-                            </td>
-                            <td className="py-3 pr-3">
-                              <span
-                                className={`rounded-full px-2 py-0.5 text-xs ${
-                                  q.is_active
-                                    ? 'bg-emerald-500/15 text-emerald-400'
-                                    : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]'
-                                }`}
-                              >
-                                {q.is_active ? 'активен' : 'выкл'}
-                              </span>
-                            </td>
-                            <td className="py-3">
-                              <div className="flex flex-wrap gap-2">
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  variant="secondary"
-                                  isLoading={loadingQuestionId === q.id}
-                                  onClick={() => openEditQuestionForm(q.id)}
+                  <div className="space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <p className="text-sm text-[var(--text-secondary)]">
+                        {questionsCountLabel(questions.length)}
+                        {' · '}
+                        активных {questions.filter((question) => question.is_active).length}
+                      </p>
+                      <Input
+                        className="max-w-xs"
+                        placeholder="Поиск по тексту или варианту"
+                        value={questionQuery}
+                        onChange={(event) => setQuestionQuery(event.target.value)}
+                      />
+                    </div>
+                    {visibleQuestions.length === 0 ? (
+                      <EmptyState
+                        title="Ничего не найдено"
+                        description="Измените запрос: ищется номер, текст вопроса и варианты ответа."
+                      />
+                    ) : (
+                      visibleQuestions.map((question) => {
+                        const isEditing = editingQuestionId === question.id
+                        return (
+                          <article
+                            key={question.id}
+                            id={`question-${question.id}`}
+                            className={`space-y-3 rounded-xl border p-4 ${
+                              isEditing
+                                ? 'border-primary-500 bg-primary-500/5'
+                                : 'border-[var(--border-color)]'
+                            }`}
+                          >
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                              <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--text-secondary)]">
+                                <span className="font-mono">#{question.id}</span>
+                                <span
+                                  className={`rounded-full px-2 py-0.5 ${
+                                    question.is_active
+                                      ? 'bg-emerald-500/15 text-emerald-400'
+                                      : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]'
+                                  }`}
                                 >
-                                  Изменить
-                                </Button>
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  variant="secondary"
-                                  isLoading={togglingQuestionId === q.id}
-                                  onClick={() => handleToggleQuestionActive(q)}
-                                >
-                                  {q.is_active ? 'Выключить' : 'Включить'}
-                                </Button>
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  variant="danger"
-                                  isLoading={deletingQuestionId === q.id}
-                                  onClick={() => handleDeleteQuestion(q)}
-                                >
-                                  Удалить
-                                </Button>
+                                  {question.is_active ? 'активен' : 'выкл'}
+                                </span>
+                                {!isCompleteQuestion(question) && (
+                                  <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-amber-400">
+                                    неполный набор
+                                  </span>
+                                )}
                               </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                              {!isEditing && (
+                                <div className="flex flex-wrap gap-2">
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="secondary"
+                                    onClick={() => openEditQuestionForm(question)}
+                                  >
+                                    Изменить
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="secondary"
+                                    isLoading={togglingQuestionId === question.id}
+                                    onClick={() => handleToggleQuestionActive(question)}
+                                  >
+                                    {question.is_active ? 'Выключить' : 'Включить'}
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="danger"
+                                    isLoading={deletingQuestionId === question.id}
+                                    onClick={() => handleDeleteQuestion(question)}
+                                  >
+                                    Удалить
+                                  </Button>
+                                </div>
+                              )}
+                            </div>
+
+                            {isEditing ? (
+                              <QuestionDraftForm
+                                title="Редактирование вопроса"
+                                promptText={promptText}
+                                imageUrl={imageUrl}
+                                options={options}
+                                isSaving={isSavingQuestion}
+                                submitLabel="Сохранить"
+                                onPromptTextChange={setPromptText}
+                                onImageUrlChange={setImageUrl}
+                                onOptionTextChange={handleOptionTextChange}
+                                onCorrectOptionChange={handleCorrectOptionChange}
+                                onSubmit={handleSaveQuestion}
+                                onCancel={resetQuestionForm}
+                              />
+                            ) : (
+                              <div className="flex gap-4">
+                                <div className="min-w-0 flex-1 space-y-3">
+                                  <p className="whitespace-pre-wrap text-sm text-[var(--text-primary)]">
+                                    {question.prompt_text}
+                                  </p>
+                                  <QuestionOptionsView options={question.options} />
+                                </div>
+                                {question.image_url && (
+                                  <img
+                                    src={question.image_url}
+                                    alt=""
+                                    className="h-20 w-20 shrink-0 rounded-lg border border-[var(--border-color)] object-contain"
+                                    onError={(event) => {
+                                      ;(event.target as HTMLImageElement).style.display = 'none'
+                                    }}
+                                  />
+                                )}
+                              </div>
+                            )}
+                          </article>
+                        )
+                      })
+                    )}
                   </div>
                 )}
               </>

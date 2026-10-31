@@ -4,8 +4,10 @@ export type MindNode = {
   children: MindNode[]
   description?: string
   tags?: string[]
-  /** Learn article slug when leaf is linked 1:1. */
+  /** Learn article. Темы того же выпуска вложены в этот узел. */
   learnSlug?: string
+  /** Статьи, которые лучше прочитать до этой. Стрелки идут в этот узел. */
+  prerequisites?: string[]
   /** Profile ids that should see this node (empty = all). */
   profiles?: string[]
 }
@@ -30,13 +32,13 @@ function headingDepth(line: string): number | null {
   return match[1].length
 }
 
-function bulletDepth(line: string): number | null {
+function bulletIndent(line: string): number | null {
   const match = /^(\s*)-\s+(.+)$/.exec(line)
   if (!match) {
     return null
   }
   const spaces = match[1].replace(/\t/g, '  ').length
-  return 3 + Math.floor(spaces / 2)
+  return Math.floor(spaces / 2)
 }
 
 function cleanTitle(raw: string): string {
@@ -47,10 +49,12 @@ function extractMeta(raw: string): {
   text: string
   tags: string[]
   learnSlug?: string
+  prerequisites?: string[]
   profiles?: string[]
 } {
   let text = cleanTitle(raw)
   let learnSlug: string | undefined
+  let prerequisites: string[] | undefined
   let profiles: string[] | undefined
   const brace = /\{([^}]*)\}\s*$/.exec(text)
   if (brace) {
@@ -59,6 +63,14 @@ function extractMeta(raw: string): {
     const learnMatch = /learn\s*:\s*([a-z0-9-]+)/i.exec(meta)
     if (learnMatch) {
       learnSlug = learnMatch[1].toLowerCase()
+    }
+    const prereqMatch = /prereq\s*:\s*([a-z0-9-]+(?:\s*,\s*[a-z0-9-]+)*)/i.exec(meta)
+    if (prereqMatch) {
+      const slugs = prereqMatch[1]
+        .split(',')
+        .map((slug) => slug.trim().toLowerCase())
+        .filter(Boolean)
+      prerequisites = slugs.length ? [...new Set(slugs)] : undefined
     }
     const profilesMatch = /profiles\s*:\s*([a-z0-9_,\s-]+)/i.exec(meta)
     if (profilesMatch) {
@@ -76,7 +88,7 @@ function extractMeta(raw: string): {
     })
     .replace(/\s+/g, ' ')
     .trim()
-  return { text, tags, learnSlug, profiles }
+  return { text, tags, learnSlug, prerequisites, profiles }
 }
 
 function splitTitleDescription(raw: string): { title: string; description: string } {
@@ -133,16 +145,20 @@ function promoteDescriptionChildren(node: MindNode): void {
   if (!node.learnSlug && only.learnSlug) {
     node.learnSlug = only.learnSlug
   }
+  if ((!node.prerequisites || node.prerequisites.length === 0) && only.prerequisites?.length) {
+    node.prerequisites = only.prerequisites
+  }
   if ((!node.profiles || node.profiles.length === 0) && only.profiles?.length) {
     node.profiles = only.profiles
   }
   node.children = []
 }
 
-/** Парсит outline из `#` / `##` / `###` / `-` в дерево mind map. */
+/** Парсит outline: `#`…`######` и списки. `-` вкладывается в текущий заголовок, отступ — глубже. */
 export function parseOutlineMarkdown(markdown: string): MindNode {
   const root: MindNode = { id: 'root', title: 'собеседование', children: [] }
   const stack: StackItem[] = [{ depth: 0, node: root }]
+  let currentHeading = 1
   let counter = 0
 
   const pushNode = (depth: number, rawTitle: string): void => {
@@ -160,6 +176,7 @@ export function parseOutlineMarkdown(markdown: string): MindNode {
       description: split.description || undefined,
       tags: meta.tags.length ? meta.tags : undefined,
       learnSlug: meta.learnSlug,
+      prerequisites: meta.prerequisites,
       profiles: meta.profiles,
     }
     parent.children.push(node)
@@ -178,16 +195,18 @@ export function parseOutlineMarkdown(markdown: string): MindNode {
       if (hDepth === 1) {
         root.title = extractMeta(title).text || root.title
         stack.length = 1
+        currentHeading = 1
         continue
       }
       pushNode(hDepth, title)
+      currentHeading = hDepth
       continue
     }
 
-    const bDepth = bulletDepth(line)
-    if (bDepth !== null) {
+    const indent = bulletIndent(line)
+    if (indent !== null) {
       const title = cleanTitle(line.replace(/^\s*-\s+/, ''))
-      pushNode(bDepth, title)
+      pushNode(currentHeading + 1 + indent, title)
     }
   }
 
@@ -197,42 +216,31 @@ export function parseOutlineMarkdown(markdown: string): MindNode {
 }
 
 /**
- * Invariant: one Learn article (learnSlug) ↔ one leaf node.
- * - learnSlug only kept on leaves (no children).
- * - duplicate slug on a later node is dropped (console warn).
+ * Один learnSlug на всё дерево. Статья может быть не листом:
+ * следующая статья и темы того же выпуска вложены в неё.
+ * Повтор slug на более позднем узле снимается.
  */
 export function enforceLearnSlugLeafInvariant(root: MindNode): void {
   const seen = new Map<string, string>()
 
   const walk = (node: MindNode): void => {
+    if (node.learnSlug && node.id !== 'root') {
+      const slug = node.learnSlug.toLowerCase()
+      const prevId = seen.get(slug)
+      if (prevId) {
+        if (typeof console !== 'undefined') {
+          console.warn(
+            `[learning-map] duplicate learn:${slug} on «${node.title}» (id=${node.id}); kept ${prevId}`,
+          )
+        }
+        delete node.learnSlug
+      } else {
+        seen.set(slug, node.id)
+      }
+    }
     for (const child of node.children) {
       walk(child)
     }
-    if (!node.learnSlug) {
-      return
-    }
-    const slug = node.learnSlug.toLowerCase()
-    const isLeaf = node.children.length === 0 && node.id !== 'root'
-    if (!isLeaf) {
-      if (typeof console !== 'undefined') {
-        console.warn(
-          `[learning-map] learn:${slug} ignored on non-leaf «${node.title}» (id=${node.id})`,
-        )
-      }
-      delete node.learnSlug
-      return
-    }
-    const prevId = seen.get(slug)
-    if (prevId) {
-      if (typeof console !== 'undefined') {
-        console.warn(
-          `[learning-map] duplicate learn:${slug} on «${node.title}» (id=${node.id}); kept ${prevId}`,
-        )
-      }
-      delete node.learnSlug
-      return
-    }
-    seen.set(slug, node.id)
   }
 
   walk(root)

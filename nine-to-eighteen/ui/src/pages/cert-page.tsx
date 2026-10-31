@@ -7,15 +7,20 @@ import {
   INTERVIEW_CERT_MIN_TOTAL,
   INTERVIEW_CERT_PERCENT,
   INTERVIEW_CERT_TRACK_ID,
+  certHolderName,
   certPublicPath,
-  formatCertDate,
+  certTopicLines,
+  formatCertDateLong,
+  formatCourseDuration,
   printCertificate,
-  splitTrackTitle,
+  sumDurationMinutes,
   toneOf,
+  type CertTopicLine,
 } from '@/data/site/cert-shared'
 import { getSeasonTracks, useLearnPosts } from '@/data/learn/use-learn-posts'
 import { getSiteAuthSession } from '@/data/site/site-auth'
 import {
+  siteGetProfile,
   siteListCertificates,
   type SiteCertTrack,
 } from '@/data/site/site-api'
@@ -33,20 +38,18 @@ function quizLabel(track: SiteCertTrack | undefined, threshold: number): string 
 
 type PreviewItem = {
   trackId: string
-  series: string
-  name: string
-  title: string
-  headline: string
-  subline: string
-  copy: string
+  holderName: string
+  courseTitle: string
   earned: boolean
-  done: number
-  total: number
+  issuedLabel: string
+  durationLabel: string
+  resultLabel: string
+  resultValue: string
   percent: number
   quizLabel: string
   code: string
-  issued: string
-  episodes: { key: string; label: string; title: string; done: boolean }[]
+  topics: CertTopicLine[]
+  fileStem: string
 }
 
 export function CertPage() {
@@ -60,9 +63,12 @@ export function CertPage() {
   const [copiedCode, setCopiedCode] = useState('')
   const [preview, setPreview] = useState<PreviewItem | null>(null)
   const [pdfBusy, setPdfBusy] = useState(false)
+  const [holderName, setHolderName] = useState(session?.username || '')
+  const [hasLegalName, setHasLegalName] = useState<boolean | null>(null)
   const seasons = getSeasonTracks(posts)
 
   const accessToken = session?.accessToken || ''
+  const username = session?.username || ''
 
   useEffect(() => {
     if (!accessToken) {
@@ -88,6 +94,29 @@ export function CertPage() {
   }, [accessToken])
 
   useEffect(() => {
+    if (!accessToken) {
+      return
+    }
+    let cancelled = false
+    void siteGetProfile()
+      .then((profile) => {
+        if (cancelled) return
+        const first = profile.firstName || ''
+        const last = profile.lastName || ''
+        setHasLegalName(Boolean(first.trim() && last.trim()))
+        setHolderName(certHolderName(first, last, profile.patronymic || '', username))
+      })
+      .catch(() => {
+        if (cancelled) return
+        setHasLegalName(false)
+        setHolderName(certHolderName('', '', '', username))
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [accessToken, username])
+
+  useEffect(() => {
     if (!preview) {
       return
     }
@@ -110,7 +139,6 @@ export function CertPage() {
     )
   }
 
-  const username = session.username
   const byId = new Map(tracks.map((track) => [track.id, track]))
   const seasonBoard = seasons.map((track) => {
     const api = byId.get(track.id)
@@ -148,7 +176,7 @@ export function CertPage() {
             id: INTERVIEW_CERT_TRACK_ID,
             title: interviewApi.title || 'Quiz · Собеседование',
             note: `Диплом за квиз собеседования: лучшая попытка ${INTERVIEW_CERT_PERCENT}% при минимум ${INTERVIEW_CERT_MIN_TOTAL} вопросах.`,
-            episodes: [] as { slug: string; episode: string; title: string }[],
+            episodes: [] as { slug: string; episode: string; title: string; durationMin?: number }[],
           },
           api: interviewApi,
           done: interviewApi.done,
@@ -178,33 +206,33 @@ export function CertPage() {
     }
   }
 
-  function openPreview(item: (typeof board)[number], series: string, name: string, label: string, issued: string) {
-    const isInterview = item.track.id === INTERVIEW_CERT_TRACK_ID
+  function blankOf(item: (typeof board)[number]) {
+    const courseTitle = item.api?.title || item.track.title
+    const hasEpisodes = item.track.episodes.length > 0
+    const issuedLabel = item.api?.issuedAt ? formatCertDateLong(item.api.issuedAt) : ''
+    return {
+      courseTitle,
+      issuedLabel,
+      durationLabel: formatCourseDuration(
+        sumDurationMinutes(item.track.episodes.map((episode) => ({ durationMin: episode.durationMin }))),
+      ),
+      resultLabel: hasEpisodes ? 'Темы' : 'Квиз',
+      resultValue: hasEpisodes ? `${item.done} из ${item.total}` : `${item.percent}%`,
+      topics: certTopicLines(item.track.episodes, completedSlugs),
+      quizLabel: quizLabel(item.api, item.quizThreshold),
+      code: item.api?.code || '',
+    }
+  }
+
+  function openPreview(item: (typeof board)[number]) {
+    const blank = blankOf(item)
     setPreview({
       trackId: item.track.id,
-      series,
-      name,
-      title: item.api?.title || item.track.title,
-      headline: item.earned ? username : name,
-      subline: item.earned ? name : `Бланк для ${username}`,
-      copy: item.earned
-        ? isInterview
-          ? `Подтверждается прохождение квиза «Собеседование» на ${INTERVIEW_CERT_PERCENT}% (${issued}).`
-          : `Подтверждается прохождение трека «${item.api?.title || item.track.title}» (${item.total} вып.) на ${issued}.`
-        : item.track.note,
+      holderName,
       earned: item.earned,
-      done: item.done,
-      total: item.total,
       percent: item.percent,
-      quizLabel: label,
-      code: item.api?.code || '',
-      issued,
-      episodes: item.track.episodes.map((episode) => ({
-        key: episode.slug,
-        label: episode.episode,
-        title: episode.title,
-        done: completedSlugs.has(episode.slug),
-      })),
+      fileStem: blank.code || item.track.id,
+      ...blank,
     })
   }
 
@@ -216,17 +244,21 @@ export function CertPage() {
     try {
       await downloadCertPdf({
         code: preview.code,
-        holderName: preview.earned ? username : preview.headline,
-        series: preview.series,
-        trackName: preview.name,
-        issuedLabel: preview.issued,
-        episodeCount: preview.total,
-        done: preview.done,
+        holderName: preview.holderName,
+        series: preview.courseTitle,
+        trackName: preview.courseTitle,
+        courseTitle: preview.courseTitle,
+        issuedLabel: preview.issuedLabel,
+        episodeCount: preview.topics.length,
         percent: preview.percent,
         earned: preview.earned,
         quizLabel: preview.quizLabel,
+        durationLabel: preview.durationLabel,
+        resultLabel: preview.resultLabel,
+        resultValue: preview.resultValue,
+        topics: preview.topics,
         tone: toneOf(preview.trackId),
-        fileStem: preview.code || preview.trackId,
+        fileStem: preview.fileStem,
       })
     } catch {
       setCertError('Не удалось скачать PDF')
@@ -244,11 +276,17 @@ export function CertPage() {
         <p className="learn-eyebrow">Cert</p>
         <h1 className="learn-title">Сертификаты</h1>
         <p className="learn-lead">
-          Сезонный диплом — когда отмечены все выпуски трека и лучшая попытка каждого квиза не
-          ниже {threshold}%. Отдельно: квиз{' '}
-          <Link to="/game/quiz">Собеседование</Link> открывает диплом при {INTERVIEW_CERT_PERCENT}%
-          и минимум {INTERVIEW_CERT_MIN_TOTAL} вопросах. После сдачи — штамп «ПРОЙДЕНО».
+          Бланк формата А4: имя и фамилия, курс и дата прохождения. Сезонный диплом — когда отмечены
+          все выпуски трека и лучшая попытка каждого квиза не ниже {threshold}%. Квиз{' '}
+          <Link to="/game/quiz">Собеседование</Link> открывает диплом при {INTERVIEW_CERT_PERCENT}% и
+          минимум {INTERVIEW_CERT_MIN_TOTAL} вопросах.
         </p>
+        {hasLegalName === false ? (
+          <p className="learn-section-note">
+            На бланке сейчас логин. Укажите имя и фамилию в <Link to="/account">кабинете</Link>, чтобы
+            сертификат был выдан на человека.
+          </p>
+        ) : null}
       </header>
 
       {certError ? <p className="learn-admin-error no-print">{certError}</p> : null}
@@ -276,42 +314,28 @@ export function CertPage() {
 
           <div className="cert-board">
             {board.map((item) => {
-              const { series, name } = splitTrackTitle(item.api?.title || item.track.title)
-              const issued = item.api?.issuedAt ? formatCertDate(item.api.issuedAt) : ''
-              const label = quizLabel(item.api, item.quizThreshold)
+              const blank = blankOf(item)
               const isInterview = item.track.id === INTERVIEW_CERT_TRACK_ID
               return (
                 <CertDiplomaCard
                   key={item.track.id}
                   trackId={item.track.id}
-                  series={series}
-                  headline={item.earned ? username : name}
-                  subline={item.earned ? name : `Бланк для ${username}`}
-                  copy={
-                    item.earned
-                      ? isInterview
-                        ? `Подтверждается прохождение квиза «Собеседование» на ${INTERVIEW_CERT_PERCENT}% (${issued}).`
-                        : `Подтверждается прохождение трека «${item.api?.title || item.track.title}» (${item.total} вып.) на ${issued}.`
-                      : item.track.note
-                  }
+                  holderName={holderName}
+                  courseTitle={blank.courseTitle}
                   earned={item.earned}
-                  done={item.done}
-                  total={item.total}
-                  percent={item.percent}
-                  quizLabel={label}
-                  code={item.api?.code || ''}
-                  episodes={item.track.episodes.map((episode) => ({
-                    key: episode.slug,
-                    label: episode.episode,
-                    title: episode.title,
-                    done: completedSlugs.has(episode.slug),
-                  }))}
+                  issuedLabel={blank.issuedLabel}
+                  durationLabel={blank.durationLabel}
+                  resultLabel={blank.resultLabel}
+                  resultValue={blank.resultValue}
+                  quizLabel={blank.quizLabel}
+                  code={blank.code}
+                  topics={blank.topics}
                   actions={
                     <>
                       <button
                         type="button"
                         className="learn-admin-btn learn-admin-btn-primary"
-                        onClick={() => openPreview(item, series, name, label, issued)}
+                        onClick={() => openPreview(item)}
                       >
                         Предпросмотр
                       </button>
@@ -329,16 +353,21 @@ export function CertPage() {
                             className="learn-admin-btn"
                             onClick={() =>
                               downloadCertPng({
-                                code: item.api?.code || '',
-                                holderName: username,
-                                series,
-                                trackName: name,
-                                issuedLabel: issued,
+                                code: blank.code,
+                                holderName,
+                                series: blank.courseTitle,
+                                trackName: blank.courseTitle,
+                                courseTitle: blank.courseTitle,
+                                issuedLabel: blank.issuedLabel,
                                 episodeCount: item.total,
                                 done: item.done,
                                 percent: item.percent,
                                 earned: true,
-                                quizLabel: label,
+                                quizLabel: blank.quizLabel,
+                                durationLabel: blank.durationLabel,
+                                resultLabel: blank.resultLabel,
+                                resultValue: blank.resultValue,
+                                topics: blank.topics,
                                 tone: toneOf(item.track.id),
                               })
                             }
@@ -410,17 +439,16 @@ export function CertPage() {
             </div>
             <CertDiplomaCard
               trackId={preview.trackId}
-              series={preview.series}
-              headline={preview.headline}
-              subline={preview.subline}
-              copy={preview.copy}
+              holderName={preview.holderName}
+              courseTitle={preview.courseTitle}
               earned={preview.earned}
-              done={preview.done}
-              total={preview.total}
-              percent={preview.percent}
+              issuedLabel={preview.issuedLabel}
+              durationLabel={preview.durationLabel}
+              resultLabel={preview.resultLabel}
+              resultValue={preview.resultValue}
               quizLabel={preview.quizLabel}
               code={preview.code}
-              episodes={preview.episodes}
+              topics={preview.topics}
             />
           </div>
         </div>

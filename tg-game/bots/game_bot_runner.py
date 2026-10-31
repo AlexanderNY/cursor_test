@@ -1,62 +1,53 @@
-"""Запуск polling игрового бота (aiogram)."""
+"""Общий диспетчер игровых ботов (aiogram).
+
+Роутеры можно подключить только к одному Dispatcher, поэтому все токены
+опрашиваются одним экземпляром, а game_bot_id берётся из реестра.
+"""
 
 from __future__ import annotations
 
 import logging
 from typing import Any, Awaitable, Callable
 
-from aiogram import BaseMiddleware, Bot, Dispatcher
+from aiogram import BaseMiddleware, Dispatcher
 
 from bots.country_handlers import country_router
 from bots.game_handlers import game_router
 from bots.menu_handlers import menu_router
-from services.game_repository import game_repository
-from services.order_desk_seed import ensure_order_desk
+from services.bot_registry import resolve_game_bot_id
 
 logger = logging.getLogger(__name__)
 
 
 class GameBotContextMiddleware(BaseMiddleware):
-    def __init__(self, bot_id: int) -> None:
-        self.bot_id = bot_id
-
     async def __call__(
         self,
         handler: Callable[[Any, dict[str, Any]], Awaitable[Any]],
         event: Any,
         data: dict[str, Any],
     ) -> Any:
-        data["game_bot_id"] = self.bot_id
+        bot = data.get("bot")
+        telegram_bot_id = None
+        if bot is not None:
+            try:
+                raw_id = bot.id
+            except Exception:
+                raw_id = None
+            if isinstance(raw_id, int):
+                telegram_bot_id = raw_id
+        game_bot_id = resolve_game_bot_id(telegram_bot_id)
+        if game_bot_id is None:
+            logger.warning(
+                "Update ignored: no game bot mapping for telegram bot id=%s",
+                telegram_bot_id,
+            )
+            return None
+        data["game_bot_id"] = game_bot_id
         return await handler(event, data)
 
 
-async def run_game_bot_polling(bot_token: str, bot_id: int) -> None:
-    """Блокирует до остановки polling (или CancelledError)."""
-    token = (bot_token or "").strip()
-    if not token:
-        logger.warning("Bot token is empty for bot_id=%s; polling not started.", bot_id)
-        return
-
-    try:
-        await game_repository.ensure_country_modes(bot_id)
-    except Exception:
-        logger.exception("Failed to ensure country modes for bot_id=%s", bot_id)
-
-    try:
-        await ensure_order_desk(bot_id)
-    except Exception:
-        logger.exception("Failed to ensure order desk for bot_id=%s", bot_id)
-
-    bot = Bot(token=token)
-    dp = Dispatcher()
-    dp.update.middleware(GameBotContextMiddleware(bot_id))
-    dp.include_router(menu_router)
-    dp.include_router(country_router)
-    dp.include_router(game_router)
-
-    logger.info("Starting game bot polling id=%s (aiogram)...", bot_id)
-    try:
-        await dp.start_polling(bot)
-    finally:
-        await bot.session.close()
-        logger.info("Game bot session closed id=%s.", bot_id)
+def attach_game_routers(dispatcher: Dispatcher) -> None:
+    dispatcher.update.middleware(GameBotContextMiddleware())
+    dispatcher.include_router(menu_router)
+    dispatcher.include_router(country_router)
+    dispatcher.include_router(game_router)

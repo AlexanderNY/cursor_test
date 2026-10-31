@@ -208,8 +208,8 @@ async def cmd_start(message: Message, game_bot_id: int) -> None:
 
 
 @game_router.message(Command("rating"))
-async def cmd_rating(message: Message) -> None:
-    rows = await get_leaderboard(limit=20)
+async def cmd_rating(message: Message, game_bot_id: int) -> None:
+    rows = await get_leaderboard(limit=20, bot_id=game_bot_id)
     if not rows:
         await message.answer("Пока нет завершённых игр в рейтинге.")
         return

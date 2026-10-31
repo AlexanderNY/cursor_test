@@ -12,7 +12,7 @@ tags: [frontend, jest, vitest, playwright, testing-library, собеседова
 onKnowledgeMap: true
 durationMin: 45
 excerpt: Юнит компонента проверяет поведение. Сквозной сценарий в браузере — отдельный, короткий слой.
-prerequisites: [fe-event-loop]
+prerequisites: [fe-event-loop, fe-html-a11y]
 seoTitle: Vitest Jest Playwright React
 seoDescription: Что проверять Testing Library и зачем один сценарий Playwright.
 seoKeywords: [vitest, jest, playwright, react testing library]

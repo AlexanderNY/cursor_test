@@ -34,9 +34,10 @@ const VIEWS: { id: DeskView; label: string }[] = [
 
 type TasksDeskProps = {
   focusTaskId?: number | null
+  reloadToken?: number
 }
 
-export function TasksDesk({ focusTaskId = null }: TasksDeskProps) {
+export function TasksDesk({ focusTaskId = null, reloadToken = 0 }: TasksDeskProps) {
   const [items, setItems] = useState<SiteUserTask[]>([])
   const [ready, setReady] = useState(false)
   const [error, setError] = useState('')
@@ -65,7 +66,7 @@ export function TasksDesk({ focusTaskId = null }: TasksDeskProps) {
 
   useEffect(() => {
     void refresh()
-  }, [refresh])
+  }, [refresh, reloadToken])
 
   useEffect(() => {
     if (focusTaskId == null) {

@@ -45,6 +45,7 @@ import {
 import { buildLeafPanelData } from '@/data/learning-map/leaf-panel'
 import { TOPIC_DECKS } from '@/data/learning-map/decks'
 import { expandedIdsToDepth, layoutMindmap } from '@/data/learning-map/layout-mindmap'
+import { buildPrereqArrows, linkedByPrereq } from '@/data/learning-map/prereq-edges'
 import {
   buildGapIndex,
   buildProgressIndex,
@@ -88,7 +89,6 @@ interface LearningMindmapProps {
   nodeCount: number
 }
 
-const DEPTH_OPTIONS = [1, 2, 3, 4, 5] as const
 const MIN_ZOOM = 0.25
 const MAX_ZOOM = 2.5
 const EMPTY_IDS: ReadonlySet<string> = new Set()
@@ -127,6 +127,29 @@ function isLeafNode(node: MindNode | null | undefined): boolean {
   return Boolean(node && node.children.length === 0)
 }
 
+function maxTreeDepth(node: MindNode, depth = 0): number {
+  if (node.children.length === 0) {
+    return depth
+  }
+  return node.children.reduce(
+    (max, child) => Math.max(max, maxTreeDepth(child, depth + 1)),
+    depth,
+  )
+}
+
+function nearestArticle(root: MindNode, nodeId: string): MindNode | null {
+  const path = collectPath(root, nodeId)
+  if (!path) {
+    return null
+  }
+  for (let index = path.length - 1; index >= 0; index -= 1) {
+    if (path[index].learnSlug) {
+      return path[index]
+    }
+  }
+  return null
+}
+
 function collectBranchIds(node: MindNode): Set<string> {
   const ids = new Set<string>()
   const walk = (current: MindNode): void => {
@@ -152,7 +175,7 @@ export function LearningMindmap({ root, branchCount, nodeCount }: LearningMindma
     if (saved) {
       return new Set(saved.expandedIds)
     }
-    return expandedIdsToDepth(root, 2)
+    return expandedIdsToDepth(root, 3)
   })
   const [collapseState, setCollapseState] = useState<{
     key: string
@@ -303,10 +326,13 @@ export function LearningMindmap({ root, branchCount, nodeCount }: LearningMindma
     return ids
   }, [autoBranchIds, collapsedIds, expandedIds])
 
-  const depthPresets = useMemo(
-    () => DEPTH_OPTIONS.map((value) => ({ value, ids: expandedIdsToDepth(root, value) })),
-    [root],
-  )
+  const depthPresets = useMemo(() => {
+    const maxDepth = Math.max(1, maxTreeDepth(root))
+    return Array.from({ length: maxDepth }, (_, index) => {
+      const value = index + 1
+      return { value, ids: expandedIdsToDepth(root, value) }
+    })
+  }, [root])
   const activeDepth = useMemo(() => {
     for (const preset of depthPresets) {
       if (preset.ids.size !== layoutIds.size) {
@@ -329,6 +355,10 @@ export function LearningMindmap({ root, branchCount, nodeCount }: LearningMindma
   const layout = useMemo(
     () => layoutMindmap(mapTree, layoutIds),
     [layoutIds, mapTree],
+  )
+  const prereqArrows = useMemo(
+    () => buildPrereqArrows(root, layout.nodes),
+    [layout.nodes, root],
   )
 
   const allTags = useMemo(
@@ -357,6 +387,10 @@ export function LearningMindmap({ root, branchCount, nodeCount }: LearningMindma
   const selectedNode = useMemo(
     () => findNode(root, selectedId) ?? root,
     [root, selectedId],
+  )
+  const prereqLinks = useMemo(
+    () => linkedByPrereq(root, selectedNode),
+    [root, selectedNode],
   )
   const selectedPath = useMemo(
     () => collectPath(root, selectedId) ?? [root],
@@ -822,7 +856,7 @@ export function LearningMindmap({ root, branchCount, nodeCount }: LearningMindma
         setZoom(clamp(saved.zoom, MIN_ZOOM, MAX_ZOOM))
         setPan(saved.pan)
       } else {
-        setExpandedIds(expandedIdsToDepth(root, 2))
+        setExpandedIds(expandedIdsToDepth(root, 3))
         setPendingFit(true)
       }
       return
@@ -1353,8 +1387,42 @@ export function LearningMindmap({ root, branchCount, nodeCount }: LearningMindma
               >
                 <path d="M 0 0 L 10 5 L 0 10 z" className="lm-arrow-head" />
               </marker>
+              <marker
+                id="lm-prereq-arrow"
+                viewBox="0 0 10 10"
+                refX="9"
+                refY="5"
+                markerWidth="7"
+                markerHeight="7"
+                orient="auto-start-reverse"
+              >
+                <path d="M 0 0 L 10 5 L 0 10 z" className="lm-prereq-head" />
+              </marker>
             </defs>
             <g transform={`translate(${layout.originX} ${layout.originY})`}>
+              {prereqArrows.map((arrow) => {
+                const hot = arrow.fromId === selectedId || arrow.toId === selectedId
+                const fromBranch = l1ByNodeId.get(arrow.fromId)
+                const toBranch = l1ByNodeId.get(arrow.toId)
+                const arrowDimmed = Boolean(
+                  focusedBranchId &&
+                    fromBranch !== focusedBranchId &&
+                    toBranch !== focusedBranchId,
+                )
+                return (
+                  <path
+                    key={arrow.id}
+                    d={arrow.d}
+                    className={`lm-prereq-edge${hot ? ' is-hot' : ''}${arrowDimmed ? ' is-dimmed' : ''}`}
+                    markerEnd="url(#lm-prereq-arrow)"
+                    fill="none"
+                  >
+                    <title>
+                      {arrow.fromTitle} → {arrow.toTitle}
+                    </title>
+                  </path>
+                )
+              })}
               {layout.edges.map((edge) => {
                 const edgeDimmed = Boolean(
                   focusedBranchId && l1ByNodeId.get(edge.childId) !== focusedBranchId,
@@ -1591,6 +1659,7 @@ export function LearningMindmap({ root, branchCount, nodeCount }: LearningMindma
         </div>
         <p className="lm-viewport-hint">
           Колёсико — масштаб · перетаскивание — панорама · клик по узлу — раскрыть или свернуть ветку
+          · пунктир — пререквизит, стрелка входит в статью
           {linkMode ? ' · режим связи: два листа разных веток' : ' · «Связь» — пунктир между ветками'}
           {drawnCrossLinks.length > 0 ? ' · × на пунктире удаляет связь' : ''}
           {isFullscreen ? ' · Esc — выйти из полного экрана' : ''}
@@ -1631,12 +1700,64 @@ export function LearningMindmap({ root, branchCount, nodeCount }: LearningMindma
           ))}
         </nav>
 
-        {leafPanel?.isLeaf ? (
+        {prereqLinks.before.length > 0 || prereqLinks.after.length > 0 ? (
+          <div className="lm-prereq-panel">
+            {prereqLinks.before.length > 0 ? (
+              <>
+                <h3 className="lm-learn-subtitle">Сначала</h3>
+                <ul className="lm-detail-list lm-detail-list-flat">
+                  {prereqLinks.before.map((item) => {
+                    const source = item.node
+                    return (
+                    <li key={item.slug}>
+                      {source ? (
+                        <button
+                          type="button"
+                          className="lm-detail-link"
+                          onClick={() => selectNode(source.id, true)}
+                        >
+                          ← {source.title}
+                        </button>
+                      ) : (
+                        <span className="lm-detail-empty">{item.slug}</span>
+                      )}
+                    </li>
+                    )
+                  })}
+                </ul>
+              </>
+            ) : null}
+            {prereqLinks.after.length > 0 ? (
+              <>
+                <h3 className="lm-learn-subtitle">Дальше откроется</h3>
+                <ul className="lm-detail-list lm-detail-list-flat">
+                  {prereqLinks.after.map((item) => (
+                    <li key={item.id}>
+                      <button
+                        type="button"
+                        className="lm-detail-link"
+                        onClick={() => selectNode(item.id, true)}
+                      >
+                        → {item.title}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            ) : null}
+          </div>
+        ) : null}
+
+        {leafPanel && (leafPanel.isLeaf || selectedNode.learnSlug) ? (
           <LeafDetailPanel
             data={leafPanel}
             root={root}
             nodeId={selectedId}
-            learnSlug={selectedNode.learnSlug}
+            ankiNodeId={nearestArticle(root, selectedId)?.id || selectedId}
+            learnSlug={
+              selectedNode.learnSlug ||
+              nearestArticle(root, selectedId)?.learnSlug
+            }
             notes={leafNotes}
             posts={publishedPosts}
             tagColors={tagColors}
@@ -1651,7 +1772,7 @@ export function LearningMindmap({ root, branchCount, nodeCount }: LearningMindma
           />
         ) : null}
 
-        {l1Branch && learnLink && !leafPanel?.isLeaf ? (
+        {l1Branch && learnLink && !leafPanel?.isLeaf && !selectedNode.learnSlug ? (
           <LearningMapLearnPanel
             branchTitle={l1Branch.title}
             link={learnLink}

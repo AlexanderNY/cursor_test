@@ -84,7 +84,8 @@ function walk(
   const nextPath = [...path, node]
   const isLeaf = node.children.length === 0
   const matchId = !nodeId || node.id === nodeId
-  const includeNode = matchId && (!onlyLeaves || isLeaf) && node.id !== 'root'
+  const includeNode =
+    matchId && node.id !== 'root' && (!onlyLeaves || isLeaf || Boolean(node.learnSlug))
 
   if (includeNode) {
     const branchNode = nextPath[1]

@@ -12,7 +12,7 @@ tags: [product, pnl, unit-economics, "собеседование", portfolio]
 onKnowledgeMap: true
 durationMin: 60
 excerpt: "Выручка, маржа, contribution без MBA-толщины."
-prerequisites: [pm-okr]
+prerequisites: [pm-metrics]
 author: ""
 authorUrl: ""
 coverUrl: ""

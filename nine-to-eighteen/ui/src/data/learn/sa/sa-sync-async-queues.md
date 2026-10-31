@@ -12,7 +12,7 @@ tags: [sa, sync, async, "очереди", Kafka, RabbitMQ, "интеграции
 onKnowledgeMap: true
 durationMin: 65
 excerpt: "Синхрон vs асинхрон, нужен ли ответ, зачем очереди, вызов БД, Kafka vs RabbitMQ, гарантии доставки, offset и queue vs topic."
-prerequisites: [sa-db-advanced]
+prerequisites: [sa-rest-basics]
 author: ""
 authorUrl: ""
 coverUrl: ""

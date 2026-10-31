@@ -12,7 +12,7 @@ tags: [qa, allure, jira, tms, собеседование]
 onKnowledgeMap: true
 durationMin: 40
 excerpt: Прогон, набор кейсов и дефект живут в разных системах. Смешение превращает отчёт в склад задач.
-prerequisites: [qa-test-design]
+prerequisites: [qa-pytest-ci-git]
 seoTitle: Allure TMS Jira для QA
 seoDescription: Чем отчёт прогона отличается от тест-кейса и бага.
 seoKeywords: [allure, jira, tms, qa]

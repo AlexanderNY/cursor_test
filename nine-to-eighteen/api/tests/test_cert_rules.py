@@ -29,6 +29,16 @@ def test_has_quiz_needs_question_and_answer():
     assert rules.has_quiz({}) is False
 
 
+def test_certificate_holder_name_uses_last_and_first():
+    assert (
+        rules.certificate_holder_name("Иванов", "Иван", "Иванович", "ivan")
+        == "Иванов Иван Иванович"
+    )
+    assert rules.certificate_holder_name("Иванов", "", "", "ivan") == "Иванов"
+    assert rules.certificate_holder_name("", "", "", "ivan") == "ivan"
+    assert rules.certificate_holder_name("", "", "", "  ") == "Участник"
+
+
 def test_blank_code_is_stable_and_shaped():
     code = rules.blank_code(7, "py")
     assert code == rules.blank_code(7, "py")

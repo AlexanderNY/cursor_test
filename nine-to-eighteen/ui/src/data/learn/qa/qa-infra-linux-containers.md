@@ -12,7 +12,7 @@ tags: [qa, linux, docker, containers, ssh, iaas, "собеседование", a
 onKnowledgeMap: true
 durationMin: 90
 excerpt: "VM vs simulator vs emulator, контейнеры, IaaS/PaaS, provisioning, shell для логов, SSH и скрипты в автоматизации."
-prerequisites: [qa-api-contract-perf]
+prerequisites: [qa-pytest-ci-git, qa-sql-db-basics, b10-docker]
 author: ""
 authorUrl: ""
 coverUrl: ""

@@ -7,9 +7,11 @@ import { downloadCertPdf, downloadCertPng } from '@/data/site/cert-png'
 import {
   INTERVIEW_CERT_PERCENT,
   INTERVIEW_CERT_TRACK_ID,
-  formatCertDate,
+  certTopicLines,
+  formatCertDateLong,
+  formatCourseDuration,
   printCertificate,
-  splitTrackTitle,
+  sumDurationMinutes,
   toneOf,
 } from '@/data/site/cert-shared'
 import { SiteApiError, siteGetPublicCertificate, type SitePublicCert } from '@/data/site/site-api'
@@ -46,17 +48,27 @@ export function CertPublicPage() {
 
   const isInterview = cert?.trackId === INTERVIEW_CERT_TRACK_ID
   const season = getSeasonTracks(posts).find((track) => track.id === cert?.trackId)
-  const { series, name } = splitTrackTitle(cert?.trackTitle || '')
-  const issued = cert ? formatCertDate(cert.issuedAt) : ''
+  const courseTitle = cert?.trackTitle || ''
+  const issued = cert ? formatCertDateLong(cert.issuedAt) : ''
+  const episodes = isInterview ? [] : season?.episodes || []
+  const topics = certTopicLines(episodes, null)
+  const durationLabel = formatCourseDuration(sumDurationMinutes(episodes))
   const quiz =
     cert && cert.quizRequired > 0
-      ? `квиз ${cert.quizPercent}% при пороге ${cert.quizThreshold}%`
-      : 'квиз в треке не задан'
-  const certCopy = cert
-    ? isInterview
-      ? `Подтверждается прохождение квиза «Собеседование» на ${INTERVIEW_CERT_PERCENT}% (${issued}).`
-      : `Подтверждается прохождение трека «${cert.trackTitle}» (${cert.episodeCount} вып.) на ${issued}.`
-    : ''
+      ? isInterview
+        ? `квиз «Собеседование» ${INTERVIEW_CERT_PERCENT}%`
+        : `квиз ${cert.quizPercent}% при пороге ${cert.quizThreshold}%`
+      : ''
+  const resultLabel = isInterview ? 'Квиз' : 'Темы'
+  const resultValue = isInterview
+    ? cert
+      ? `${cert.quizPercent}%`
+      : ''
+    : episodes.length > 0
+      ? `${episodes.length} из ${episodes.length}`
+      : cert
+        ? `${cert.episodeCount} из ${cert.episodeCount}`
+        : ''
 
   async function savePdf() {
     if (!cert || pdfBusy) {
@@ -67,14 +79,19 @@ export function CertPublicPage() {
       await downloadCertPdf({
         code: cert.code,
         holderName: cert.holderName,
-        series,
-        trackName: name,
+        series: courseTitle,
+        trackName: courseTitle,
+        courseTitle,
         issuedLabel: issued,
         episodeCount: cert.episodeCount,
         done: cert.episodeCount,
         percent: 100,
         earned: true,
         quizLabel: quiz,
+        durationLabel,
+        resultLabel,
+        resultValue,
+        topics,
         tone: toneOf(cert.trackId),
       })
     } catch {
@@ -104,26 +121,16 @@ export function CertPublicPage() {
       {cert ? (
         <CertDiplomaCard
           trackId={cert.trackId}
-          series={series}
-          headline={cert.holderName}
-          subline={name}
-          copy={certCopy}
+          holderName={cert.holderName}
+          courseTitle={courseTitle}
           earned
-          done={cert.episodeCount}
-          total={cert.episodeCount}
-          percent={100}
+          issuedLabel={issued}
+          durationLabel={durationLabel}
+          resultLabel={resultLabel}
+          resultValue={resultValue}
           quizLabel={quiz}
           code={cert.code}
-          episodes={
-            isInterview
-              ? []
-              : (season?.episodes || []).map((episode) => ({
-                  key: episode.slug,
-                  label: episode.episode,
-                  title: episode.title,
-                  done: true,
-                }))
-          }
+          topics={topics}
           actions={
             <>
               <button
@@ -148,14 +155,19 @@ export function CertPublicPage() {
                   downloadCertPng({
                     code: cert.code,
                     holderName: cert.holderName,
-                    series,
-                    trackName: name,
+                    series: courseTitle,
+                    trackName: courseTitle,
+                    courseTitle,
                     issuedLabel: issued,
                     episodeCount: cert.episodeCount,
                     done: cert.episodeCount,
                     percent: 100,
                     earned: true,
                     quizLabel: quiz,
+                    durationLabel,
+                    resultLabel,
+                    resultValue,
+                    topics,
                     tone: toneOf(cert.trackId),
                   })
                 }

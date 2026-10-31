@@ -12,7 +12,7 @@ tags: [sa, HTTP, HTTPS, "аутентификация", "авторизация"
 onKnowledgeMap: true
 durationMin: 60
 excerpt: "Протоколы, HTTP vs HTTPS, authN vs authZ, что происходит при переходе по URL, основы шифрования данных."
-prerequisites: [sa-architecture-styles]
+prerequisites: [sa-rest-basics, sa-gost-srs-artifacts]
 author: ""
 authorUrl: ""
 coverUrl: ""

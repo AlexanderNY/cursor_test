@@ -12,7 +12,7 @@ tags: [java, javascript, "собеседование", docker, jvm, jdbc, jms, l
 onKnowledgeMap: true
 durationMin: 90
 excerpt: "Зачем JS в enterprise-стеке рядом с JVM — не как курс React."
-prerequisites: [jv-jms]
+prerequisites: [jv-jms, js-types-coerce, b10-docker]
 author: ""
 authorUrl: ""
 coverUrl: ""

@@ -12,7 +12,7 @@ tags: [sa, "карьера", junior, senior, "профессия", "компет
 onKnowledgeMap: true
 durationMin: 90
 excerpt: "T6.2.1–6.2.4: кто такой хороший аналитик, чем junior отличается от senior, признаки плохого СА и зона ответственности роли."
-prerequisites: [sa-architecture-decisions]
+prerequisites: [sa-architecture-decisions, sa-modeling-workshop, sa-http-security-basics]
 author: ""
 authorUrl: ""
 coverUrl: ""

@@ -12,7 +12,7 @@ tags: [security, csp, csrf, react, собеседование]
 onKnowledgeMap: true
 durationMin: 40
 excerpt: CSP сужает, откуда странице можно взять скрипт. CSRF — это браузер, который сам прикладывает куку к чужому запросу.
-prerequisites: [sec-authn-authz]
+prerequisites: [sec-authn-authz, js-dom-events]
 seoTitle: CSP и CSRF для React
 seoDescription: Политика скриптов, SameSite и чем CSRF отличается от XSS.
 seoKeywords: [csp, csrf, xss, react]

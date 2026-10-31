@@ -11,6 +11,9 @@ router = APIRouter(tags=["Game"])
 
 
 @router.get("/rating", response_model=list[LeaderboardEntryOut])
-async def leaderboard(limit: int = Query(default=20, ge=1, le=100)) -> list[LeaderboardEntryOut]:
-    rows = await get_leaderboard(limit=limit)
+async def leaderboard(
+    limit: int = Query(default=20, ge=1, le=100),
+    bot_id: int | None = None,
+) -> list[LeaderboardEntryOut]:
+    rows = await get_leaderboard(limit=limit, bot_id=bot_id)
     return [LeaderboardEntryOut(**r) for r in rows]

@@ -12,7 +12,7 @@ tags: [frontend, storybook, design-system, собеседование]
 onKnowledgeMap: true
 durationMin: 40
 excerpt: Компонент показывают во всех состояниях отдельно от страницы. Дизайн-система — общий набор, а не папка со скриншотами.
-prerequisites: [fe-html-a11y]
+prerequisites: [fe-html-a11y, fe-event-loop]
 seoTitle: Storybook и UI-kit
 seoDescription: Состояния компонента и зачем команде один набор контролов.
 seoKeywords: [storybook, design system, react]

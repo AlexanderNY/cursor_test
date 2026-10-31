@@ -657,16 +657,25 @@ class GameRepository:
         finally:
             await release_db_connection(conn)
 
-    async def fetch_leaderboard(self, *, limit: int = 20) -> list[dict[str, Any]]:
+    async def fetch_leaderboard(
+        self, *, limit: int = 20, bot_id: Optional[int] = None
+    ) -> list[dict[str, Any]]:
         """
         Лучшая завершённая сессия на игрока: max(score), tie-break — меньший duration_sec,
         затем более ранний finished_at.
         """
+        filters = ["gs.status = 'completed'", "m.mode_type = ANY(%s)"]
+        params: list[Any] = [list(SCORED_MODE_TYPES)]
+        if bot_id is not None:
+            filters.append("m.bot_id = %s")
+            params.append(bot_id)
+        params.append(limit)
+        where_sql = " AND ".join(filters)
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
                 await cur.execute(
-                    """
+                    f"""
                     WITH ranked_sessions AS (
                         SELECT
                             gs.*,
@@ -678,8 +687,7 @@ class GameRepository:
                             ) AS rn
                         FROM game_sessions gs
                         JOIN game_modes m ON m.id = gs.mode_id
-                        WHERE gs.status = 'completed'
-                          AND m.mode_type = ANY(%s)
+                        WHERE {where_sql}
                     )
                     SELECT p.telegram_user_id, p.username, rs.score, rs.correct_count,
                            rs.total_questions, rs.duration_sec, rs.finished_at
@@ -689,7 +697,7 @@ class GameRepository:
                     ORDER BY rs.score DESC, rs.duration_sec ASC NULLS LAST, rs.finished_at ASC NULLS LAST
                     LIMIT %s
                     """,
-                    (list(SCORED_MODE_TYPES), limit),
+                    params,
                 )
                 rows = await cur.fetchall()
                 result = [
@@ -714,40 +722,35 @@ class GameRepository:
         *,
         limit: int = 100,
         mode_id: Optional[int] = None,
+        bot_id: Optional[int] = None,
     ) -> list[dict[str, Any]]:
+        filters = ["gs.status = 'completed'"]
+        params: list[Any] = []
+        if mode_id is not None:
+            filters.append("gs.mode_id = %s")
+            params.append(mode_id)
+        if bot_id is not None:
+            filters.append("m.bot_id = %s")
+            params.append(bot_id)
+        params.append(limit)
+        where_sql = " AND ".join(filters)
         conn = await get_db_connection()
         try:
             async with conn.cursor() as cur:
-                if mode_id is not None:
-                    await cur.execute(
-                        """
-                        SELECT gs.id, p.telegram_user_id, p.username, p.first_name,
-                               m.id, m.title, gs.correct_count, gs.total_questions,
-                               gs.score, gs.duration_sec, gs.finished_at
-                        FROM game_sessions gs
-                        JOIN game_players p ON p.id = gs.player_id
-                        JOIN game_modes m ON m.id = gs.mode_id
-                        WHERE gs.status = 'completed' AND gs.mode_id = %s
-                        ORDER BY gs.finished_at DESC NULLS LAST
-                        LIMIT %s
-                        """,
-                        (mode_id, limit),
-                    )
-                else:
-                    await cur.execute(
-                        """
-                        SELECT gs.id, p.telegram_user_id, p.username, p.first_name,
-                               m.id, m.title, gs.correct_count, gs.total_questions,
-                               gs.score, gs.duration_sec, gs.finished_at
-                        FROM game_sessions gs
-                        JOIN game_players p ON p.id = gs.player_id
-                        JOIN game_modes m ON m.id = gs.mode_id
-                        WHERE gs.status = 'completed'
-                        ORDER BY gs.finished_at DESC NULLS LAST
-                        LIMIT %s
-                        """,
-                        (limit,),
-                    )
+                await cur.execute(
+                    f"""
+                    SELECT gs.id, p.telegram_user_id, p.username, p.first_name,
+                           m.id, m.title, gs.correct_count, gs.total_questions,
+                           gs.score, gs.duration_sec, gs.finished_at
+                    FROM game_sessions gs
+                    JOIN game_players p ON p.id = gs.player_id
+                    JOIN game_modes m ON m.id = gs.mode_id
+                    WHERE {where_sql}
+                    ORDER BY gs.finished_at DESC NULLS LAST
+                    LIMIT %s
+                    """,
+                    params,
+                )
                 rows = await cur.fetchall()
                 result = [
                     {

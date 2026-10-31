@@ -12,7 +12,7 @@ tags: [qa, strategy, metrics, risk, estimate, coverage, "собеседован�
 onKnowledgeMap: true
 durationMin: 80
 excerpt: "Старт QA без документов, критерии «достаточно», review кейсов, риски, нагрузка команды, метрики и оценка трудозатрат."
-prerequisites: [qa-infra-linux-containers]
+prerequisites: [qa-middle-process, qa-api-contract-perf]
 author: ""
 authorUrl: ""
 coverUrl: ""

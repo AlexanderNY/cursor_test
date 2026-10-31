@@ -12,7 +12,7 @@ tags: [qa, owasp, security, sockets, stress, performance, "собеседова�
 onKnowledgeMap: true
 durationMin: 85
 excerpt: "OWASP Top и защиты, ручное и авто-тестирование сокетов, когда нужен stress и как проектировать сценарии нагрузки."
-prerequisites: [qa-strategy-metrics]
+prerequisites: [qa-strategy-metrics, qa-infra-linux-containers, sec-authn-authz]
 author: ""
 authorUrl: ""
 coverUrl: ""

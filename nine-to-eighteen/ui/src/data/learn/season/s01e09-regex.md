@@ -12,7 +12,7 @@ tags: [regex, "собеседование", frontend, react]
 onKnowledgeMap: true
 durationMin: 40
 excerpt: ""
-prerequisites: []
+prerequisites: [py-strings-ops-io]
 author: ""
 authorUrl: ""
 coverUrl: ""

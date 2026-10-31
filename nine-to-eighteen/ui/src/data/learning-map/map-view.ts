@@ -6,7 +6,7 @@ export type MapViewState = {
   pan: { x: number; y: number }
 }
 
-const STORAGE_KEY = 'nine-to-eighteen-map-view-v1'
+const STORAGE_KEY = 'nine-to-eighteen-map-view-v2'
 
 function isBrowser(): boolean {
   return typeof window !== 'undefined' && typeof window.localStorage !== 'undefined'

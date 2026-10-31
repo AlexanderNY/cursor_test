@@ -36,6 +36,7 @@ from services.cert_rules import (
     assess_tracks,
     best_quiz_percents,
     blank_code,
+    certificate_holder_name,
     is_cert_code,
 )
 from services.photo_process import process_profile_photo
@@ -2613,6 +2614,30 @@ async def _load_certificate_board(cur: Any, user_id: int) -> list[dict[str, Any]
     return board
 
 
+async def _resolve_certificate_holder(cur: Any, user_id: int, username: str) -> str:
+    await cur.execute(
+        """
+        SELECT COALESCE(p.last_name, ''),
+               COALESCE(p.first_name, ''),
+               COALESCE(p.patronymic, ''),
+               COALESCE(u.username, '')
+        FROM site_users u
+        LEFT JOIN site_user_profiles p ON p.user_id = u.id
+        WHERE u.id = %s
+        """,
+        (user_id,),
+    )
+    row = await cur.fetchone()
+    if not row:
+        return certificate_holder_name("", "", "", username)
+    return certificate_holder_name(
+        str(row[0] or ""),
+        str(row[1] or ""),
+        str(row[2] or ""),
+        str(row[3] or "") or username,
+    )
+
+
 async def _sync_certificates(cur: Any, user_id: int, holder_name: str) -> list[dict[str, Any]]:
     board = await _load_certificate_board(cur, user_id)
     earned_ids = [track["id"] for track in board if track["earned"]]
@@ -2628,7 +2653,7 @@ async def _sync_certificates(cur: Any, user_id: int, holder_name: str) -> list[d
         await cur.execute("DELETE FROM site_certificates WHERE user_id = %s", (user_id,))
 
     stored: dict[str, tuple[str, str]] = {}
-    holder = (holder_name or "").strip() or "Участник"
+    holder = await _resolve_certificate_holder(cur, user_id, holder_name)
     for track in board:
         if not track["earned"]:
             continue
@@ -2705,6 +2730,7 @@ async def public_certificate(code: str, request: Request) -> dict[str, Any]:
                 raise HTTPException(status_code=404, detail="Сертификат не найден")
             user_id = int(found[0])
             track_id = str(found[1])
+            holder = await _resolve_certificate_holder(cur, user_id, str(found[2] or ""))
             board = await _load_certificate_board(cur, user_id)
             track = next((item for item in board if item["id"] == track_id and item["earned"]), None)
             if track is None:
@@ -2712,7 +2738,7 @@ async def public_certificate(code: str, request: Request) -> dict[str, Any]:
                 raise HTTPException(status_code=404, detail="Сертификат не найден")
             payload = {
                 "code": normalized,
-                "holderName": str(found[2] or ""),
+                "holderName": holder,
                 "trackId": track["id"],
                 "trackTitle": track["title"],
                 "episodeCount": track["total"],

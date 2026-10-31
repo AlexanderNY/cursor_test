@@ -7,6 +7,6 @@ from typing import Any
 from services.game_repository import game_repository
 
 
-async def get_leaderboard(*, limit: int = 20) -> list[dict[str, Any]]:
+async def get_leaderboard(*, limit: int = 20, bot_id: int | None = None) -> list[dict[str, Any]]:
     """Возвращает топ игроков (лучший результат на пользователя)."""
-    return await game_repository.fetch_leaderboard(limit=limit)
+    return await game_repository.fetch_leaderboard(limit=limit, bot_id=bot_id)

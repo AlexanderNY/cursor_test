@@ -12,7 +12,7 @@ tags: [qa, sql, database, sqlite, "собеседование", practice, checkl
 onKnowledgeMap: true
 durationMin: 65
 excerpt: "Типы баз, SELECT с WHERE, идея JOIN и лаба на sqlite3 в Python для books/users/orders."
-prerequisites: [qa-docs-plan-cases]
+prerequisites: [qa-test-design]
 author: ""
 authorUrl: ""
 coverUrl: ""

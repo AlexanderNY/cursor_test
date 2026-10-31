@@ -3,8 +3,8 @@ import { Link } from 'react-router-dom'
 import {
   displayNotes,
   learnEpisodePath,
-  learnSlugFromNotes,
-  notesWithLearnSlug,
+  learnTargetFromNotes,
+  notesWithLearnTarget,
 } from '@/components/tasks/learn-link'
 import type {
   SiteTaskBoard,
@@ -47,7 +47,7 @@ export function TaskEditor({
   onDelete,
   onAddSubtask,
 }: TaskEditorProps) {
-  const learnSlug = learnSlugFromNotes(task.notes)
+  const learnTarget = learnTargetFromNotes(task.notes)
   const [title, setTitle] = useState(task.title)
   const [notes, setNotes] = useState(displayNotes(task.notes))
   const [tag, setTag] = useState(task.tag)
@@ -86,7 +86,9 @@ export function TaskEditor({
     }
     await onSave(task.id, {
       title: nextTitle,
-      notes: learnSlug ? notesWithLearnSlug(learnSlug, notes) : notes.trim(),
+      notes: learnTarget
+        ? notesWithLearnTarget(learnTarget.slug, learnTarget.kind, notes)
+        : notes.trim(),
       tag: tag.trim(),
       due_at: dueAt.trim() || null,
       due_time: dueTime.trim() || null,
@@ -119,11 +121,19 @@ export function TaskEditor({
           Закрыть
         </button>
       </header>
-      {learnSlug ? (
+      {learnTarget ? (
         <p className="tasks-learn-links">
-          <Link to={learnEpisodePath(learnSlug)}>Выпуск</Link>
-          <Link to={learnEpisodePath(learnSlug, 'lab')}>Лаба</Link>
-          <Link to={learnEpisodePath(learnSlug, 'quiz')}>Тест</Link>
+          {learnTarget.kind === 'quiz' ? (
+            <Link to={learnEpisodePath(learnTarget.slug, 'quiz')}>Тест</Link>
+          ) : (
+            <Link to={learnEpisodePath(learnTarget.slug)}>Статья</Link>
+          )}
+          <Link to={learnEpisodePath(learnTarget.slug, 'lab')}>Лаба</Link>
+          {learnTarget.kind === 'quiz' ? (
+            <Link to={learnEpisodePath(learnTarget.slug)}>Статья</Link>
+          ) : (
+            <Link to={learnEpisodePath(learnTarget.slug, 'quiz')}>Тест</Link>
+          )}
         </p>
       ) : null}
       <form className="tasks-editor-form" onSubmit={(event) => void handleSave(event)}>

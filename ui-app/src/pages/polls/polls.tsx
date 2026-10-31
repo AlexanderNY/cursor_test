@@ -22,7 +22,7 @@ function PollsLayoutInner() {
     <PageContainer>
       <PageHeader
         title="Polls"
-        description="Управление Telegram-игрой: контент, диагностика бота, рейтинг и заказы."
+        description="Несколько Telegram-ботов работают параллельно. Контент, диагностика, рейтинг и заказы относятся к выбранному боту."
       />
 
       <BotsSettingsSection

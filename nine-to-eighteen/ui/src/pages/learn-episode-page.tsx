@@ -9,11 +9,17 @@ import {
 import { LearnContent } from '@/components/learn-content'
 import { MermaidBlock } from '@/components/learn-mermaid'
 import { LearnPostBadges } from '@/components/learn-post-badges'
+import { LearnStudyPath } from '@/components/learn-study-path'
 import { PageShell } from '@/components/page-shell'
 import { StructuredPostView } from '@/components/structured-post-view'
 import { levelLabel, profileLabel } from '@/data/learn/labels'
 import { safeHref, safeImageSrc } from '@/data/safe-url'
-import { formatPublishDate, isPostPublished } from '@/data/learn/learn-store'
+import {
+  formatPublishDate,
+  isPostPublished,
+  postsWithBundledEpisodes,
+} from '@/data/learn/learn-store'
+import { buildStudyPath } from '@/data/learn/study-path'
 import { usePageSeo } from '@/data/learn/use-page-seo'
 import {
   getAdjacentPosts,
@@ -82,6 +88,14 @@ export function LearnEpisodePage() {
     }
     return { ...base, mnemonics: [extra] }
   }, [episode])
+
+  const studyPath = useMemo(() => {
+    if (!episode) {
+      return { before: [], after: [] }
+    }
+    const catalog = postsWithBundledEpisodes(getPublishedPosts(posts))
+    return buildStudyPath(episode.slug, episode.prerequisites || [], catalog)
+  }, [episode, posts])
 
   const seoDescription =
     episode?.seoDescription?.trim() ||
@@ -212,15 +226,18 @@ export function LearnEpisodePage() {
         {episode.excerpt?.trim() ? (
           <p className="learn-lead">{episode.excerpt.trim()}</p>
         ) : null}
-        {episode.prerequisites?.length ? (
+        {studyPath.before.length > 0 ? (
           <p className="learn-section-note">
-            Сначала пройдите:{' '}
-            {episode.prerequisites.map((prereq, index) => (
+            Изучить до:{' '}
+            {studyPath.before.map(({ slug: prereq, post }, index) => (
               <span key={prereq}>
                 {index > 0 ? ', ' : null}
-                <Link to={`/game/learn/${prereq}`}>{prereq}</Link>
+                <Link to={`/game/learn/${prereq}`}>{post ? post.shortTitle || post.title : prereq}</Link>
+                {completedSlugs.has(prereq) ? ' ✓' : null}
               </span>
             ))}
+            {' · '}
+            <a href="#learn-study-path-heading">порядок изучения</a>
           </p>
         ) : null}
         <p className="learn-section-note">
@@ -395,6 +412,8 @@ export function LearnEpisodePage() {
           </section>
         )}
       </div>
+
+      <LearnStudyPath path={studyPath} completedSlugs={completedSlugs} />
 
       <nav className="learn-pager" aria-label="Соседние выпуски">
         {adjacent.prev ? (

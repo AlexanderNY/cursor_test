@@ -12,7 +12,7 @@ tags: [python, mro, dunder, slots, "собеседование", pep8, typing, m
 onKnowledgeMap: true
 durationMin: 90
 excerpt: "MRO, множественное наследование, магические методы и __slots__."
-prerequisites: [py-iterators-generators]
+prerequisites: [py-oop-basics, py-iterators-generators]
 author: ""
 authorUrl: ""
 coverUrl: ""

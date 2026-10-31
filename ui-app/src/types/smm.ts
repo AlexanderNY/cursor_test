@@ -193,6 +193,8 @@ export interface DigestJob {
   last_cover_miss_theme?: string | null
   last_cover_miss_at?: string | null
   last_run_at?: string | null
+  /** Messages waiting in digest_hold for this job's sources. */
+  held_count?: number
   created_at?: string | null
   updated_at?: string | null
 }

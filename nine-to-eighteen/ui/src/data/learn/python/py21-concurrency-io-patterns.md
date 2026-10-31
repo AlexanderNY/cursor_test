@@ -12,7 +12,7 @@ tags: [python, concurrency, production, debugging, "собеседование",
 onKnowledgeMap: true
 durationMin: 90
 excerpt: "Неблокирующий I/O, утечки, сигналы и диагностика на Linux."
-prerequisites: [py-perf-packaging-alt-runtimes]
+prerequisites: [py-perf-packaging-alt-runtimes, ops-linux-process]
 author: ""
 authorUrl: ""
 coverUrl: ""

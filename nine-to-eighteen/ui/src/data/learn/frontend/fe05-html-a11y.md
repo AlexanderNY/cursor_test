@@ -12,7 +12,7 @@ tags: [frontend, html, css, a11y, собеседование]
 onKnowledgeMap: true
 durationMin: 45
 excerpt: Семантика, раскладка и клавиатура. Кнопка, которая только выглядит кнопкой, на собесе не проходит.
-prerequisites: [fe-event-loop]
+prerequisites: []
 seoTitle: HTML CSS доступность — React
 seoDescription: Семантические теги, flex и grid, подпись поля и фокус.
 seoKeywords: [html, css, accessibility, react]

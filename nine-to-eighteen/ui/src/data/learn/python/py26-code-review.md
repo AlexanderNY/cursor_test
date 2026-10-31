@@ -12,7 +12,7 @@ tags: [python, review, git, собеседование]
 onKnowledgeMap: true
 durationMin: 40
 excerpt: Ревью ищет дефект контракта, теста и безопасности. Запятая в импорте — последний проход.
-prerequisites: [py-solid]
+prerequisites: [py-solid, py-oop-advanced-mro]
 seoTitle: Code review Python — middle
 seoDescription: Порядок проверки PR: поведение, тесты, контракт, безопасность.
 seoKeywords: [python, code review, pull request]

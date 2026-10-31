@@ -12,7 +12,7 @@ tags: [api, "собеседование", git, frontend, react]
 onKnowledgeMap: true
 durationMin: 40
 excerpt: ""
-prerequisites: []
+prerequisites: [b01-karta]
 author: ""
 authorUrl: ""
 coverUrl: ""

@@ -18,6 +18,8 @@ type LeafDetailPanelProps = {
   data: LeafPanelData
   root: MindNode
   nodeId: string
+  /** Узел, с которого брать карточки статьи (сам узел или предок с learnSlug). */
+  ankiNodeId?: string
   learnSlug?: string
   notes: Record<string, LeafNote>
   posts?: LearnPost[]
@@ -32,6 +34,7 @@ export function LeafDetailPanel({
   data,
   root,
   nodeId,
+  ankiNodeId,
   learnSlug,
   notes,
   posts = [],
@@ -76,11 +79,11 @@ export function LeafDetailPanel({
     () =>
       collectAnkiCards(root, {
         notes: draftNotes,
-        nodeId,
+        nodeId: ankiNodeId || nodeId,
         onlyLeaves: true,
         posts,
       }),
-    [root, draftNotes, nodeId, posts],
+    [ankiNodeId, root, draftNotes, nodeId, posts],
   )
 
   const mnemonicDeck = useMemo(
@@ -97,7 +100,7 @@ export function LeafDetailPanel({
     }
   }, [ankiDeck.length, ankiIndex])
 
-  if (!data.isLeaf) {
+  if (!data.isLeaf && !learnSlug) {
     return null
   }
 
@@ -127,7 +130,7 @@ export function LeafDetailPanel({
           )}
         </p>
       ) : (
-        <p className="lm-detail-empty">У листа нет привязки learn:slug — добавьте в MD карты.</p>
+        <p className="lm-detail-empty">У этой темы нет своей статьи — откройте родительский выпуск.</p>
       )}
 
       <h3 className="lm-learn-subtitle">Краткий ответ (заметка)</h3>

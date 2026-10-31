@@ -12,7 +12,7 @@ tags: [sa, ADR, "монолит", "микросервисы", CAP, "архите
 onKnowledgeMap: true
 durationMin: 70
 excerpt: "Синтез T5: как писать ADR, когда монолит уместнее микросервисов, CAP-компромиссы с прикладным примером."
-prerequisites: [sa-modeling-workshop]
+prerequisites: [sa-architecture-styles]
 author: ""
 authorUrl: ""
 coverUrl: ""

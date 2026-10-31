@@ -342,7 +342,9 @@
     ],
     "excerpt": "",
     "durationMin": 40,
-    "prerequisites": [],
+    "prerequisites": [
+      "s01e01-sloi"
+    ],
     "author": "",
     "authorUrl": "",
     "coverUrl": "",
@@ -517,7 +519,9 @@
     ],
     "excerpt": "",
     "durationMin": 40,
-    "prerequisites": [],
+    "prerequisites": [
+      "b01-karta"
+    ],
     "author": "",
     "authorUrl": "",
     "coverUrl": "",
@@ -693,7 +697,9 @@
     ],
     "excerpt": "",
     "durationMin": 40,
-    "prerequisites": [],
+    "prerequisites": [
+      "s01e01-sloi"
+    ],
     "author": "",
     "authorUrl": "",
     "coverUrl": "",
@@ -873,7 +879,9 @@
     ],
     "excerpt": "",
     "durationMin": 40,
-    "prerequisites": [],
+    "prerequisites": [
+      "py-strings-ops-io"
+    ],
     "author": "",
     "authorUrl": "",
     "coverUrl": "",
@@ -1090,7 +1098,9 @@
     ],
     "excerpt": "",
     "durationMin": 40,
-    "prerequisites": [],
+    "prerequisites": [
+      "s01e01-sloi"
+    ],
     "author": "",
     "authorUrl": "",
     "coverUrl": "",
@@ -1315,7 +1325,9 @@
     ],
     "excerpt": "",
     "durationMin": 40,
-    "prerequisites": [],
+    "prerequisites": [
+      "b01-karta"
+    ],
     "author": "",
     "authorUrl": "",
     "coverUrl": "",
@@ -1507,7 +1519,9 @@
     ],
     "excerpt": "",
     "durationMin": 40,
-    "prerequisites": [],
+    "prerequisites": [
+      "b05-api-check"
+    ],
     "author": "",
     "authorUrl": "",
     "coverUrl": "",
@@ -2517,6 +2531,7 @@
     "excerpt": "MRO, множественное наследование, магические методы и __slots__.",
     "durationMin": 90,
     "prerequisites": [
+      "py-oop-basics",
       "py-iterators-generators"
     ],
     "author": "",
@@ -3220,7 +3235,8 @@
     "excerpt": "Неблокирующий I/O, утечки, сигналы и диагностика на Linux.",
     "durationMin": 90,
     "prerequisites": [
-      "py-perf-packaging-alt-runtimes"
+      "py-perf-packaging-alt-runtimes",
+      "ops-linux-process"
     ],
     "author": "",
     "authorUrl": "",
@@ -3972,7 +3988,7 @@
     "excerpt": "Типы баз, SELECT с WHERE, идея JOIN и лаба на sqlite3 в Python для books/users/orders.",
     "durationMin": 65,
     "prerequisites": [
-      "qa-docs-plan-cases"
+      "qa-test-design"
     ],
     "author": "",
     "authorUrl": "",
@@ -4163,7 +4179,8 @@
     "excerpt": "OOP, SOLID, DRY/KISS/YAGNI, Page Object и краткий Java-блок для junior AQA-собеседования.",
     "durationMin": 85,
     "prerequisites": [
-      "qa-sql-db-basics"
+      "qa-docs-plan-cases",
+      "py-oop-basics"
     ],
     "author": "",
     "authorUrl": "",
@@ -4534,7 +4551,7 @@
     "excerpt": "Обязанности QA, entry/exit, цена дефекта, pos/neg, пререлиз, bug leakage и когда не писать кейсы.",
     "durationMin": 85,
     "prerequisites": [
-      "qa-pytest-ci-git"
+      "qa-docs-plan-cases"
     ],
     "author": "",
     "authorUrl": "",
@@ -4723,7 +4740,7 @@
     "excerpt": "Моки и стабы, инструменты API, contract testing, load/stress и стратегия нагрузки для middle QA.",
     "durationMin": 85,
     "prerequisites": [
-      "qa-middle-process"
+      "qa-pytest-ci-git"
     ],
     "author": "",
     "authorUrl": "",
@@ -4916,7 +4933,9 @@
     "excerpt": "VM vs simulator vs emulator, контейнеры, IaaS/PaaS, provisioning, shell для логов, SSH и скрипты в автоматизации.",
     "durationMin": 90,
     "prerequisites": [
-      "qa-api-contract-perf"
+      "qa-pytest-ci-git",
+      "qa-sql-db-basics",
+      "b10-docker"
     ],
     "author": "",
     "authorUrl": "",
@@ -5110,7 +5129,8 @@
     "excerpt": "Старт QA без документов, критерии «достаточно», review кейсов, риски, нагрузка команды, метрики и оценка трудозатрат.",
     "durationMin": 80,
     "prerequisites": [
-      "qa-infra-linux-containers"
+      "qa-middle-process",
+      "qa-api-contract-perf"
     ],
     "author": "",
     "authorUrl": "",
@@ -5298,7 +5318,9 @@
     "excerpt": "OWASP Top и защиты, ручное и авто-тестирование сокетов, когда нужен stress и как проектировать сценарии нагрузки.",
     "durationMin": 85,
     "prerequisites": [
-      "qa-strategy-metrics"
+      "qa-strategy-metrics",
+      "qa-infra-linux-containers",
+      "sec-authn-authz"
     ],
     "author": "",
     "authorUrl": "",
@@ -6062,9 +6084,7 @@
     ],
     "excerpt": "БД и СУБД, типы БД, зачем реляционные, задачи NoSQL, нормализация 1–3NF, денормализация, типы связей, M:N и первичный ключ.",
     "durationMin": 62,
-    "prerequisites": [
-      "sa-gost-srs-artifacts"
-    ],
+    "prerequisites": [],
     "author": "",
     "authorUrl": "",
     "coverUrl": "",
@@ -6260,7 +6280,8 @@
     "excerpt": "API и REST, RESTful и Stateless, кэширование, методы, параметры, URL, заголовки, 200/201, GET/POST, PUT/PATCH, идемпотентность.",
     "durationMin": 66,
     "prerequisites": [
-      "sa-db-basics"
+      "sa-requirements-basics",
+      "net-dns-http"
     ],
     "author": "",
     "authorUrl": "",
@@ -6418,7 +6439,7 @@
     "excerpt": "Транзакции и ACID, проектирование и оптимизация БД, партиции, реплики, шарды, маппинг, уровни абстракции, индексы, dirty read и денормализация.",
     "durationMin": 35,
     "prerequisites": [
-      "sa-rest-basics"
+      "sa-db-basics"
     ],
     "author": "",
     "authorUrl": "",
@@ -6622,7 +6643,7 @@
     "excerpt": "Синхрон vs асинхрон, нужен ли ответ, зачем очереди, вызов БД, Kafka vs RabbitMQ, гарантии доставки, offset и queue vs topic.",
     "durationMin": 65,
     "prerequisites": [
-      "sa-db-advanced"
+      "sa-rest-basics"
     ],
     "author": "",
     "authorUrl": "",
@@ -7028,7 +7049,8 @@
     "excerpt": "Клиент-сервер, виды архитектур, SOA vs микросервисы, декомпозиция, независимость сервисов, монолит vs микросервисы.",
     "durationMin": 65,
     "prerequisites": [
-      "sa-soap-xml"
+      "sa-soap-xml",
+      "sa-db-advanced"
     ],
     "author": "",
     "authorUrl": "",
@@ -7219,7 +7241,8 @@
     "excerpt": "Протоколы, HTTP vs HTTPS, authN vs authZ, что происходит при переходе по URL, основы шифрования данных.",
     "durationMin": 60,
     "prerequisites": [
-      "sa-architecture-styles"
+      "sa-rest-basics",
+      "sa-gost-srs-artifacts"
     ],
     "author": "",
     "authorUrl": "",
@@ -7425,7 +7448,9 @@
     "excerpt": "Практика T2+T3: один сквозной кейс заказа и оплаты — BPMN, sequence-диаграмма и ER-модель.",
     "durationMin": 75,
     "prerequisites": [
-      "sa-http-security-basics"
+      "sa-gost-srs-artifacts",
+      "sa-db-basics",
+      "sa-soap-xml"
     ],
     "author": "",
     "authorUrl": "",
@@ -7618,7 +7643,7 @@
     "excerpt": "Синтез T5: как писать ADR, когда монолит уместнее микросервисов, CAP-компромиссы с прикладным примером.",
     "durationMin": 70,
     "prerequisites": [
-      "sa-modeling-workshop"
+      "sa-architecture-styles"
     ],
     "author": "",
     "authorUrl": "",
@@ -7876,7 +7901,9 @@
     "excerpt": "T6.2.1–6.2.4: кто такой хороший аналитик, чем junior отличается от senior, признаки плохого СА и зона ответственности роли.",
     "durationMin": 90,
     "prerequisites": [
-      "sa-architecture-decisions"
+      "sa-architecture-decisions",
+      "sa-modeling-workshop",
+      "sa-http-security-basics"
     ],
     "author": "",
     "authorUrl": "",
@@ -8455,7 +8482,7 @@
     "excerpt": "Разница CHAR и VARCHAR, почему NULL не равен 0 и пробелу, трёхзначная логика и IS NULL в PostgreSQL.",
     "durationMin": 54,
     "prerequisites": [
-      "sql-delete-truncate-drop"
+      "sql-ddl-dml-dcl"
     ],
     "author": "",
     "authorUrl": "",
@@ -8651,6 +8678,7 @@
     "excerpt": "Сущности и связи, выгоды нормализации, формы 1NF–3NF и когда осознанно денормализуют схему.",
     "durationMin": 70,
     "prerequisites": [
+      "sql-delete-truncate-drop",
       "sql-types-null"
     ],
     "author": "",
@@ -8836,7 +8864,8 @@
     "excerpt": "Q24–Q25: что такое триггер, когда его применять; арифметические, логические и сравнения в SQL — с фокусом на PostgreSQL.",
     "durationMin": 60,
     "prerequisites": [
-      "sql-normalization"
+      "sql-delete-truncate-drop",
+      "sql-types-null"
     ],
     "author": "",
     "authorUrl": "",
@@ -9426,7 +9455,8 @@
     "excerpt": "Скоростной drill по Q1–Q30: короткие модельные ответы своими словами для устного собеседования SQL.",
     "durationMin": 75,
     "prerequisites": [
-      "sql-cte-window"
+      "sql-cte-window",
+      "sql-normalization"
     ],
     "author": "",
     "authorUrl": "",
@@ -10497,7 +10527,8 @@
     "excerpt": "env, PID, запуск jar и сигналы; мост к инфраструктуре QA17.",
     "durationMin": 85,
     "prerequisites": [
-      "jv-se-jvm"
+      "jv-se-jvm",
+      "sql-ddl-dml-dcl"
     ],
     "author": "",
     "authorUrl": "",
@@ -10682,7 +10713,8 @@
     "excerpt": "Зачем ORM и чем отличается от raw JDBC: persistence context, identity, dirty checking.",
     "durationMin": 65,
     "prerequisites": [
-      "jv-shell-process"
+      "jv-shell-process",
+      "sql-delete-truncate-drop"
     ],
     "author": "",
     "authorUrl": "",
@@ -10894,7 +10926,8 @@
     "excerpt": "Jakarta Messaging: queue vs topic, acknowledgement и dead-letter.",
     "durationMin": 86,
     "prerequisites": [
-      "jv-orm-concepts"
+      "jv-shell-process",
+      "sa-sync-async-queues"
     ],
     "author": "",
     "authorUrl": "",
@@ -11116,7 +11149,9 @@
     "excerpt": "Зачем JS в enterprise-стеке рядом с JVM — не как курс React.",
     "durationMin": 90,
     "prerequisites": [
-      "jv-jms"
+      "jv-jms",
+      "js-types-coerce",
+      "b10-docker"
     ],
     "author": "",
     "authorUrl": "",
@@ -11355,7 +11390,9 @@
     "excerpt": "Короткий ADR выбора ESB или message broker для Java-команды.",
     "durationMin": 90,
     "prerequisites": [
-      "jv-js-glue"
+      "jv-js-glue",
+      "jv-orm-concepts",
+      "jc-collections-hashmap"
     ],
     "author": "",
     "authorUrl": "",
@@ -12777,7 +12814,7 @@
     "excerpt": "Выручка, маржа, contribution без MBA-толщины.",
     "durationMin": 60,
     "prerequisites": [
-      "pm-okr"
+      "pm-metrics"
     ],
     "author": "",
     "authorUrl": "",
@@ -12987,7 +13024,9 @@
     "excerpt": "Вытяжные ответы CPO/PM.",
     "durationMin": 60,
     "prerequisites": [
-      "pm-pnl-unit-econ"
+      "pm-pnl-unit-econ",
+      "pm-discovery",
+      "pm-acceptance"
     ],
     "author": "",
     "authorUrl": "",
@@ -13273,7 +13312,7 @@
     "excerpt": "Из чего состоит commit, чем init отличается от clone, что такое stage/index.",
     "durationMin": 90,
     "prerequisites": [
-      "b01-karta"
+      "s01e03-git"
     ],
     "author": "",
     "authorUrl": "",
@@ -13739,7 +13778,10 @@
     ],
     "excerpt": "С чего начать рисунок: клиент, API, база, что не делаем.",
     "durationMin": 90,
-    "prerequisites": [],
+    "prerequisites": [
+      "s01e01-sloi",
+      "net-dns-http"
+    ],
     "author": "",
     "authorUrl": "",
     "coverUrl": "",
@@ -14383,7 +14425,9 @@
     ],
     "excerpt": "Сначала узнать человека, потом решить, можно ли ему это действие.",
     "durationMin": 90,
-    "prerequisites": [],
+    "prerequisites": [
+      "net-dns-http"
+    ],
     "author": "",
     "authorUrl": "",
     "coverUrl": "",
@@ -15001,7 +15045,9 @@
     ],
     "excerpt": "Почему ломают equals без hashCode и что лежит в корзине.",
     "durationMin": 90,
-    "prerequisites": [],
+    "prerequisites": [
+      "jv-se-jvm"
+    ],
     "author": "",
     "authorUrl": "",
     "coverUrl": "",
@@ -15418,7 +15464,9 @@
     ],
     "excerpt": "Кто владеет процессом, чем файл прав отличается от «у меня открылось».",
     "durationMin": 75,
-    "prerequisites": [],
+    "prerequisites": [
+      "b10-docker"
+    ],
     "author": "",
     "authorUrl": "",
     "coverUrl": "",
@@ -15721,7 +15769,8 @@
     "excerpt": "Ревью ищет дефект контракта, теста и безопасности. Запятая в импорте — последний проход.",
     "durationMin": 40,
     "prerequisites": [
-      "py-solid"
+      "py-solid",
+      "py-oop-advanced-mro"
     ],
     "author": "",
     "authorUrl": "",
@@ -15876,7 +15925,8 @@
     "excerpt": "ORM не отменяет SQL. На собесе показывают сессию, границу транзакции и запрос, который раздулся в цикл.",
     "durationMin": 45,
     "prerequisites": [
-      "py-oop-advanced-mro"
+      "py-oop-basics",
+      "sql-normalization"
     ],
     "author": "",
     "authorUrl": "",
@@ -16033,7 +16083,8 @@
     "excerpt": "Тяжёлую работу выносят из HTTP. Celery забирает сообщение из RabbitMQ или Redis и обязана пережить повтор.",
     "durationMin": 45,
     "prerequisites": [
-      "py-oop-advanced-mro"
+      "py-oop-advanced-mro",
+      "rd-kv-model"
     ],
     "author": "",
     "authorUrl": "",
@@ -16188,7 +16239,8 @@
     "excerpt": "Постоянный канал оправдан, если сервер сам говорит клиенту. Иначе хватает обычного запроса.",
     "durationMin": 40,
     "prerequisites": [
-      "py-oop-advanced-mro"
+      "py-oop-advanced-mro",
+      "s01e05-fastapi"
     ],
     "author": "",
     "authorUrl": "",
@@ -16338,9 +16390,7 @@
     ],
     "excerpt": "Семантика, раскладка и клавиатура. Кнопка, которая только выглядит кнопкой, на собесе не проходит.",
     "durationMin": 45,
-    "prerequisites": [
-      "fe-event-loop"
-    ],
+    "prerequisites": [],
     "author": "",
     "authorUrl": "",
     "coverUrl": "",
@@ -16645,7 +16695,8 @@
     "excerpt": "Юнит компонента проверяет поведение. Сквозной сценарий в браузере — отдельный, короткий слой.",
     "durationMin": 45,
     "prerequisites": [
-      "fe-event-loop"
+      "fe-event-loop",
+      "fe-html-a11y"
     ],
     "author": "",
     "authorUrl": "",
@@ -16947,7 +16998,8 @@
     "excerpt": "Компонент показывают во всех состояниях отдельно от страницы. Дизайн-система — общий набор, а не папка со скриншотами.",
     "durationMin": 40,
     "prerequisites": [
-      "fe-html-a11y"
+      "fe-html-a11y",
+      "fe-event-loop"
     ],
     "author": "",
     "authorUrl": "",
@@ -17098,7 +17150,8 @@
     "excerpt": "Отдельная выкладка команд и отдельный рендер на сервере решают разные задачи. Оба не нужны первому экрану заметок.",
     "durationMin": 45,
     "prerequisites": [
-      "fe-state-libraries"
+      "fe-state-libraries",
+      "fe-render-perf"
     ],
     "author": "",
     "authorUrl": "",
@@ -17249,7 +17302,8 @@
     "excerpt": "Спецификация — источник типов запроса и ответа. Ручной интерфейс рядом с ней расходится в первый же спринт.",
     "durationMin": 40,
     "prerequisites": [
-      "fe-event-loop"
+      "fe-event-loop",
+      "s01e05-fastapi"
     ],
     "author": "",
     "authorUrl": "",
@@ -17554,7 +17608,7 @@
     "excerpt": "Прогон, набор кейсов и дефект живут в разных системах. Смешение превращает отчёт в склад задач.",
     "durationMin": 40,
     "prerequisites": [
-      "qa-test-design"
+      "qa-pytest-ci-git"
     ],
     "author": "",
     "authorUrl": "",
@@ -17859,7 +17913,7 @@
     "excerpt": "Задача несёт работу и критерии. Страница несёт решение, которое переживёт спринт. Одно другим не заменяют.",
     "durationMin": 40,
     "prerequisites": [
-      "sa-rest-basics"
+      "sa-gost-srs-artifacts"
     ],
     "author": "",
     "authorUrl": "",
@@ -18312,7 +18366,8 @@
     "excerpt": "Критерий называется так, чтобы тест мог сказать «да» или «нет». Пожелание «удобно» таким критерием не является.",
     "durationMin": 40,
     "prerequisites": [
-      "pm-cjm"
+      "pm-cjm",
+      "sa-requirements-basics"
     ],
     "author": "",
     "authorUrl": "",
@@ -18918,7 +18973,8 @@
     "excerpt": "В запросе на слияние смотрят доступ, происхождение строки, секрет и то, что уедет в браузер.",
     "durationMin": 40,
     "prerequisites": [
-      "sec-sast-dast-sca"
+      "sec-sast-dast-sca",
+      "py-code-review"
     ],
     "author": "",
     "authorUrl": "",
@@ -19070,7 +19126,8 @@
     "excerpt": "CSP сужает, откуда странице можно взять скрипт. CSRF — это браузер, который сам прикладывает куку к чужому запросу.",
     "durationMin": 40,
     "prerequisites": [
-      "sec-authn-authz"
+      "sec-authn-authz",
+      "js-dom-events"
     ],
     "author": "",
     "authorUrl": "",
@@ -19224,7 +19281,7 @@
     "excerpt": "Пакет npm и пакет pip попадают в прод наравне с вашим модулем. Замок версии и проверка в CI — часть поставки.",
     "durationMin": 40,
     "prerequisites": [
-      "sec-authn-authz"
+      "sec-sast-dast-sca"
     ],
     "author": "",
     "authorUrl": "",
@@ -19375,7 +19432,8 @@
     "excerpt": "Программа платит за сценарий в оговорённых границах. Внутри это тот же разбор: дубль, вред, срок исправления.",
     "durationMin": 40,
     "prerequisites": [
-      "sec-sast-dast-sca"
+      "sec-sast-dast-sca",
+      "sec-threat-model"
     ],
     "author": "",
     "authorUrl": "",
@@ -19526,7 +19584,8 @@
     "excerpt": "Требование безопасности появляется вместе с историей. Сканер в ночь перед релизом уже не успевает стать процессом.",
     "durationMin": 40,
     "prerequisites": [
-      "sec-threat-model"
+      "sec-threat-model",
+      "sec-sast-dast-sca"
     ],
     "author": "",
     "authorUrl": "",
@@ -19678,7 +19737,8 @@
     "excerpt": "Под, который может всё в кластере и хранит ключ в образе, — это уже инцидент, даже если приложение пока не взломано.",
     "durationMin": 40,
     "prerequisites": [
-      "sec-authn-authz"
+      "sec-authn-authz",
+      "ops-linux-process"
     ],
     "author": "",
     "authorUrl": "",

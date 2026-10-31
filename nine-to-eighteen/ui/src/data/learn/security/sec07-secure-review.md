@@ -12,7 +12,7 @@ tags: [security, code-review, python, react, appsec, собеседование]
 onKnowledgeMap: true
 durationMin: 40
 excerpt: В запросе на слияние смотрят доступ, происхождение строки, секрет и то, что уедет в браузер.
-prerequisites: [sec-sast-dast-sca]
+prerequisites: [sec-sast-dast-sca, py-code-review]
 seoTitle: Security code review React и Python
 seoDescription: Что искать в diff FastAPI и React раньше стиля.
 seoKeywords: [security code review, appsec, fastapi, react]

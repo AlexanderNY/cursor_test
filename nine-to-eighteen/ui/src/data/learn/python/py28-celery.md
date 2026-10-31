@@ -12,7 +12,7 @@ tags: [python, celery, rabbitmq, redis, очередь, собеседовани
 onKnowledgeMap: true
 durationMin: 45
 excerpt: Тяжёлую работу выносят из HTTP. Celery забирает сообщение из RabbitMQ или Redis и обязана пережить повтор.
-prerequisites: [py-oop-advanced-mro]
+prerequisites: [py-oop-advanced-mro, rd-kv-model]
 seoTitle: Celery RabbitMQ Redis — middle
 seoDescription: Задача, брокер, retry и идемпотентность для Python-разработчика.
 seoKeywords: [celery, rabbitmq, redis, python]
