@@ -517,7 +517,7 @@ async def create_case(
                 raise HTTPException(status_code=400, detail="Сначала сохраните адрес страницы")
             existing = await _load_case_rows(cur, user_id)
             if len(existing) >= MAX_CASES:
-                raise HTTPException(status_code=400, detail=f"Не больше {MAX_CASES} кейсов")
+                raise HTTPException(status_code=400, detail=f"Не больше {MAX_CASES} материалов")
             completed, earned, titles, _tracks = await _learn_context(cur, user_id)
             try:
                 case = normalize_case(

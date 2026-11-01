@@ -601,7 +601,8 @@ class TwitterProfileBase(BaseModel):
 
 class TwitterProfileCreate(TwitterProfileBase):
     """Модель для создания/обновления профиля Twitter."""
-    pass
+    twitter_auth_token: Optional[str] = None
+    twitter_ct0: Optional[str] = None
 
 
 class TwitterProfile(TwitterProfileBase):

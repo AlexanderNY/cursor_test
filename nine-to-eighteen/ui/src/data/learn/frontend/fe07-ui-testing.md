@@ -53,6 +53,88 @@ Playwright открывает Chromium, Firefox или WebKit, ждёт элем
 
 Что не пишут. Тест «useState стал true». Тест на класс `.btn-primary`. Десять Playwright-кейсов на длину строки. Снимок всего JSX формы в каждом прогоне.
 
+## Раздел: Пример в коде
+
+Форма заметки: компонент `NoteForm` принимает `onCreate(title)`, который возвращает промис с созданной заметкой.
+
+Плохо:
+
+```tsx
+const { container } = render(<NoteForm onCreate={onCreate} />)
+fireEvent.click(container.querySelector('.btn-primary')!)
+expect(container).toMatchSnapshot()
+```
+
+Селектор завязан на класс, `fireEvent` шлёт одно событие без фокуса и клавиатуры, а снимок покраснеет от любого отступа. Что именно должно было произойти, тест не говорит.
+
+Хорошо: Vitest и Testing Library.
+
+```tsx
+// NoteForm.test.tsx
+import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { describe, expect, it, vi } from 'vitest'
+import { NoteForm } from './NoteForm'
+
+describe('NoteForm', () => {
+  it('добавляет заметку в список', async () => {
+    const user = userEvent.setup()
+    const onCreate = vi.fn().mockResolvedValue({ id: 1, title: 'Молоко' })
+    render(<NoteForm onCreate={onCreate} />)
+
+    await user.type(screen.getByRole('textbox', { name: 'Заголовок' }), 'Молоко')
+    await user.click(screen.getByRole('button', { name: 'Добавить' }))
+
+    expect(onCreate).toHaveBeenCalledWith('Молоко')
+    expect(await screen.findByRole('listitem')).toHaveTextContent('Молоко')
+  })
+
+  it('не отправляет пустой заголовок', async () => {
+    const user = userEvent.setup()
+    const onCreate = vi.fn()
+    render(<NoteForm onCreate={onCreate} />)
+
+    await user.click(screen.getByRole('button', { name: 'Добавить' }))
+
+    expect(screen.getByText('Введите заголовок')).toBeInTheDocument()
+    expect(onCreate).not.toHaveBeenCalled()
+  })
+})
+```
+
+`userEvent.setup()` проходит фокус, нажатия и ввод, как человек. Мок стоит на `onCreate`, то есть на границе клиента, а сам компонент настоящий. `findByRole` ждёт пункт списка, который появится после промиса. Матчеры `toBeInTheDocument` и `toHaveTextContent` даёт `@testing-library/jest-dom`, его подключают в setup-файле Vitest.
+
+Сквозной путь — один, против учебного API:
+
+```ts
+// e2e/notes.spec.ts
+import { expect, test } from '@playwright/test'
+
+test('заметка переживает перезагрузку', async ({ page }) => {
+  const title = `Молоко ${Date.now()}`
+  await page.goto('/notes')
+  await page.getByRole('textbox', { name: 'Заголовок' }).fill(title)
+  await page.getByRole('button', { name: 'Добавить' }).click()
+  await expect(page.getByRole('listitem').filter({ hasText: title })).toBeVisible()
+
+  await page.reload()
+  await expect(page.getByRole('listitem').filter({ hasText: title })).toBeVisible()
+})
+
+test('ошибка сервера при сохранении', async ({ page }) => {
+  await page.route('**/api/notes', async (route) => {
+    if (route.request().method() !== 'POST') return route.continue()
+    await route.fulfill({ status: 500, contentType: 'application/json', body: '{"detail":"boom"}' })
+  })
+  await page.goto('/notes')
+  await page.getByRole('textbox', { name: 'Заголовок' }).fill('Молоко')
+  await page.getByRole('button', { name: 'Добавить' }).click()
+  await expect(page.getByRole('alert')).toHaveText('Не удалось сохранить')
+})
+```
+
+Уникальный заголовок с `Date.now()` — свои данные у каждого прогона, тест не зависит от соседа. `reload` ловит «сохранили только в памяти». Мок стоит только на POST во втором тесте, чтение списка идёт в настоящий API. Ни одного `waitForTimeout`: `expect` ждёт сам.
+
 ## Раздел: Где это ломается
 
 Ищут элемент по классу из CSS-модуля. Смена сетки ломает тест при том же имени кнопки. Лечение — роль и имя. `data-testid` оставляют элементу без устойчивого имени: иконка, ячейка, холст. Кнопке с видимым текстом тестовый id не нужен и даже вреден: он позволяет переименовать кнопку для человека и не заметить это в тесте.
@@ -109,37 +191,73 @@ flowchart TD
   E --> T[trace при падении]
 ```
 
+## Схема: Сквозной сценарий заметки
+
+```mermaid
+sequenceDiagram
+  participant T as тест
+  participant B as браузер
+  participant A as API
+  T->>B: goto /notes
+  T->>B: fill заголовка и click Добавить
+  B->>A: POST /api/notes
+  A-->>B: 201 и заметка
+  T->>B: expect пункт виден
+  T->>B: reload
+  B->>A: GET /api/notes
+  A-->>B: список с заметкой
+  T->>B: expect пункт снова виден
+```
+
 ## Тест
 
 ### Чем искать кнопку в Testing Library?
 
-**Ответ:** по роли и имени
+**Ответ:** по роли
 
-**Пояснение:** Так тест совпадает с тем, как элемент видят человек и доступность.
+**Пояснение:** По роли и имени: так тест совпадает с тем, как элемент видят человек и доступность.
 
-### Почему не проверять useState напрямую?
+### Тест читает useState напрямую. К чему он привязан?
 
-**Ответ:** тест привязан к реализации
+**Ответ:** к реализации
 
-**Пояснение:** Поведение может сохраниться, а хук переедет.
+**Пояснение:** Поведение может сохраниться, а хук переедет, и тест покраснеет зря.
 
 ### Jest или Vitest в новом Vite-проекте?
 
-**Ответ:** чаще Vitest
+**Ответ:** Vitest
 
-**Пояснение:** Он стартует из той же сборки. Jest оставляют, где он уже есть.
+**Пояснение:** Чаще Vitest: он стартует из той же сборки. Jest оставляют, где он уже есть.
 
 ### Что отдавать Playwright, а не jsdom?
 
-**Ответ:** сквозной путь с API
+**Ответ:** сквозной путь
 
-**Пояснение:** Компонентные тесты не видят настоящую склейку страницы и сервера.
+**Пояснение:** Сквозной путь с настоящим API. Компонентные тесты не видят склейку страницы и сервера.
 
 ### Зачем мок сети в e2e?
 
-**Ответ:** показать ошибку сервера
+**Ответ:** ошибку сервера
 
-**Пояснение:** Счастливый путь честнее без мока. Ошибку 500 стенд может не воспроизвести.
+**Пояснение:** Мок нужен, чтобы показать ошибку сервера. Счастливый путь честнее без мока, а ошибку 500 стенд может не воспроизвести.
+
+### Тест жмёт «Добавить», заметка появляется после ответа клиента. `getByText('Молоко')` падает: элемента ещё нет. Каким запросом искать?
+
+**Ответ:** findByText
+
+**Пояснение:** `findBy*` возвращает промис и повторяет поиск, пока элемент не появится или не выйдет таймаут. `getBy*` ищет один раз синхронно. Ручной `sleep` либо мигает, либо тормозит набор.
+
+### Нужно проверить, что кнопки «Удалить» нет у роли без прав, а `getByRole` бросает исключение. Каким запросом проверять отсутствие?
+
+**Ответ:** queryByRole
+
+**Пояснение:** `queryBy*` возвращает `null`, если элемента нет, и его удобно проверить через `not.toBeInTheDocument()`. `getBy*` бросает, `findBy*` будет ждать появления, которого не случится.
+
+### Сценарий Playwright в CI падает на клике раз в десять прогонов, локально зелёный. Перед кликом стоит `waitForTimeout(500)`. Что откроете первым?
+
+**Ответ:** trace
+
+**Пояснение:** Трассировка покажет шаг, снимок DOM и сеть в момент падения: часто причина в API, а не в локаторе. Увеличить паузу — значит спрятать гонку. Паузу потом заменяют ожиданием условия через `expect(locator)`.
 
 ## Шпаргалка
 

@@ -158,14 +158,25 @@ export function MenuCsvImportSection({
   }
 
   return (
-    <div className="space-y-4 rounded-xl border border-[var(--border-color)] p-4">
-      <div>
-        <h3 className="text-sm font-semibold text-[var(--text-primary)]">Импорт меню из CSV</h3>
-        <p className="mt-1 text-xs text-[var(--text-secondary)]">
-          Массовая загрузка пунктов в режим{modeTitle ? ` «${modeTitle}»` : ''}.
-        </p>
-      </div>
+    <details className="group rounded-xl border border-[var(--border-color)]">
+      <summary className="cursor-pointer list-none p-4 [&::-webkit-details-marker]:hidden">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-semibold text-[var(--text-primary)]">Импорт меню из CSV</h3>
+            <p className="mt-1 text-xs text-[var(--text-secondary)]">
+              Массовая загрузка пунктов в режим{modeTitle ? ` «${modeTitle}»` : ''}.
+            </p>
+          </div>
+          <span
+            aria-hidden
+            className="mt-0.5 text-xs text-[var(--text-secondary)] transition-transform group-open:rotate-180"
+          >
+            ▼
+          </span>
+        </div>
+      </summary>
 
+      <div className="space-y-4 px-4 pb-4">
       <div className="rounded-lg bg-[var(--bg-tertiary)]/60 p-3 text-xs text-[var(--text-secondary)] space-y-2">
         <p className="font-medium text-[var(--text-primary)]">Колонки CSV</p>
         <p className="font-mono text-[11px]">{CSV_MENU_COLUMNS.join('; ')}</p>
@@ -247,6 +258,7 @@ export function MenuCsvImportSection({
           ))}
         </ul>
       )}
-    </div>
+      </div>
+    </details>
   )
 }

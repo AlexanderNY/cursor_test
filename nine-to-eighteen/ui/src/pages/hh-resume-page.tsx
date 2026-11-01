@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { HhResumeSavedPreviewDialog } from '@/components/hh-resume-preview-dialog'
 import { PageShell } from '@/components/page-shell'
 import {
   resumeCreate,
@@ -18,6 +19,7 @@ export function HhResumePage() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [ok, setOk] = useState('')
+  const [previewId, setPreviewId] = useState<string | null>(null)
 
   const accessToken = session?.accessToken ?? ''
 
@@ -180,9 +182,13 @@ export function HhResumePage() {
                 >
                   Путь
                 </Link>
-                <Link to={`/game/hh-resume/${item.id}`} className="learn-admin-btn">
-                  Открыть
-                </Link>
+                <button
+                  type="button"
+                  className="learn-admin-btn learn-admin-btn-primary"
+                  onClick={() => setPreviewId(item.id)}
+                >
+                  Предпросмотр
+                </button>
                 <Link to={`/game/hh-resume/${item.id}/edit`} className="learn-admin-btn">
                   Доработать
                 </Link>
@@ -210,6 +216,9 @@ export function HhResumePage() {
           ))}
         </ul>
       )}
+      {previewId ? (
+        <HhResumeSavedPreviewDialog resumeId={previewId} onClose={() => setPreviewId(null)} />
+      ) : null}
     </PageShell>
   )
 }

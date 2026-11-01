@@ -6158,6 +6158,53 @@ button.lm-tag:hover {
   overflow: auto;
 }
 
+.hh-resume-preview-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  align-items: start;
+  justify-items: center;
+  padding: 1rem;
+  overflow: auto;
+  background: color-mix(in srgb, #0b1220 72%, transparent);
+}
+
+.hh-resume-preview-dialog {
+  width: min(52rem, 100%);
+  display: grid;
+  gap: 0.9rem;
+  padding: 1rem 1.05rem 1.1rem;
+  border-radius: 1rem;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg, #0f172a);
+  color: var(--color-fg-body);
+  box-shadow: 0 18px 48px color-mix(in srgb, #000 35%, transparent);
+}
+
+.hh-resume-preview-dialog-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.hh-resume-preview-dialog-head h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.hh-resume-preview-dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.hh-resume-preview-dialog-body .hh-resume-preview {
+  max-width: none;
+}
+
 .hh-resume-strength {
   margin: 0 0 1.25rem;
   padding: 0.75rem 1rem;

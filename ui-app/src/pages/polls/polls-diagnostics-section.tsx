@@ -52,7 +52,7 @@ export function PollsDiagnosticsSection() {
     return (
       <EmptyState
         title="Выберите бота"
-        description="Добавьте или выберите Telegram-бота в настройках выше."
+        description="Добавьте бота на вкладке «Настройки Telegram-ботов»."
       />
     )
   }

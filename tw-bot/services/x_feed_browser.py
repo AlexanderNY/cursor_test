@@ -37,8 +37,11 @@ from .x_selenium_verify import (
     is_x_home_url,
     is_x_host_url,
     is_x_login_url,
-    note_x_login_failure,
+    X_BROWSER_BLOCK_MESSAGE,
+    X_SESSION_COOKIES_REJECTED,
+    driver_access_denied,
     note_x_login_success,
+    report_x_login_error,
     x_login_block_message,
 )
 
@@ -472,28 +475,34 @@ def _ensure_logged_in(
 
     if _wait_for_home_session(driver):
         logger.info("X feed: home session is active")
+        if cookies and user_id is not None:
+            note_x_login_success(user_id)
         return None
+    if driver_access_denied(driver):
+        return report_x_login_error(user_id, X_BROWSER_BLOCK_MESSAGE)
+    if cookies:
+        logger.info("X feed: saved session cookies were not accepted")
 
     if user_id is not None:
         blocked = x_login_block_message(user_id)
         if blocked:
+            if cookies:
+                return f"{X_SESSION_COOKIES_REJECTED} {blocked}"
             return blocked
 
     logger.info("X feed: home requires authorization")
     already_on_login = is_x_login_url(driver.current_url or "")
     err = _login_x(driver, login, password, open_flow=not already_on_login)
     if err:
-        if user_id is None:
-            return err
-        return note_x_login_failure(user_id, err)
+        return report_x_login_error(user_id, err)
 
     if not is_x_home_url(driver.current_url or ""):
         driver.get(X_HOME_URL)
+    if driver_access_denied(driver):
+        return report_x_login_error(user_id, X_BROWSER_BLOCK_MESSAGE)
     if not _wait_for_home_session(driver):
         msg = "Сессия не установлена после входа (логин/challenge)"
-        if user_id is None:
-            return msg
-        return note_x_login_failure(user_id, msg)
+        return report_x_login_error(user_id, msg)
     if user_id is not None:
         note_x_login_success(user_id)
     logger.info("X feed: authorization finished on %s", X_HOME_URL)
@@ -522,7 +531,8 @@ def _browser_collect_sync(
     if login.startswith("@"):
         login = login[1:].strip()
     password = (password or "").strip()
-    if not login or not password:
+    cookies = loads_cookies(cookies_json)
+    if not cookies and (not login or not password):
         return FeedCollectResult(
             ok=False,
             error="Сохраните логин и пароль X во вкладке «Авторизация» (Twitter).",
@@ -540,7 +550,10 @@ def _browser_collect_sync(
                 ),
             )
 
-    cookies = loads_cookies(cookies_json)
+    if user_id is not None and not cookies:
+        blocked = x_login_block_message(user_id)
+        if blocked:
+            return FeedCollectResult(ok=False, error=blocked)
     driver: Optional[WebDriver] = None
     diag_png: Optional[bytes] = None
 

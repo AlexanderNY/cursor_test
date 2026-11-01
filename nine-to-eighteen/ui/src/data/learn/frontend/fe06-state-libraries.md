@@ -47,6 +47,106 @@ RTK Query — полка серверных данных. У записи ест
 
 Корзина, если это набор id до оформления, — клиентский слайс. В ней нет «правды сервера», пока кнопку «оформить» не нажали. После успеха корзину очищают, а кэш заказов инвалидируют. Две полки встретились в одном обработчике и не слились в одну.
 
+## Раздел: Пример в коде
+
+Тот же экран заявок. Сначала типичная самодельная версия.
+
+Плохо:
+
+```ts
+const ticketsSlice = createSlice({
+  name: 'tickets',
+  initialState: { items: [] as Ticket[], loading: false, search: '' },
+  reducers: {
+    setSearch: (state, action: PayloadAction<string>) => {
+      state.search = action.payload
+    },
+    setItems: (state, action: PayloadAction<Ticket[]>) => {
+      state.items = action.payload
+    },
+    setLoading: (state, action: PayloadAction<boolean>) => {
+      state.loading = action.payload
+    },
+  },
+})
+```
+
+В одном слайсе смешаны три полки. Поле поиска диспатчит экшен на каждый символ. `items` — вечная копия ответа сервера, `loading` выставляют руками в каждом месте вызова. После создания заявки список никто не сбросит, пока кто-нибудь не вспомнит позвать `setItems` ещё раз.
+
+Хорошо: серверная полка — RTK Query.
+
+```ts
+// api/tickets.ts
+import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react'
+
+export type Ticket = { id: number; title: string; status: 'open' | 'closed' }
+type TicketsArgs = { search: string; mine: boolean; page: number }
+
+export const ticketsApi = createApi({
+  reducerPath: 'ticketsApi',
+  baseQuery: fetchBaseQuery({ baseUrl: '/api' }),
+  tagTypes: ['Tickets'],
+  endpoints: (build) => ({
+    getTickets: build.query<Ticket[], TicketsArgs>({
+      query: ({ search, mine, page }) => ({ url: '/tickets', params: { search, mine, page } }),
+      providesTags: [{ type: 'Tickets', id: 'LIST' }],
+    }),
+    createTicket: build.mutation<Ticket, { title: string }>({
+      query: (body) => ({ url: '/tickets', method: 'POST', body }),
+      invalidatesTags: [{ type: 'Tickets', id: 'LIST' }],
+    }),
+  }),
+})
+
+export const { useGetTicketsQuery, useCreateTicketMutation } = ticketsApi
+```
+
+Аргументы запроса входят в ключ кэша: другой фильтр — другая запись. `providesTags` и `invalidatesTags` — контракт: мутация помечает список устаревшим, и все подписанные экраны перезапрашивают его сами.
+
+Клиентский флаг, который читают шапка и список, — маленький Zustand-стор:
+
+```ts
+// store/ui.ts
+import { create } from 'zustand'
+
+type UiState = { onlyMine: boolean; toggleOnlyMine: () => void }
+
+export const useUiStore = create<UiState>()((set) => ({
+  onlyMine: false,
+  toggleOnlyMine: () => set((state) => ({ onlyMine: !state.onlyMine })),
+}))
+```
+
+Экран собирает три полки и не смешивает их:
+
+```tsx
+export function TicketsPage() {
+  const [search, setSearch] = useState('')
+  const onlyMine = useUiStore((state) => state.onlyMine)
+  const { data: tickets = [], isLoading, isError, refetch } = useGetTicketsQuery({
+    search,
+    mine: onlyMine,
+    page: 1,
+  })
+  const [createTicket, { isLoading: isCreating }] = useCreateTicketMutation()
+
+  if (isLoading) return <TicketsSkeleton />
+  if (isError) return <button onClick={() => refetch()}>Повторить</button>
+
+  return (
+    <>
+      <input value={search} onChange={(event) => setSearch(event.target.value)} />
+      <TicketList tickets={tickets} />
+      <button disabled={isCreating} onClick={() => createTicket({ title: 'Новая заявка' })}>
+        Создать
+      </button>
+    </>
+  )
+}
+```
+
+Селектор в `useUiStore` подписывает экран на одно поле. В настоящем экране поиск ещё дебаунсят, иначе каждый символ — новый запрос.
+
 ## Раздел: Где это ломается
 
 Весь ответ API вручную кладут в Redux и сами выставляют `loading`. Получается самодельный RTK Query без инвалидации. Следующий разработчик забывает сбросить список после создания, пользователь не видит свою заявку и обновляет страницу целиком.
@@ -104,37 +204,74 @@ flowchart TD
   Inv --> Server
 ```
 
+## Схема: Создание заявки и сброс тега
+
+```mermaid
+sequenceDiagram
+  participant U as пользователь
+  participant C as экран
+  participant Q as кэш RTK Query
+  participant A as API
+  U->>C: Создать заявку
+  C->>Q: createTicket с title
+  Q->>A: POST /tickets
+  A-->>Q: 201 и новая заявка
+  Q->>Q: invalidatesTags Tickets LIST
+  Q->>A: GET /tickets с тем же фильтром
+  A-->>Q: свежий список
+  Q-->>C: data обновилась
+  C-->>U: заявка в списке
+```
+
 ## Тест
 
 ### Текст одного поля формы. Куда его класть?
 
-**Ответ:** в состояние компонента
+**Ответ:** useState
 
-**Пояснение:** Его не читает другой экран, склад не нужен.
+**Пояснение:** Это состояние компонента. Его не читает другой экран, склад не нужен.
 
-### Чем RTK Query отличается от слайса корзины?
+### Слайс корзины хранит клиентские данные. А что хранит RTK Query?
 
-**Ответ:** это кэш сервера
+**Ответ:** кэш запросов
 
-**Пояснение:** У него статус запроса и инвалидация, а не только поля клиента.
+**Пояснение:** Это кэш сервера: у записи статус запроса и инвалидация, а не только поля клиента.
 
 ### Зачем инвалидация после POST?
 
-**Ответ:** список на экране устарел
+**Ответ:** список устарел
 
-**Пояснение:** Иначе пользователь видит данные до создания.
+**Пояснение:** Список на экране устарел. Иначе пользователь видит данные до создания.
 
-### Когда Zustand уместнее Redux Toolkit?
+### Пара общих клиентских флагов. Zustand или Redux Toolkit?
 
-**Ответ:** мало общего клиентского состояния
+**Ответ:** Zustand
 
-**Пояснение:** Церемония слайсов не окупается на паре флагов.
+**Пояснение:** Общего клиентского состояния мало. Церемония слайсов не окупается на паре флагов.
 
 ### Оптимистично показали успех, сервер ответил 409. Что сделать?
 
 **Ответ:** откатить кэш
 
 **Пояснение:** Экран не должен оставлять факт, которого нет на сервере.
+
+### Шапка вызывает `useUiStore()` без аргументов и перерисовывается при каждом переключении темы, хотя показывает только флаг «только мои». Что передать в useUiStore?
+
+**Ответ:** селектор
+
+**Пояснение:** `useUiStore((state) => state.onlyMine)` подписывает компонент на одно поле, и он рисуется, только когда оно изменилось. Без селектора подписка идёт на весь стор. `memo` на шапке не поможет: перерисовку вызывает сам хук.
+
+### Заявку создали мутацией, ответ 201, но список на экране старый. После перезагрузки страницы заявка на месте. Чего не хватает в описании мутации?
+
+**Ответ:** invalidatesTags
+
+**Пояснение:** Мутация должна пометить тег списка устаревшим, а запрос списка — объявить его через `providesTags`. Тогда RTK Query сам перезапросит список. Ручной `refetch` в компоненте работает, но его забудут на втором экране с тем же списком.
+
+### Менеджер отправил коллеге ссылку на отфильтрованный список заявок, а тот открыл её и видит все заявки без фильтра. Где должен жить фильтр?
+
+**Ответ:** в URL
+
+**Пояснение:** Параметр запроса в адресе переживает перезагрузку, кнопку «назад» и пересылку ссылки. `useState` и Zustand живут только в открытой вкладке. Кэш запроса тут ни при чём: он хранит ответ, а не выбор пользователя.
 
 ## Шпаргалка
 

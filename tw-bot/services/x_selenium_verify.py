@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import re
 import time
 from datetime import datetime, timezone
@@ -28,7 +29,18 @@ from .selenium_errors import format_selenium_exception
 logger = logging.getLogger(__name__)
 
 X_HOME_URL = "https://x.com/home"
-X_LOGIN_URL = "https://x.com/i/flow/login?redirect_after_login=%2Fhome"
+X_LOGIN_URL = "https://x.com/i/jf/onboarding/web?redirect_after_login=%2Fhome&mode=login"
+X_BROWSER_BLOCK_MESSAGE = (
+    "X отклонил браузер (HTTP 403), страница входа не открылась."
+)
+X_LOGIN_LIMITED_MESSAGE = (
+    "X временно ограничил вход. Частые попытки продлевают ограничение."
+)
+X_LOGIN_LIMITED_PAUSE_SEC = 3 * 60 * 60
+X_SESSION_COOKIES_REJECTED = (
+    "X не принял сохранённые cookies сессии (истекли или вы вышли из аккаунта). "
+    "Обновите auth_token и ct0 во вкладке «Авторизация»."
+)
 
 _HANDLE_RE = re.compile(r"^[A-Za-z0-9_]{1,30}$")
 _X_HOSTS = frozenset({"x.com", "twitter.com", "mobile.x.com", "mobile.twitter.com"})
@@ -36,8 +48,23 @@ _LOGIN_PATH_PREFIXES = (
     "/i/flow/login",
     "/i/flow/two-factor",
     "/i/flow/verification",
+    "/i/jf/onboarding",
     "/account/access",
     "/account/login_challenge",
+)
+_USERNAME_SELECTORS = (
+    'input[name="username_or_email"]',
+    'input[autocomplete^="username"]',
+    'input[autocomplete="username"]',
+    'input[name="text"]',
+)
+_NEXT_LABELS = ("Continue", "Next", "Продолжить", "Далее")
+_LOGIN_BUTTON_LABELS = ("Log in", "Continue", "Войти", "Продолжить")
+_COOKIE_LABELS = (
+    "Refuse non-essential cookies",
+    "Accept all cookies",
+    "Отклонить необязательные файлы cookie",
+    "Принять все файлы cookie",
 )
 _LOGGED_IN_SELECTORS = (
     '[data-testid="SideNav_AccountSwitcher_Button"]',
@@ -47,11 +74,68 @@ _LOGGED_IN_SELECTORS = (
 _login_backoff = AuthAttemptBackoff()
 
 
+def _db_login_wait_seconds(user_id: int) -> int:
+    """Срок паузы из БД. 0 — колонки нет, срок прошёл или запись не читается."""
+    try:
+        import psycopg2
+
+        conn = psycopg2.connect(settings.DATABASE_URL)
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT EXTRACT(EPOCH FROM (twitter_login_not_before - NOW()))
+                    FROM tw_profiles
+                    WHERE user_id = %s
+                    """,
+                    (user_id,),
+                )
+                row = cur.fetchone()
+        finally:
+            conn.close()
+    except Exception:
+        logger.debug("X login pause read failed", exc_info=True)
+        return 0
+    if not row or row[0] is None:
+        return 0
+    remaining = float(row[0])
+    if remaining <= 0:
+        return 0
+    return max(1, math.ceil(remaining))
+
+
+def _db_set_login_pause(user_id: int, seconds: int) -> None:
+    """Запоминает паузу входа, чтобы перезапуск tw-bot не отправил логин снова."""
+    try:
+        import psycopg2
+
+        conn = psycopg2.connect(settings.DATABASE_URL)
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE tw_profiles
+                    SET twitter_login_not_before = NOW() + make_interval(secs => %s)
+                    WHERE user_id = %s
+                    """,
+                    (int(seconds), user_id),
+                )
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception:
+        logger.warning("X login pause write failed", exc_info=True)
+
+
 def x_login_block_message(user_id: int) -> Optional[str]:
     """Текст паузы, если новый вход в X сейчас нельзя. None — можно."""
-    wait = _login_backoff.retry_after_seconds(user_id)
+    memory_wait = _login_backoff.retry_after_seconds(user_id)
+    db_wait = _db_login_wait_seconds(user_id)
+    wait = max(memory_wait, db_wait)
     if wait <= 0:
         return None
+    if db_wait > 0:
+        return f"{X_LOGIN_LIMITED_MESSAGE} {pause_active_message(wait)}"
     return pause_active_message(wait)
 
 
@@ -61,9 +145,79 @@ def note_x_login_failure(user_id: int, error: str) -> str:
     return f"{error} {next_attempt_suffix(pause)}"
 
 
+def _db_clear_login_pause(user_id: int) -> None:
+    try:
+        import psycopg2
+
+        conn = psycopg2.connect(settings.DATABASE_URL)
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE tw_profiles
+                    SET twitter_login_not_before = NULL
+                    WHERE user_id = %s
+                    """,
+                    (user_id,),
+                )
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception:
+        logger.debug("X login pause clear failed", exc_info=True)
+
+
 def note_x_login_success(user_id: int) -> None:
     """Успешный вход снимает паузу."""
     _login_backoff.record_success(user_id)
+    _db_clear_login_pause(user_id)
+
+
+def x_page_access_denied(url: str, title: str, body: str) -> bool:
+    """Страница Chrome «HTTP ERROR 403», а не форма X."""
+    blob = f"{url}\n{title}\n{body}".lower()
+    return (
+        "http error 403" in blob
+        or "access to x.com was denied" in blob
+        or "chrome-error://" in blob
+    )
+
+
+def is_x_browser_block(error: str) -> bool:
+    """Отказ браузеру, а не неверный пароль. Паузу входа на это не вешаем."""
+    return "http 403" in (error or "").lower()
+
+
+def is_x_login_limited(text: str) -> bool:
+    """X просит подождать: дальнейшие попытки только продлевают ограничение."""
+    low = " ".join((text or "").lower().split())
+    return "temporarily limited" in low or "временно огранич" in low
+
+
+def login_form_alert_message(text: str) -> Optional[str]:
+    """Ошибка role=alert на форме входа. None — это не отказ на шаге логина."""
+    cleaned = " ".join((text or "").split())
+    if not cleaned:
+        return None
+    low = cleaned.lower()
+    if "cookie" in low and not is_x_login_limited(cleaned):
+        return None
+    if is_x_login_limited(cleaned):
+        return X_LOGIN_LIMITED_MESSAGE
+    return f"X не пропустил логин: {cleaned[:240]}"
+
+
+def report_x_login_error(user_id: Optional[int], error: str) -> str:
+    if user_id is None or is_x_browser_block(error):
+        return error
+    if is_x_login_limited(error):
+        pause = _login_backoff.record_failure(
+            user_id,
+            minimum_sec=X_LOGIN_LIMITED_PAUSE_SEC,
+        )
+        _db_set_login_pause(user_id, pause)
+        return f"{error} {next_attempt_suffix(pause)}"
+    return note_x_login_failure(user_id, error)
 
 
 def _capture_driver_png(driver: WebDriver) -> Optional[bytes]:
@@ -238,10 +392,18 @@ def _safe_click(driver: WebDriver, el: WebElement) -> bool:
     try:
         if not el.is_displayed():
             return False
-        driver.execute_script("arguments[0].click();", el)
+        driver.execute_script(
+            "arguments[0].scrollIntoView({block: 'center', inline: 'center'});",
+            el,
+        )
+        el.click()
         return True
     except Exception:
-        return False
+        try:
+            driver.execute_script("arguments[0].click();", el)
+            return True
+        except Exception:
+            return False
 
 
 def _click_control(driver: WebDriver, test_ids: Tuple[str, ...], labels: Tuple[str, ...]) -> bool:
@@ -254,10 +416,7 @@ def _click_control(driver: WebDriver, test_ids: Tuple[str, ...], labels: Tuple[s
             if _safe_click(driver, el):
                 return True
     for label in labels:
-        xpath = (
-            f"//*[@role='button'][normalize-space()='{label}' "
-            f"or .//span[normalize-space()='{label}']]"
-        )
+        xpath = f"//*[normalize-space()='{label}']"
         try:
             elements = driver.find_elements(By.XPATH, xpath)
         except Exception:
@@ -266,6 +425,37 @@ def _click_control(driver: WebDriver, test_ids: Tuple[str, ...], labels: Tuple[s
             if _safe_click(driver, el):
                 return True
     return False
+
+
+def _dismiss_cookie_banner(driver: WebDriver) -> None:
+    if _click_control(driver, (), _COOKIE_LABELS):
+        time.sleep(0.5)
+
+
+def driver_access_denied(driver: WebDriver) -> bool:
+    try:
+        body = driver.find_element(By.TAG_NAME, "body").text or ""
+    except Exception:
+        body = ""
+    return x_page_access_denied(driver.current_url or "", driver.title or "", body)
+
+
+def _visible_alerts(driver: WebDriver) -> str:
+    chunks: List[str] = []
+    try:
+        nodes = driver.find_elements(By.CSS_SELECTOR, '[role="alert"]')
+    except Exception:
+        return ""
+    for node in nodes:
+        try:
+            if not node.is_displayed():
+                continue
+            text = " ".join((node.text or "").split())
+        except Exception:
+            continue
+        if text and text not in chunks:
+            chunks.append(text)
+    return "\n".join(chunks)
 
 
 def _visible_headings(driver: WebDriver) -> str:
@@ -292,7 +482,7 @@ def _wait_username_or_session(driver: WebDriver, timeout: float) -> Any:
     while time.time() < deadline:
         if _session_already_open(driver):
             return "session"
-        field = _first_visible(driver, ('input[autocomplete="username"]', 'input[name="text"]'))
+        field = _first_visible(driver, _USERNAME_SELECTORS)
         if field is not None:
             return field
         time.sleep(0.4)
@@ -303,8 +493,13 @@ def _wait_password_step(driver: WebDriver, timeout: float) -> str:
     """password | identity | session | timeout."""
     deadline = time.time() + timeout
     while time.time() < deadline:
+        alerts = _visible_alerts(driver)
+        if is_x_login_limited(alerts):
+            return "alert"
         if _first_visible(driver, ('input[name="password"]', 'input[autocomplete="current-password"]')):
             return "password"
+        if login_form_alert_message(alerts):
+            return "alert"
         if is_extra_identity_prompt(_visible_headings(driver)):
             return "identity"
         if _session_already_open(driver):
@@ -373,19 +568,31 @@ def _login_x(
     else:
         logger.info("X login: continue on the login page opened from /home")
 
+    if driver_access_denied(driver):
+        return X_BROWSER_BLOCK_MESSAGE
+    _dismiss_cookie_banner(driver)
+
     found = _wait_username_or_session(driver, 20)
     if found == "session":
         return None
     if found is None:
+        if driver_access_denied(driver):
+            return X_BROWSER_BLOCK_MESSAGE
         if _session_already_open(driver):
             return None
+        logger.info(
+            "X login: username field missing url=%s title=%s",
+            driver.current_url,
+            driver.title,
+        )
         return "Не найдено поле логина (изменилась страница входа X)"
 
+    _dismiss_cookie_banner(driver)
     try:
         _type_into(found, username)
     except Exception:
         return "Не удалось ввести логин на странице входа X"
-    if not _click_control(driver, ("ocfEnterTextNextButton",), ("Next", "Далее")):
+    if not _click_control(driver, ("ocfEnterTextNextButton",), _NEXT_LABELS):
         found.send_keys(Keys.ENTER)
 
     step = _wait_password_step(driver, 25)
@@ -398,6 +605,9 @@ def _login_x(
     if step != "password":
         if _session_already_open(driver):
             return None
+        alert = login_form_alert_message(_visible_alerts(driver))
+        if alert:
+            return alert
         return "Не найдено поле пароля (возможна капча или другой шаг входа)"
 
     password_el = _first_visible(
@@ -410,7 +620,7 @@ def _login_x(
         _type_into(password_el, password)
     except Exception:
         return "Не удалось ввести пароль на странице входа X"
-    if not _click_control(driver, ("LoginForm_Login_Button",), ("Log in", "Войти")):
+    if not _click_control(driver, ("LoginForm_Login_Button",), _LOGIN_BUTTON_LABELS):
         password_el.send_keys(Keys.ENTER)
 
     deadline = time.time() + 50.0
@@ -489,25 +699,30 @@ def verify_x_following_sync(
     handle: str,
     proxy: Optional[Dict[str, Any]],
     user_id: int,
+    cookies_json: Optional[str] = None,
 ) -> Tuple[bool, List[Dict[str, Optional[str]]], Optional[str], Optional[bytes]]:
     """
-    Вход и переход на /{handle}/following.
+    Вход (cookies сессии или логин/пароль) и переход на /{handle}/following.
     Возвращает (ok, users, error_or_warning, diag_png_on_failure).
     diag_png_on_failure — PNG при любой ошибке Selenium, пока сессия браузера жива.
     """
+    from .x_feed_browser import _ensure_logged_in, loads_cookies
+
     login = (login or "").strip()
     if login.startswith("@"):
         login = login[1:].strip()
     password = (password or "").strip()
     handle = _normalize_handle(handle)
-    if not login or not password:
+    cookies = loads_cookies(cookies_json)
+    if not cookies and (not login or not password):
         return False, [], "Сохраните логин и пароль X во вкладке «Авторизация» (Twitter).", None
     if not handle:
         return False, [], "Укажите логин/ник X (@handle) для перехода к списку подписок.", None
 
-    blocked = x_login_block_message(user_id)
-    if blocked:
-        return False, [], blocked, None
+    if not cookies:
+        blocked = x_login_block_message(user_id)
+        if blocked:
+            return False, [], blocked, None
 
     if proxy and proxy.get("use_proxy"):
         pu = (proxy.get("proxy_user") or "").strip()
@@ -534,10 +749,9 @@ def verify_x_following_sync(
     try:
         driver = create_chrome_driver(proxy)
         logger.debug("Selenium verify user_id=%s handle=%s", user_id, (handle[:3] + "***") if handle else "")
-        err = _login_x(driver, login, password)
+        err = _ensure_logged_in(driver, login, password, cookies, user_id)
         if err:
-            return _fail_with_shot(note_x_login_failure(user_id, err))
-        note_x_login_success(user_id)
+            return _fail_with_shot(err)
 
         following_url = f"https://x.com/{handle}/following"
         driver.get(following_url)
@@ -580,15 +794,16 @@ def verify_x_following_sync(
 
 async def fetch_tw_credentials(
     user_id: int,
-) -> Optional[Tuple[str, str, str, Dict[str, Any]]]:
-    """Логин/пароль и ник из tw_profiles + данные прокси. None если строки нет."""
+) -> Optional[Tuple[str, str, str, Dict[str, Any], Optional[str]]]:
+    """Логин/пароль, ник, прокси и cookies сессии из tw_profiles. None если строки нет."""
     conn = await get_db_connection()
     try:
         async with conn.cursor() as cur:
             await cur.execute(
                 """
                 SELECT twitter_username, twitter_password, use_proxy,
-                       proxy_host, proxy_port, proxy_user, proxy_pass
+                       proxy_host, proxy_port, proxy_user, proxy_pass,
+                       twitter_session_cookies
                 FROM tw_profiles
                 WHERE user_id = %s
                 """,
@@ -616,7 +831,7 @@ async def fetch_tw_credentials(
                 proxy["host"] = proxy_host
                 proxy["port"] = int(proxy_port) if proxy_port is not None else 80
             hnorm = _normalize_handle(u_raw)
-            return u_raw, pwd_s, hnorm, proxy
+            return u_raw, pwd_s, hnorm, proxy, row[7]
     finally:
         await release_db_connection(conn)
 
@@ -631,13 +846,13 @@ async def verify_x_for_user(user_id: int) -> Dict[str, Any]:
             "users": [],
             "error": "Профиль Twitter не найден. Сохраните настройки на вкладке «Авторизация».",
         }
-    username_raw, password, handle, proxy = row
-    if not password:
+    username_raw, password, handle, proxy, cookies_json = row
+    if not password and not (cookies_json or "").strip():
         return {
             "ok": False,
             "method": "selenium",
             "users": [],
-            "error": "Сохраните пароль X в профиле (вкладка «Авторизация»).",
+            "error": "Сохраните пароль X или cookies сессии (вкладка «Авторизация»).",
         }
 
     login_identifier = (username_raw or handle or "").strip()
@@ -648,6 +863,7 @@ async def verify_x_for_user(user_id: int) -> Dict[str, Any]:
         handle or login_identifier,
         proxy,
         user_id,
+        cookies_json,
     )
 
     diag_s3_key: Optional[str] = None

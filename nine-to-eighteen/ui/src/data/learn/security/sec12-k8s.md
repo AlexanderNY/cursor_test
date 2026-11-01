@@ -49,6 +49,95 @@ canonicalUrl: https://9to18.ru/game/learn/sec-k8s
 
 Отладка «не коннектится к базе» не решается выдачей кластерной роли администратора. Решается проверкой политики сети и тем, что секрет смонтирован в этот под, а не в соседний. Временный широкий доступ, если без него никак в аварии, оформляют отдельной ролью и снимают в тот же день. Постоянный манифест прода таким доступом не оставляют.
 
+## Раздел: Пример в манифесте
+
+Плохо: пароль в образе, под — root, учётка читает все секреты, сеть не режет.
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+spec:
+  template:
+    spec:
+      serviceAccountName: cluster-reader
+      containers:
+        - name: api
+          image: registry.example/api:1
+          env:
+            - name: DATABASE_URL
+              value: postgres://app:secret@db/app
+```
+
+Хорошо: секрет монтируют, процесс не root, корень только для чтения, учётка без прав кластера.
+
+```yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: api
+automountServiceAccountToken: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+spec:
+  template:
+    spec:
+      serviceAccountName: api
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+      containers:
+        - name: api
+          image: registry.example/api:1
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: api-db
+                  key: url
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+```
+
+Политика сети — allow-список, не «можно всем». Статике такого egress в базу не дают.
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: api-egress
+spec:
+  podSelector:
+    matchLabels:
+      app: api
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: edge
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: postgres
+      ports:
+        - port: 5432
+```
+
+`automountServiceAccountToken: false` — процессу API токен кластера не нужен. `secretKeyRef` не пишет пароль в git. `emptyDir` — единственное место записи, если временные файлы нужны.
+
 ## Раздел: Где это ломается
 
 Приложению выдают учётку, которая читает все секреты, потому что так в примере из статьи. Один RCE в приложении становится чтением чужих баз. Пример не копируют в прод.
@@ -107,6 +196,16 @@ flowchart LR
   API --> DB[(база)]
 ```
 
+## Схема: Что режет политика
+
+```mermaid
+flowchart LR
+  Web[статика] -.->|запрещено| DB[(база)]
+  Web -.->|запрещено| K8s[API кластера]
+  API[приложение] --> DB
+  API -.->|запрещено| Other[чужой неймспейс]
+```
+
 ## Тест
 
 ### Зачем приложению service account с правом читать все секреты?
@@ -138,6 +237,24 @@ flowchart LR
 **Ответ:** отдельной ролью со сроком
 
 **Пояснение:** Постоянный манифест прода таким доступом не оставляют.
+
+### В Dockerfile написали ENV DATABASE_URL=.... Потом убрали. Образ в реестре безопасен?
+
+**Ответ:** нет
+
+**Пояснение:** Слой остаётся в истории. Пароль меняют и больше не кладут в образ.
+
+### Статический под ходит в Postgres по политике по умолчанию. Что сломано?
+
+**Ответ:** сеть
+
+**Пояснение:** Без NetworkPolicy часто можно ко всем. Статике egress в базу не нужен.
+
+### RCE в API. Учётка читает все секреты неймспейса. Чем это кончится?
+
+**Ответ:** складом ключей
+
+**Пояснение:** Один взломанный процесс забирает чужие пароли. Обычному приложению API кластера не нужен.
 
 ## Шпаргалка
 

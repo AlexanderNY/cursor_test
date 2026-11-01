@@ -5,7 +5,7 @@ import re
 from typing import Any, Optional
 from uuid import UUID
 
-MAX_CASES = 6
+MAX_CASES = 20
 MAX_STACK = 12
 MAX_LEARN_SLUGS = 8
 MAX_HEADLINE = 160

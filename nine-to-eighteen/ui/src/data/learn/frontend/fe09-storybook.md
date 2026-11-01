@@ -53,6 +53,96 @@ canonicalUrl: https://9to18.ru/game/learn/fe-storybook
 
 Тест Testing Library на кнопку «по клику зовётся обработчик» живёт рядом и не заменяется историей. История не нажимает кнопку в пайплайне поведения, если вы отдельно не включили тест-раннер внутри Storybook. Даже если включили, сквозной путь страницы остаётся в Playwright. Три слоя не слипаются.
 
+## Раздел: Пример в коде
+
+Общая кнопка формы заявки и фильтра. Пропов четыре плюс обработчик, цвет — из токенов.
+
+```tsx
+// kit/button/Button.tsx
+import type { ReactNode } from 'react'
+import styles from './Button.module.css'
+
+type ButtonProps = {
+  children: ReactNode
+  variant?: 'primary' | 'secondary'
+  loading?: boolean
+  disabled?: boolean
+  onClick?: () => void
+}
+
+export function Button({ children, variant = 'primary', loading = false, disabled = false, onClick }: ButtonProps) {
+  return (
+    <button
+      type="button"
+      className={styles[variant]}
+      disabled={disabled || loading}
+      aria-busy={loading || undefined}
+      onClick={onClick}
+    >
+      {children}
+    </button>
+  )
+}
+```
+
+Плохо — цвет страницы внутри набора:
+
+```css
+.primary { background: #2f6fed; color: #fff; padding: 8px 16px; }
+```
+
+Хорошо — токены:
+
+```css
+.primary {
+  background: var(--color-action-primary);
+  color: var(--color-on-action);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-md);
+}
+.primary:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+```
+
+Hex не переключится в тёмной теме и разойдётся с соседним полем. Токен меняют в файле темы, и кнопка следует за ним.
+
+Истории в формате CSF3 для Storybook 8:
+
+```tsx
+// kit/button/Button.stories.tsx
+import type { Meta, StoryObj } from '@storybook/react'
+import { expect, fn, userEvent, within } from '@storybook/test'
+import { Button } from './Button'
+
+const meta = {
+  title: 'Kit/Button',
+  component: Button,
+  args: { children: 'Сохранить', onClick: fn() },
+} satisfies Meta<typeof Button>
+
+export default meta
+type Story = StoryObj<typeof meta>
+
+export const Default: Story = {}
+
+export const LongLabel: Story = {
+  args: { children: 'Сохранить и отправить на согласование руководителю' },
+  decorators: [(Story) => <div style={{ width: 160 }}><Story /></div>],
+}
+
+export const Disabled: Story = { args: { disabled: true } }
+
+export const Loading: Story = {
+  args: { loading: true },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement)
+    await userEvent.click(canvas.getByRole('button', { name: 'Сохранить' }))
+    await expect(args.onClick).not.toHaveBeenCalled()
+  },
+}
+```
+
+`meta` с `satisfies` даёт типы аргументов всем историям. `fn()` — шпион, его видно на панели действий. Имена историй — состояния, не номера задач. `LongLabel` оборачивается в узкую колонку, иначе перенос не проверить. `play` у `Loading` нажимает кнопку и проверяет, что второй запрос не уйдёт. Это не замена тесту Testing Library: история проверяет кадр, а поведение формы — её тест.
+
 ## Раздел: Где это ломается
 
 Каталог пишут в конце проекта. Состояния уже разъехались, истории фиксируют хаос или требуют большой переделки. Историю заводят вместе с вторым использованием, не на релизе.
@@ -109,25 +199,43 @@ flowchart LR
   S --> CI[сборка каталога]
 ```
 
+## Схема: Кнопка проходит CI и ревью
+
+```mermaid
+sequenceDiagram
+  participant Dev as разработчик
+  participant CI as пайплайн
+  participant SB as Storybook
+  participant Rev as ревьюер
+  Dev->>CI: push ветки с Button
+  CI->>SB: storybook build
+  SB-->>CI: истории собраны
+  CI->>SB: test-storybook и play
+  SB-->>CI: Loading не зовёт onClick
+  CI-->>Rev: ссылка на каталог ветки
+  Rev->>SB: смотрит Disabled и LongLabel
+  Rev-->>Dev: замечание или одобрение
+```
+
 ## Тест
 
-### Что такое история в Storybook?
+### Что фиксирует одна история Storybook: страницу или состояние компонента?
 
-**Ответ:** компонент в одних пропах
+**Ответ:** состояние компонента
 
-**Пояснение:** Отдельный кадр состояния, не весь маршрут приложения.
+**Пояснение:** Компонент в одних пропах — отдельный кадр состояния, не весь маршрут приложения.
 
-### Когда компонент пора нести в UI-kit?
+### Со скольких использований компонент пора нести в UI-kit?
 
-**Ответ:** когда он нужен второму месту
+**Ответ:** со второго
 
-**Пояснение:** Один экран может держать локальную вёрстку.
+**Пояснение:** Когда он нужен второму месту. Один экран может держать локальную вёрстку.
 
-### Чем токен лучше hex в модуле страницы?
+### Чем токен лучше hex в модуле страницы? Где меняется цвет?
 
-**Ответ:** цвет меняется в одном месте
+**Ответ:** в одном месте
 
-**Пояснение:** Иначе тема и контраст разъезжаются.
+**Пояснение:** Токен меняют в одном месте, и он доходит до всех компонентов. Иначе тема и контраст разъезжаются.
 
 ### Storybook заменяет Testing Library?
 
@@ -135,11 +243,29 @@ flowchart LR
 
 **Пояснение:** История показывает вид. Тест проверяет действие и результат.
 
-### Зачем истории в CI?
+### Зачем собирать истории в CI? Что проверяет сборка?
 
-**Ответ:** каталог совпадает с main
+**Ответ:** импорты живы
 
-**Пояснение:** Несобранные истории тихо описывают уже удалённые пропы.
+**Пояснение:** Каталог совпадает с main: истории собираются, пропы не удалены. Несобранные истории тихо описывают уже удалённые пропы.
+
+### Компонент строки заявки сам зовёт fetch, и его истории падают, когда учебный стенд выключен. Что передать в args вместо живого ответа?
+
+**Ответ:** фикстуру
+
+**Пояснение:** Данные истории — пример в коде, переданный пропами. Тогда каталог открывается без сети и показывает и норму, и пустоту, и ошибку. Если компонент обязан ходить в сеть сам, его делят на загрузчик и презентационную часть, а в истории живёт только вторая.
+
+### Нужно прямо в Storybook 8 проверить, что кнопка в состоянии loading не вызывает onClick повторно. Какое поле истории CSF3 для этого?
+
+**Ответ:** play
+
+**Пояснение:** Функция `play` выполняется после рендера истории: кликает через `userEvent` и проверяет `expect` из `@storybook/test`. В CI её запускает тест-раннер Storybook. `args` и `parameters` только описывают историю и ничего не нажимают.
+
+### Дизайнер просит на одной странице «чуть темнее серый» для кнопки, и такой случай первый. Новый токен или локальный стиль?
+
+**Ответ:** локальный стиль
+
+**Пояснение:** Пока смысл не повторился, это частный случай страницы. Токен заводят, когда тот же смысл нужен второму месту. Вписать hex в компонент набора — худший вариант: он поменяет кнопку на всех экранах.
 
 ## Шпаргалка
 

@@ -58,5 +58,6 @@ def test_success_resets_streak() -> None:
 def test_format_pause_and_user_messages() -> None:
     assert format_pause(45) == "45 с"
     assert format_pause(300) == "5 мин"
+    assert format_pause(3 * 60 * 60) == "3 ч"
     assert pause_active_message(300) == "Пауза после неудачного входа. Повтор через 5 мин."
     assert next_attempt_suffix(600) == "Следующая попытка через 10 мин."

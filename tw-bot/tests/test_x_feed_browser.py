@@ -1,5 +1,6 @@
 """Юнит-тесты парсера ленты X (без живого x.com / Chrome)."""
 
+from services.selenium_driver import user_agent_metadata
 from services.x_feed_browser import (
     canonical_status_url,
     dumps_cookies,
@@ -9,9 +10,14 @@ from services.x_feed_browser import (
     parse_tweet_card_fields,
 )
 from services.x_selenium_verify import (
+    X_LOGIN_LIMITED_MESSAGE,
     is_extra_identity_prompt,
+    is_x_browser_block,
     is_x_home_url,
+    is_x_login_limited,
     is_x_login_url,
+    login_form_alert_message,
+    x_page_access_denied,
 )
 
 
@@ -112,6 +118,9 @@ def test_home_url_is_path_not_login_query():
     assert is_x_login_url(login)
     assert is_x_login_url("https://x.com/i/flow/login")
     assert is_x_login_url("https://x.com/account/access")
+    assert is_x_login_url(
+        "https://x.com/i/jf/onboarding/web?redirect_after_login=%2Fhome&mode=login"
+    )
     assert not is_x_login_url("https://x.com/home")
     assert not is_x_home_url("https://evil-x.com/home")
     assert not is_x_home_url("https://x.com/elonmusk")
@@ -124,3 +133,37 @@ def test_extra_identity_prompt_is_not_the_sign_in_heading():
     assert not is_extra_identity_prompt("Enter your password")
     assert not is_extra_identity_prompt("Phone, email, or username")
     assert not is_extra_identity_prompt("")
+
+
+def test_chrome_403_page_is_not_a_password_failure():
+    assert x_page_access_denied(
+        "https://x.com/home",
+        "x.com",
+        "Access to x.com was denied\nHTTP ERROR 403",
+    )
+    assert not x_page_access_denied(
+        "https://x.com/i/jf/onboarding/web",
+        "X",
+        "Email or username",
+    )
+    assert is_x_browser_block("X отклонил браузер (HTTP 403), страница входа не открылась.")
+    assert not is_x_browser_block("Неверный пароль")
+
+
+def test_user_agent_metadata_is_a_normal_chrome():
+    meta = user_agent_metadata("156.0.8078.73")
+    brands = [item["brand"] for item in meta["brands"]]
+    assert brands == ["Chromium", "Google Chrome", "Not.A/Brand"]
+    assert all(item["version"] == "156" for item in meta["brands"][:2])
+    assert meta["platform"] == "Linux"
+    assert meta["mobile"] is False
+    assert "HeadlessChrome" not in brands
+
+
+def test_login_limit_alert_is_not_a_missing_password_field():
+    alert = "We’ve temporarily limited your login. Please try again later."
+    assert is_x_login_limited(alert)
+    assert login_form_alert_message(alert) == X_LOGIN_LIMITED_MESSAGE
+    assert is_x_login_limited(X_LOGIN_LIMITED_MESSAGE)
+    assert login_form_alert_message("Did someone say … cookies?") is None
+    assert login_form_alert_message("") is None

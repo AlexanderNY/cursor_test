@@ -59,6 +59,82 @@ Ping раз в тридцать секунд. Нет pong — сокет уда�
 
 Что не делают. Не шлют через этот сокет команду «закрой заявку» с клиента, чтобы «не плодить ручки». Команда остаётся PATCH с проверкой роли. Не считают send() доказательством, что в базе уже новый статус: публикация стоит после commit, не до него. Иначе подписчик увидит статус, которого откат ещё может не оставить.
 
+## Раздел: Пример в коде
+
+Плохо: доступ проверяется после accept, обрыв не обработан.
+
+```python
+@app.websocket("/ws/tickets/{ticket_id}")
+async def ticket_feed(websocket: WebSocket, ticket_id: int) -> None:
+    await websocket.accept()
+    token = await websocket.receive_text()
+    hub.add(ticket_id, websocket)
+    while True:
+        await websocket.receive_text()
+```
+
+Сокет уже открыт для любого, токен никто не проверяет, а при закрытии вкладки `WebSocketDisconnect` вылетает наружу, и мёртвое соединение остаётся в `hub`.
+
+Хорошо: проверка на рукопожатии, снимок первым кадром, уборка в `finally` (FastAPI, один процесс).
+
+```python
+from collections import defaultdict
+
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, status
+
+app = FastAPI()
+
+
+class TicketHub:
+    def __init__(self) -> None:
+        self.listeners: dict[int, set[WebSocket]] = defaultdict(set)
+
+    def add(self, ticket_id: int, websocket: WebSocket) -> None:
+        self.listeners[ticket_id].add(websocket)
+
+    def remove(self, ticket_id: int, websocket: WebSocket) -> None:
+        self.listeners[ticket_id].discard(websocket)
+        if not self.listeners[ticket_id]:
+            del self.listeners[ticket_id]
+
+    async def publish(self, ticket_id: int, payload: dict[str, str]) -> None:
+        for websocket in list(self.listeners.get(ticket_id, ())):
+            try:
+                await websocket.send_json(payload)
+            except Exception:
+                self.remove(ticket_id, websocket)
+
+
+hub = TicketHub()
+
+
+@app.websocket("/ws/tickets/{ticket_id}")
+async def ticket_feed(websocket: WebSocket, ticket_id: int, token: str | None = None) -> None:
+    user = await authenticate(token)
+    if user is None or not await can_view_ticket(user.id, ticket_id):
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+    await websocket.accept()
+    hub.add(ticket_id, websocket)
+    try:
+        await websocket.send_json({"type": "snapshot", "status": await load_status(ticket_id)})
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        pass
+    finally:
+        hub.remove(ticket_id, websocket)
+
+
+@app.patch("/tickets/{ticket_id}/status")
+async def change_status(ticket_id: int, body: StatusIn, user: CurrentUser) -> dict[str, str]:
+    await save_status(ticket_id, body.status, actor_id=user.id)
+    await hub.publish(ticket_id, {"type": "status", "status": body.status})
+    return {"status": body.status}
+```
+
+Браузерный `new WebSocket(url)` не умеет ставить заголовок `Authorization`, поэтому токен приходит параметром запроса или кукой; в параметр кладут короткоживущий токен, потому что URL попадает в логи прокси. `close` до `accept` отклоняет рукопожатие: клиент получает отказ, а не открытый канал. Код 1008 — policy violation. Первый кадр — снимок из базы, чтобы клиент после переподключения не верил старым кадрам. Цикл `receive_text` нужен, чтобы заметить обрыв: `WebSocketDisconnect` — штатный выход, а `finally` убирает сокет из `hub` при любом исходе. `publish` вызывается после `save_status`, который коммитит изменение. Ошибку отправки считают обрывом и снимают подписчика. Протокольный ping в uvicorn включён по умолчанию (`--ws-ping-interval 20`). При двух репликах `hub.publish` заменяют публикацией в Redis pub/sub, а каждая реплика рассылает своим сокетам.
+
 ## Раздел: Где это ломается
 
 Проверка доступа в первом сообщении, а не на рукопожатии. Чужой успевает подписаться на ленту или хотя бы занять ресурс.
@@ -115,6 +191,29 @@ flowchart LR
   S --> C
 ```
 
+## Схема: Жизнь подписки на заявку 42
+
+```mermaid
+sequenceDiagram
+  participant C as браузер
+  participant W as ws_endpoint
+  participant H as hub
+  participant P as patch_handler
+  participant D as postgres
+  C->>W: upgrade /ws/tickets/42 с токеном
+  alt нет права на заявку
+    W-->>C: close 1008
+  else право есть
+    W->>H: add 42
+    W-->>C: snapshot статуса
+  end
+  P->>D: UPDATE status и commit
+  P->>H: publish 42
+  H-->>C: кадр status
+  C--xW: обрыв сети
+  W->>H: remove 42
+```
+
 ## Тест
 
 ### Когда WebSocket уместнее POST?
@@ -146,6 +245,24 @@ flowchart LR
 **Ответ:** нет
 
 **Пояснение:** Кадр могли не обработать. Факт хранит Postgres.
+
+### Токен проверяете в первом JSON после accept. Что не так?
+
+**Ответ:** поздно
+
+**Пояснение:** Сокет уже открыт. Право проверяют на рукопожатии, до кадров.
+
+### Два пода, событие в памяти первого. Второй клиент молчит. Что добавить?
+
+**Ответ:** шину
+
+**Пояснение:** Список сокетов локален. Redis или другой брокер доносит событие каждой реплике.
+
+### PATCH статуса шлёте кадром, чтобы не плодить ручки. Почему плохо?
+
+**Ответ:** нет кодов
+
+**Пояснение:** Команда теряет HTTP-код, повтор и журнал. Кадр будит экран, факт пишет REST.
 
 ## Шпаргалка
 

@@ -22,7 +22,7 @@ import {
 } from '@/data/site/portfolio-api'
 import { useSiteAuthSession } from '@/data/site/site-auth'
 
-const MAX_CASES = 6
+const MAX_CASES = 20
 const MAX_COVER_BYTES = 1_500_000
 
 type MaterialDraft = {

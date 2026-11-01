@@ -49,6 +49,98 @@ Senior-вакансии называют микрофронтенды, Module Fe
 
 Общая библиотека кнопок живёт пакетом. Её не делают третьим микрофронтом. Кнопка не выкладывается отдельно от тех, кто её импортирует, если только вы сознательно не строите рантайм-подмену темы. Обычный пакет, собранный вместе с приложением, проще и предсказуемее.
 
+## Раздел: Пример в коде
+
+Публичная статья о сервисе заявок на Next.js 14 с App Router и React 18. Страница — серверный компонент, форма заявки — клиентский остров.
+
+```tsx
+// app/articles/[slug]/page.tsx
+import type { Metadata } from 'next'
+import { notFound } from 'next/navigation'
+import { LeadForm } from './lead-form'
+
+export const revalidate = 3600
+
+type Article = { slug: string; title: string; body: string }
+type PageProps = { params: { slug: string } }
+
+async function getArticle(slug: string): Promise<Article | null> {
+  const response = await fetch(`${process.env.CMS_URL}/articles/${slug}`)
+  if (response.status === 404) return null
+  if (!response.ok) throw new Error(`CMS ${response.status}`)
+  return response.json()
+}
+
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  const article = await getArticle(params.slug)
+  return { title: article?.title ?? 'Статья не найдена' }
+}
+
+export default async function ArticlePage({ params }: PageProps) {
+  const article = await getArticle(params.slug)
+  if (!article) notFound()
+  return (
+    <article>
+      <h1>{article.title}</h1>
+      <p>{article.body}</p>
+      <LeadForm articleSlug={article.slug} />
+    </article>
+  )
+}
+```
+
+`revalidate = 3600` — страница живёт в кэше час, потом пересобирается в фоне. Заголовок и текст уже в HTML: робот и медленная сеть видят их без бандла. Два вызова `getArticle` не дают два запроса в CMS: Next запоминает одинаковый `fetch` в пределах одного рендера. В Next.js 15 `params` стал промисом: `const { slug } = await params`.
+
+Гидрация. Плохо — время в первом рендере клиентского компонента:
+
+```tsx
+'use client'
+
+export function UpdatedAt() {
+  return <span>Обновлено в {new Date().toLocaleTimeString('ru-RU')}</span>
+}
+```
+
+Сервер нарисовал одно время, браузер при гидрации — другое, React сообщает о расхождении.
+
+Хорошо — браузерное значение после гидрации:
+
+```tsx
+'use client'
+
+import { useEffect, useState } from 'react'
+
+export function UpdatedAt() {
+  const [time, setTime] = useState<string | null>(null)
+  useEffect(() => {
+    setTime(new Date().toLocaleTimeString('ru-RU'))
+  }, [])
+  return <span>Обновлено в {time ?? '…'}</span>
+}
+```
+
+Кабинет сотрудника этого кода не получает: он остаётся Vite SPA. Если две команды кабинета всё же выпускаются в разные дни, оболочка объявляет общие зависимости одной копией:
+
+```js
+// webpack.config.js оболочки
+const { ModuleFederationPlugin } = require('webpack').container
+
+module.exports = {
+  plugins: [
+    new ModuleFederationPlugin({
+      name: 'shell',
+      remotes: { tickets: 'tickets@https://static.example.ru/tickets/remoteEntry.js' },
+      shared: {
+        react: { singleton: true, requiredVersion: '^18.3.1' },
+        'react-dom': { singleton: true, requiredVersion: '^18.3.1' },
+      },
+    }),
+  ],
+}
+```
+
+`singleton` не даст загрузить вторую копию React, а несовместимая версия у удалённого модуля даст предупреждение при загрузке, а не тихий сбой хуков.
+
 ## Раздел: Где это ломается
 
 Режут фронт «как микросервисы бэкенда» по папкам. У бэкенда граница — сеть и данные. У экрана граница — один пользователь, одна сессия, один документ. Папки без своих релизов остаются одним приложением, только сборка сложнее, а стили дублируются.
@@ -104,6 +196,24 @@ flowchart LR
   Cab[кабинет] --> SPA[клиент после входа]
 ```
 
+## Схема: Запрос публичной статьи
+
+```mermaid
+sequenceDiagram
+  participant B as браузер
+  participant N as сервер Next
+  participant CMS as CMS
+  B->>N: GET /articles/pricing
+  N->>N: кэша страницы ещё нет
+  N->>CMS: fetch статьи
+  CMS-->>N: title и body
+  N-->>B: готовый HTML с h1 и текстом
+  B->>B: текст виден без JS
+  B->>N: загрузка JS острова LeadForm
+  B->>B: гидрация LeadForm
+  B->>B: useEffect ставит время
+```
+
 ## Тест
 
 ### Чем микрофронтенд отличается от папок в одном SPA?
@@ -112,29 +222,47 @@ flowchart LR
 
 **Пояснение:** Папки без своего релиза остаются одним приложением.
 
-### Что ломается первым при Module Federation?
+### Какую библиотеку в shared Module Federation первой держат одной копией?
 
-**Ответ:** версии общего React и стилей
+**Ответ:** React
 
-**Пояснение:** Две копии React и разные токены дают тихие сбои на стыке.
+**Пояснение:** Две копии React ломают хуки и контекст на стыке, следом расходятся токены и стили. Поэтому `react` и `react-dom` объявляют `singleton`.
 
-### Когда Next.js окупает сервер?
+### Когда Next.js окупает сервер? Что нужно в первом ответе?
 
-**Ответ:** нужен готовый HTML
+**Ответ:** готовый HTML
 
-**Пояснение:** Публичная страница и данные до выполнения клиентского кода.
+**Пояснение:** Публичная страница, текст для поиска, данные до выполнения клиентского кода.
 
 ### Почему админке часто хватает Vite?
 
-**Ответ:** пользователь уже за логином
+**Ответ:** за логином
 
-**Пояснение:** Первый полезный экран не обязан быть в ответе сервера.
+**Пояснение:** Пользователь уже за логином, первый полезный экран всё равно ждёт API и не обязан быть в ответе сервера.
 
 ### Монорепозиторий равен микрофронтенду?
 
 **Ответ:** нет
 
 **Пояснение:** Общий репозиторий может собираться и выкладываться одним артефактом.
+
+### В клиентском компоненте Next.js (`'use client'`) прямо в рендере выводите `new Date().toLocaleTimeString()`. Консоль ругается на расхождение гидрации. Куда перенести вычисление времени?
+
+**Ответ:** useEffect
+
+**Пояснение:** Клиентский компонент рисуется дважды: на сервере и при гидрации, и время между ними разное. `useEffect` выполняется только в браузере после гидрации, первый рендер совпадает с серверным. `suppressHydrationWarning` лишь глушит предупреждение для одного узла и не лечит причину.
+
+### Публичная статья в App Router берёт текст из CMS, и на каждый просмотр сервер ходит в CMS и тормозит. Текст меняют раз в день. Что настроить у страницы?
+
+**Ответ:** revalidate
+
+**Пояснение:** `export const revalidate = 3600` отдаёт закэшированную страницу и пересобирает её в фоне не чаще раза в час. Полностью статическая сборка не увидит правку до деплоя. Динамический рендер на каждый запрос — как раз то, что тормозит.
+
+### Кабинет на SSR отдаёт персональный список заявок, CDN закэшировал HTML, и второй пользователь увидел чужие заявки. Какую директиву Cache-Control должен был получить ответ?
+
+**Ответ:** private
+
+**Пояснение:** `private` запрещает общим кэшам вроде CDN хранить ответ, браузер владельца хранить может. Для чувствительных данных добавляют `no-store`. `max-age` без `private` как раз разрешает общий кэш.
 
 ## Шпаргалка
 

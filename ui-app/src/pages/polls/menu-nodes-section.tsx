@@ -16,21 +16,18 @@ import {
 } from '@/utils/menu-price'
 
 interface MenuNodesSectionProps {
-  modes: GameMode[]
-  modeId: number | null
-  onSelectMode: (modeId: number) => void
+  mode: GameMode
 }
 
 function nodeHasChildren(nodeId: number, allNodes: GameMenuNode[]): boolean {
   return allNodes.some((node) => node.parent_id === nodeId)
 }
 
-export function MenuNodesSection({ modes, modeId, onSelectMode }: MenuNodesSectionProps) {
-  const selectedMode = modes.find((mode) => mode.id === modeId) ?? null
-  const modeTitle = selectedMode?.title
-  const modeCode = selectedMode?.code
+export function MenuNodesSection({ mode }: MenuNodesSectionProps) {
+  const modeId = mode.id
+  const modeTitle = mode.title
+  const modeCode = mode.code
   const [nodes, setNodes] = useState<GameMenuNode[]>([])
-  const [rootCounts, setRootCounts] = useState<Record<number, number>>({})
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
@@ -55,10 +52,6 @@ export function MenuNodesSection({ modes, modeId, onSelectMode }: MenuNodesSecti
     try {
       const data = await gameService.listMenuNodes(id)
       setNodes(data)
-      setRootCounts((prev) => ({
-        ...prev,
-        [id]: data.filter((node) => node.parent_id == null).length,
-      }))
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Не удалось загрузить пункты меню')
       setNodes([])
@@ -76,27 +69,6 @@ export function MenuNodesSection({ modes, modeId, onSelectMode }: MenuNodesSecti
       setNodes([])
     }
   }, [modeId, loadNodes])
-
-  useEffect(() => {
-    let cancelled = false
-    async function loadRootCounts() {
-      const pairs = await Promise.all(
-        modes.map(async (mode) => {
-          try {
-            const data = await gameService.listMenuNodes(mode.id)
-            return [mode.id, data.filter((node) => node.parent_id == null).length] as const
-          } catch {
-            return [mode.id, 0] as const
-          }
-        }),
-      )
-      if (!cancelled) setRootCounts(Object.fromEntries(pairs))
-    }
-    void loadRootCounts()
-    return () => {
-      cancelled = true
-    }
-  }, [modes])
 
   useEffect(() => {
     setTabPath((prev) => {
@@ -135,12 +107,6 @@ export function MenuNodesSection({ modes, modeId, onSelectMode }: MenuNodesSecti
 
   function childCount(nodeId: number): number {
     return nodes.filter((node) => node.parent_id === nodeId).length
-  }
-
-  function selectMode(nextModeId: number) {
-    if (nextModeId === modeId) return
-    resetForm()
-    onSelectMode(nextModeId)
   }
 
   function selectTab(index: number) {
@@ -283,15 +249,7 @@ export function MenuNodesSection({ modes, modeId, onSelectMode }: MenuNodesSecti
     }
   }
 
-  if (!modeId || modes.length === 0) {
-    return (
-      <Card>
-        <CardContent className="pt-6">
-          <EmptyState title="Нет опросов" description="Создайте режим выше — у каждого будут свои категории." />
-        </CardContent>
-      </Card>
-    )
-  }
+  const rootCount = nodes.filter((node) => node.parent_id == null).length
 
   return (
     <Card>
@@ -300,8 +258,8 @@ export function MenuNodesSection({ modes, modeId, onSelectMode }: MenuNodesSecti
           <div>
             <CardTitle className="text-lg">Категории опросов</CardTitle>
             <CardDescription>
-              У каждого режима своя вкладка. Внутри неё корень и вложенные разделы открываются
-              отдельными вкладками. В боте дерево показывается у режимов типа «Меню».
+              Разделы опроса «{modeTitle}». Вложенный уровень открывается по кнопке «Вложенные».
+              В боте дерево показывается у режимов типа «Меню».
             </CardDescription>
           </div>
           <Button type="button" onClick={openCreateForm} disabled={showForm}>
@@ -412,67 +370,47 @@ export function MenuNodesSection({ modes, modeId, onSelectMode }: MenuNodesSecti
           </form>
         )}
 
-        <div className="flex overflow-x-auto border-b border-[var(--border-color)]">
-          {modes.map((mode) => {
-            const isActive = mode.id === modeId
-            const count = rootCounts[mode.id]
-            return (
-              <button
-                key={mode.id}
-                type="button"
-                onClick={() => selectMode(mode.id)}
-                className={`relative shrink-0 whitespace-nowrap px-4 py-2.5 text-sm font-medium ${
-                  isActive
-                    ? 'text-primary-400'
-                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-                }`}
-              >
-                {mode.title}
-                {count ? ` · ${count}` : ''}
-                {isActive && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-500" />}
-              </button>
-            )
-          })}
-        </div>
-
-        {selectedMode && selectedMode.mode_type === 'quiz' && (rootCounts[selectedMode.id] ?? 0) === 0 && (
+        {mode.mode_type === 'quiz' && !isLoading && rootCount === 0 && (
           <p className="text-xs text-[var(--text-secondary)]">
-            У опроса «{selectedMode.title}» пока нет категорий. Добавьте корневой пункт на этой вкладке.
+            У опроса «{modeTitle}» пока нет категорий. Добавьте корневой пункт.
           </p>
         )}
 
-        <div className="flex overflow-x-auto border-b border-[var(--border-color)]">
-          {tabs.map((tab, index) => {
-            const isActive = index === tabs.length - 1
-            return (
-              <button
-                key={tab.id ?? 'root'}
-                type="button"
-                onClick={() => selectTab(index)}
-                className={`relative shrink-0 whitespace-nowrap px-4 py-2.5 text-sm font-medium ${
-                  isActive
-                    ? 'text-primary-400'
-                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-                }`}
-              >
-                {tab.label}
-                {isActive && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-500" />}
-              </button>
-            )
-          })}
-        </div>
+        {tabPath.length > 0 && (
+          <nav className="flex flex-wrap items-center gap-1 text-sm">
+            {tabs.map((tab, index) => {
+              const isActive = index === tabs.length - 1
+              return (
+                <span key={tab.id ?? 'root'} className="flex items-center gap-1">
+                  {index > 0 && <span className="text-[var(--text-secondary)]">/</span>}
+                  <button
+                    type="button"
+                    onClick={() => selectTab(index)}
+                    className={
+                      isActive
+                        ? 'font-medium text-primary-400'
+                        : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                    }
+                  >
+                    {tab.label}
+                  </button>
+                </span>
+              )
+            })}
+          </nav>
+        )}
 
         {isLoading ? (
           <TableSkeleton rows={5} />
         ) : nodes.length === 0 ? (
           <EmptyState
             title="Нет пунктов"
-            description="Добавьте корневые пункты меню — вложенные разделы откроются отдельными вкладками."
+            description="Добавьте корневые пункты. Вложенные разделы открываются кнопкой «Вложенные»."
           />
         ) : levelNodes.length === 0 ? (
           <EmptyState
             title="В этом разделе пусто"
-            description="Добавьте пункт: он появится на этой вкладке."
+            description="Добавьте пункт в этот раздел."
           />
         ) : (
           <div className="overflow-x-auto">

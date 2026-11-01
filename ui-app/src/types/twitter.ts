@@ -13,6 +13,12 @@ export interface TwitterProfile {
   proxy_port?: number
   twitter_username?: string | null
   twitter_password?: string | null
+  /** Только при сохранении: cookie auth_token из браузера, где вы вошли в X */
+  twitter_auth_token?: string
+  /** Только при сохранении: cookie ct0 из того же браузера */
+  twitter_ct0?: string
+  /** Ответ core: в профиле есть cookies сессии X */
+  has_twitter_session?: boolean
   take_screenshot_collect?: boolean
   screenshot_xpath?: string | null
   twitter_connected?: boolean

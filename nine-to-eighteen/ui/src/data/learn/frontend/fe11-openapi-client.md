@@ -53,6 +53,68 @@ canonicalUrl: https://9to18.ru/game/learn/fe-openapi-client
 
 Версия спеки в CI: сервер публикует файл, фронт генерирует в проверке запроса на слияние. Если генерировать только на ноутбуке автора, коллега соберёт старый клиент и не увидит конфликта. Коммит сгенерированного кода допустим, когда все ставят одну версию генератора и дифф типов читается в ревью. Генерация только в CI тоже допустима, если артефакт воспроизводим. Недопустим режим «у каждого свой swagger.ts, который не в репозитории».
 
+## Раздел: Пример в коде
+
+Те же `GET /notes` и `POST /notes` с сервера на FastAPI.
+
+Плохо:
+
+```ts
+type Note = { id: number; title: string } // переписано из чата
+
+const response = await fetch('/api/notes')
+const notes: any = await response.json()
+const labels = notes.map((note: any) => note.titel)
+```
+
+Тип живёт отдельно от спеки, а `any` пропускает опечатку `titel`: сборка зелёная, на экране пусто. Статус ответа не проверен, и 500 разберётся как «данные».
+
+Хорошо: типы генерирует openapi-typescript, вызовы типизирует openapi-fetch из того же семейства.
+
+```json
+{
+  "scripts": {
+    "api:gen": "openapi-typescript ../api/openapi.json -o src/api/schema.d.ts",
+    "api:check": "npm run api:gen && git diff --exit-code src/api/schema.d.ts && tsc --noEmit"
+  }
+}
+```
+
+```ts
+// src/api/client.ts
+import createClient from 'openapi-fetch'
+import type { components, paths } from './schema'
+
+export type Note = components['schemas']['Note']
+export const api = createClient<paths>({ baseUrl: '/api' })
+```
+
+```ts
+// src/api/notes.ts
+import { api, type Note } from './client'
+
+type CreateResult =
+  | { kind: 'created'; note: Note }
+  | { kind: 'invalid'; fieldErrors: Record<string, string> }
+  | { kind: 'conflict' }
+
+export async function createNote(title: string): Promise<CreateResult> {
+  const { data, error, response } = await api.POST('/notes', { body: { title } })
+  if (data) return { kind: 'created', note: data }
+  if (response.status === 409) return { kind: 'conflict' }
+  if (response.status === 422) {
+    const fieldErrors: Record<string, string> = {}
+    for (const issue of error?.detail ?? []) {
+      fieldErrors[String(issue.loc.at(-1))] = issue.msg
+    }
+    return { kind: 'invalid', fieldErrors }
+  }
+  throw new Error(`POST /notes: HTTP ${response.status}`)
+}
+```
+
+`api:check` в CI генерирует типы из той же спеки, что у сервера, и падает, если закоммиченный `schema.d.ts` устарел. `tsc --noEmit` красит каждое место, где экран читает исчезнувшее поле. Путь `'/notes'` и тело `{ title }` проверяются по `paths`: опечатка в пути или лишнее поле — ошибка компиляции. Тип `Note` берут из `components`, а не пишут руками. Ошибка 422 у FastAPI описана в спеке как `HTTPValidationError`, поэтому `issue.loc` и `issue.msg` уже типизированы. Последний элемент `loc` — имя поля, текст уходит под него. 409 ведёт к обновлению карточки, а всё остальное — к общему сообщению без стека сервера.
+
 ## Раздел: Где это ломается
 
 Интерфейс пишут по примеру из чата. Пример без обязательного поля, без ошибки, без дат в формате сервера. Через спринт сервер честно шлёт `null`, экран падает на `.trim`. Спека как раз должна была сказать, что поле бывает пустым.
@@ -109,6 +171,26 @@ flowchart LR
   UI --> View[вид строки]
 ```
 
+## Схема: Смена поля ловится в CI
+
+```mermaid
+sequenceDiagram
+  participant BE as сервер
+  participant CI as пайплайн фронта
+  participant Gen as openapi-typescript
+  participant TSC as tsc
+  participant Dev as фронтенд
+  BE->>CI: openapi.json с name вместо title
+  CI->>Gen: npm run api:gen
+  Gen-->>CI: новый schema.d.ts
+  CI->>TSC: tsc --noEmit
+  TSC-->>CI: ошибка в note.title
+  CI-->>Dev: красная проверка запроса на слияние
+  Dev->>Dev: экран читает note.name
+  Dev->>CI: повторный прогон
+  CI-->>Dev: сборка зелёная
+```
+
 ## Тест
 
 ### Откуда брать тип ответа на фронте?
@@ -119,9 +201,9 @@ flowchart LR
 
 ### Зачем гонять генерацию в CI?
 
-**Ответ:** поймать расхождение до прода
+**Ответ:** расхождение
 
-**Пояснение:** Иначе экран собирается со старыми полями.
+**Пояснение:** Поймать расхождение спеки и экрана до прода. Иначе экран собирается со старыми полями.
 
 ### Пустое обязательное поле. Какой код ждать от FastAPI?
 
@@ -129,17 +211,35 @@ flowchart LR
 
 **Пояснение:** Тело не прошло проверку. Это не 500 и не общий «error».
 
-### Чем экранный тип отличается от DTO?
+### Тип `{ id, label }` для строки таблицы — это DTO или что?
 
-**Ответ:** это вид, не копия ответа
+**Ответ:** вид экрана
 
-**Пояснение:** Можно собрать подпись кнопки. Нельзя заново описывать поля API.
+**Пояснение:** Это вид, не копия ответа. Можно собрать подпись кнопки. Нельзя заново описывать поля API.
 
 ### Поле пришло с сервера, в типе его нет. Что делать?
 
 **Ответ:** обновить спецификацию
 
 **Пояснение:** Дописывать поле только в клиенте — завести второй контракт.
+
+### В спеке `description` необязательное, экран зовёт `note.description.trim()` и падает на части заметок. Какое значение сгенерированный тип заставил бы обработать?
+
+**Ответ:** undefined
+
+**Пояснение:** openapi-typescript делает необязательное поле `description?: string`, и строгий TypeScript не даст вызвать `trim` без проверки. С ручным интерфейсом по примеру или с `any` ошибка доживает до рантайма.
+
+### POST /notes вернул 422, в теле `detail` с `loc: ["body", "title"]` и текстом. Где показать это сообщение?
+
+**Ответ:** у поля
+
+**Пояснение:** Последний элемент `loc` — имя поля, текст ставят под поле `title` и туда же возвращают фокус. Общий тост не говорит, что исправить. Повтор запроса бесполезен: тело то же.
+
+### В спеке у заметки появился `status: 'open' | 'done' | 'archived'`, типы обновились, а `switch` на экране молча не рисует `archived`. Каким типом в ветке default заставить сборку краснеть?
+
+**Ответ:** never
+
+**Пояснение:** `const unreachable: never = note.status` в `default` компилируется, только пока все значения разобраны. Новое значение в спеке превращается в ошибку сборки в этом месте. `default: return null` прячет пропуск.
 
 ## Шпаргалка
 

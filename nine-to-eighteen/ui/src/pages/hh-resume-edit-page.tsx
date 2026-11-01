@@ -1,6 +1,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useLocation, useParams } from 'react-router-dom'
 import { HhResumeArticle, HhResumeStrengthBar } from '@/components/hh-resume-article'
+import { HhResumePreviewDialog } from '@/components/hh-resume-preview-dialog'
 import {
   HhResumeHistoryFields,
   type EducationDraft,
@@ -60,6 +61,7 @@ export function HhResumeEditPage() {
   const [enriching, setEnriching] = useState(false)
   const [aiBusy, setAiBusy] = useState(false)
   const [strengthOpen, setStrengthOpen] = useState(false)
+  const [previewOpen, setPreviewOpen] = useState(false)
   const [error, setError] = useState('')
   const [ok, setOk] = useState(
     fromQuiz ? 'Шаблон заполнен по опросу — поправьте текст при необходимости.' : '',
@@ -507,6 +509,50 @@ export function HhResumeEditPage() {
     )
   }
 
+  function liveArticleNode() {
+    if (!preview) return null
+    return (
+      <HhResumeArticle
+        preview={preview}
+        skills={liveSkills}
+        photoUrl={photoUrl}
+        aboutOverride={about}
+        specializationOverride={specialization}
+        titleOverride={title}
+        salaryOverride={
+          salary.trim() && !Number.isNaN(salaryNumLive as number) ? salaryNumLive : null
+        }
+        employmentOverride={employment}
+        workFormatsOverride={workFormats}
+        versionNameOverride={versionName}
+        badgeLabels={badgeLabels}
+        projects={selectedProjects}
+        experience={experience
+          .filter((job) => job.company.trim() && job.position.trim() && job.start)
+          .map((job) => ({
+            company: job.company.trim(),
+            position: job.position.trim(),
+            city: job.city.trim(),
+            start: job.start,
+            end: job.end,
+            description: job.description.trim(),
+          }))}
+        education={education
+          .filter((school) => school.institution.trim())
+          .map((school) => ({
+            level: school.level,
+            institution: school.institution.trim(),
+            faculty: school.faculty.trim(),
+            specialty: school.specialty.trim(),
+            year:
+              school.year.trim() && !Number.isNaN(Number(school.year))
+                ? Number(school.year)
+                : null,
+          }))}
+      />
+    )
+  }
+
   if (!resumeId) {
     return (
       <PageShell>
@@ -528,7 +574,8 @@ export function HhResumeEditPage() {
         <p className="learn-eyebrow">HH-резюме · редактор</p>
         <h1 className="learn-title">Доработать резюме</h1>
         <p className="learn-lead">
-          Learn: <strong>{completedCount}</strong> выпусков · правки слева, PDF-превью справа.
+          Learn: <strong>{completedCount}</strong> выпусков. «Предпросмотр» показывает резюме целиком,
+          как оно уйдёт в файл.
         </p>
         {error ? <p className="learn-admin-error">{error}</p> : null}
         {ok ? <p className="learn-admin-ok">{ok}</p> : null}
@@ -556,6 +603,14 @@ export function HhResumeEditPage() {
           onClick={() => void onEnrichFromLearn()}
         >
           {enriching ? 'Обогащаем…' : 'Навыки из Learn'}
+        </button>
+        <button
+          type="button"
+          className="learn-admin-btn learn-admin-btn-primary"
+          disabled={loading || !preview}
+          onClick={() => setPreviewOpen(true)}
+        >
+          Предпросмотр
         </button>
         <button
           type="button"
@@ -978,46 +1033,28 @@ export function HhResumeEditPage() {
 
           <aside className="hh-resume-split-preview" aria-label="Превью PDF">
             <p className="learn-section-note no-print">Живое превью</p>
-            <HhResumeArticle
-              preview={preview}
-              skills={liveSkills}
-              photoUrl={photoUrl}
-              aboutOverride={about}
-              specializationOverride={specialization}
-              titleOverride={title}
-              salaryOverride={
-                salary.trim() && !Number.isNaN(salaryNumLive as number) ? salaryNumLive : null
-              }
-              employmentOverride={employment}
-              workFormatsOverride={workFormats}
-              versionNameOverride={versionName}
-              badgeLabels={badgeLabels}
-              projects={selectedProjects}
-              experience={experience
-                .filter((job) => job.company.trim() && job.position.trim() && job.start)
-                .map((job) => ({
-                  company: job.company.trim(),
-                  position: job.position.trim(),
-                  city: job.city.trim(),
-                  start: job.start,
-                  end: job.end,
-                  description: job.description.trim(),
-                }))}
-              education={education
-                .filter((school) => school.institution.trim())
-                .map((school) => ({
-                  level: school.level,
-                  institution: school.institution.trim(),
-                  faculty: school.faculty.trim(),
-                  specialty: school.specialty.trim(),
-                  year: school.year.trim() && !Number.isNaN(Number(school.year))
-                    ? Number(school.year)
-                    : null,
-                }))}
-            />
+            {liveArticleNode()}
           </aside>
         </div>
       )}
+      {previewOpen ? (
+        <HhResumePreviewDialog
+          title={versionName || 'Резюме'}
+          onClose={() => setPreviewOpen(false)}
+          extraActions={
+            <button
+              type="button"
+              className="learn-admin-btn learn-admin-btn-primary"
+              disabled={saving || enriching}
+              onClick={() => void onExport('docx')}
+            >
+              Скачать DOCX
+            </button>
+          }
+        >
+          {liveArticleNode()}
+        </HhResumePreviewDialog>
+      ) : null}
     </PageShell>
   )
 }

@@ -17,6 +17,7 @@ from schemas import TwitterProfileCreate, TwitterPost, TwitterFollowingResponse,
 from services.post_service import post_service
 from services.profile_service import profile_service
 from services.twitter_oauth import ensure_user_access_token
+from services.twitter_session_cookies import build_x_session_cookies
 from dependencies import get_admin_user
 from shared.oauth_state import sign_oauth_state, verify_oauth_state
 
@@ -82,7 +83,19 @@ async def save_tw_profile(
 ):
     """Сохраняет профиль Twitter пользователя."""
     user_id = get_user_id_from_header(x_user_id)
-    profile = await profile_service.save_tw_profile(user_id, data.model_dump())
+    payload = data.model_dump()
+    try:
+        session_cookies = build_x_session_cookies(
+            payload.pop("twitter_auth_token", None),
+            payload.pop("twitter_ct0", None),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    profile = await profile_service.save_tw_profile(user_id, payload)
+    if session_cookies is None:
+        return profile
+    await profile_service.set_tw_session_cookies(user_id, session_cookies)
+    profile["has_twitter_session"] = True
     return profile
 
 

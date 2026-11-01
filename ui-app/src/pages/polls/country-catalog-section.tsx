@@ -406,18 +406,20 @@ export function CountryCatalogSection({ mode, onModeSaved }: CountryCatalogSecti
               onChange={(event) => setMapUrl(event.target.value)}
             />
             <div className="flex flex-wrap gap-3">
-              {flagUrl && (
+              {flagUrl.trim() && (
                 <img
-                  src={flagUrl}
+                  key={`flag-${flagUrl}`}
+                  src={gameService.previewImageSrc(flagUrl)}
                   alt="Флаг"
-                  className="h-16 rounded-lg border border-[var(--border-color)] object-contain"
+                  className="h-16 rounded-lg border border-[var(--border-color)] bg-[var(--bg-tertiary)] object-contain"
                 />
               )}
-              {mapUrl && (
+              {mapUrl.trim() && (
                 <img
-                  src={mapUrl}
+                  key={`map-${mapUrl}`}
+                  src={gameService.previewImageSrc(mapUrl)}
                   alt="Карта"
-                  className="h-16 rounded-lg border border-[var(--border-color)] object-contain"
+                  className="h-16 max-w-xs rounded-lg border border-[var(--border-color)] bg-[var(--bg-tertiary)] object-contain"
                 />
               )}
             </div>

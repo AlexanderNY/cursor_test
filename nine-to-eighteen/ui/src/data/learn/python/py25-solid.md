@@ -63,6 +63,141 @@ DIP не требует контейнера внедрения зависимо
 
 Где правило не применяют. Ночной скрипт сверки, который читает CSV и пишет один отчёт, можно оставить функцией. У него одна причина меняться: формат сверки. Выделять пять протоколов «на вырост» значит прятать единственный сценарий за слоями, которые никто не вызывает.
 
+## Раздел: Пример в коде
+
+Плохо: ручка закрытия заявки делает всё сама.
+
+```python
+import smtplib
+
+import psycopg
+from fastapi import FastAPI, HTTPException
+
+app = FastAPI()
+
+
+@app.post("/tickets/{ticket_id}/close")
+def close_ticket(ticket_id: int, actor_id: int, channel: str) -> dict[str, str]:
+    with psycopg.connect("postgresql://app@db/tickets") as conn:
+        row = conn.execute(
+            "SELECT author_id, author_email FROM tickets WHERE id = %s", (ticket_id,)
+        ).fetchone()
+        if row is None or row[0] != actor_id:
+            raise HTTPException(status_code=403)
+        conn.execute("UPDATE tickets SET status = 'closed' WHERE id = %s", (ticket_id,))
+    if channel == "mail":
+        with smtplib.SMTP("smtp.local") as smtp:
+            smtp.sendmail("noreply@9to18.ru", row[1], "Subject: ticket closed\n\nTicket closed")
+    elif channel == "feed":
+        ...
+    return {"status": "closed"}
+```
+
+Здесь три причины изменения в одной функции: SQL, правило доступа и SMTP. Строка подключения зашита внутрь, поэтому тест на 403 требует живой Postgres. Каждый новый канал — ещё один `elif` в той же ручке.
+
+Хорошо: правило, хранилище и отправители разнесены, хендлер только собирает порядок.
+
+```python
+from dataclasses import dataclass
+from typing import Annotated, Protocol
+
+from fastapi import Depends, FastAPI, HTTPException
+
+
+@dataclass(frozen=True)
+class Ticket:
+    id: int
+    author_id: int
+    author_email: str
+    status: str
+
+
+class TicketRepository(Protocol):
+    def get(self, ticket_id: int) -> Ticket | None: ...
+    def close(self, ticket_id: int) -> None: ...
+
+
+class Sender(Protocol):
+    def send(self, ticket: Ticket) -> None: ...
+
+
+def can_close(actor_id: int, ticket: Ticket) -> bool:
+    return ticket.author_id == actor_id and ticket.status != "closed"
+
+
+def get_repository() -> TicketRepository:
+    return PostgresTicketRepository(pool)
+
+
+def get_senders() -> dict[str, Sender]:
+    return {"mail": MailSender(), "feed": FeedSender()}
+
+
+app = FastAPI()
+
+
+@app.post("/tickets/{ticket_id}/close")
+def close_ticket(
+    ticket_id: int,
+    actor_id: int,
+    channel: str,
+    repo: Annotated[TicketRepository, Depends(get_repository)],
+    senders: Annotated[dict[str, Sender], Depends(get_senders)],
+) -> dict[str, str]:
+    ticket = repo.get(ticket_id)
+    if ticket is None:
+        raise HTTPException(status_code=404)
+    if not can_close(actor_id, ticket):
+        raise HTTPException(status_code=403)
+    sender = senders.get(channel)
+    if sender is None:
+        raise HTTPException(status_code=422, detail="unknown channel")
+    repo.close(ticket_id)
+    sender.send(ticket)
+    return {"status": "closed"}
+```
+
+`PostgresTicketRepository`, `MailSender` и `FeedSender` — детали на краю, их код опущен: они реализуют протоколы и ничего не знают друг о друге. `Protocol` — структурный контракт: наследоваться от него не нужно, достаточно тех же методов. Новый канал — новая запись в `get_senders`, ручку не трогают (OCP). `Depends` — точка инверсии: тест подменяет реализации без сети. В реальном сервисе `actor_id` берут из токена, а не из параметра запроса.
+
+```python
+from fastapi.testclient import TestClient
+
+
+class MemoryRepo:
+    def __init__(self, tickets: dict[int, Ticket]) -> None:
+        self.tickets = tickets
+        self.closed: list[int] = []
+
+    def get(self, ticket_id: int) -> Ticket | None:
+        return self.tickets.get(ticket_id)
+
+    def close(self, ticket_id: int) -> None:
+        self.closed.append(ticket_id)
+
+
+class SpySender:
+    def __init__(self) -> None:
+        self.sent: list[int] = []
+
+    def send(self, ticket: Ticket) -> None:
+        self.sent.append(ticket.id)
+
+
+def test_foreign_ticket_is_not_closed() -> None:
+    repo = MemoryRepo({7: Ticket(id=7, author_id=1, author_email="a@9to18.ru", status="open")})
+    spy = SpySender()
+    app.dependency_overrides[get_repository] = lambda: repo
+    app.dependency_overrides[get_senders] = lambda: {"mail": spy}
+    try:
+        response = TestClient(app).post("/tickets/7/close", params={"actor_id": 2, "channel": "mail"})
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code == 403
+    assert repo.closed == [] and spy.sent == []
+```
+
+Тест проверяет правило доступа за миллисекунды. SQL репозитория проверяют отдельным интеграционным тестом.
+
 ## Раздел: Где это ломается
 
 Первая поломка — интерфейс на каждый класс. Появляется `AbstractTicket`, `ITicket`, `TicketBase` и один наследник. На собесе это выглядят как знание слов. В репозитории это шум: прыжок по файлам ради одной реализации. Протокол заводят от второго клиента или от теста, не от любви к схемам.
@@ -121,6 +256,27 @@ flowchart LR
   M[почта] --> N
 ```
 
+## Схема: Закрытие заявки через протоколы
+
+```mermaid
+sequenceDiagram
+  participant C as клиент
+  participant H as хендлер
+  participant R as репозиторий
+  participant S as отправитель
+  C->>H: POST /tickets/7/close
+  H->>R: get(7)
+  R-->>H: Ticket
+  H->>H: can_close(actor, ticket)
+  alt чужая заявка
+    H-->>C: 403
+  else своя заявка
+    H->>R: close(7)
+    H->>S: send(ticket)
+    H-->>C: 200 closed
+  end
+```
+
 ## Тест
 
 ### Куда деть вторую причину изменения класса?
@@ -152,6 +308,24 @@ flowchart LR
 **Ответ:** на конкретную библиотеку
 
 **Пояснение:** Инверсия — зависеть от протокола и получить реализацию снаружи.
+
+### `TelegramSender` унаследован от `MailSender` ради метода retry, и правка SMTP-таймаутов сломала Telegram. Чем замените наследование?
+
+**Ответ:** композицией
+
+**Пояснение:** Telegram не подтип почты, наследование ради кода связало два канала. Retry выносят в отдельную функцию или объект и передают обоим отправителям. Ещё один уровень иерархии (`BaseSender`) только переносит связь выше.
+
+### Тест правила «чужую заявку закрывать нельзя» поднимает Postgres в Docker и идёт 40 секунд. Что подставите вместо Postgres?
+
+**Ответ:** фейк
+
+**Пояснение:** хендлер зависит от протокола репозитория, поэтому тест передаёт реализацию в памяти через `dependency_overrides`. SQL проверяют отдельным интеграционным тестом; мок драйвера `psycopg` тестирует детали, а не правило.
+
+### `AuditTicketRepository.save` кроме INSERT шлёт письмо, и часть вызывающего кода начала отправлять дубли. Куда перенесёте отправку письма?
+
+**Ответ:** в хендлер
+
+**Пояснение:** подтип делает больше, чем обещает контракт «сохранить», — нарушены SRP и LSP. В хендлере побочный эффект виден в порядке шагов; флаг `send_mail=False` в `save` только прячет вторую причину изменения.
 
 ## Шпаргалка
 

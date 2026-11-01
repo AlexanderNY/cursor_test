@@ -1,13 +1,17 @@
 """Сервис для управления профилями пользователей."""
 
 import json
+import logging
 import secrets
 import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+import psycopg2.errors
+
 from database import get_db_connection, release_db_connection
 
+logger = logging.getLogger(__name__)
 
 _CURL_PROCESSING_KEYS = (
     "process_before_publish",
@@ -724,6 +728,30 @@ class ProfileService:
                     )
                 row = await cur.fetchone()
                 return self._row_to_tw_profile(row, cur.description)
+        finally:
+            await release_db_connection(conn)
+
+    async def set_tw_session_cookies(self, user_id: int, cookies_json: str) -> None:
+        """Cookies сессии X из браузера; новый вход по паролю tw-bot больше не нужен."""
+        conn = await get_db_connection()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    UPDATE tw_profiles SET
+                        twitter_session_cookies = %s,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE user_id = %s
+                    """,
+                    (cookies_json, user_id),
+                )
+                try:
+                    await cur.execute(
+                        "UPDATE tw_profiles SET twitter_login_not_before = NULL WHERE user_id = %s",
+                        (user_id,),
+                    )
+                except psycopg2.errors.UndefinedColumn:
+                    logger.debug("tw_profiles.twitter_login_not_before is not migrated yet")
         finally:
             await release_db_connection(conn)
 

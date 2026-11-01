@@ -3,6 +3,7 @@ import { gameService } from '@/services/game-service'
 import type { GameBot, GameMode } from '@/types/game'
 
 export interface PollsContextValue {
+  bots: GameBot[]
   selectedBotId: number | null
   setSelectedBotId: (botId: number) => void
   modes: GameMode[]
@@ -28,6 +29,7 @@ function readStoredBotId(): number | null {
 }
 
 export function PollsProvider({ children }: { children: ReactNode }) {
+  const [bots, setBots] = useState<GameBot[]>([])
   const [selectedBotId, setSelectedBotIdState] = useState<number | null>(readStoredBotId)
   const [modes, setModes] = useState<GameMode[]>([])
   const [selectedModeId, setSelectedModeId] = useState<number | null>(null)
@@ -51,11 +53,7 @@ export function PollsProvider({ children }: { children: ReactNode }) {
     try {
       const data = await gameService.listModes(true, effectiveBotId)
       setModes(data)
-      if (data.length > 0) {
-        setSelectedModeId((prev) => (prev && data.some((mode) => mode.id === prev) ? prev : data[0].id))
-      } else {
-        setSelectedModeId(null)
-      }
+      setSelectedModeId((prev) => (prev && data.some((mode) => mode.id === prev) ? prev : null))
     } catch {
       setModes([])
       setSelectedModeId(null)
@@ -73,10 +71,11 @@ export function PollsProvider({ children }: { children: ReactNode }) {
     sessionStorage.setItem(SELECTED_BOT_STORAGE_KEY, String(botId))
   }
 
-  function handleBotsLoaded(bots: GameBot[]) {
+  const handleBotsLoaded = useCallback((nextBots: GameBot[]) => {
+    setBots(nextBots)
     setSelectedBotIdState((prev) => {
       const preferred = prev ?? readStoredBotId()
-      const next = preferred && bots.some((bot) => bot.id === preferred) ? preferred : bots[0]?.id ?? null
+      const next = preferred && nextBots.some((bot) => bot.id === preferred) ? preferred : nextBots[0]?.id ?? null
       if (next == null) {
         sessionStorage.removeItem(SELECTED_BOT_STORAGE_KEY)
       } else {
@@ -84,15 +83,34 @@ export function PollsProvider({ children }: { children: ReactNode }) {
       }
       return next
     })
-  }
+  }, [])
 
   useEffect(() => {
-    if (selectedBotId) {
-      loadModes(selectedBotId)
+    let cancelled = false
+    gameService.listBots()
+      .then((data) => {
+        if (!cancelled) handleBotsLoaded(data)
+      })
+      .catch(() => {
+        if (!cancelled) setBots([])
+      })
+    return () => {
+      cancelled = true
     }
+  }, [handleBotsLoaded])
+
+  useEffect(() => {
+    if (!selectedBotId) {
+      setModes([])
+      setSelectedModeId(null)
+      setIsLoadingModes(false)
+      return
+    }
+    void loadModes(selectedBotId)
   }, [selectedBotId, loadModes])
 
   const value: PollsContextValue = {
+    bots,
     selectedBotId,
     setSelectedBotId,
     modes,

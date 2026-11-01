@@ -63,6 +63,93 @@ canonicalUrl: https://9to18.ru/game/learn/py-code-review
 
 Если автор ответил «проверка будет в следующем запросе», это не закрытие блокера. Доступ либо есть в этом диффе, либо запрос не готов. Откладывать дыру в «потом» — способ потерять её.
 
+## Раздел: Пример в коде
+
+Плохо: ручка архива в том виде, в каком она пришла на ревью (FastAPI + asyncpg).
+
+```python
+@router.patch("/tickets/{ticket_id}/archive")
+async def archive_ticket(
+    ticket_id: int,
+    request: Request,
+    user: Annotated[User, Depends(current_user)],
+    conn: Annotated[asyncpg.Connection, Depends(get_conn)],
+) -> dict[str, str]:
+    body = await request.json()
+    logger.info("archive request %s", body)
+    await conn.execute(
+        f"UPDATE tickets SET archived = true, archive_comment = '{body['comment']}' "
+        f"WHERE id = {ticket_id}"
+    )
+    await conn.execute(
+        "INSERT INTO ticket_history (ticket_id, action) VALUES ($1, 'archived')", ticket_id
+    )
+    return {"status": "archived"}
+```
+
+Замечания в треде, в порядке риска:
+
+```text
+[блокер] UPDATE ... WHERE id = {ticket_id}: нет owner_id, чужую заявку архивирует любой.
+         Ожидаю 404, как в GET /tickets/{id}, и тест на чужой id.
+[блокер] f-строка с body['comment'] в SQL — инъекция. Ожидаю параметры $1, $2.
+[блокер] повторный PATCH пишет вторую строку истории. Ожидаю 409 и тест.
+[блокер] logger.info пишет всё тело с комментарием клиента. В лог — только id.
+[nit]    request.json() без схемы: длину comment никто не проверяет, нужна Pydantic-модель.
+```
+
+Хорошо: исправленный дифф после ответа автора.
+
+```python
+class ArchiveIn(BaseModel):
+    comment: str = Field(max_length=500)
+
+
+@router.patch("/tickets/{ticket_id}/archive")
+async def archive_ticket(
+    ticket_id: int,
+    payload: ArchiveIn,
+    user: Annotated[User, Depends(current_user)],
+    conn: Annotated[asyncpg.Connection, Depends(get_conn)],
+) -> dict[str, str]:
+    async with conn.transaction():
+        ticket = await conn.fetchrow(
+            "SELECT archived FROM tickets WHERE id = $1 AND owner_id = $2 FOR UPDATE",
+            ticket_id, user.id,
+        )
+        if ticket is None:
+            raise HTTPException(status_code=404)
+        if ticket["archived"]:
+            raise HTTPException(status_code=409, detail="already archived")
+        await conn.execute(
+            "UPDATE tickets SET archived = true, archive_comment = $1 WHERE id = $2",
+            payload.comment, ticket_id,
+        )
+        await conn.execute(
+            "INSERT INTO ticket_history (ticket_id, action) VALUES ($1, 'archived')", ticket_id
+        )
+    logger.info("ticket archived", extra={"ticket_id": ticket_id, "user_id": user.id})
+    return {"status": "archived"}
+```
+
+`owner_id = $2` в SELECT — строка, которая запрещает чужое; чужая и несуществующая заявка неотличимы (404), так id не перебирают. `FOR UPDATE` внутри транзакции блокирует строку: два одновременных PATCH не запишут историю дважды. Плейсхолдеры `$1`, `$2` — asyncpg передаёт значения отдельно от текста SQL. Лог несёт идентификаторы, а не текст клиента.
+
+Тесты, без которых блокер не закрыт (фикстуры `client`, `own_ticket`, `foreign_ticket` — из `conftest.py`, pytest-asyncio):
+
+```python
+async def test_foreign_ticket_archive_returns_404(client, foreign_ticket) -> None:
+    response = await client.patch(f"/tickets/{foreign_ticket.id}/archive", json={"comment": "x"})
+    assert response.status_code == 404
+
+
+async def test_second_archive_returns_409(client, own_ticket) -> None:
+    url = f"/tickets/{own_ticket.id}/archive"
+    assert (await client.patch(url, json={"comment": "done"})).status_code == 200
+    assert (await client.patch(url, json={"comment": "again"})).status_code == 409
+```
+
+Оба теста падают на старом коде: первый получает 200, второй — 200 и дубль истории. Это и доказывает новое поведение, а не зелёный пайплайн.
+
 ## Раздел: Где ревью ломается
 
 Ревью ломается, когда его превращают в чтение стиля. Десять комментариев про кавычки, ноль про поведение. Автор учится угождать формату и перестаёт звать ревьюера на опасные места. Линтер и форматтер должны быть в пайплайне до человека.
@@ -115,6 +202,23 @@ flowchart TD
   E --> F[стиль]
 ```
 
+## Схема: Ревью ручки архива
+
+```mermaid
+sequenceDiagram
+  participant A as автор
+  participant CI as пайплайн
+  participant R as ревьюер
+  A->>CI: push PATCH archive
+  CI-->>A: зелёный на старых тестах
+  A->>R: запрос ревью
+  R->>R: контракт и доступ
+  R-->>A: блокер - чужой id и f-строка в SQL
+  A->>CI: owner_id в WHERE и тесты 404 и 409
+  CI-->>R: зелёный с новыми тестами
+  R-->>A: approve и nit про схему
+```
+
 ## Тест
 
 ### Что смотреть раньше имён переменных?
@@ -125,9 +229,9 @@ flowchart TD
 
 ### Пайплайн зелёный, теста на новый статус нет. Можно одобрять?
 
-**Ответ:** нет, поведения не видно
+**Ответ:** нет
 
-**Пояснение:** Старые тесты не знают про новую ветку.
+**Пояснение:** Новое поведение ничем не доказано: старые тесты не знают про новую ветку.
 
 ### Как сформулировать замечание?
 
@@ -137,15 +241,33 @@ flowchart TD
 
 ### Секрет в диффе. Какой статус ревью?
 
-**Ответ:** блокер до ротации
+**Ответ:** блокер
 
-**Пояснение:** Слияние уже раздаёт секрет всем, у кого есть история.
+**Пояснение:** Блокер до ротации секрета: слияние уже раздаёт его всем, у кого есть история.
 
 ### Зачем автор отвечает на комментарий в треде, а не в мессенджере?
 
 **Ответ:** решение остаётся у диффа
 
 **Пояснение:** Следующий читатель видит, почему строку оставили.
+
+### PR на 5 строк чинит баг, а рядом приехал рефакторинг соседнего модуля на 300 строк. Что попросите у автора?
+
+**Ответ:** отдельный PR
+
+**Пояснение:** в большом диффе фикс теряется, а откатить его отдельно от рефакторинга нельзя. Ревью «по диагонали» пропустит дефект; отказ от рефакторинга не нужен, нужен свой запрос.
+
+### Миграция переименовывает колонку `email` в `contact_email` в том же PR, где код уже читает новое имя; старые поды живут ещё 10 минут выкладки. Какой паттерн миграции потребуете?
+
+**Ответ:** expand-contract
+
+**Пояснение:** сначала добавить новую колонку и код, который умеет обе, потом перенести данные, потом удалить старую. Иначе старые поды падают на исчезнувшей колонке; выкладка «в окно без трафика» только прячет риск.
+
+### Ревью ручки архива утонуло в 14 комментариях про кавычки и порядок импортов, а проверку прав никто не дочитал. Что добавите в пайплайн?
+
+**Ответ:** линтер
+
+**Пояснение:** линтер и форматтер (например, ruff) снимают замечания о форме до человека, и ревьюер тратит внимание на контракт и доступ. Договорённость «не писать про стиль» без инструмента не держится.
 
 ## Шпаргалка
 

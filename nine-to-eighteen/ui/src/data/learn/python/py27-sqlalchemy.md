@@ -61,6 +61,106 @@ canonicalUrl: https://9to18.ru/game/learn/py-sqlalchemy
 
 Тест правила «нельзя создать заявку без заголовка» может идти без базы: это проверка входа до сессии. Тест «список не делает запрос на каждую строку» либо поднимает учебную базу и считает SQL, либо проверяет, что репозиторий вызван одним методом, а не в цикле. Второй вариант слабее, зато не требует Postgres в каждом прогоне. Честный учебный прогон хотя бы раз смотрят глазами в логе SQL.
 
+## Раздел: Пример в коде
+
+Модели и сессия на запрос (SQLAlchemy 2.0, FastAPI, синхронный драйвер psycopg 3):
+
+```python
+from collections.abc import Iterator
+from typing import Annotated
+
+from fastapi import Depends, FastAPI
+from pydantic import BaseModel
+from sqlalchemy import ForeignKey, String, create_engine, select
+from sqlalchemy.orm import (
+    DeclarativeBase, Mapped, Session, mapped_column, relationship, selectinload, sessionmaker,
+)
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+class User(Base):
+    __tablename__ = "users"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    email: Mapped[str] = mapped_column(String(255))
+
+
+class Ticket(Base):
+    __tablename__ = "tickets"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    title: Mapped[str] = mapped_column(String(200))
+    author_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    author: Mapped[User] = relationship()
+
+
+class TicketHistory(Base):
+    __tablename__ = "ticket_history"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ticket_id: Mapped[int] = mapped_column(ForeignKey("tickets.id"))
+    action: Mapped[str] = mapped_column(String(50))
+
+
+class TicketOut(BaseModel):
+    id: int
+    title: str
+    author_email: str
+
+
+engine = create_engine("postgresql+psycopg://app@db/tickets", echo=True)
+SessionLocal = sessionmaker(engine, expire_on_commit=False)
+
+
+def get_session() -> Iterator[Session]:
+    with SessionLocal() as session:
+        yield session
+
+
+SessionDep = Annotated[Session, Depends(get_session)]
+app = FastAPI()
+```
+
+Плохо: список читает автора в цикле.
+
+```python
+@app.get("/tickets")
+def list_tickets(session: SessionDep) -> list[TicketOut]:
+    tickets = session.scalars(select(Ticket).order_by(Ticket.id).limit(50)).all()
+    return [TicketOut(id=t.id, title=t.title, author_email=t.author.email) for t in tickets]
+```
+
+`relationship()` по умолчанию ленивая (`lazy="select"`). Каждое `t.author` для автора, которого ещё нет в сессии, — отдельный SELECT. Страница из 50 заявок разных авторов даёт 51 запрос.
+
+Хорошо: авторы грузятся пачкой, транзакция записи закрывается в хендлере.
+
+```python
+@app.get("/tickets")
+def list_tickets(session: SessionDep) -> list[TicketOut]:
+    stmt = select(Ticket).options(selectinload(Ticket.author)).order_by(Ticket.id).limit(50)
+    tickets = session.scalars(stmt).all()
+    return [TicketOut(id=t.id, title=t.title, author_email=t.author.email) for t in tickets]
+
+
+@app.post("/tickets", status_code=201)
+def create_ticket(title: str, author_id: int, session: SessionDep) -> dict[str, int]:
+    with session.begin():
+        ticket = Ticket(title=title, author_id=author_id)
+        session.add(ticket)
+        session.flush()
+        session.add(TicketHistory(ticket_id=ticket.id, action="created"))
+    return {"id": ticket.id}
+```
+
+Лог SQL после исправления (упрощённо) — два запроса на страницу:
+
+```sql
+SELECT tickets.id, tickets.title, tickets.author_id FROM tickets ORDER BY tickets.id LIMIT 50;
+SELECT users.id, users.email FROM users WHERE users.id IN (3, 7, 12 /* ... */);
+```
+
+`selectinload` собирает `author_id` загруженных заявок и делает один `IN`. `TicketOut` собирается, пока сессия открыта, — наружу уходит копия полей, не живая модель. В `create_ticket` граница одна: `with session.begin()` коммитит после обоих `add` или откатывает обе записи при исключении. `flush` отправляет INSERT заявки внутри транзакции, чтобы получить `ticket.id` для истории. `expire_on_commit=False` разрешает прочитать `ticket.id` после commit без повторного SELECT.
+
 ## Раздел: Где это ломается
 
 Глобальная сессия ломается под двумя параллельными запросами: один сделал rollback и снял чужие объекты, либо увидел грязное состояние соседа. Симптом плавающий, на одном пользователе его нет.
@@ -113,6 +213,25 @@ flowchart LR
   API --> C[commit или rollback]
 ```
 
+## Схема: Список заявок через selectinload
+
+```mermaid
+sequenceDiagram
+  participant C as клиент
+  participant H as хендлер
+  participant S as session
+  participant DB as postgres
+  C->>H: GET /tickets
+  H->>S: select Ticket с selectinload author
+  S->>DB: SELECT tickets LIMIT 50
+  DB-->>S: 50 заявок
+  S->>DB: SELECT users WHERE id IN author_id
+  DB-->>S: авторы пачкой
+  H->>H: собрать TicketOut при открытой сессии
+  H-->>C: 200 JSON
+  H->>S: закрыть сессию
+```
+
 ## Тест
 
 ### Когда изменения модели попадают в базу?
@@ -129,21 +248,39 @@ flowchart LR
 
 ### Список из 50 заявок делает 51 SELECT. Как это называется?
 
-**Ответ:** проблема N+1
+**Ответ:** N+1
 
-**Пояснение:** Один запрос списка и по запросу на каждую связь.
+**Пояснение:** Проблема N+1: один запрос списка и по запросу на каждую связь.
 
 ### Чем лечить N+1, если связь нужна в ответе?
 
-**Ответ:** eager load или JOIN
+**Ответ:** eager load
 
-**Пояснение:** `selectinload` догружает пачку, а не по одной строке.
+**Пояснение:** Явная загрузка (`selectinload`, `joinedload`) или явный JOIN: связь догружается пачкой, а не по одной строке.
 
 ### Где заканчивать транзакцию в API?
 
 **Ответ:** на границе запроса
 
 **Пояснение:** Репозиторий добавляет объекты, хендлер решает commit или rollback.
+
+### Для записи истории нужен id новой заявки, но commit делать рано — история должна попасть в ту же транзакцию. Что вызовете?
+
+**Ответ:** flush
+
+**Пояснение:** `session.flush()` отправляет INSERT и заполняет `ticket.id`, не завершая транзакцию. Commit посередине разорвёт сценарий: упавшая история оставит заявку без записи; генерировать id в Python ради этого не нужно.
+
+### Хендлер передал объект `Ticket` в фоновую задачу, и там `ticket.author` падает с `DetachedInstanceError`. Что передадите в задачу вместо объекта?
+
+**Ответ:** id
+
+**Пояснение:** объект привязан к сессии запроса, которая уже закрыта. Задача открывает свою сессию и читает заявку по id; держать сессию запроса открытой ради фона — утечка соединений из пула.
+
+### `joinedload(Ticket.comments)` на странице из 50 заявок по 40 комментариев вернул 2000 строк, страница тормозит. Какую загрузку возьмёте для коллекции?
+
+**Ответ:** selectinload
+
+**Пояснение:** JOIN к коллекции (one-to-many) размножает строки родителя на число детей. `selectinload` делает второй запрос с `IN` и не дублирует заявки; ленивая загрузка вернёт N+1.
 
 ## Шпаргалка
 

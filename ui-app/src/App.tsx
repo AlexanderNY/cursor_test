@@ -18,7 +18,7 @@ import { CustomUrlFlowPage } from '@/pages/custom-url/custom-url-flow'
 import { CreatePostPage } from '@/pages/create-post'
 import { LibraryPage } from '@/pages/library/library'
 import { AdministrationPage } from '@/pages/administration'
-import { PollsPage, PollsIndexRedirect, PollsContentSection, PollsDiagnosticsSection, PollsRatingPage, PollsOrdersPage } from '@/pages/polls'
+import { PollsPage, PollsIndexRedirect, PollsBotsPage, PollsContentSection, PollsDiagnosticsSection, PollsRatingPage, PollsOrdersPage } from '@/pages/polls'
 import { ChecksPage, ChecksIndexRedirect, AiCheckSection, ServicesStatusSection, ProcessorSection, CollectorSection, SchedulerSection, PostingDiagnosticsSection } from '@/pages/checks'
 import { TeamPage } from '@/pages/team/team'
 import { BrandsPage } from '@/pages/brands/brands'
@@ -132,6 +132,7 @@ function App() {
         <Route path="polls" element={<AdminRoute><PollsPage /></AdminRoute>}>
           <Route index element={<PollsIndexRedirect />} />
           <Route path="content" element={<PollsContentSection />} />
+          <Route path="bots" element={<PollsBotsPage />} />
           <Route path="diagnostics" element={<PollsDiagnosticsSection />} />
           <Route path="rating" element={<PollsRatingPage />} />
           <Route path="orders" element={<PollsOrdersPage />} />

@@ -376,6 +376,24 @@ flowchart LR
 
 **Пояснение:** без своего replacer движок не может сериализовать кольцо ссылок.
 
+### В список из 200 строк вешают по слушателю на каждую. Что сделаете?
+
+**Ответ:** делегирование
+
+**Пояснение:** Один слушатель на родителе ловит клик через bubble. Новые строки подхватываются сами.
+
+### Имя заявки из API кладут в innerHTML. Какой риск?
+
+**Ответ:** XSS
+
+**Пояснение:** textContent оставляет строку текстом. innerHTML парсит разметку и может исполнить обработчик.
+
+### JSON.parse упал на ответе сервера. Что покажете пользователю?
+
+**Ответ:** контролируемую ошибку
+
+**Пояснение:** SyntaxError ловят в try/catch. Сырой текст ответа на экран не вываливают.
+
 ## Шпаргалка
 
 <ul><li>querySelector — поиск по CSS; closest — вверх от target</li><li>textContent для текста; innerHTML — только доверенная разметка</li><li>делегирование: слушатель на родителе + bubble</li><li>target ≠ currentTarget</li><li>JSON.parse / JSON.stringify — основной путь REST-клиента</li><li>битый JSON → SyntaxError; цикл → TypeError</li><li>JSON ≠ полный JS-объект</li><li>XML: text → DOMParser → проверка parsererror</li><li>JS01: ===, falsy, typeof null</li><li>JS02: this от вызова; arrow лексический; bind</li><li>JS03: Promise + await; fetch → ok → json</li><li>JS04: delegation; textContent &gt; innerHTML для user data</li></ul>

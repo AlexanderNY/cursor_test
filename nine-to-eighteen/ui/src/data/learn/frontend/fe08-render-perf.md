@@ -49,6 +49,96 @@ canonicalUrl: https://9to18.ru/game/learn/fe-render-perf
 
 Порядок действий один. Воспроизвести жест. Посмотреть, кто рисовался. Если ребёнок дорогой и пропы те же — стабилизировать ссылки и memo. Если узлов слишком много — не монтировать невидимое. Если данные можно не привозить — не привозить. Кэш запроса и пагинация относятся к последнему и часто снимают задачу раньше обоих приёмов.
 
+## Раздел: Пример в коде
+
+Вариант В из разбора: панель с графиком рисуется на каждый символ поиска.
+
+Плохо:
+
+```tsx
+const StatsChart = memo(function StatsChart({ data, options, onSelect }: ChartProps) {
+  return <Chart data={data} options={options} onSelect={onSelect} />
+})
+
+export function Directory({ rows, stats, onOpenDetails }: DirectoryProps) {
+  const [search, setSearch] = useState('')
+  return (
+    <>
+      <input value={search} onChange={(event) => setSearch(event.target.value)} />
+      <StatsChart
+        data={stats}
+        options={{ theme: 'dark', showLegend: true }}
+        onSelect={(id) => onOpenDetails(id)}
+      />
+      <RowsList rows={rows.filter((row) => row.name.includes(search))} />
+    </>
+  )
+}
+```
+
+`memo` стоит, но не работает. `options` и `onSelect` рождаются заново на каждом символе, поверхностное сравнение видит новые ссылки и рисует график.
+
+Хорошо:
+
+```tsx
+const CHART_OPTIONS = { theme: 'dark', showLegend: true } as const
+
+export function Directory({ rows, stats, onOpenDetails }: DirectoryProps) {
+  const [search, setSearch] = useState('')
+  const handleSelect = useCallback((id: string) => onOpenDetails(id), [onOpenDetails])
+  const visibleRows = useMemo(
+    () => rows.filter((row) => row.name.includes(search)),
+    [rows, search],
+  )
+
+  return (
+    <>
+      <input value={search} onChange={(event) => setSearch(event.target.value)} />
+      <StatsChart data={stats} options={CHART_OPTIONS} onSelect={handleSelect} />
+      <VirtualList rows={visibleRows} />
+    </>
+  )
+}
+```
+
+Константа вынесена из компонента: ей не нужен даже `useMemo`. `useCallback` держит ссылку, пока не сменился `onOpenDetails`. Если родитель сам передаёт новую функцию на каждом рендере, шов уходит на уровень выше. `stats` должен приходить той же ссылкой, например из кэша запроса.
+
+Вариант Б: окно для 5000 строк фиксированной высоты, без библиотеки, чтобы видеть арифметику.
+
+```tsx
+type Row = { id: string; name: string }
+
+const ROW_HEIGHT = 40
+const VIEWPORT_HEIGHT = 480
+const OVERSCAN = 5
+
+export function VirtualList({ rows }: { rows: Row[] }) {
+  const [scrollTop, setScrollTop] = useState(0)
+  const first = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN)
+  const last = Math.min(rows.length, Math.ceil((scrollTop + VIEWPORT_HEIGHT) / ROW_HEIGHT) + OVERSCAN)
+
+  return (
+    <div
+      style={{ height: VIEWPORT_HEIGHT, overflowY: 'auto' }}
+      onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
+    >
+      <div style={{ position: 'relative', height: rows.length * ROW_HEIGHT }}>
+        {rows.slice(first, last).map((row, offset) => (
+          <div
+            key={row.id}
+            style={{ position: 'absolute', top: (first + offset) * ROW_HEIGHT, height: ROW_HEIGHT, left: 0, right: 0 }}
+          >
+            {row.name}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+```
+
+Внутренний блок высотой во весь список держит полосу прокрутки честной. По `scrollTop` считаем первую и последнюю видимую строку и добавляем запас. В DOM около 22 строк вместо 5000. Ключ — `row.id`, иначе после фильтра узлы перепутаются. В проекте то же даёт `@tanstack/react-virtual`, он же умеет измерять строки разной высоты.
+
 ## Раздел: Где это ломается
 
 Мемоизируют лист, а объект в пропе всё равно новый. Тест «я обернул» зелёный в ревью и пустой в профайлере. Сравнение ссылок надо проверить, а не предполагать.
@@ -104,17 +194,34 @@ flowchart TD
   N -->|долгий ответ| Q[запрос и страница]
 ```
 
+## Схема: Прокрутка окна списка
+
+```mermaid
+sequenceDiagram
+  participant U as пользователь
+  participant V as контейнер
+  participant R as React
+  participant D as DOM
+  U->>V: прокрутка
+  V->>R: onScroll и scrollTop 4000
+  R->>R: setScrollTop и новый рендер
+  R->>R: first 95 и last 117
+  R->>D: монтирует новые строки по row.id
+  R->>D: снимает строки вне окна
+  D-->>U: видно 12 строк и запас
+```
+
 ## Тест
 
-### Когда React.memo бесполезен?
+### Пропы по смыслу те же, а React.memo всё равно рендерит ребёнка. Что ломает сравнение?
 
-**Ответ:** пропы всё равно новые
+**Ответ:** новая ссылка
 
-**Пояснение:** Новый объект или функция на каждом рендере ломает сравнение.
+**Пояснение:** Пропы всё равно новые: объект или функция, созданные на каждом рендере, не равны прошлым по ссылке.
 
-### Зачем useCallback рядом с memo?
+### Что useCallback сохраняет для ребёнка в memo?
 
-**Ответ:** сохранить ссылку на функцию
+**Ответ:** ссылку на функцию
 
 **Пояснение:** Иначе memo видит новый проп и рендерит ребёнка снова.
 
@@ -124,17 +231,35 @@ flowchart TD
 
 **Пояснение:** В документе остаются видимые строки и небольшой запас.
 
-### Ключ строки окна — индекс. Чем риск?
+### Ключ строки окна — индекс, и после фильтра введённый текст переезжает к соседней строке. Что взять ключом?
 
-**Ответ:** личность строки плывёт
+**Ответ:** id
 
-**Пояснение:** При вставке и фильтре React перепутает узлы.
+**Пояснение:** Стабильный id данных. С индексом личность строки плывёт: при вставке и фильтре React перепутает узлы.
 
 ### Страница API уже отдаёт 30 строк. Нужно ли окно?
 
-**Ответ:** обычно нет
+**Ответ:** нет
 
-**Пояснение:** Узлов мало. Окно окупается на длинном клиентском массиве.
+**Пояснение:** Обычно нет: узлов мало. Окно окупается на длинном клиентском массиве.
+
+### Поле поиска фильтрует 5000 уже загруженных строк, список уже в окне, но ввод всё равно подлагивает: фильтр тяжёлый. Какой хук React 18 отдаст полю приоритет?
+
+**Ответ:** useDeferredValue
+
+**Пояснение:** Поле рисует свежий `search`, а фильтр считает по отложенной копии, и React может прервать этот рендер ради нового символа. `useTransition` решает то же, если вы сами владеете вызовом `setState`. `memo` здесь не поможет: дорог сам расчёт, а не лишний рендер.
+
+### Тема и счётчик уведомлений лежат в одном контексте. Счётчик меняется каждую секунду, и все memo-компоненты, читающие тему, рисуются заново. Что сделать с контекстом?
+
+**Ответ:** разделить
+
+**Пояснение:** Любое изменение `value` контекста перерисовывает всех его читателей, `memo` от этого не защищает. Тема и счётчик расходятся по двум провайдерам, а `value` стабилизируют через `useMemo`.
+
+### Включили окно с фиксированной высотой строки 40px, но в строках комментарии разной длины, и строки наползают друг на друга. Что окну придётся делать с каждой строкой?
+
+**Ответ:** измерять
+
+**Пояснение:** Окну нужна настоящая высота строки, чтобы считать позиции. Её измеряют после монтирования и кэшируют по id. Другой честный путь — фиксированная высота и предсказуемая обрезка текста. Подогнать число 40 под среднюю строку нельзя.
 
 ## Шпаргалка
 

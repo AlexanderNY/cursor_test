@@ -29,6 +29,9 @@ def format_pause(seconds: int) -> str:
     total = max(0, int(seconds))
     if total < 60:
         return f"{total} с"
+    if total >= 3600:
+        hours = math.ceil(total / 3600)
+        return f"{hours} ч"
     minutes = math.ceil(total / 60)
     return f"{minutes} мин"
 

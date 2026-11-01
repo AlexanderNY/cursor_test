@@ -341,6 +341,14 @@ export const gameService = {
     return `/api/tg/game/media/${encodeURIComponent(filename)}`
   },
 
+  previewImageSrc(imageUrl: string | null | undefined): string {
+    const trimmed = (imageUrl ?? '').trim()
+    if (!trimmed) return ''
+    const match = trimmed.match(/\/tg\/game\/media\/([^/?#]+)$/i)
+    if (!match) return trimmed
+    return this.mediaPreviewUrl(match[1])
+  },
+
   async listCountries(): Promise<GameCountry[]> {
     try {
       const response = await apiClient.get<GameCountry[]>('/tg/game/admin/countries')

@@ -53,6 +53,93 @@ canonicalUrl: https://9to18.ru/game/learn/qa-mocks
 
 Что хранится в репозитории: три сопоставления метод-путь-ответ, без адреса прода. Адрес двойника приходит из окружения теста, как адрес стенда в Postman.
 
+## Раздел: Пример в коде
+
+Тот же приём на платной заявке. При создании сервис заявок списывает плату через внешний платёжный шлюз — это сосед. Свой код ходит в шлюз через `httpx`:
+
+```python
+# applications/service.py
+import httpx
+
+PAYMENTS_URL = "https://payments.example.test"
+
+
+class PaymentUnavailable(Exception):
+    pass
+
+
+async def create_paid_application(client: httpx.AsyncClient, repo, customer_id: str, amount: int):
+    try:
+        response = await client.post(
+            f"{PAYMENTS_URL}/v1/charges",
+            json={"customer_id": customer_id, "amount": amount, "currency": "RUB"},
+            timeout=5.0,
+        )
+    except httpx.TimeoutException as exc:
+        raise PaymentUnavailable("payments timeout") from exc
+    response.raise_for_status()
+    return await repo.save(customer_id=customer_id, charge_id=response.json()["id"], status="paid")
+```
+
+Плохо: подменили собственную функцию. Тест проверяет, что `AsyncMock` вернул то, что ему велели. Код сервиса не выполнился ни разу, и тест останется зелёным, даже если в нём сломать всё.
+
+```python
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
+
+import pytest
+
+import applications.service as service
+
+
+@pytest.mark.asyncio
+async def test_paid_application_bad() -> None:
+    fake = AsyncMock(return_value=SimpleNamespace(status="paid", charge_id="ch_1"))
+    with patch.object(service, "create_paid_application", fake):
+        application = await service.create_paid_application(None, None, customer_id="c-42", amount=1990)
+    assert application.status == "paid"
+```
+
+Хорошо: подменили только шлюз. `respx` перехватывает исходящий запрос `httpx` и отдаёт ответ по контракту шлюза. Свой сервис работает настоящий, с тестовой базой из фикстуры `applications_repo`.
+
+```python
+import json
+
+import httpx
+import pytest
+import respx
+
+from applications.service import PAYMENTS_URL, PaymentUnavailable, create_paid_application
+
+CHARGE_OK = {"id": "ch_test_001", "status": "succeeded", "amount": 1990, "currency": "RUB"}
+
+
+@pytest.fixture
+def payments():
+    with respx.mock(base_url=PAYMENTS_URL, assert_all_called=False) as mock:
+        yield mock
+
+
+@pytest.mark.asyncio
+async def test_paid_application_saved(payments, applications_repo) -> None:
+    charge = payments.post("/v1/charges").mock(return_value=httpx.Response(201, json=CHARGE_OK))
+    async with httpx.AsyncClient() as client:
+        application = await create_paid_application(client, applications_repo, customer_id="c-42", amount=1990)
+    assert application.charge_id == "ch_test_001"
+    assert json.loads(charge.calls.last.request.content)["amount"] == 1990
+
+
+@pytest.mark.asyncio
+async def test_payment_timeout_leaves_no_application(payments, applications_repo) -> None:
+    payments.post("/v1/charges").mock(side_effect=httpx.ConnectTimeout("payments slow"))
+    async with httpx.AsyncClient() as client:
+        with pytest.raises(PaymentUnavailable):
+            await create_paid_application(client, applications_repo, customer_id="c-42", amount=1990)
+    assert await applications_repo.count(customer_id="c-42") == 0
+```
+
+`CHARGE_OK` списан с примера из спецификации шлюза, а не урезан до одного `id`. `charge.calls.last.request` — проверка того, что ушло соседу: сумма и валюта, которые в бою спишут с клиента. Второй тест — ветка отказа. `side_effect` бросает таймаут, и тест утверждает поведение своего сервиса: ошибка понятного типа и ни одной «висячей» заявки в базе. Где ломается: если `assert_all_mocked` выключить, незамоканный запрос уйдёт в реальную сеть. Если положить в `CHARGE_OK` боевой ключ, он уедет в репозиторий. Фикстура `payments` лежит в репозитории рядом с тестом, поэтому CI поднимает тот же двойник, что и автор.
+
 ## Раздел: Где это ломается
 
 Мокают систему под тестом. Тест зелёный, в прод уехал другой код. Граница: двойник только у соседа.
@@ -110,6 +197,24 @@ flowchart LR
   Live[живой стенд] --> SUT
 ```
 
+## Схема: Тест с подменой платёжного шлюза
+
+```mermaid
+sequenceDiagram
+  participant T as pytest
+  participant S as сервис заявок
+  participant R as respx двойник шлюза
+  participant DB as тестовая база
+  T->>R: маршрут POST /v1/charges отдаёт 201
+  T->>S: create_paid_application
+  S->>R: POST /v1/charges
+  R-->>S: 201 ch_test_001
+  S->>DB: сохранить заявку paid
+  DB-->>S: заявка
+  S-->>T: charge_id ch_test_001
+  T->>R: проверить тело вызова
+```
+
 ## Тест
 
 ### Что нельзя подменять двойником?
@@ -126,21 +231,39 @@ flowchart LR
 
 ### Откуда брать форму JSON заглушки?
 
-**Ответ:** из контракта зависимости
+**Ответ:** из контракта
 
-**Пояснение:** Удобный урезанный JSON расходится с боевым сервисом.
+**Пояснение:** Форму берут из контракта зависимости. Удобный урезанный JSON расходится с боевым сервисом.
 
 ### Когда прогон без мока обязателен?
 
-**Ответ:** на приёмке главного пути
+**Ответ:** на приёмке
 
-**Пояснение:** Только живой сосед подтверждает, что контракт ещё тот.
+**Пояснение:** Без мока хотя бы раз проходят главный путь на приёмке. Только живой сосед подтверждает, что контракт ещё тот.
 
 ### Заглушка только на машине одного тестировщика. Чем плохо?
 
-**Ответ:** прогон нельзя повторить
+**Ответ:** нельзя повторить
 
-**Пояснение:** Ответ должен лежать в репозитории вместе с тестом.
+**Пояснение:** Прогон нельзя повторить ни коллеге, ни CI. Ответ должен лежать в репозитории вместе с тестом.
+
+### Справочник переименовал поле `customer_id` в `id`, а все тесты сервиса заявок зелёные: заглушка отдаёт старое тело. Что обновить первым?
+
+**Ответ:** заглушку
+
+**Пояснение:** двойник сверяют с новой спецификацией соседа. После обновления тесты покраснеют и честно покажут, что сервис заявок надо доработать. Подгонять сервис под старую заглушку или выключать тесты — значит снова проверять фантазию.
+
+### Платёжный шлюз на стенде живой, но в его sandbox нельзя получить ответ «недостаточно средств». Где проверять эту ветку?
+
+**Ответ:** на заглушке
+
+**Пояснение:** ошибки, которые живой сосед не умеет отдавать по заказу, воспроизводят двойником с ответом из спецификации шлюза. Живой стенд оставляют для главного успешного пути. Пропускать ветку «потому что не воспроизвести» — значит узнать о ней в инциденте.
+
+### Перед релизом все тесты сервиса заявок зелёные, но справочник в них — только WireMock: живого справочника на стенде ещё нет. Что обязательно написать в отчёте?
+
+**Ответ:** риск интеграции
+
+**Пояснение:** зелёный прогон на двойнике не доказывает, что настоящий сосед отвечает так же. Отчёт говорит, где стояла заглушка, и оставляет риск интеграции открытым. Без оговорки релизная уверенность липовая.
 
 ## Шпаргалка
 

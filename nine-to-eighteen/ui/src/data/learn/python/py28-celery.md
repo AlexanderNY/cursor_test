@@ -63,6 +63,74 @@ Kafka в этом разговоре — журнал событий на нес
 
 Когда очередь не нужна. Отправка одного короткого письма, если почтовый вызов и так уложен в десятки миллисекунд и потеря при рестарте приемлема, может остаться в запросе. Как только потеря или длительность становятся болью, появляется брокер. Не наоборот: не ставить Celery на каждый `print`.
 
+## Раздел: Пример в коде
+
+Плохо: задача без ключа и с повтором на любую ошибку.
+
+```python
+@app.task(autoretry_for=(Exception,), max_retries=5)
+def build_export(user_id: int, tickets: list[dict]) -> None:
+    url = upload_csv(f"exports/{uuid4()}.csv", tickets)
+    with SessionLocal.begin() as session:
+        session.add(Export(user_id=user_id, file_url=url, status="done"))
+    send_mail(user_id, "Выгрузка готова", url)
+```
+
+Все заявки едут JSON-ом через брокер. Каждый повтор создаёт новый файл, новую строку `exports` и новое письмо. `Exception` в `autoretry_for` повторяет и ошибку в коде, которая упадёт все пять раз.
+
+Хорошо: ручка создаёт ключ, задача повторяет только сетевые ошибки (Celery 5, SQLAlchemy 2.0).
+
+```python
+import httpx
+from celery import Celery, Task
+from sqlalchemy import update
+
+app = Celery("exports", broker="amqp://guest@rabbitmq//")
+
+
+class ExportTask(Task):
+    def on_failure(self, exc, task_id, args, kwargs, einfo) -> None:
+        mark_export_failed(export_id=args[0], reason=repr(exc))
+
+
+@app.task(
+    base=ExportTask,
+    autoretry_for=(httpx.TransportError,),
+    retry_backoff=True,
+    retry_jitter=True,
+    max_retries=5,
+    acks_late=True,
+)
+def build_export(export_id: int) -> None:
+    with SessionLocal.begin() as session:
+        export = session.get(Export, export_id)
+        if export is None or export.status == "done":
+            return
+        export.status = "running"
+        user_id = export.user_id
+
+    file_key = f"exports/{export_id}.csv"
+    upload_csv(file_key, load_tickets(user_id))
+
+    with SessionLocal.begin() as session:
+        session.execute(
+            update(Export)
+            .where(Export.id == export_id, Export.status != "done")
+            .values(status="done", file_key=file_key)
+        )
+
+
+@router.post("/exports", status_code=202)
+def create_export(user: CurrentUser, session: SessionDep) -> dict[str, int | str]:
+    with session.begin():
+        export = Export(user_id=user.id, status="queued")
+        session.add(export)
+    build_export.delay(export.id)
+    return {"export_id": export.id, "status": "queued"}
+```
+
+`export_id` — ключ идемпотентности: строку создают и коммитят до отправки, иначе воркер может её не найти. Повтор видит `done` и выходит. Имя файла зависит от `export_id`, поэтому повторная загрузка перезапишет тот же объект, а не создаст второй. Условный `UPDATE ... WHERE status != 'done'` не даёт двум параллельным доставкам дважды завершить выгрузку. `autoretry_for` ловит только сетевые сбои: `retry_backoff` удваивает паузу, `retry_jitter` разносит повторы во времени. `acks_late=True` подтверждает сообщение после работы, а не при получении. `on_failure` вызывается после последней попытки и ставит строке статус ошибки, который увидит человек. Если выгрузка потом шлёт письмо, его отправку защищают так же: отдельным полем `notified_at` и условным UPDATE.
+
 ## Раздел: Где это ломается
 
 Задача без ключа идемпотентности и с retry списывает деньги дважды или шлёт два письма. Тест на повтор — часть задачи, не роскошь.
@@ -118,25 +186,49 @@ flowchart LR
   W --> File[файл]
 ```
 
+## Схема: Повтор выгрузки с тем же export_id
+
+```mermaid
+sequenceDiagram
+  participant C as клиент
+  participant A as api
+  participant D as postgres
+  participant B as брокер
+  participant W as воркер
+  participant S as хранилище
+  C->>A: POST /exports
+  A->>D: INSERT exports queued и commit
+  A->>B: build_export export_id=42
+  A-->>C: 202 export_id=42
+  B->>W: задача 42
+  W->>S: PUT exports/42.csv
+  S-->>W: TransportError
+  W->>B: retry с backoff
+  B->>W: повтор задачи 42
+  W->>S: PUT тот же ключ exports/42.csv
+  W->>D: UPDATE done где status не done
+  W->>B: ack
+```
+
 ## Тест
 
 ### Почему тяжёлую выгрузку не делают внутри POST?
 
-**Ответ:** запрос оборвётся по таймауту
+**Ответ:** таймаут
 
-**Пояснение:** Клиент и прокси не обязаны ждать минуты. Работа живёт в воркере.
+**Пояснение:** Запрос оборвётся по таймауту: клиент и прокси не обязаны ждать минуты. Работа живёт в воркере.
 
-### Чем брокер отличается от воркера?
+### Кто исполняет вашу функцию — брокер или воркер?
 
-**Ответ:** брокер хранит, воркер делает
+**Ответ:** воркер
 
-**Пояснение:** Redis или RabbitMQ не исполняют вашу функцию.
+**Пояснение:** Брокер только хранит сообщение; Redis или RabbitMQ не исполняют вашу функцию.
 
-### Зачем идемпотентность при retry?
+### Каким свойством обязана обладать задача с retry?
 
-**Ответ:** повтор не удваивает эффект
+**Ответ:** идемпотентность
 
-**Пояснение:** Сообщение могут доставить ещё раз после обрыва до ack.
+**Пояснение:** Повтор не должен удваивать эффект: сообщение могут доставить ещё раз после обрыва до ack.
 
 ### Когда уместен result backend?
 
@@ -144,11 +236,29 @@ flowchart LR
 
 **Пояснение:** Если итог пишется в свою таблицу, отдельное хранилище результатов не нужно.
 
-### Чем очередь Celery отличается от журнала Kafka?
+### Что хранит Kafka в отличие от очереди задач Celery?
 
-**Ответ:** работа против ленты событий
+**Ответ:** ленту событий
 
-**Пояснение:** Celery стремится выполнить задачу один раз. Kafka хранит поток для разных читателей.
+**Пояснение:** Celery — работа: стремится выполнить задачу один раз. Kafka хранит поток для разных читателей, каждый со своей позицией.
+
+### Под воркера убили при деплое посреди выгрузки. Сообщение подтвердилось сразу при получении, и строка навсегда осталась в `running`. Какую настройку задачи включите?
+
+**Ответ:** acks_late
+
+**Пояснение:** по умолчанию Celery подтверждает сообщение до выполнения, и брокеру нечего отдавать повторно. С `acks_late=True` ack уходит после работы, поэтому задача обязана быть идемпотентной. Если падает только дочерний процесс (OOM), нужен ещё `task_reject_on_worker_lost`.
+
+### У задачи письма `autoretry_for=(Exception,)`, а шаблон падает с `KeyError` на каждом запуске, и воркеры заняты повторами. Какие ошибки оставите в autoretry_for?
+
+**Ответ:** сетевые
+
+**Пояснение:** повтор помогает только временным сбоям: таймауту, обрыву соединения, 503. `KeyError` — дефект кода, он упадёт все попытки; такая задача должна сразу уйти в статус ошибки. Увеличить `max_retries` — продлить пытку.
+
+### Ручка вызывает `build_export.delay(export.id)` до commit строки `exports`, и иногда воркер не находит строку по id. Когда отправлять задачу?
+
+**Ответ:** после commit
+
+**Пояснение:** воркер — другой процесс со своей транзакцией и не видит незафиксированную строку. Отправка после commit убирает гонку; `countdown=1` лишь прячет её до первой медленной базы.
 
 ## Шпаргалка
 

@@ -111,6 +111,9 @@ export function TwitterPage() {
   const [proxyPort, setProxyPort] = useState('')
   const [twitterUsername, setTwitterUsername] = useState('')
   const [twitterPassword, setTwitterPassword] = useState('')
+  const [twitterAuthToken, setTwitterAuthToken] = useState('')
+  const [twitterCt0, setTwitterCt0] = useState('')
+  const [hasTwitterSession, setHasTwitterSession] = useState(false)
   const [takeScreenshotCollect, setTakeScreenshotCollect] = useState(false)
   const [screenshotXpath, setScreenshotXpath] = useState('')
   const [twitterConnected, setTwitterConnected] = useState(false)
@@ -151,6 +154,9 @@ export function TwitterPage() {
         setProxyPort(profile.proxy_port?.toString() || '')
         setTwitterUsername(profile.twitter_username || '')
         setTwitterPassword('')
+        setTwitterAuthToken('')
+        setTwitterCt0('')
+        setHasTwitterSession(profile.has_twitter_session ?? false)
         setTakeScreenshotCollect(profile.take_screenshot_collect ?? false)
         setScreenshotXpath(profile.screenshot_xpath || '')
         setTwitterConnected(profile.twitter_connected ?? false)
@@ -236,6 +242,10 @@ export function TwitterPage() {
     if (twitterPassword.trim()) {
       profile.twitter_password = twitterPassword.trim()
     }
+    if (twitterAuthToken.trim()) {
+      profile.twitter_auth_token = twitterAuthToken.trim()
+      profile.twitter_ct0 = twitterCt0.trim()
+    }
     return profile
   }
 
@@ -248,6 +258,8 @@ export function TwitterPage() {
       await twitterService.saveProfile(buildProfilePayload() as unknown as TwitterProfile)
       setSuccess('Credentials saved')
       setTwitterPassword('')
+      setTwitterAuthToken('')
+      setTwitterCt0('')
       await loadProfile()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save credentials')
@@ -413,6 +425,37 @@ export function TwitterPage() {
                       placeholder="Оставьте пустым, чтобы не менять"
                       autoComplete="current-password"
                     />
+                  </div>
+                  <div className="space-y-3 pt-2">
+                    <h3 className="text-sm font-semibold text-[var(--text-primary)]">
+                      Сессия из браузера (cookies)
+                    </h3>
+                    <p className="text-xs text-[var(--text-muted)]">
+                      Если X ограничил вход по паролю: войдите в x.com в обычном Chrome, откройте DevTools
+                      (F12) → Application → Cookies → https://x.com и скопируйте значения auth_token и ct0.
+                      Не выходите из аккаунта в этом браузере — выход отменяет сессию.
+                    </p>
+                    <p className="text-xs text-[var(--text-secondary)]">
+                      {hasTwitterSession ? 'Сессия сохранена' : 'Сессия не сохранена'}
+                    </p>
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <Input
+                        label="auth_token"
+                        type="password"
+                        value={twitterAuthToken}
+                        onChange={(e) => setTwitterAuthToken(e.target.value)}
+                        placeholder="Оставьте пустым, чтобы не менять"
+                        autoComplete="off"
+                      />
+                      <Input
+                        label="ct0"
+                        type="password"
+                        value={twitterCt0}
+                        onChange={(e) => setTwitterCt0(e.target.value)}
+                        placeholder="Оставьте пустым, чтобы не менять"
+                        autoComplete="off"
+                      />
+                    </div>
                   </div>
                   <div className="space-y-3 pt-2">
                     <h3 className="text-sm font-semibold text-[var(--text-primary)]">Прокси</h3>

@@ -37,6 +37,18 @@ function validateOptions(options: GameOptionInput[]): string | null {
   return null
 }
 
+const MODE_TYPE_FILTERS: { value: GameModeType; label: string }[] = [
+  { value: 'quiz', label: 'Викторина' },
+  { value: 'menu', label: 'Меню' },
+  { value: 'country_training', label: 'Тренировка' },
+  { value: 'country_flags', label: 'Флаги' },
+  { value: 'country_map', label: 'Страна на карте' },
+]
+
+function modeTypeLabel(modeType: GameModeType): string {
+  return MODE_TYPE_FILTERS.find((item) => item.value === modeType)?.label ?? modeType
+}
+
 function questionsCountLabel(count: number): string {
   const mod10 = count % 10
   const mod100 = count % 100
@@ -137,14 +149,12 @@ function QuestionDraftForm({
         value={imageUrl}
         onChange={(event) => onImageUrlChange(event.target.value)}
       />
-      {imageUrl && (
+      {imageUrl.trim() && (
         <img
-          src={imageUrl}
+          key={imageUrl}
+          src={gameService.previewImageSrc(imageUrl)}
           alt="Превью"
-          className="max-h-32 rounded-lg border border-[var(--border-color)] object-contain"
-          onError={(event) => {
-            ;(event.target as HTMLImageElement).style.display = 'none'
-          }}
+          className="max-h-32 rounded-lg border border-[var(--border-color)] bg-[var(--bg-tertiary)] object-contain"
         />
       )}
       <div className="space-y-2">
@@ -203,6 +213,7 @@ export function PollsContentSection() {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
 
+  const [modeTypeFilter, setModeTypeFilter] = useState<GameModeType>('quiz')
   const [newModeCode, setNewModeCode] = useState('')
   const [newModeTitle, setNewModeTitle] = useState('')
   const [newModeType, setNewModeType] = useState<GameModeType>('quiz')
@@ -233,6 +244,22 @@ export function PollsContentSection() {
       setIsLoadingQuestions(false)
     }
   }, [])
+
+  const visibleModes = useMemo(
+    () => modes.filter((mode) => mode.mode_type === modeTypeFilter),
+    [modes, modeTypeFilter],
+  )
+
+  useEffect(() => {
+    if (selectedMode && selectedMode.mode_type !== modeTypeFilter) {
+      setSelectedModeId(null)
+    }
+  }, [modeTypeFilter, selectedMode, setSelectedModeId])
+
+  useEffect(() => {
+    if (!selectedModeId) return
+    document.getElementById('poll-details')?.scrollIntoView({ block: 'start' })
+  }, [selectedModeId])
 
   useEffect(() => {
     setQuestionQuery('')
@@ -317,6 +344,7 @@ export function PollsContentSection() {
       setNewModeTitle('')
       setNewModeType('quiz')
       setNewModeQuestionsPerGame('10')
+      setModeTypeFilter(created.mode_type)
       setSelectedModeId(created.id)
       await loadModes()
       setSuccess(`Режим «${created.title}» создан`)
@@ -476,10 +504,28 @@ export function PollsContentSection() {
       <div className="space-y-6">
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">Режимы игры</CardTitle>
-            <CardDescription>Например demo — вопросов за партию задаётся здесь.</CardDescription>
+            <CardTitle className="text-lg">Опросы</CardTitle>
+            <CardDescription>Выберите тип и нажмите опрос, чтобы открыть его состав.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            <label className="flex flex-wrap items-center gap-2 text-sm">
+              <span className="text-[var(--text-secondary)]">Тип опроса</span>
+              <select
+                className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-sm text-[var(--text-primary)]"
+                value={modeTypeFilter}
+                onChange={(event) => {
+                  const nextType = event.target.value as GameModeType
+                  setModeTypeFilter(nextType)
+                  if (nextType === 'quiz' || nextType === 'menu') setNewModeType(nextType)
+                }}
+              >
+                {MODE_TYPE_FILTERS.map((item) => (
+                  <option key={item.value} value={item.value}>
+                    {item.label}
+                  </option>
+                ))}
+              </select>
+            </label>
             <form onSubmit={handleCreateMode} className="grid gap-3 rounded-xl border border-[var(--border-color)] p-4 sm:grid-cols-2 xl:grid-cols-4">
               <h3 className="text-sm font-semibold text-[var(--text-primary)] sm:col-span-2 xl:col-span-4">Новый режим</h3>
               <Input
@@ -525,17 +571,20 @@ export function PollsContentSection() {
 
             {isLoadingModes ? (
               <TableSkeleton rows={3} />
-            ) : modes.length === 0 ? (
-              <EmptyState title="Нет режимов" description="Создайте первый режим игры." />
+            ) : visibleModes.length === 0 ? (
+              <EmptyState
+                title="Нет опросов этого типа"
+                description={`В списке нет опросов типа «${modeTypeLabel(modeTypeFilter)}».`}
+              />
             ) : (
               <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                {modes.map((mode) => {
+                {visibleModes.map((mode) => {
                   const isSelected = mode.id === selectedModeId
                   return (
                     <li key={mode.id}>
                       <button
                         type="button"
-                        onClick={() => setSelectedModeId(mode.id)}
+                        onClick={() => setSelectedModeId(isSelected ? null : mode.id)}
                         className={`w-full rounded-xl border p-3 text-left transition-colors ${
                           isSelected
                             ? 'border-primary-500 bg-primary-500/10'
@@ -546,10 +595,8 @@ export function PollsContentSection() {
                           <div>
                             <p className="font-medium text-[var(--text-primary)]">{mode.title}</p>
                             <p className="text-xs text-[var(--text-secondary)]">
-                              {mode.code} ·{' '}
-                              {mode.mode_type === 'menu'
-                                ? 'меню'
-                                : `${mode.questions_per_game} вопр./игра`}
+                              {mode.code} · {modeTypeLabel(mode.mode_type)}
+                              {mode.mode_type === 'menu' ? '' : ` · ${mode.questions_per_game} вопр./игра`}
                             </p>
                           </div>
                           <span
@@ -599,13 +646,18 @@ export function PollsContentSection() {
           </CardContent>
         </Card>
 
-        <MenuNodesSection
-          modes={modes}
-          modeId={selectedModeId}
-          onSelectMode={setSelectedModeId}
-        />
+        {selectedMode && (
+        <div id="poll-details" className="space-y-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-lg font-semibold text-[var(--text-primary)]">{selectedMode.title}</h2>
+            <Button type="button" variant="secondary" onClick={() => setSelectedModeId(null)}>
+              Закрыть
+            </Button>
+          </div>
 
-        {isMenuMode ? null : isCountryMode && selectedMode ? (
+        {isMenuMode ? (
+          <MenuNodesSection mode={selectedMode} />
+        ) : isCountryMode ? (
           <CountryCatalogSection
             key={selectedMode.id}
             mode={selectedMode}
@@ -659,10 +711,6 @@ export function PollsContentSection() {
               }}
             />
 
-            {!selectedModeId ? (
-              <EmptyState title="Выберите режим" description="Выше выберите или создайте режим игры." />
-            ) : (
-              <>
                 {showQuestionForm && !editingQuestionId && (
                   <div className="rounded-xl border border-[var(--border-color)] p-4">
                     <QuestionDraftForm
@@ -797,12 +845,9 @@ export function PollsContentSection() {
                                 </div>
                                 {question.image_url && (
                                   <img
-                                    src={question.image_url}
+                                    src={gameService.previewImageSrc(question.image_url)}
                                     alt=""
-                                    className="h-20 w-20 shrink-0 rounded-lg border border-[var(--border-color)] object-contain"
-                                    onError={(event) => {
-                                      ;(event.target as HTMLImageElement).style.display = 'none'
-                                    }}
+                                    className="h-20 w-20 shrink-0 rounded-lg border border-[var(--border-color)] bg-[var(--bg-tertiary)] object-contain"
                                   />
                                 )}
                               </div>
@@ -813,10 +858,10 @@ export function PollsContentSection() {
                     )}
                   </div>
                 )}
-              </>
-            )}
           </CardContent>
         </Card>
+        )}
+        </div>
         )}
       </div>
     </>
