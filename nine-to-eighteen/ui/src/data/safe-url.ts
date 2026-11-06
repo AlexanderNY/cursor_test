@@ -37,7 +37,8 @@ export function safeImageSrc(raw: string | null | undefined): string | null {
   return href
 }
 
-const SVG_DROP = new Set(['SCRIPT', 'FOREIGNOBJECT', 'IFRAME', 'OBJECT', 'EMBED'])
+/** Scripted hosts only. Keep foreignObject: Mermaid flowchart labels live there. */
+const SVG_DROP = new Set(['SCRIPT', 'IFRAME', 'OBJECT', 'EMBED'])
 
 function isSafeSvgRef(value: string): boolean {
   const trimmed = value.trim()

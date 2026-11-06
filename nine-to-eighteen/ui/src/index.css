@@ -2157,6 +2157,20 @@ a.learn-tab.is-active:hover {
   margin: 0 auto;
 }
 
+.learn-mermaid .nodeLabel,
+.learn-mermaid .edgeLabel,
+.learn-mermaid .label,
+.learn-mermaid foreignObject,
+.learn-mermaid foreignObject div,
+.learn-mermaid foreignObject span,
+.learn-mermaid foreignObject p {
+  color: var(--color-fg);
+}
+
+.learn-mermaid text {
+  fill: var(--color-fg);
+}
+
 .learn-mermaid-fallback {
   overflow-x: auto;
   padding: 0.9rem 1rem;
