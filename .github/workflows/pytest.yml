@@ -88,3 +88,15 @@ jobs:
         env:
           PYTHONPATH: ..:.
         run: python -m pytest tests -q --tb=short
+
+  todo-issues:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Check TODO and FIXME comments reference an issue
+        run: |
+          python3 scripts/check_todo_issues.py --self-test
+          python3 scripts/check_todo_issues.py
