@@ -1,0 +1,49 @@
+# Paths skipped by scripts/check_todo_issues.py.
+# Patterns are relative to the directory being scanned. Blank lines and
+# full-line comments (#) are ignored.
+#
+#   path/to/dir/       directory prefix from the scan root
+#   **/dirname/        a directory with that name at any depth
+#   **/filename        a file with that name at any depth
+#   **/*.ext           glob matched against the file name (* does not need to span /)
+#
+# Markdown and other non-source files are not scanned. The directory prefixes
+# below still matter: learning pages and plans include source files, and the
+# prefixes keep task-shaped text out of the check if the source list grows.
+
+# Player starter code. These files contain intentional placeholders
+# (# TODO / /* TODO */) inside the code shown to players.
+nine-to-eighteen/ui/src/game/
+
+# Learning content, including lesson markdown and generated episode modules
+# (selectors such as #todo-list, helpers such as loadTodos).
+nine-to-eighteen/ui/src/data/learn/
+
+# Cursor plan files. Frontmatter uses a YAML key named todos.
+.cursor/plans/
+
+# Dependencies, build output, and lockfiles.
+**/node_modules/
+**/dist/
+**/build/
+**/.next/
+**/coverage/
+**/htmlcov/
+**/__pycache__/
+**/.pytest_cache/
+**/.mypy_cache/
+**/.venv/
+**/venv/
+**/*.min.js
+**/*.min.css
+**/*.lock
+**/package-lock.json
+**/yarn.lock
+**/pnpm-lock.yaml
+**/poetry.lock
+**/Pipfile.lock
+**/uv.lock
+**/Cargo.lock
+**/composer.lock
+**/Gemfile.lock
+**/npm-shrinkwrap.json

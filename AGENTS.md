@@ -140,6 +140,26 @@ K8s: `k8s/README.md` and root `Makefile` (`build-images`, `apply-all`). Copy `k8
 - Lifespan context managers for DB pools, not deprecated `@app.on_event`.
 - Naming in `coderules.md`: no single-letter names except loop indices; do not shadow builtins (`list`, `dict`, `str`).
 
+### TODO and FIXME comments
+
+A `TODO` or `FIXME` comment names a GitHub issue. The tag is any case. The issue number sits in parentheses, then a colon and a short description on the same line:
+
+```python
+# TODO(#123): what is left
+// FIXME(#456): what is broken
+```
+
+`/* */`, HTML `<!-- -->`, and SQL `--` comments use the same shape. The checker matches those comment markers. Names such as `todo-list`, `loadTodos`, and a YAML key `todos:` stay as identifiers.
+
+From the repository root:
+
+```bash
+python3 scripts/check_todo_issues.py
+python3 scripts/check_todo_issues.py --self-test
+```
+
+The `todo-issues` job in `.github/workflows/pytest.yml` runs both commands. Add a path to `scripts/todo_issue_excludes.txt` to skip it. A trailing slash is a directory prefix from the repo root (`nine-to-eighteen/ui/src/game/`). A pattern that starts with `**/` matches a directory or file name at any depth (`**/node_modules/`, `**/package-lock.json`). The list already skips player starter code, learning pages under `nine-to-eighteen/ui/src/data/learn/`, `.cursor/plans/`, dependency folders, build output, and lockfiles.
+
 ### ui-app (web, not React Native)
 
 `.cursor/rules/ui-app-rule.mdc` talks about React Native; **this UI is a web SPA**. Use React 18 function components, TypeScript, Tailwind, React Router, TanStack Query, Axios `apiClient` in `ui-app/src/services/api-client.ts`.
@@ -160,7 +180,7 @@ K8s: `k8s/README.md` and root `Makefile` (`build-images`, `apply-all`). Copy `k8
 - If you touch code that already has tests, run those tests. Add tests when you add non-trivial logic next to an existing `tests/` package.
 - Prefer fast unit tests. Integration against Postgres/MinIO/Telegram/VK needs secrets and running infra — skip unless the task requires it and credentials exist.
 - ui-app has no Jest/Vitest suite; verification is `lint` + `tsc`/build, plus browser flow when UI behavior changed.
-- Browser E2E is `deploy/e2e-tester/` (separate compose, SQLite). Not part of default PR checks (there is no GitHub Actions workflow in this repo).
+- Browser E2E is `deploy/e2e-tester/` (separate compose, SQLite). Pull request checks are `.github/workflows/pytest.yml`: pytest jobs `shared`, `core`, `tg-bot`, `vk-bot`, and `todo-issues`.
 
 ## Cursor Cloud specific instructions
 
@@ -171,6 +191,7 @@ Cloud Agent VMs do not ship the production Postgres, Telegram/VK tokens, GPU Oll
 1. Python: `python3 -m pip install -r <service>/requirements.txt pytest pytest-asyncio`, then `PYTHONPATH=. python3 -m pytest shared/tests -q` and `PYTHONPATH=..:. python3 -m pytest tests -q` in the service you edited.
 2. ui-app: `npm install && npm run lint && npm run build` from `ui-app/`. Both should exit 0. Lint may still print the react-hooks and react-refresh warnings noted above; report new errors on files you touched.
 3. 9to18: same npm commands from `nine-to-eighteen/ui/` when that app changed; API tests under `nine-to-eighteen/api` if present.
+4. TODO/FIXME issue links: `python3 scripts/check_todo_issues.py` from the repo root.
 
 **When you must run services:** confirm Docker, `edge_net`, and a usable `DATABASE_URL` first. Bind host ports stay on `127.0.0.1` except the public edge. Do not start Ollama or Chromium bots unless the change depends on them.
 

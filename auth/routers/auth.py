@@ -137,7 +137,7 @@ async def refresh_token(request: RefreshTokenRequest) -> TokenResponse:
             detail=str(e)
         )
 
-# todo разобраться как реализовать разлогин - можно по токену, можно по id
+# TODO(#5): разобраться как реализовать разлогин - можно по токену, можно по id
 @router.post("/logout", status_code=status.HTTP_200_OK)
 async def logout(
     request: RefreshTokenRequest,
