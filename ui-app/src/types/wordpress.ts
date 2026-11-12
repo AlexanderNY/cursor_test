@@ -87,7 +87,7 @@ export interface WordPressPost {
     excerpt?: string
     slug?: string
     featured_media?: number
-    meta?: Record<string, any>
+    meta?: Record<string, unknown>
   }
 }
 

@@ -27,11 +27,11 @@ export const dzenService = {
     return response.data
   },
 
-  async createPost(post: DzenPost): Promise<unknown> {
+  async createPost(post: DzenPost): Promise<void> {
     await apiClient.post('/dzen/post', post)
   },
 
-  async createPostWithFiles(formData: FormData): Promise<unknown> {
+  async createPostWithFiles(formData: FormData): Promise<void> {
     await apiClient.post('/dzen/post', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     })

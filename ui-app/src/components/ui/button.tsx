@@ -2,7 +2,7 @@ import { forwardRef, ButtonHTMLAttributes } from 'react'
 import { CheckIcon } from '@/components/icons'
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: 'primary' | 'secondary' | 'danger' | 'ghost'
+  variant?: 'primary' | 'secondary' | 'danger' | 'ghost' | 'default'
   size?: 'sm' | 'md' | 'lg'
   isLoading?: boolean
   success?: boolean
@@ -25,6 +25,8 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       ghost: success
         ? 'bg-emerald-500/20 border border-emerald-500/50 text-emerald-400 focus:ring-emerald-500/50'
         : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)]/50 focus:ring-primary-500/50',
+      // No extra classes: these call sites already rendered without a variant style.
+      default: '',
     }
     
     const sizeStyles = {

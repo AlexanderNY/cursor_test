@@ -1,5 +1,5 @@
 import { createContext, useContext, useReducer, useEffect, useCallback } from 'react'
-import type { AuthState, AuthAction, User, TokenResponse, LoginCredentials, RegisterCredentials, ProfileUpdate } from '@/types'
+import type { AuthState, AuthAction, TokenResponse, LoginCredentials, RegisterCredentials, ProfileUpdate } from '@/types'
 import { authService } from '@/services/auth-service'
 import { useSessionHeartbeat } from '@/hooks'
 

@@ -32,7 +32,7 @@ export const vkontakteService = {
     }
   },
 
-  async createPost(post: VKontaktePost): Promise<unknown> {
+  async createPost(post: VKontaktePost): Promise<void> {
     await apiClient.post('/vk/post', post)
   },
 

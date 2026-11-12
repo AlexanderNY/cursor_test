@@ -69,9 +69,9 @@ export const coreService = {
     }
   },
 
-  async startBot(platforms: string[]): Promise<{ status: string; message: string; results: Record<string, any> }> {
+  async startBot(platforms: string[]): Promise<{ status: string; message: string; results: Record<string, { status?: string }> }> {
     try {
-      const response = await apiClient.post<{ status: string; message: string; results: Record<string, any> }>('/core/start-bot', { platforms })
+      const response = await apiClient.post<{ status: string; message: string; results: Record<string, { status?: string }> }>('/core/start-bot', { platforms })
       return response.data
     } catch (error) {
       throw new Error(getErrorMessage(error))

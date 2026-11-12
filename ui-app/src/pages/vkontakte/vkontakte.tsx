@@ -1,36 +1,21 @@
-import { useState, FormEvent, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Link, useSearchParams, useNavigate } from 'react-router-dom'
 import { Alert } from '@/components/ui/alert'
 import { PageHeader, PageContainer } from '@/components/ui'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import {
-  createDefaultTargets,
-  EMPTY_SELECTED_BRAND_CHANNELS,
-  type TargetSocialNetworks,
-  type SelectedBrandChannels,
-} from '@/components/target-social-networks'
-import { apiClient } from '@/services/api-client'
 import { vkontakteService } from '@/services/vkontakte-service'
 import { useAuth } from '@/contexts/auth-context'
 import { allowedOAuthUrl } from '@/utils/safe-url'
-import { fileTooLargeMessage, isFileWithinLimit, MAX_IMAGE_BYTES } from '@/utils/read-file'
 import { useBrand } from '@/contexts/brand-context'
 import type {
   VKontakteProfile,
-  VKontaktePostListItem,
   ScheduleType,
   VKAuthStatus,
   VKSubscriptionItem,
-  VKontakteTab,
 } from '@/types/vkontakte'
 import {
-  VK_MAX_LENGTH,
   AUTH_STATUS_POLL_INTERVAL_MS,
   generateId,
-  htmlToPlainText,
-  imagePreviewUrl,
-  getWeekStart,
-  getWeekRange,
   type DynamicField,
 } from './vkontakte-helpers'
 import { AuthTab } from './auth-tab'
@@ -116,7 +101,6 @@ export function VKontaktePage() {
   const canAuth = canManagePlatformAuth(user?.role_in_group, hasTeam)
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
-  const [activeTab, setActiveTab] = useState<VKontakteTab>('auth')
 
   const [authStatus, setAuthStatus] = useState<VKAuthStatus | null>(null)
   const [subscriptions, setSubscriptions] = useState<VKSubscriptionItem[]>([])
@@ -177,34 +161,11 @@ export function VKontaktePage() {
   const [addStaticHtml, setAddStaticHtml] = useState(false)
   const [staticHtmlContent, setStaticHtmlContent] = useState('')
 
-  const [postContent, setPostContent] = useState('')
-  const [postImages, setPostImages] = useState<string[]>([])
-  const [publishAt, setPublishAt] = useState('')
-  const [targetGroupsText, setTargetGroupsText] = useState('')
-  const [postTargets, setPostTargets] = useState<TargetSocialNetworks>(() => createDefaultTargets('vk'))
-  const [selectedChannels, setSelectedChannels] = useState<SelectedBrandChannels>({
-    ...EMPTY_SELECTED_BRAND_CHANNELS,
-  })
-  const [editingPostId, setEditingPostId] = useState<number | null>(null)
-
-  const [posts, setPosts] = useState<VKontaktePostListItem[]>([])
-  const [isLoadingPosts, setIsLoadingPosts] = useState(false)
-  const [hasLoadedPosts, setHasLoadedPosts] = useState(false)
-  const [deletingPostId, setDeletingPostId] = useState<number | null>(null)
-
-  const [calendarWeekStart, setCalendarWeekStart] = useState(() => getWeekStart(new Date()))
-  const [calendarPosts, setCalendarPosts] = useState<VKontaktePostListItem[]>([])
-  const [isLoadingCalendar, setIsLoadingCalendar] = useState(false)
-
-  const [isLoadingProfile, setIsLoadingProfile] = useState(true)
   const [isSavingProfile, setIsSavingProfile] = useState(false)
-  const [isCreatingPost, setIsCreatingPost] = useState(false)
-  const [uploadingImage, setUploadingImage] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
 
   const loadProfile = useCallback(async () => {
-    setIsLoadingProfile(true)
     setError('')
     try {
       const profile = await vkontakteService.getProfile()
@@ -271,8 +232,6 @@ export function VKontaktePage() {
       }
     } catch (err) {
       console.error('Failed to load profile:', err)
-    } finally {
-      setIsLoadingProfile(false)
     }
   }, [])
 
@@ -297,7 +256,6 @@ export function VKontaktePage() {
       return
     }
     if (searchParams.get('auth') === '1') {
-      setActiveTab('auth')
       searchParams.delete('auth')
       setSearchParams(searchParams, { replace: true })
     }
@@ -323,169 +281,6 @@ export function VKontaktePage() {
     const interval = setInterval(loadAuthStatus, AUTH_STATUS_POLL_INTERVAL_MS)
     return () => clearInterval(interval)
   }, [user?.id, loadAuthStatus])
-
-  useEffect(() => {
-    if (activeTab === 'posts' && !hasLoadedPosts) {
-      loadPosts()
-    }
-  }, [activeTab, hasLoadedPosts])
-
-  useEffect(() => {
-    if (activeTab === 'calendar') {
-      loadCalendarPosts(calendarWeekStart)
-    }
-  }, [activeTab, calendarWeekStart])
-
-  async function loadPosts() {
-    setIsLoadingPosts(true)
-    setError('')
-    try {
-      const data = await vkontakteService.getPosts()
-      setPosts(data)
-      setHasLoadedPosts(true)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load posts')
-    } finally {
-      setIsLoadingPosts(false)
-    }
-  }
-
-  async function loadCalendarPosts(weekStart: Date) {
-    setIsLoadingCalendar(true)
-    const { dateFrom, dateTo } = getWeekRange(weekStart)
-    try {
-      const data = await vkontakteService.getPosts({ dateFrom, dateTo, limit: 200 })
-      setCalendarPosts(data)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load calendar posts')
-    } finally {
-      setIsLoadingCalendar(false)
-    }
-  }
-
-  function switchToCreateTab() {
-    navigate('/posts')
-  }
-
-  async function handleCreatePost(e: FormEvent) {
-    e.preventDefault()
-    setError('')
-    setSuccess('')
-    setIsCreatingPost(true)
-    const text = htmlToPlainText(postContent)
-    if (text.length > VK_MAX_LENGTH) {
-      setError(`Post text cannot exceed ${VK_MAX_LENGTH} characters`)
-      setIsCreatingPost(false)
-      return
-    }
-    const imagesList = postImages.filter(Boolean)
-    try {
-      if (editingPostId !== null) {
-        await vkontakteService.updatePost(editingPostId, {
-          text,
-          images: imagesList.length ? imagesList : undefined,
-          // After failed publish posts land in review; saving re-queues them.
-          status: 'ready',
-        })
-        setSuccess('Post updated and set to ready for publishing')
-        setEditingPostId(null)
-        setPostContent('')
-        setPostImages([])
-        if (hasLoadedPosts) loadPosts()
-      } else {
-        await vkontakteService.createPost({
-          text,
-          to_tg: postTargets.tg,
-          to_tw: postTargets.tw,
-          to_wp: postTargets.wp,
-          to_vk: postTargets.vk,
-          to_threads: postTargets.threads,
-          to_dzen: postTargets.dzen,
-          to_instagram: postTargets.instagram,
-          images: imagesList.length ? imagesList : undefined,
-          publish_at: publishAt ? new Date(publishAt).toISOString() : undefined,
-          target_groups: [
-            ...selectedChannels.vk,
-            ...targetGroupsText
-              .split(/[\n,]+/)
-              .map((s) => s.trim())
-              .filter(Boolean),
-          ].filter((v, i, a) => a.indexOf(v) === i),
-          target_channels: selectedChannels.tg.length ? selectedChannels.tg : undefined,
-        })
-        setSuccess('Post created successfully')
-        setPostContent('')
-        setPostImages([])
-        setPublishAt('')
-        setTargetGroupsText('')
-        setSelectedChannels({ ...EMPTY_SELECTED_BRAND_CHANNELS })
-        if (hasLoadedPosts) loadPosts()
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save post')
-    } finally {
-      setIsCreatingPost(false)
-    }
-  }
-
-  async function handleEditPost(id: number) {
-    setError('')
-    try {
-      const post = await vkontakteService.getPost(id)
-      setPostContent(post.post_text ?? '')
-      const imgs = post.images
-      setPostImages(Array.isArray(imgs) && imgs.length > 0 ? [...imgs] : [])
-      setEditingPostId(id)
-      setActiveTab('create')
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load post')
-    }
-  }
-
-  async function handleDeletePost(id: number) {
-    setError('')
-    setDeletingPostId(id)
-    try {
-      await vkontakteService.deletePost(id)
-      setSuccess('Post deleted')
-      if (hasLoadedPosts) loadPosts()
-      if (activeTab === 'calendar') loadCalendarPosts(calendarWeekStart)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete post')
-    } finally {
-      setDeletingPostId(null)
-    }
-  }
-
-  async function handleReschedule(postId: number, newIsoDatetime: string) {
-    setError('')
-    try {
-      await vkontakteService.updatePost(postId, { publish_at: newIsoDatetime })
-      setSuccess('Post rescheduled')
-      if (activeTab === 'calendar') loadCalendarPosts(calendarWeekStart)
-      if (hasLoadedPosts) loadPosts()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to reschedule post')
-    }
-  }
-
-  async function handleUploadImages(files: FileList) {
-    setError('')
-    setUploadingImage(true)
-    try {
-      for (let i = 0; i < files.length; i++) {
-        if (!isFileWithinLimit(files[i], MAX_IMAGE_BYTES)) {
-          throw new Error(fileTooLargeMessage(MAX_IMAGE_BYTES))
-        }
-        const url = await vkontakteService.uploadImage(files[i])
-        setPostImages((prev) => [...prev, url])
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка загрузки')
-    } finally {
-      setUploadingImage(false)
-    }
-  }
 
   function buildProfilePayload(): Partial<VKontakteProfile> {
     const timeIntervalsPayload =
@@ -535,21 +330,6 @@ export function VKontaktePage() {
       status_review_after_process: statusReviewAfterProcess,
       add_static_html: addStaticHtml,
       static_html_content: addStaticHtml ? staticHtmlContent?.slice(0, 1000) : undefined,
-    }
-  }
-
-  async function persistFullVkProfile(successMessage: string) {
-    setError('')
-    setSuccess('')
-    setIsSavingProfile(true)
-    try {
-      await vkontakteService.saveProfile(buildProfilePayload())
-      setSuccess(successMessage)
-      await loadProfile()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save profile settings')
-    } finally {
-      setIsSavingProfile(false)
     }
   }
 
@@ -635,23 +415,6 @@ export function VKontaktePage() {
       setIsSavingProfile(false)
     }
   }
-
-  async function handleSaveProcessing(e: FormEvent) {
-    e.preventDefault()
-    await persistFullVkProfile('Processing settings saved successfully')
-  }
-
-  async function handleSaveProfile(e: FormEvent) {
-    e.preventDefault()
-    if (collectEnabled && !(authStatus?.connected)) {
-      setError(
-        'Сбор (Collect) требует user OAuth. Откройте Авторизация → «Подключить пользователя».',
-      )
-      return
-    }
-    await persistFullVkProfile('Profile settings saved successfully')
-  }
-
   async function loadSubscriptions() {
     setLoadingSubscriptions(true)
     setError('')
@@ -706,13 +469,6 @@ export function VKontaktePage() {
       setLoadingSeleniumVerify(false)
     }
   }
-
-  function resolveImagePreview(url: string): string {
-    const base = apiClient.defaults.baseURL ?? '/api'
-    const origin = typeof window !== 'undefined' ? window.location.origin : ''
-    return imagePreviewUrl(url, base, origin)
-  }
-
   const vkOAuthRedirectUri =
     authStatus?.redirect_uri?.trim() || buildVkOAuthRedirectUri(vkPublicGatewayUrl)
   const vkCallbackApiUrl = buildVkCallbackApiUrl(vkPublicGatewayUrl)

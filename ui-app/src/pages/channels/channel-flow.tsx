@@ -61,6 +61,10 @@ function emptyRule(): ChannelAlertRule {
   }
 }
 
+function normalizeConditionsMode(mode: string | undefined): ConditionsMode {
+  return mode === 'all_of' ? 'all_of' : 'any_of'
+}
+
 function normalizeConditions(list: string[] | undefined): string[] {
   return (list || [])
     .map((c) => String(c).trim())
@@ -334,9 +338,10 @@ export function ChannelFlowPage() {
         setUrlConfig({ ...DEFAULT_URL_CONFIG, ...(updated.url_config || {}) })
         setSuccess('Обработка сохранена')
       } else {
-        const { process_services: _drop, ...rest } = processing
+        const processingPayload: ChannelProcessingConfig = { ...processing }
+        delete processingPayload.process_services
         const updated = await smmService.updateChannel(channel.brand_id, channel.id, {
-          processing: rest,
+          processing: processingPayload,
         })
         setChannel(updated)
         setProcessing(updated.processing || {})
@@ -420,14 +425,14 @@ export function ChannelFlowPage() {
     }
     setError('')
     setSuccess('')
-    const cleanedRules = rules
-      .map((r) => ({
-        ...r,
-        id: r.id || newRuleId(),
-        conditions_mode: r.conditions_mode === 'all_of' ? 'all_of' : 'any_of',
-        save_conditions: normalizeConditions(r.save_conditions).slice(0, 10),
+    const cleanedRules: ChannelAlertRule[] = rules
+      .map((rule) => ({
+        ...rule,
+        id: rule.id || newRuleId(),
+        conditions_mode: normalizeConditionsMode(rule.conditions_mode),
+        save_conditions: normalizeConditions(rule.save_conditions).slice(0, 10),
       }))
-      .filter((r) => r.save_conditions.length > 0)
+      .filter((rule) => (rule.save_conditions?.length ?? 0) > 0)
     const selected = ownAlertCandidates.filter((c) => alertTargets.includes(c.id))
     const alertText = (delivery.alert_text || '').trim()
     if (selected.length === 0) {

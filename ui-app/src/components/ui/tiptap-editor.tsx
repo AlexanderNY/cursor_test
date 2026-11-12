@@ -57,8 +57,8 @@ export function TipTapEditor({
     return null
   }
 
-  const isActive = (name: string, options?: any) => {
-    return editor.isActive(name, options)
+  const isActive = (name: string, attributes?: { level: 1 | 2 | 3 }) => {
+    return editor.isActive(name, attributes)
   }
 
   const toggleHeading = (level: 1 | 2 | 3) => {
