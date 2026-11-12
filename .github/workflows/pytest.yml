@@ -20,10 +20,11 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install
-        # Shared tests import httpx and aiopg at collection time. aiopg depends on
-        # psycopg2; the binary wheel avoids a libpq build on the runner.
+        # Shared tests import httpx and aiopg at collection time. aiopg needs
+        # psycopg2 and async-timeout. The binary wheel avoids a libpq build, and
+        # aiopg is installed without deps so pip does not build psycopg2 from source.
         run: |
-          python -m pip install -U pip pytest pytest-asyncio httpx psycopg2-binary
+          python -m pip install -U pip pytest pytest-asyncio httpx psycopg2-binary 'async-timeout>=4,<5'
           python -m pip install --no-deps aiopg
       - name: Test shared
         env:
