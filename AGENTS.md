@@ -147,7 +147,7 @@ K8s: `k8s/README.md` and root `Makefile` (`build-images`, `apply-all`). Copy `k8
 - Directories: `kebab-case`. Named exports. `@/` → `ui-app/src`.
 - Pages under `ui-app/src/pages/`, API wrappers under `ui-app/src/services/`, types under `ui-app/src/types/`.
 - Routes: `ui-app/src/App.tsx`. Auth in `AuthProvider`. Do not add `console.log` of tokens (the client currently logs token presence; do not add more secrets logging).
-- After UI changes, run `npm run lint` and `npm run build` in `ui-app`. On current `main` both commands already fail with pre-existing ESLint/tsc errors (unused vars, empty interfaces, type mismatches in platform pages). Do not “fix the whole UI” unless that is the task; check that your files did not add new errors. Exercise the changed route in the browser when a server is up; keep client state consistent across pages that share it.
+- After UI changes, run `npm run lint` and `npm run build` in `ui-app`. Both commands exit 0. `npm run lint` still prints `react-hooks/exhaustive-deps` and `react-refresh/only-export-components` warnings; those do not fail the script. Do not “fix the whole UI” unless that is the task; check that your files did not add new errors. Exercise the changed route in the browser when a server is up; keep client state consistent across pages that share it.
 
 ### Scope
 
@@ -169,7 +169,7 @@ Cloud Agent VMs do not ship the production Postgres, Telegram/VK tokens, GPU Oll
 **Default verification (no Docker, no `.env`):**
 
 1. Python: `python3 -m pip install -r <service>/requirements.txt pytest pytest-asyncio`, then `PYTHONPATH=. python3 -m pytest shared/tests -q` and `PYTHONPATH=..:. python3 -m pytest tests -q` in the service you edited.
-2. ui-app: `npm install && npm run lint && npm run build` from `ui-app/`. Expect existing failures on `main`; report only new ones on files you touched.
+2. ui-app: `npm install && npm run lint && npm run build` from `ui-app/`. Both should exit 0. Lint may still print the react-hooks and react-refresh warnings noted above; report new errors on files you touched.
 3. 9to18: same npm commands from `nine-to-eighteen/ui/` when that app changed; API tests under `nine-to-eighteen/api` if present.
 
 **When you must run services:** confirm Docker, `edge_net`, and a usable `DATABASE_URL` first. Bind host ports stay on `127.0.0.1` except the public edge. Do not start Ollama or Chromium bots unless the change depends on them.

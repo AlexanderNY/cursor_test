@@ -57,11 +57,11 @@ export const instagramService = {
     return response.data
   },
 
-  async createPost(post: InstagramPost): Promise<unknown> {
+  async createPost(post: InstagramPost): Promise<void> {
     await apiClient.post('/instagram/post', post)
   },
 
-  async createPostWithFiles(formData: FormData): Promise<unknown> {
+  async createPostWithFiles(formData: FormData): Promise<void> {
     await apiClient.post('/instagram/post', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     })

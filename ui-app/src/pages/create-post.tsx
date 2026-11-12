@@ -62,19 +62,6 @@ function formatDate(iso?: string | null): string {
   return formatDateTime(iso)
 }
 
-function cellValue(
-  value: string | number | boolean | null | undefined | unknown,
-  truncate = 0
-): string {
-  if (value === null || value === undefined) return '—'
-  if (typeof value === 'boolean') return value ? 'yes' : 'no'
-  if (Array.isArray(value)) return value.length ? `[${value.length}]` : '[]'
-  if (typeof value === 'object') return JSON.stringify(value).slice(0, truncate || 50)
-  const s = String(value)
-  if (truncate && s.length > truncate) return s.slice(0, truncate) + '…'
-  return s
-}
-
 /** ISO string to datetime-local input value (YYYY-MM-DDTHH:mm) */
 function toDatetimeLocal(iso?: string | null): string {
   if (!iso) return ''

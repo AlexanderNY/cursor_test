@@ -117,7 +117,8 @@ export function PlatformSetupPage() {
   function platformReady(net: BrandNetwork): boolean {
     if (net === 'tg') return Boolean(state?.tg_ready)
     if (net === 'vk') return Boolean(state?.vk_ready)
-    return Boolean(platforms?.[net]?.connected)
+    if (net === 'url' || !platforms) return false
+    return Boolean(platforms[net]?.connected)
   }
 
   return (

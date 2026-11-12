@@ -1,6 +1,6 @@
 /** Origin сайта из поля «публичный URL gateway» (часто https://host/api). */
 export function buildVkSiteOrigin(publicGatewayUrl: string): string {
-  let base = publicGatewayUrl.trim().replace(/\/+$/, '')
+  const base = publicGatewayUrl.trim().replace(/\/+$/, '')
   if (!base) return ''
   if (base.endsWith('/vk/oauth/callback')) {
     return base.slice(0, -'/vk/oauth/callback'.length).replace(/\/+$/, '')

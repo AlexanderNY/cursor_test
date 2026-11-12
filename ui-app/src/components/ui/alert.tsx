@@ -1,7 +1,7 @@
 import { HTMLAttributes } from 'react'
 
 interface AlertProps extends HTMLAttributes<HTMLDivElement> {
-  variant?: 'info' | 'success' | 'warning' | 'error'
+  variant?: 'info' | 'success' | 'warning' | 'error' | 'default'
 }
 
 export function Alert({ className = '', variant = 'info', children, ...props }: AlertProps) {
@@ -10,6 +10,8 @@ export function Alert({ className = '', variant = 'info', children, ...props }: 
     success: 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400',
     warning: 'bg-amber-500/10 border-amber-500/30 text-amber-400',
     error: 'bg-red-500/10 border-red-500/30 text-red-400',
+    // No extra classes: this call site already rendered without a variant style.
+    default: '',
   }
 
   const icons = {
@@ -33,6 +35,7 @@ export function Alert({ className = '', variant = 'info', children, ...props }: 
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
       </svg>
     ),
+    default: null,
   }
 
   return (
