@@ -241,7 +241,7 @@ export function HhResumeQuizPage() {
           <div className="account-actions">
             <button
               type="button"
-              className="learn-admin-btn"
+              className="hh-btn"
               disabled={step === 0 || submitting}
               onClick={() => {
                 setError('')
@@ -252,14 +252,14 @@ export function HhResumeQuizPage() {
             </button>
             <button
               type="button"
-              className="learn-admin-btn learn-admin-btn-primary"
+              className="hh-btn hh-btn-primary"
               disabled={submitting}
               onClick={onNext}
             >
               {step >= questions.length - 1 ? 'Собрать резюме' : 'Далее'}
             </button>
             {resumeId ? (
-              <Link to={`/game/hh-resume/${resumeId}/edit`} className="learn-admin-btn">
+              <Link to={`/game/hh-resume/${resumeId}/edit`} className="hh-btn">
                 Пропустить → правка
               </Link>
             ) : null}

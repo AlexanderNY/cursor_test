@@ -219,6 +219,15 @@ a.learn-admin-btn-primary {
   color: var(--color-on-accent);
 }
 
+a.hh-btn {
+  color: var(--color-fg);
+}
+
+a.hh-btn-primary,
+a.hh-btn-primary:hover {
+  color: var(--color-on-accent);
+}
+
 a.learn-admin-link {
   color: var(--color-on-accent);
 }
@@ -6312,18 +6321,183 @@ button.lm-tag:hover {
   margin: 0;
 }
 
+.hh-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  min-height: 2.6rem;
+  padding: 0.55rem 1.05rem;
+  border-radius: 999px;
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-surface-2);
+  color: var(--color-fg);
+  font: inherit;
+  font-size: 0.95rem;
+  font-weight: 650;
+  cursor: pointer;
+  text-decoration: none;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.hh-btn:hover:not(:disabled) {
+  border-color: var(--color-accent);
+}
+
+.hh-btn-primary {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-on-accent);
+}
+
+.hh-btn-primary:hover:not(:disabled) {
+  background: var(--color-accent-hover);
+  border-color: var(--color-accent-hover);
+  color: var(--color-on-accent);
+}
+
+.hh-btn-danger {
+  color: var(--color-danger);
+  border-color: color-mix(in srgb, var(--color-danger) 50%, var(--color-border));
+  background: transparent;
+}
+
+.hh-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.hh-quest {
+  margin: 0 0 1rem;
+}
+
+.hh-quest-score {
+  margin: 0 0 0.55rem;
+  color: var(--color-fg-muted);
+  font-size: 0.92rem;
+}
+
+.hh-quest-track {
+  display: flex;
+  gap: 0.5rem;
+  overflow-x: auto;
+  padding-bottom: 0.25rem;
+}
+
+.hh-quest-step {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 9.5rem;
+  padding: 0.55rem 0.75rem;
+  border-radius: 0.95rem;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-2);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.hh-quest-step strong,
+.hh-quest-step small {
+  display: block;
+}
+
+.hh-quest-step small {
+  color: var(--color-fg-muted);
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.hh-quest-step-index {
+  display: grid;
+  place-items: center;
+  width: 1.7rem;
+  height: 1.7rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-accent) 18%, transparent);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.hh-quest-step.is-current {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 35%, transparent);
+}
+
+.hh-quest-step.is-done .hh-quest-step-index {
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+}
+
+.hh-quest-panel {
+  border: 1px solid var(--color-border);
+  border-radius: 1rem;
+  padding: 1rem 1.05rem 1.1rem;
+  margin: 0 0 0.85rem;
+  background: color-mix(in srgb, var(--color-surface-2) 88%, transparent);
+}
+
+.hh-quest-kicker {
+  margin: 0 0 0.2rem;
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-fg-muted);
+}
+
+.hh-quest-nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.35rem;
+}
+
+.hh-quest-nav-meta {
+  margin-right: auto;
+  color: var(--color-fg-muted);
+  font-size: 0.9rem;
+}
+
 .hh-resume-checks {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.65rem 1.25rem;
+  gap: 0.55rem;
 }
 
 .hh-resume-check {
+  position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.45rem;
   font-size: 0.95rem;
   cursor: pointer;
+  padding: 0.45rem 0.85rem;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-2);
+}
+
+.hh-resume-check input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+}
+
+.hh-resume-check:focus-within {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.hh-resume-check:has(input:checked) {
+  border-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 18%, transparent);
 }
 
 .hh-resume-skills-pick {
@@ -6460,17 +6634,23 @@ button.lm-tag:hover {
   background: color-mix(in srgb, var(--surface, #fff) 92%, #f8fafc);
 }
 
+.hh-quest-panel .hh-resume-fieldset {
+  border: 0;
+  padding: 0.35rem 0 0;
+  margin: 0 0 0.5rem;
+}
+
 .hh-quiz-progress {
-  height: 0.35rem;
+  height: 0.45rem;
   border-radius: 999px;
-  background: color-mix(in srgb, #d6001c 12%, #e2e8f0);
+  background: color-mix(in srgb, var(--color-accent) 18%, transparent);
   margin-bottom: 0.85rem;
   overflow: hidden;
 }
 
 .hh-quiz-progress-bar {
   height: 100%;
-  background: #d6001c;
+  background: var(--color-accent);
   transition: width 0.25s ease;
 }
 
@@ -6492,8 +6672,8 @@ button.lm-tag:hover {
 }
 
 .hh-quiz-option.is-selected {
-  border-color: color-mix(in srgb, #d6001c 55%, #cbd5e1);
-  background: color-mix(in srgb, #d6001c 6%, #fff);
+  border-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 16%, transparent);
 }
 
 .hh-quiz-option input {

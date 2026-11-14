@@ -217,13 +217,13 @@ export function HhResumePreviewPage() {
           <div className="account-actions no-print" style={{ marginBottom: '1.5rem' }}>
             <Link
               to={`/game/hh-resume/${resumeId}/edit`}
-              className="learn-admin-btn learn-admin-btn-primary"
+              className="hh-btn"
             >
               Редактор
             </Link>
             <button
               type="button"
-              className="learn-admin-btn learn-admin-btn-primary"
+              className="hh-btn"
               disabled={busy}
               onClick={() => void onEnrich()}
             >
@@ -231,7 +231,7 @@ export function HhResumePreviewPage() {
             </button>
             <button
               type="button"
-              className="learn-admin-btn"
+              className="hh-btn"
               disabled={busy}
               onClick={() => void onSkillGap()}
             >
@@ -239,7 +239,7 @@ export function HhResumePreviewPage() {
             </button>
             <button
               type="button"
-              className="learn-admin-btn learn-admin-btn-primary"
+              className="hh-btn hh-btn-primary"
               disabled={busy}
               onClick={() => void onExport('docx')}
             >
@@ -247,13 +247,13 @@ export function HhResumePreviewPage() {
             </button>
             <button
               type="button"
-              className="learn-admin-btn"
+              className="hh-btn"
               disabled={busy}
               onClick={() => void onExport('pdf')}
             >
               Скачать PDF
             </button>
-            <button type="button" className="learn-admin-btn" onClick={() => window.print()}>
+            <button type="button" className="hh-btn" onClick={() => window.print()}>
               Печать
             </button>
           </div>

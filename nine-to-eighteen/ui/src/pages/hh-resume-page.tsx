@@ -130,9 +130,8 @@ export function HhResumePage() {
         <p className="learn-eyebrow">Сервис · Резюме</p>
         <h1 className="learn-title">Мои резюме</h1>
         <p className="learn-lead">
-          Несколько версий под разные роли. В редакторе заполните опыт и образование, затем скачайте
-          DOCX и загрузите его на hh.ru: Создать резюме → Загрузить файл. Анкета и фото — в{' '}
-          <Link to="/account">кабинете</Link>.
+          Каждое резюме — отдельный квест из семи уровней. Готовый DOCX загружается на hh.ru.
+          Анкета и фото — в <Link to="/account">кабинете</Link>.
         </p>
         {error ? <p className="learn-admin-error">{error}</p> : null}
         {ok ? <p className="learn-admin-ok">{ok}</p> : null}
@@ -141,19 +140,19 @@ export function HhResumePage() {
       <div className="account-actions" style={{ marginBottom: '1.25rem' }}>
         <button
           type="button"
-          className="learn-admin-btn learn-admin-btn-primary"
+          className="hh-btn hh-btn-primary"
           disabled={busy}
           onClick={() => void onCreate()}
         >
           Создать резюме
         </button>
-        <Link to="/game/hh-resume/path" className="learn-admin-btn learn-admin-btn-primary">
+        <Link to="/game/hh-resume/path" className="hh-btn">
           Пройти путь
         </Link>
-        <Link to="/game/portfolio" className="learn-admin-btn">
+        <Link to="/game/portfolio" className="hh-btn">
           Портфолио
         </Link>
-        <Link to="/account" className="learn-admin-btn">
+        <Link to="/account" className="hh-btn">
           Анкета
         </Link>
       </div>
@@ -177,27 +176,27 @@ export function HhResumePage() {
               </div>
               <div className="account-actions">
                 <Link
-                  to={`/game/hh-resume/${item.id}/path`}
-                  className="learn-admin-btn learn-admin-btn-primary"
+                  to={`/game/hh-resume/${item.id}/edit`}
+                  className="hh-btn hh-btn-primary"
                 >
-                  Путь
+                  Продолжить
                 </Link>
                 <button
                   type="button"
-                  className="learn-admin-btn learn-admin-btn-primary"
+                  className="hh-btn"
                   onClick={() => setPreviewId(item.id)}
                 >
                   Предпросмотр
                 </button>
-                <Link to={`/game/hh-resume/${item.id}/edit`} className="learn-admin-btn">
-                  Доработать
+                <Link to={`/game/hh-resume/${item.id}/path`} className="hh-btn">
+                  Путь
                 </Link>
-                <Link to={`/game/hh-resume/${item.id}/quiz`} className="learn-admin-btn">
+                <Link to={`/game/hh-resume/${item.id}/quiz`} className="hh-btn">
                   Опросник
                 </Link>
                 <button
                   type="button"
-                  className="learn-admin-btn"
+                  className="hh-btn"
                   disabled={busy}
                   onClick={() => void onCreate(item.id)}
                 >
@@ -205,7 +204,7 @@ export function HhResumePage() {
                 </button>
                 <button
                   type="button"
-                  className="learn-admin-btn"
+                  className="hh-btn hh-btn-danger"
                   disabled={busy}
                   onClick={() => void onDelete(item.id, item.versionName)}
                 >

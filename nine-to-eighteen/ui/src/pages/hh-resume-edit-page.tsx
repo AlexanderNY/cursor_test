@@ -2,6 +2,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useLocation, useParams } from 'react-router-dom'
 import { HhResumeArticle, HhResumeStrengthBar } from '@/components/hh-resume-article'
 import { HhResumePreviewDialog } from '@/components/hh-resume-preview-dialog'
+import { HH_QUEST_COUNT, HhResumeQuestTrack } from '@/components/hh-resume-quest'
 import {
   HhResumeHistoryFields,
   type EducationDraft,
@@ -62,6 +63,7 @@ export function HhResumeEditPage() {
   const [aiBusy, setAiBusy] = useState(false)
   const [strengthOpen, setStrengthOpen] = useState(false)
   const [previewOpen, setPreviewOpen] = useState(false)
+  const [questStep, setQuestStep] = useState(0)
   const [error, setError] = useState('')
   const [ok, setOk] = useState(
     fromQuiz ? 'Шаблон заполнен по опросу — поправьте текст при необходимости.' : '',
@@ -203,6 +205,29 @@ export function HhResumeEditPage() {
   const selectedProjects = useMemo(
     () => githubProjects.filter((p) => p.selected).slice(0, 6),
     [githubProjects],
+  )
+
+  const questDone = useMemo(
+    () => [
+      Boolean(specialization.trim()),
+      employment.length > 0 && workFormats.length > 0,
+      experience.some((job) => job.company.trim() && job.position.trim() && job.start),
+      education.some((school) => school.institution.trim()),
+      Boolean(about.trim()),
+      selectedKeys.length > 0,
+      selectedBadgeIds.length > 0 || selectedProjects.length > 0,
+    ],
+    [
+      specialization,
+      employment,
+      workFormats,
+      experience,
+      education,
+      about,
+      selectedKeys,
+      selectedBadgeIds,
+      selectedProjects,
+    ],
   )
 
   function draftPayload() {
@@ -572,10 +597,10 @@ export function HhResumeEditPage() {
 
       <header className="learn-header">
         <p className="learn-eyebrow">HH-резюме · редактор</p>
-        <h1 className="learn-title">Доработать резюме</h1>
+        <h1 className="learn-title">Собрать резюме</h1>
         <p className="learn-lead">
-          Learn: <strong>{completedCount}</strong> выпусков. «Предпросмотр» показывает резюме целиком,
-          как оно уйдёт в файл.
+          Семь уровней, как квест. Справа сразу видно файл для hh.ru. Learn:{' '}
+          <strong>{completedCount}</strong>.
         </p>
         {error ? <p className="learn-admin-error">{error}</p> : null}
         {ok ? <p className="learn-admin-ok">{ok}</p> : null}
@@ -590,23 +615,9 @@ export function HhResumeEditPage() {
       />
 
       <div className="account-actions" style={{ marginBottom: '1rem' }}>
-        <Link
-          to={`/game/hh-resume/${resumeId}/quiz`}
-          className="learn-admin-btn learn-admin-btn-primary"
-        >
-          Опросник
-        </Link>
         <button
           type="button"
-          className="learn-admin-btn learn-admin-btn-primary"
-          disabled={enriching || loading}
-          onClick={() => void onEnrichFromLearn()}
-        >
-          {enriching ? 'Обогащаем…' : 'Навыки из Learn'}
-        </button>
-        <button
-          type="button"
-          className="learn-admin-btn learn-admin-btn-primary"
+          className="hh-btn hh-btn-primary"
           disabled={loading || !preview}
           onClick={() => setPreviewOpen(true)}
         >
@@ -614,21 +625,21 @@ export function HhResumeEditPage() {
         </button>
         <button
           type="button"
-          className="learn-admin-btn learn-admin-btn-primary"
+          className="hh-btn"
           disabled={saving || enriching}
           onClick={() => void onExport('docx')}
         >
-          Скачать DOCX для hh.ru
+          DOCX для hh.ru
         </button>
         <button
           type="button"
-          className="learn-admin-btn"
+          className="hh-btn"
           disabled={saving || enriching}
           onClick={() => void onExport('pdf')}
         >
           PDF
         </button>
-        <Link to={`/game/hh-resume/${resumeId}`} className="learn-admin-btn">
+        <Link to={`/game/hh-resume/${resumeId}`} className="hh-btn">
           Полный экран
         </Link>
       </div>
@@ -640,6 +651,11 @@ export function HhResumeEditPage() {
         <div className="hh-resume-split">
           <div className="hh-resume-split-editor">
             <form className="learn-admin-form hh-resume-form" onSubmit={onSave}>
+              <HhResumeQuestTrack step={questStep} done={questDone} onPick={setQuestStep} />
+              {questStep === 0 ? (
+              <section className="hh-quest-panel">
+                <p className="hh-quest-kicker">Уровень 1 · Роль</p>
+                <h2 className="account-subheading">Кем хотите быть</h2>
               <div className="learn-admin-grid">
                 <label className="learn-admin-field">
                   <span>Название версии</span>
@@ -671,6 +687,18 @@ export function HhResumeEditPage() {
                   />
                 </label>
               </div>
+                <div className="account-actions">
+                  <Link to={`/game/hh-resume/${resumeId}/quiz`} className="hh-btn">
+                    Заполнить с опросника
+                  </Link>
+                </div>
+              </section>
+              ) : null}
+
+              {questStep === 1 ? (
+              <section className="hh-quest-panel">
+                <p className="hh-quest-kicker">Уровень 2 · Формат</p>
+                <h2 className="account-subheading">Как готовы работать</h2>
 
               <fieldset className="hh-resume-fieldset">
                 <legend>Тип занятости</legend>
@@ -704,13 +732,41 @@ export function HhResumeEditPage() {
                 </div>
               </fieldset>
 
+              </section>
+              ) : null}
+
+              {questStep === 2 ? (
+              <section className="hh-quest-panel">
+                <p className="hh-quest-kicker">Уровень 3 · Опыт</p>
+                <h2 className="account-subheading">Где уже что-то делали</h2>
               <HhResumeHistoryFields
-                experience={experience.length > 0 ? experience : []}
+                experience={experience}
                 education={education}
                 onExperience={setExperience}
                 onEducation={setEducation}
+                part="experience"
               />
+              </section>
+              ) : null}
 
+              {questStep === 3 ? (
+              <section className="hh-quest-panel">
+                <p className="hh-quest-kicker">Уровень 4 · Учёба</p>
+                <h2 className="account-subheading">Откуда пришли</h2>
+              <HhResumeHistoryFields
+                experience={experience}
+                education={education}
+                onExperience={setExperience}
+                onEducation={setEducation}
+                part="education"
+              />
+              </section>
+              ) : null}
+
+              {questStep === 4 ? (
+              <section className="hh-quest-panel">
+                <p className="hh-quest-kicker">Уровень 5 · О себе</p>
+                <h2 className="account-subheading">Короткий живой текст</h2>
               <label className="learn-admin-field">
                 <span>О себе</span>
                 <textarea
@@ -724,13 +780,30 @@ export function HhResumeEditPage() {
               <div className="account-actions">
                 <button
                   type="button"
-                  className="learn-admin-btn learn-admin-btn-primary"
+                  className="hh-btn"
                   disabled={aiBusy || !about.trim()}
                   onClick={() => void onImproveAbout()}
                 >
                   Улучшить с помощью AI
                 </button>
               </div>
+              </section>
+              ) : null}
+
+              {questStep === 5 ? (
+              <section className="hh-quest-panel">
+                <p className="hh-quest-kicker">Уровень 6 · Навыки</p>
+                <h2 className="account-subheading">Что подтверждаете делом</h2>
+                <div className="account-actions">
+                  <button
+                    type="button"
+                    className="hh-btn"
+                    disabled={enriching || loading}
+                    onClick={() => void onEnrichFromLearn()}
+                  >
+                    {enriching ? 'Обогащаем…' : 'Навыки из Learn'}
+                  </button>
+                </div>
 
               {skills.length > 0 ? (
                 <section className="hh-resume-skills-pick" aria-label="Навыки">
@@ -753,8 +826,15 @@ export function HhResumeEditPage() {
                   </ul>
                 </section>
               ) : (
-                <p className="learn-section-note">Навыков пока нет — обогатите из Learn.</p>
+                <p className="learn-section-note">Навыков пока нет — нажмите «Навыки из Learn».</p>
               )}
+              </section>
+              ) : null}
+
+              {questStep === 6 ? (
+              <section className="hh-quest-panel">
+                <p className="hh-quest-kicker">Уровень 7 · Бонус</p>
+                <h2 className="account-subheading">Проекты, бейджи и тренировка</h2>
 
               <section className="hh-resume-ai-block" aria-label="Разрыв навыков">
                 <h2 className="account-subheading">Разрыв навыков</h2>
@@ -768,7 +848,7 @@ export function HhResumeEditPage() {
                 </label>
                 <button
                   type="button"
-                  className="learn-admin-btn learn-admin-btn-primary"
+                  className="hh-btn"
                   disabled={aiBusy}
                   onClick={() => void onSkillGap()}
                 >
@@ -808,7 +888,7 @@ export function HhResumeEditPage() {
                 <div className="account-actions">
                   <button
                     type="button"
-                    className="learn-admin-btn learn-admin-btn-primary"
+                    className="hh-btn"
                     disabled={aiBusy || vacancyText.trim().length < 20}
                     onClick={() => void onMatchScore()}
                   >
@@ -816,7 +896,7 @@ export function HhResumeEditPage() {
                   </button>
                   <button
                     type="button"
-                    className="learn-admin-btn"
+                    className="hh-btn"
                     disabled={aiBusy || vacancyText.trim().length < 20}
                     onClick={() => void onCoverLetter()}
                   >
@@ -825,7 +905,7 @@ export function HhResumeEditPage() {
                   {coverLetter ? (
                     <button
                       type="button"
-                      className="learn-admin-btn"
+                      className="hh-btn"
                       onClick={() => void navigator.clipboard.writeText(coverLetter)}
                     >
                       Копировать письмо
@@ -899,7 +979,7 @@ export function HhResumeEditPage() {
                 </label>
                 <button
                   type="button"
-                  className="learn-admin-btn learn-admin-btn-primary"
+                  className="hh-btn"
                   disabled={aiBusy || !githubUsername.trim()}
                   onClick={() => void onGithubFetch()}
                 >
@@ -943,7 +1023,7 @@ export function HhResumeEditPage() {
                 {!chatSessionId ? (
                   <button
                     type="button"
-                    className="learn-admin-btn learn-admin-btn-primary"
+                    className="hh-btn"
                     disabled={aiBusy || skills.length === 0}
                     onClick={() => void onStartChat()}
                   >
@@ -984,7 +1064,7 @@ export function HhResumeEditPage() {
                         <div className="account-actions">
                           <button
                             type="button"
-                            className="learn-admin-btn learn-admin-btn-primary"
+                            className="hh-btn"
                             disabled={aiBusy || !chatInput.trim()}
                             onClick={() => void onSendChat()}
                           >
@@ -992,7 +1072,7 @@ export function HhResumeEditPage() {
                           </button>
                           <button
                             type="button"
-                            className="learn-admin-btn"
+                            className="hh-btn"
                             disabled={aiBusy}
                             onClick={() => {
                               setChatSessionId('')
@@ -1008,7 +1088,7 @@ export function HhResumeEditPage() {
                     ) : (
                       <button
                         type="button"
-                        className="learn-admin-btn learn-admin-btn-primary"
+                        className="hh-btn"
                         disabled={aiBusy}
                         onClick={() => void onStartChat()}
                       >
@@ -1018,11 +1098,33 @@ export function HhResumeEditPage() {
                   </div>
                 )}
               </section>
+              </section>
+              ) : null}
 
-              <div className="account-actions">
+              <div className="hh-quest-nav">
+                <span className="hh-quest-nav-meta">
+                  Уровень {questStep + 1} / {HH_QUEST_COUNT}
+                </span>
+                <button
+                  type="button"
+                  className="hh-btn"
+                  disabled={questStep === 0}
+                  onClick={() => setQuestStep((current) => Math.max(0, current - 1))}
+                >
+                  Назад
+                </button>
+                {questStep < HH_QUEST_COUNT - 1 ? (
+                  <button
+                    type="button"
+                    className="hh-btn hh-btn-primary"
+                    onClick={() => setQuestStep((current) => Math.min(HH_QUEST_COUNT - 1, current + 1))}
+                  >
+                    Дальше
+                  </button>
+                ) : null}
                 <button
                   type="submit"
-                  className="learn-admin-btn learn-admin-btn-primary"
+                  className={questStep === HH_QUEST_COUNT - 1 ? 'hh-btn hh-btn-primary' : 'hh-btn'}
                   disabled={saving || enriching || aiBusy}
                 >
                   Сохранить
@@ -1044,7 +1146,7 @@ export function HhResumeEditPage() {
           extraActions={
             <button
               type="button"
-              className="learn-admin-btn learn-admin-btn-primary"
+              className="hh-btn hh-btn-primary"
               disabled={saving || enriching}
               onClick={() => void onExport('docx')}
             >

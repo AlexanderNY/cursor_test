@@ -73,7 +73,7 @@ export function HhResumePickPanel({ mode, onPicked }: HhResumePickPanelProps) {
                 <li key={item.id} style={{ marginBottom: '0.5rem' }}>
                   <button
                     type="button"
-                    className="learn-admin-btn learn-admin-btn-primary"
+                    className="hh-btn hh-btn-primary"
                     disabled={busy}
                     onClick={() => onPicked(item.id)}
                   >
@@ -89,7 +89,7 @@ export function HhResumePickPanel({ mode, onPicked }: HhResumePickPanelProps) {
           <div className="account-actions">
             <button
               type="button"
-              className="learn-admin-btn learn-admin-btn-primary"
+              className="hh-btn hh-btn-primary"
               disabled={busy}
               onClick={() => void onCreate()}
             >
@@ -98,14 +98,14 @@ export function HhResumePickPanel({ mode, onPicked }: HhResumePickPanelProps) {
             {latest ? (
               <button
                 type="button"
-                className="learn-admin-btn"
+                className="hh-btn"
                 disabled={busy}
                 onClick={() => onPicked(latest.id)}
               >
                 Открыть последнее
               </button>
             ) : null}
-            <Link to="/game/hh-resume" className="learn-admin-btn">
+            <Link to="/game/hh-resume" className="hh-btn">
               К списку
             </Link>
           </div>

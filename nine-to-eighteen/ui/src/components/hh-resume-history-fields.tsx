@@ -33,14 +33,19 @@ export function HhResumeHistoryFields({
   education,
   onExperience,
   onEducation,
+  part = 'all',
 }: {
   experience: ExperienceDraft[]
   education: EducationDraft[]
   onExperience: (next: ExperienceDraft[]) => void
   onEducation: (next: EducationDraft[]) => void
+  part?: 'all' | 'experience' | 'education'
 }) {
+  const showExperience = part !== 'education'
+  const showEducation = part !== 'experience'
   return (
     <>
+      {showExperience ? (
       <fieldset className="hh-resume-fieldset">
         <legend>Опыт работы</legend>
         <p className="learn-section-note">
@@ -114,7 +119,7 @@ export function HhResumeHistoryFields({
             </label>
             <button
               type="button"
-              className="learn-admin-btn"
+              className="hh-btn hh-btn-danger"
               onClick={() => onExperience(experience.filter((_, itemIndex) => itemIndex !== index))}
             >
               Убрать место работы
@@ -123,14 +128,16 @@ export function HhResumeHistoryFields({
         ))}
         <button
           type="button"
-          className="learn-admin-btn"
+          className="hh-btn hh-btn-primary"
           disabled={experience.length >= MAX_JOBS}
           onClick={() => onExperience([...experience, emptyExperience()])}
         >
           Добавить место работы
         </button>
       </fieldset>
+      ) : null}
 
+      {showEducation ? (
       <fieldset className="hh-resume-fieldset">
         <legend>Образование</legend>
         {education.map((school, index) => (
@@ -200,7 +207,7 @@ export function HhResumeHistoryFields({
             </div>
             <button
               type="button"
-              className="learn-admin-btn"
+              className="hh-btn hh-btn-danger"
               onClick={() => onEducation(education.filter((_, itemIndex) => itemIndex !== index))}
             >
               Убрать образование
@@ -209,13 +216,14 @@ export function HhResumeHistoryFields({
         ))}
         <button
           type="button"
-          className="learn-admin-btn"
+          className="hh-btn hh-btn-primary"
           disabled={education.length >= MAX_SCHOOLS}
           onClick={() => onEducation([...education, emptyEducation()])}
         >
           Добавить образование
         </button>
       </fieldset>
+      ) : null}
     </>
   )
 }

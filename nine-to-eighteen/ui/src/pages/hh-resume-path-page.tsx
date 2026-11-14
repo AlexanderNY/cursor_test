@@ -412,7 +412,7 @@ export function HhResumePathPage() {
           <div className="account-actions">
             <button
               type="button"
-              className="learn-admin-btn learn-admin-btn-primary"
+              className="hh-btn hh-btn-primary"
               disabled={busy}
               onClick={() => void onSubmitSource()}
             >
@@ -480,7 +480,7 @@ export function HhResumePathPage() {
           <div className="account-actions">
             <button
               type="button"
-              className="learn-admin-btn"
+              className="hh-btn"
               disabled={quizStep === 0 || busy}
               onClick={() => {
                 setError('')
@@ -491,7 +491,7 @@ export function HhResumePathPage() {
             </button>
             <button
               type="button"
-              className="learn-admin-btn learn-admin-btn-primary"
+              className="hh-btn hh-btn-primary"
               disabled={busy}
               onClick={onQuizNext}
             >
@@ -499,7 +499,7 @@ export function HhResumePathPage() {
             </button>
             <button
               type="button"
-              className="learn-admin-btn"
+              className="hh-btn"
               disabled={busy}
               onClick={() => setStep('source')}
             >
@@ -561,7 +561,7 @@ export function HhResumePathPage() {
           <div className="account-actions" style={{ marginTop: '1.25rem' }}>
             <button
               type="button"
-              className="learn-admin-btn"
+              className="hh-btn"
               disabled={busy}
               onClick={() => void onRefreshPrepare()}
             >
@@ -570,7 +570,7 @@ export function HhResumePathPage() {
             {skills.length > 0 ? (
               <button
                 type="button"
-                className="learn-admin-btn learn-admin-btn-primary"
+                className="hh-btn hh-btn-primary"
                 disabled={busy}
                 onClick={() => void onStartInterview()}
               >
@@ -582,7 +582,7 @@ export function HhResumePathPage() {
               </p>
             )}
             {resumeId ? (
-              <Link to={`/game/hh-resume/${resumeId}/edit`} className="learn-admin-btn">
+              <Link to={`/game/hh-resume/${resumeId}/edit`} className="hh-btn">
                 Открыть редактор
               </Link>
             ) : null}
@@ -602,7 +602,7 @@ export function HhResumePathPage() {
               </p>
               <button
                 type="button"
-                className="learn-admin-btn learn-admin-btn-primary"
+                className="hh-btn hh-btn-primary"
                 disabled={busy || skills.length === 0}
                 onClick={() => void onStartInterview()}
               >
@@ -644,14 +644,14 @@ export function HhResumePathPage() {
                   <div className="account-actions">
                     <button
                       type="button"
-                      className="learn-admin-btn learn-admin-btn-primary"
+                      className="hh-btn hh-btn-primary"
                       disabled={busy || !chatInput.trim()}
                       onClick={() => void onSendChat()}
                     >
                       Отправить
                     </button>
                     {resumeId ? (
-                      <Link to={`/game/hh-resume/${resumeId}`} className="learn-admin-btn">
+                      <Link to={`/game/hh-resume/${resumeId}`} className="hh-btn">
                         К превью
                       </Link>
                     ) : null}
@@ -661,14 +661,14 @@ export function HhResumePathPage() {
                 <div className="account-actions">
                   <button
                     type="button"
-                    className="learn-admin-btn learn-admin-btn-primary"
+                    className="hh-btn hh-btn-primary"
                     disabled={busy}
                     onClick={() => void onStartInterview()}
                   >
                     Ещё раз
                   </button>
                   {resumeId ? (
-                    <Link to={`/game/hh-resume/${resumeId}/edit`} className="learn-admin-btn">
+                    <Link to={`/game/hh-resume/${resumeId}/edit`} className="hh-btn">
                       В редактор
                     </Link>
                   ) : null}

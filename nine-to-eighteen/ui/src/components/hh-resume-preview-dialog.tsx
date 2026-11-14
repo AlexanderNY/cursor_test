@@ -56,7 +56,7 @@ export function HhResumePreviewDialog({
           <h2>Предпросмотр · {title || 'Резюме'}</h2>
           <div className="hh-resume-preview-dialog-actions">
             {extraActions}
-            <button type="button" className="learn-admin-btn" onClick={() => onCloseRef.current()}>
+            <button type="button" className="hh-btn" onClick={() => onCloseRef.current()}>
               Закрыть
             </button>
           </div>
@@ -157,12 +157,12 @@ export function HhResumeSavedPreviewDialog({
       onClose={onClose}
       extraActions={
         <>
-          <Link to={`/game/hh-resume/${resumeId}`} className="learn-admin-btn">
+          <Link to={`/game/hh-resume/${resumeId}`} className="hh-btn">
             На весь экран
           </Link>
           <button
             type="button"
-            className="learn-admin-btn learn-admin-btn-primary"
+            className="hh-btn hh-btn-primary"
             disabled={loading || downloading || !preview}
             onClick={() => void onDownload()}
           >

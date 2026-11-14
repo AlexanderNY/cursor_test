@@ -303,20 +303,20 @@ export function HhResumeAdminPage() {
           <div className="account-actions">
             <button
               type="submit"
-              className="learn-admin-btn learn-admin-btn-primary"
+              className="hh-btn hh-btn-primary"
               disabled={saving}
             >
               {saving ? 'Сохраняем…' : 'Сохранить'}
             </button>
             <button
               type="button"
-              className="learn-admin-btn"
+              className="hh-btn"
               disabled={saving}
               onClick={() => void load()}
             >
               Сбросить с сервера
             </button>
-            <Link to="/game/hh-resume" className="learn-admin-btn">
+            <Link to="/game/hh-resume" className="hh-btn">
               К резюме
             </Link>
           </div>
